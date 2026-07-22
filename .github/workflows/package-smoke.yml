@@ -68,3 +68,26 @@ jobs:
             artifacts/runtime-licenses.json
           if-no-files-found: error
           retention-days: 14
+
+  cross-platform-reproducibility:
+    name: Cross-platform VSIX byte identity
+    needs: package-smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Download package evidence
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          pattern: okf-workbench-package-smoke-*
+          path: package-evidence
+
+      - name: Require identical package bytes from every runner
+        run: node scripts/check-cross-platform-vsix.mjs package-evidence 3

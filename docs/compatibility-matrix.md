@@ -22,14 +22,28 @@ counted as upgrade evidence.
 ## Hosted final-candidate qualification
 
 The normalized `0.1.0` candidate built from commit
-`b0848e2c68ff28f1c12e1b9927d01a54c79542b5`, with byte size `581860` and
-SHA-256 `b9125e6b56ce73de1e2ade10626f410f103ed7e421aa1b5d28cf0b565b2a36dd`,
+`aa90832aab64dac1bccf9c9092fabc004991f7b1`, with byte size `582231` and
+SHA-256 `cc8c994cd35cfe2017945c38d0019f330cb33f628a94bf6508b2930c5c57c866`,
 passed every required editor/OS lifecycle lane in
-[Compatibility run 29899159887](https://github.com/koizumikento/okf-workbench/actions/runs/29899159887).
+[Compatibility run 29900868002](https://github.com/koizumikento/okf-workbench/actions/runs/29900868002).
 The candidate and acceptance jobs in that run also passed. The same candidate
 passed the quality/package, hostile-content Webview, and development Extension
 Host jobs in
-[CI run 29899142563](https://github.com/koizumikento/okf-workbench/actions/runs/29899142563).
+[CI run 29900857588](https://github.com/koizumikento/okf-workbench/actions/runs/29900857588).
+In
+[Package smoke run 29900868155](https://github.com/koizumikento/okf-workbench/actions/runs/29900868155),
+independent macOS, Ubuntu, and Windows checkouts each reproduced that exact digest
+and byte size.
+
+Commit `6505a7f7b017a44a851ab6edaaba28f6b6a72105` subsequently added a workflow-level
+aggregate gate that compares all three retained packages. It changes only the
+workflow, checker, its test, and implementation documentation; none of those
+files is packaged, so the qualified VSIX content and digest above are unchanged.
+[CI run 29901152549](https://github.com/koizumikento/okf-workbench/actions/runs/29901152549)
+passed all four jobs at that revision, and
+[Package smoke run 29901183164](https://github.com/koizumikento/okf-workbench/actions/runs/29901183164)
+passed all three OS jobs plus the aggregate byte-identity job. The aggregate
+recorded the same SHA-256 and `582231`-byte size across three artifacts.
 
 The seven hosted lifecycle lanes prove clean installation and packaged
 activation, six registered commands, execution of Validate Bundle and Open 3D

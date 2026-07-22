@@ -1,12 +1,21 @@
 # Preserved local predecessor-candidate compatibility evidence
 
-The hosted final candidate is the `581860`-byte VSIX from commit
-`b0848e2c68ff28f1c12e1b9927d01a54c79542b5`, SHA-256
-`b9125e6b56ce73de1e2ade10626f410f103ed7e421aa1b5d28cf0b565b2a36dd`. It
+The hosted final candidate is the `582231`-byte VSIX from commit
+`aa90832aab64dac1bccf9c9092fabc004991f7b1`, SHA-256
+`cc8c994cd35cfe2017945c38d0019f330cb33f628a94bf6508b2930c5c57c866`. It
 passed every required editor/OS lifecycle lane in
-[Compatibility run 29899159887](https://github.com/koizumikento/okf-workbench/actions/runs/29899159887),
+[Compatibility run 29900868002](https://github.com/koizumikento/okf-workbench/actions/runs/29900868002),
 and its CI qualification passed in
-[CI run 29899142563](https://github.com/koizumikento/okf-workbench/actions/runs/29899142563).
+[CI run 29900857588](https://github.com/koizumikento/okf-workbench/actions/runs/29900857588).
+The macOS, Ubuntu, and Windows jobs in
+[Package smoke run 29900868155](https://github.com/koizumikento/okf-workbench/actions/runs/29900868155)
+independently reproduced that exact digest and size. The later workflow-only
+commit `6505a7f7b017a44a851ab6edaaba28f6b6a72105` adds an aggregate byte-identity
+gate without changing packaged content. At that revision,
+[CI run 29901152549](https://github.com/koizumikento/okf-workbench/actions/runs/29901152549)
+passed all four jobs and
+[Package smoke run 29901183164](https://github.com/koizumikento/okf-workbench/actions/runs/29901183164)
+passed all three OS jobs plus the aggregate comparison of the three artifacts.
 The JSON files in this directory predate that candidate and are retained only
 as local audit evidence; they must not be attributed to the hosted candidate.
 

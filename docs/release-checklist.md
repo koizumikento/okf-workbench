@@ -28,12 +28,15 @@ not a substitute for its named manual or hosted check.
       `65c137822052aa7f90ef08cc1300020fec4adcd7cbcec6aec88ae98fae64dad0`, passed clean,
       untrusted, upgrade, and uninstall lifecycles in all three local macOS arm64 editor lanes;
       this is preserved predecessor evidence rather than the hosted-qualified candidate.
-- [x] The exact `581860`-byte candidate from commit
-      `b0848e2c68ff28f1c12e1b9927d01a54c79542b5`, SHA-256
-      `b9125e6b56ce73de1e2ade10626f410f103ed7e421aa1b5d28cf0b565b2a36dd`, passed the
-      [hosted Compatibility run](https://github.com/koizumikento/okf-workbench/actions/runs/29899159887).
+- [x] The exact `582231`-byte candidate from commit
+      `aa90832aab64dac1bccf9c9092fabc004991f7b1`, SHA-256
+      `cc8c994cd35cfe2017945c38d0019f330cb33f628a94bf6508b2930c5c57c866`, passed the
+      [hosted Compatibility run](https://github.com/koizumikento/okf-workbench/actions/runs/29900868002).
 - [x] Every required editor/OS lane has a successful retained artifact from the
       [compatibility matrix](compatibility-matrix.md), including actual VSCodium runs.
+- [x] The final workflow-level package gate compared all three retained OS artifacts and passed
+      in [Package smoke run 29901183164](https://github.com/koizumikento/okf-workbench/actions/runs/29901183164)
+      for the exact recorded digest and byte size.
 - [ ] Packaged-editor evidence plus manual inspection closes the remaining user-scenario gaps in
       [acceptance evidence](acceptance-evidence.md); the hosted lifecycle matrix is complete, but
       it does not exercise every interactive command UI.
@@ -239,13 +242,16 @@ not an automated fallback in this repository.
 | --- | --- |
 | Version | `0.1.0` |
 | Extension ID | `straydog.okf-workbench` |
-| Hosted-qualified Git revision | `b0848e2c68ff28f1c12e1b9927d01a54c79542b5` |
-| Hosted-qualified VSIX SHA-256 | `b9125e6b56ce73de1e2ade10626f410f103ed7e421aa1b5d28cf0b565b2a36dd` |
-| Hosted-qualified VSIX byte size | `581860` bytes |
+| Hosted-qualified artifact-content revision | `aa90832aab64dac1bccf9c9092fabc004991f7b1` |
+| Hosted-qualified VSIX SHA-256 | `cc8c994cd35cfe2017945c38d0019f330cb33f628a94bf6508b2930c5c57c866` |
+| Hosted-qualified VSIX byte size | `582231` bytes |
 | Node / npm | `24.18.0` / `11.16.0` |
-| Hosted CI | [Pass — run 29899142563](https://github.com/koizumikento/okf-workbench/actions/runs/29899142563); quality/package, hostile-content Webview, and both pinned VS Code integration jobs succeeded. |
-| Hosted compatibility | [Pass — run 29899159887](https://github.com/koizumikento/okf-workbench/actions/runs/29899159887); the exact candidate passed all seven required VS Code/VSCodium and Ubuntu/macOS/Windows lifecycle lanes. |
-| Hosted package smoke | [Pass — run 29899159953](https://github.com/koizumikento/okf-workbench/actions/runs/29899159953) on macOS, Ubuntu, and Windows. macOS and Ubuntu reproduced the recorded digest; the independent Windows checkout produced different archive bytes because packaged text files used CRLF, so this run is not cross-OS byte-identity evidence. |
+| Hosted CI | [Pass — run 29900857588](https://github.com/koizumikento/okf-workbench/actions/runs/29900857588); all four quality/package, hostile-content Webview, and pinned VS Code integration jobs succeeded. |
+| Hosted compatibility | [Pass — run 29900868002](https://github.com/koizumikento/okf-workbench/actions/runs/29900868002); all nine candidate, acceptance/Webview, and seven required VS Code/VSCodium lifecycle jobs succeeded. |
+| Hosted package smoke | [Pass — run 29900868155](https://github.com/koizumikento/okf-workbench/actions/runs/29900868155); macOS, Ubuntu, and Windows independently produced the exact recorded `582231`-byte digest. |
+| Cross-platform package gate revision | `6505a7f7b017a44a851ab6edaaba28f6b6a72105`; workflow, checker, test, and documentation only, so the qualified VSIX content and digest are unchanged. |
+| Final workflow-gate CI | [Pass — run 29901152549](https://github.com/koizumikento/okf-workbench/actions/runs/29901152549); all four jobs succeeded at the cross-platform package gate revision. |
+| Final aggregate package gate | [Pass — run 29901183164](https://github.com/koizumikento/okf-workbench/actions/runs/29901183164); all three OS jobs and the aggregate byte-identity job succeeded for SHA-256 `cc8c994cd35cfe2017945c38d0019f330cb33f628a94bf6508b2930c5c57c866`, `582231` bytes, and three artifacts. |
 | Preserved local predecessor evidence | Pass — commit `524eca3f36e1a1b3da935495d3fbbd0eb0d03f56`, `581830` bytes, SHA-256 `65c137822052aa7f90ef08cc1300020fec4adcd7cbcec6aec88ae98fae64dad0`; VS Code `1.121.0`, VS Code `1.127.0`, and VSCodium `1.121.03429` on macOS arm64. |
 | Headed performance evidence | Pass — QR-002 703 ms p95 / 20 samples; QR-003 `d3`; Webview `853502f50117c6b565b8a9befdb474e1cbaf39bf78b8b7eb6aa3d52f92266d7b`; combined `93c75712626c20bee2b77ad74810267733c6457da85ad89c595772ac6e6d92ad` |
 | Security/license approver | Pending |

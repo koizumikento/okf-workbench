@@ -4,7 +4,8 @@
 - Packaged extension ID: `straydog.okf-workbench`
 - Evidence date: 2026-07-22
 - Component harness: `test/acceptance/vitest.config.ts`
-- Hosted packaged lifecycle run: [Compatibility 29899159887](https://github.com/koizumikento/okf-workbench/actions/runs/29899159887)
+- Hosted packaged lifecycle run: [Compatibility 29900868002](https://github.com/koizumikento/okf-workbench/actions/runs/29900868002)
+- Hosted package byte-identity run: [Package smoke 29901183164](https://github.com/koizumikento/okf-workbench/actions/runs/29901183164)
 - Preserved predecessor-candidate local evidence: `docs/evidence/compatibility/`
 
 ## Evidence semantics
@@ -14,7 +15,7 @@ packaged lifecycle automation, and full user-scenario evidence.
 
 - **Component automated** means a checked-in Vitest scenario exercises the repository's pure core, an injectable command/workspace boundary, or Webview presentation state. The command tests use in-memory doubles, not VS Code UI. A passing result supports only the assertions named in the table.
 - **Development Extension Host provider automated** means the built development extension ran in a real VS Code Extension Host against a test-owned, registered, read-only `okfmem:` `FileSystemProvider`. It proves the read-only command boundary named below, but it is neither a packaged-VSIX result nor evidence for an external remote provider.
-- **Packaged lifecycle automated** means the exact `581860`-byte normalized VSIX from commit `b0848e2c68ff28f1c12e1b9927d01a54c79542b5` (SHA-256 `b9125e6b56ce73de1e2ade10626f410f103ed7e421aa1b5d28cf0b565b2a36dd`) passed the required hosted matrix: VS Code 1.121.0 on Ubuntu; VS Code 1.127.0 on Ubuntu, macOS, and Windows; and VSCodium 1.121.03429 on Ubuntu, macOS, and Windows. The records prove six registered commands, execution of Validate Bundle and Open 3D Graph, zero attempts through guarded Node/Electron transports, untrusted-workspace read availability and early write refusal, a real `0.0.0` → `0.1.0` VSIX upgrade, uninstall, and settings/workspace preservation.
+- **Packaged lifecycle automated** means the exact `582231`-byte normalized VSIX from commit `aa90832aab64dac1bccf9c9092fabc004991f7b1` (SHA-256 `cc8c994cd35cfe2017945c38d0019f330cb33f628a94bf6508b2930c5c57c866`) passed the required hosted matrix: VS Code 1.121.0 on Ubuntu; VS Code 1.127.0 on Ubuntu, macOS, and Windows; and VSCodium 1.121.03429 on Ubuntu, macOS, and Windows. The records prove six registered commands, execution of Validate Bundle and Open 3D Graph, zero attempts through guarded Node/Electron transports, untrusted-workspace read availability and early write refusal, a real `0.0.0` → `0.1.0` VSIX upgrade, uninstall, and settings/workspace preservation. Independent macOS, Ubuntu, and Windows package-smoke jobs reproduced the same digest and byte size. The final workflow-only commit `6505a7f7b017a44a851ab6edaaba28f6b6a72105` left packaged content unchanged and added an aggregate gate that explicitly passed those three artifacts.
 - **Preserved local predecessor evidence** means the checked-in JSON files describe the earlier `581830`-byte candidate from commit `524eca3f36e1a1b3da935495d3fbbd0eb0d03f56` (SHA-256 `65c137822052aa7f90ef08cc1300020fec4adcd7cbcec6aec88ae98fae64dad0`) on local macOS arm64. They remain useful audit evidence but are not records for the hosted final candidate.
 - **Full scenario not evidenced** means the observable workflow has not yet been driven end to end through the actual editor UI and workspace provider. Component and lifecycle coverage can coexist without completing the scenario.
 

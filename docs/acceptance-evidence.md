@@ -13,7 +13,7 @@ packaged lifecycle automation, and full user-scenario evidence.
 
 - **Component automated** means a checked-in Vitest scenario exercises the repository's pure core, an injectable command/workspace boundary, or Webview presentation state. The command tests use in-memory doubles, not VS Code UI. A passing result supports only the assertions named in the table.
 - **Development Extension Host provider automated** means the built development extension ran in a real VS Code Extension Host against a test-owned, registered, read-only `okfmem:` `FileSystemProvider`. It proves the read-only command boundary named below, but it is neither a packaged-VSIX result nor evidence for an external remote provider.
-- **Packaged lifecycle automated** means the normalized VSIX was installed in a clean profile and activated in VS Code 1.121.0, VS Code 1.127.0, and VSCodium 1.121.03429 on macOS arm64. The records prove six registered commands, execution of Validate Bundle and Open 3D Graph, zero attempts through guarded Node/Electron transports, a real `0.0.0` → `0.1.0` VSIX upgrade, uninstall, and workspace preservation.
+- **Packaged lifecycle automated** means the exact `581830`-byte normalized VSIX from commit `524eca3f36e1a1b3da935495d3fbbd0eb0d03f56` (SHA-256 `65c137822052aa7f90ef08cc1300020fec4adcd7cbcec6aec88ae98fae64dad0`) was installed in clean, untrusted, and upgrade profiles in VS Code 1.121.0, VS Code 1.127.0, and VSCodium 1.121.03429 on macOS arm64. The records prove six registered commands, execution of Validate Bundle and Open 3D Graph, zero attempts through guarded Node/Electron transports, untrusted-workspace read availability and early write refusal, a real `0.0.0` → `0.1.0` VSIX upgrade, uninstall, and workspace preservation.
 - **Full scenario not evidenced** means the observable workflow has not yet been driven end to end through the actual editor UI and workspace provider. Component and lifecycle coverage can coexist without completing the scenario.
 
 All eight scenarios remain **Partial** because their remaining UI/provider clauses
@@ -47,7 +47,10 @@ write command, an external remote extension, or packaged installation.
 
 The packaged macOS records are linked from the
 [compatibility matrix](compatibility-matrix.md). Linux and Windows remain
-pending until the hosted workflow runs.
+pending until the hosted workflow runs. These local exact-candidate records
+close the packaged lifecycle and local transport-observation subset only; they
+do not complete the UI/provider clauses in the table or establish
+cross-platform acceptance.
 
 ## Scenario evidence map
 
@@ -60,7 +63,7 @@ pending until the hosted workflow runs.
 | AC-005 | The graph model exposes directed backlinks, broken-link counts, and orphan state; Webview state supports NFKC search, type/tag filters, selection, and focus without mutating source input. The development Extension Host additionally waits for the graph render acknowledgement for the same provider-backed revision and observes no provider write. Packaged macOS evidence proves Open 3D Graph completes without changing the five-file workspace. | Actual 3D/Webview interaction, keyboard-only traversal, details UI, source opening, and packaged external-provider execution. | Partial — component + development provider boundary + packaged lifecycle |
 | AC-006 | Successive create, edit, rename, and delete graph revisions converge in presentation state; renamed/deleted selection clears; stale delivery is ignored. | Workspace file watchers, the 250 ms debounce, extension-to-Webview delivery, rendered details convergence, and extension-host continuity. | Partial — component |
 | AC-007 | The injectable agent command previews, approves, and applies both outputs in memory, preserves unrelated `AGENTS.md` text, and returns unchanged on its second run. The packaged lifecycle also preserves pre-existing `AGENTS.md` and Skill sentinels through upgrade and uninstall, but does not execute the authoring command. | Actual preview/confirmation UI, physical or remote workspace application, collision handling, and a differing-Skill replacement decision in a packaged editor. | Partial — component + lifecycle preservation |
-| AC-008 | Representative template, parse, validation, index, graph-state, and agent-plan components complete while the JavaScript `fetch` boundary is disabled. In all three packaged macOS lanes, activation plus Validate Bundle and Open 3D Graph made zero attempts through guarded `http`, `https`, `http2`, `net`, `tls`, `dns`, `dgram`, `fetch`, and `WebSocket` transports. The recorded headed VS Code Webview CDP capture also observed zero remote HTTP(S)/WS requests during load and interaction. | Execute every write command flow under the packaged Extension Host guard and run hosted Linux/Windows lanes. Repeat the candidate-specific Webview observation whenever its bundle changes. Editor-owned background requests are outside this extension-host assertion. | Partial — component + packaged transport guard + headed Webview observation |
+| AC-008 | Representative template, parse, validation, index, graph-state, and agent-plan components complete while the JavaScript `fetch` boundary is disabled. In all three exact-candidate packaged macOS lanes, activation plus Validate Bundle and Open 3D Graph made zero attempts through guarded `http`, `https`, `http2`, `net`, `tls`, `dns`, `dgram`, `fetch`, and `WebSocket` transports. The recorded headed VS Code Webview CDP capture also observed zero remote HTTP(S)/WS requests during load and interaction. | Execute every write command flow under the packaged Extension Host guard and run hosted Linux/Windows lanes. Repeat the candidate-specific Webview observation whenever its bundle changes. Editor-owned background requests are outside this extension-host assertion. | Partial — component + exact-candidate packaged transport guard + headed Webview observation |
 
 ## Remaining release evidence
 

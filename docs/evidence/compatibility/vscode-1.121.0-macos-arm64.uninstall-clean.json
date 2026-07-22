@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "kind": "packaged-extension-activation",
+  "status": "passed",
+  "recordedAt": "2026-07-22T06:40:19.204Z",
+  "extensionId": "straydog.okf-workbench",
+  "mode": "post-uninstall",
+  "editor": {
+    "version": "1.121.0",
+    "expectedVersion": "1.121.0",
+    "appName": "Visual Studio Code",
+    "appHost": "desktop",
+    "remoteName": null,
+    "uiKind": 1,
+    "versionVerification": {
+      "requestedEditorVersion": "1.121.0",
+      "expectedExtensionHostVersion": "1.121.0",
+      "reportedExtensionHostVersion": "1.121.0"
+    }
+  },
+  "runtime": {
+    "platform": "darwin",
+    "architecture": "arm64",
+    "node": "22.22.1",
+    "electron": "39.8.8",
+    "chrome": "142.0.7444.265",
+    "v8": "14.2.231.22-electron.0"
+  },
+  "networkAttempts": [],
+  "commands": [],
+  "workspaceTrust": {
+    "expected": null,
+    "actual": true
+  },
+  "completion": {
+    "runtimePublication": null,
+    "graphRender": null,
+    "guardedQuiescenceMs": 500
+  },
+  "uninstall": {
+    "extensionApiAbsent": true
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "kind": "packaged-extension-activation",
+  "status": "passed",
+  "recordedAt": "2026-07-22T06:41:49.920Z",
+  "extensionId": "straydog.okf-workbench",
+  "mode": "read-only",
+  "editor": {
+    "version": "1.121.0",
+    "expectedVersion": "1.121.0",
+    "appName": "VSCodium",
+    "appHost": "desktop",
+    "remoteName": null,
+    "uiKind": 1,
+    "versionVerification": {
+      "requestedEditorVersion": "1.121.03429",
+      "expectedExtensionHostVersion": "1.121.0",
+      "reportedExtensionHostVersion": "1.121.0"
+    }
+  },
+  "runtime": {
+    "platform": "darwin",
+    "architecture": "arm64",
+    "node": "22.22.1",
+    "electron": "39.8.8",
+    "chrome": "142.0.7444.265",
+    "v8": "14.2.231.22-electron.0"
+  },
+  "networkAttempts": [],
+  "commands": [
+    "okfWorkbench.initializeBundle",
+    "okfWorkbench.newConcept",
+    "okfWorkbench.validateBundle",
+    "okfWorkbench.regenerateIndexes",
+    "okfWorkbench.openGraph",
+    "okfWorkbench.setupAgentIntegration"
+  ],
+  "workspaceTrust": {
+    "expected": null,
+    "actual": true,
+    "readOnlyAvailable": true
+  },
+  "completion": {
+    "runtimePublication": {
+      "revision": 1,
+      "diagnosticsPublished": true,
+      "findingCount": 5,
+      "conceptCount": 3,
+      "edgeCount": 0
+    },
+    "graphRender": {
+      "revision": 1
+    },
+    "guardedQuiescenceMs": 500
+  },
+  "readOnlyCommands": [
+    "okfWorkbench.validateBundle",
+    "okfWorkbench.openGraph"
+  ],
+  "extensionVersion": "0.1.0"
+}

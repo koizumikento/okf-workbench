@@ -1,6 +1,6 @@
 # Compatibility matrix
 
-- Status: macOS arm64 locally qualified; hosted Ubuntu and Windows lanes pending
+- Status: exact candidate locally qualified on macOS arm64; hosted Ubuntu and Windows lanes pending
 - Matrix date: 2026-07-22
 - Extension identifier expected by the gate: `straydog.okf-workbench`
 
@@ -21,8 +21,9 @@ counted as upgrade evidence.
 
 ## Preserved local qualification
 
-The normalized `0.1.0` candidate with SHA-256
-`8a0c870def44844ea8c6f128cd975b2178a71f6d1c82917054360d0ad24450d3`
+The normalized `0.1.0` candidate built from commit
+`524eca3f36e1a1b3da935495d3fbbd0eb0d03f56`, with byte size `581830` and
+SHA-256 `65c137822052aa7f90ef08cc1300020fec4adcd7cbcec6aec88ae98fae64dad0`,
 passed the packaged lifecycle on local macOS arm64. Each lane used the same
 test-only `straydog.okf-workbench@0.0.0` predecessor with SHA-256
 `7ca5f437fb846f636b51b933b53a55f57b229018bf17958781a661c8be6e6567`.
@@ -33,12 +34,18 @@ test-only `straydog.okf-workbench@0.0.0` predecessor with SHA-256
 | VS Code | `1.127.0` | `1.127.0` | Passed | [`vscode-1.127.0-macos-arm64.json`](evidence/compatibility/vscode-1.127.0-macos-arm64.json) |
 | VSCodium | `1.121.03429` | `1.121.0` | Passed | [`vscodium-1.121.03429-macos-arm64.json`](evidence/compatibility/vscodium-1.121.03429-macos-arm64.json) |
 
-The records prove clean installation, packaged activation, six registered
-commands, execution of Validate Bundle and Open 3D Graph, zero guarded
-extension-host transport attempts, lower-version upgrade, uninstall, and
-workspace preservation. The [evidence README](evidence/compatibility/README.md)
-defines the scope and sanitation. The `0.0.0` package is a test fixture, not a
-published migration source.
+The three primary records and their 18 linked activation/uninstall reports prove
+clean installation, packaged activation, six registered commands, execution of
+Validate Bundle and Open 3D Graph, zero guarded extension-host transport
+attempts, untrusted-workspace read availability with early write refusal,
+lower-version upgrade with a preserved user-setting sentinel, uninstall, and
+workspace preservation. The editor CLI and extension API reported the extension
+absent after uninstall. Where the editor left a verified installation directory,
+the harness recorded that native residue separately and removed only the
+identity-checked direct extension directory. The
+[evidence README](evidence/compatibility/README.md) defines the scope and
+sanitation. The `0.0.0` package is a test fixture, not a published migration
+source.
 
 No hosted compatibility workflow has yet completed for this candidate. Ubuntu
 and Windows are therefore **pending**, and the local macOS results are not a

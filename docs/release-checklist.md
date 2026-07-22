@@ -23,6 +23,10 @@ not a substitute for its named manual or hosted check.
       reuses the `d3` and `ngraph` measurements, matches the current manifest, exact graph
       dependency, Webview SHA-256, and combined Extension Host + Webview SHA-256, and records the
       reviewed release default in [performance evidence](performance-evidence.md).
+- [x] The exact `581830`-byte candidate from commit
+      `524eca3f36e1a1b3da935495d3fbbd0eb0d03f56`, SHA-256
+      `65c137822052aa7f90ef08cc1300020fec4adcd7cbcec6aec88ae98fae64dad0`, passed clean,
+      untrusted, upgrade, and uninstall lifecycles in all three local macOS arm64 editor lanes.
 - [ ] Every required editor/OS lane has a successful retained artifact from the
       [compatibility matrix](compatibility-matrix.md), including actual VSCodium runs.
 - [ ] Packaged-editor evidence closes the required acceptance gaps in
@@ -226,11 +230,12 @@ not an automated fallback in this repository.
 | --- | --- |
 | Version | `0.1.0` |
 | Extension ID | `straydog.okf-workbench` |
-| Git revision | Pending |
-| VSIX SHA-256 | Pending |
-| VSIX byte size | Pending |
+| Git revision | `524eca3f36e1a1b3da935495d3fbbd0eb0d03f56` |
+| VSIX SHA-256 | `65c137822052aa7f90ef08cc1300020fec4adcd7cbcec6aec88ae98fae64dad0` |
+| VSIX byte size | `581830` bytes |
 | Node / npm | `24.18.0` / `11.16.0` |
-| Compatibility workflow URL | Pending |
+| Local compatibility evidence | Pass — VS Code `1.121.0`, VS Code `1.127.0`, and VSCodium `1.121.03429` on macOS arm64; clean, untrusted, upgrade, and uninstall records retained. |
+| Hosted compatibility workflow URL | Pending |
 | Headed performance evidence | Pass — QR-002 703 ms p95 / 20 samples; QR-003 `d3`; Webview `853502f50117c6b565b8a9befdb474e1cbaf39bf78b8b7eb6aa3d52f92266d7b`; combined `93c75712626c20bee2b77ad74810267733c6457da85ad89c595772ac6e6d92ad` |
 | Security/license approver | Pending |
 | Namespace/publishing identity | Pending |

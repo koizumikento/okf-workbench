@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "kind": "packaged-extension-lifecycle",
   "status": "passed",
-  "recordedAt": "2026-07-22T05:04:56.409Z",
-  "repositoryRevision": null,
+  "recordedAt": "2026-07-22T06:40:51.137Z",
+  "repositoryRevision": "524eca3f36e1a1b3da935495d3fbbd0eb0d03f56",
   "requestedEditor": "vscode",
   "requestedEditorVersion": "1.127.0",
   "extensionId": "straydog.okf-workbench",
@@ -28,12 +28,25 @@
       "reportedVersion": "1.127.0",
       "commit": "4fe60c8b1cdac1c4c174f2fb180d0d758272d713",
       "architecture": "arm64"
+    },
+    "expectedExtensionHostVersion": "1.127.0",
+    "cli": {
+      "expectedReportedVersion": "1.127.0",
+      "reported": {
+        "reportedVersion": "1.127.0",
+        "commit": "4fe60c8b1cdac1c4c174f2fb180d0d758272d713",
+        "architecture": "arm64"
+      }
+    },
+    "extensionHost": {
+      "expectedReportedVersion": "1.127.0",
+      "reportedVersion": "1.127.0"
     }
   },
   "candidate": {
     "id": "straydog.okf-workbench",
     "version": "0.1.0",
-    "sha256": "8a0c870def44844ea8c6f128cd975b2178a71f6d1c82917054360d0ad24450d3",
+    "sha256": "65c137822052aa7f90ef08cc1300020fec4adcd7cbcec6aec88ae98fae64dad0",
     "file": "okf-workbench.vsix"
   },
   "predecessor": {
@@ -45,19 +58,26 @@
     "status": "passed",
     "cleanProfile": true,
     "installedVersion": "0.1.0",
-    "activationReport": "activation-clean.json",
+    "activationReport": "vscode-1.127.0-macos-arm64.activation-clean.json",
     "activation": {
       "schemaVersion": 1,
       "kind": "packaged-extension-activation",
       "status": "passed",
-      "recordedAt": "2026-07-22T05:05:00.524Z",
+      "recordedAt": "2026-07-22T06:40:55.451Z",
       "extensionId": "straydog.okf-workbench",
+      "mode": "read-only",
       "editor": {
         "version": "1.127.0",
+        "expectedVersion": "1.127.0",
         "appName": "Visual Studio Code",
         "appHost": "desktop",
         "remoteName": null,
-        "uiKind": 1
+        "uiKind": 1,
+        "versionVerification": {
+          "requestedEditorVersion": "1.127.0",
+          "expectedExtensionHostVersion": "1.127.0",
+          "reportedExtensionHostVersion": "1.127.0"
+        }
       },
       "runtime": {
         "platform": "darwin",
@@ -76,6 +96,24 @@
         "okfWorkbench.openGraph",
         "okfWorkbench.setupAgentIntegration"
       ],
+      "workspaceTrust": {
+        "expected": null,
+        "actual": true,
+        "readOnlyAvailable": true
+      },
+      "completion": {
+        "runtimePublication": {
+          "revision": 1,
+          "diagnosticsPublished": true,
+          "findingCount": 5,
+          "conceptCount": 3,
+          "edgeCount": 0
+        },
+        "graphRender": {
+          "revision": 1
+        },
+        "guardedQuiescenceMs": 500
+      },
       "readOnlyCommands": [
         "okfWorkbench.validateBundle",
         "okfWorkbench.openGraph"
@@ -84,26 +122,76 @@
     },
     "sameVersionReinstall": "passed-not-counted-as-upgrade",
     "uninstall": "passed",
+    "uninstallVerification": {
+      "extensionListAbsent": true,
+      "extensionApiAbsent": true,
+      "cleanupRestartRequired": true,
+      "editorResidueBeforeRestart": {
+        "present": true,
+        "count": 1,
+        "paths": [
+          "straydog.okf-workbench-0.1.0"
+        ]
+      },
+      "editorResidueAfterRestart": {
+        "present": true,
+        "count": 1,
+        "paths": [
+          "straydog.okf-workbench-0.1.0"
+        ]
+      },
+      "harnessCleanup": {
+        "required": true,
+        "removedCount": 1,
+        "removedVerifiedInstallationPaths": [
+          "straydog.okf-workbench-0.1.0"
+        ],
+        "policy": "remove only a direct, non-symlink extension directory whose package identity and versioned directory name match the uninstalled extension"
+      },
+      "installationResidueAbsent": true,
+      "residueCountBeforeCleanupRestart": 1,
+      "residueCountAfterCleanupRestart": 1,
+      "residueCount": 0,
+      "cleanupReport": "vscode-1.127.0-macos-arm64.uninstall-clean.json"
+    },
     "workspacePreserved": true,
     "workspaceFileCount": 5
   },
-  "upgrade": {
+  "untrustedWorkspace": {
     "status": "passed",
-    "predecessorVersion": "0.0.0",
-    "candidateVersion": "0.1.0",
-    "activationReport": "activation-upgrade.json",
+    "cleanProfile": true,
+    "workspaceTrustEnabled": true,
+    "workspaceTrusted": false,
+    "readOnlyAvailable": true,
+    "refusedWriteCommand": {
+      "command": "okfWorkbench.initializeBundle",
+      "outcome": "refused",
+      "problemCodes": [
+        "workspace-untrusted"
+      ],
+      "completedWithoutInputAutomation": true,
+      "durationMs": 1
+    },
+    "activationReport": "vscode-1.127.0-macos-arm64.activation-untrusted.json",
     "activation": {
       "schemaVersion": 1,
       "kind": "packaged-extension-activation",
       "status": "passed",
-      "recordedAt": "2026-07-22T05:05:04.990Z",
+      "recordedAt": "2026-07-22T06:41:04.279Z",
       "extensionId": "straydog.okf-workbench",
+      "mode": "untrusted",
       "editor": {
         "version": "1.127.0",
+        "expectedVersion": "1.127.0",
         "appName": "Visual Studio Code",
         "appHost": "desktop",
         "remoteName": null,
-        "uiKind": 1
+        "uiKind": 1,
+        "versionVerification": {
+          "requestedEditorVersion": "1.127.0",
+          "expectedExtensionHostVersion": "1.127.0",
+          "reportedExtensionHostVersion": "1.127.0"
+        }
       },
       "runtime": {
         "platform": "darwin",
@@ -122,13 +210,182 @@
         "okfWorkbench.openGraph",
         "okfWorkbench.setupAgentIntegration"
       ],
+      "workspaceTrust": {
+        "expected": false,
+        "actual": false,
+        "readOnlyAvailable": true
+      },
+      "completion": {
+        "runtimePublication": {
+          "revision": 1,
+          "diagnosticsPublished": true,
+          "findingCount": 5,
+          "conceptCount": 3,
+          "edgeCount": 0
+        },
+        "graphRender": {
+          "revision": 1
+        },
+        "guardedQuiescenceMs": 500
+      },
+      "readOnlyCommands": [
+        "okfWorkbench.validateBundle",
+        "okfWorkbench.openGraph"
+      ],
+      "untrustedWrite": {
+        "command": "okfWorkbench.initializeBundle",
+        "outcome": "refused",
+        "problemCodes": [
+          "workspace-untrusted"
+        ],
+        "completedWithoutInputAutomation": true,
+        "durationMs": 1
+      },
+      "extensionVersion": "0.1.0"
+    },
+    "uninstall": "passed",
+    "uninstallVerification": {
+      "extensionListAbsent": true,
+      "extensionApiAbsent": true,
+      "cleanupRestartRequired": true,
+      "editorResidueBeforeRestart": {
+        "present": true,
+        "count": 1,
+        "paths": [
+          "straydog.okf-workbench-0.1.0"
+        ]
+      },
+      "editorResidueAfterRestart": {
+        "present": true,
+        "count": 1,
+        "paths": [
+          "straydog.okf-workbench-0.1.0"
+        ]
+      },
+      "harnessCleanup": {
+        "required": true,
+        "removedCount": 1,
+        "removedVerifiedInstallationPaths": [
+          "straydog.okf-workbench-0.1.0"
+        ],
+        "policy": "remove only a direct, non-symlink extension directory whose package identity and versioned directory name match the uninstalled extension"
+      },
+      "installationResidueAbsent": true,
+      "residueCountBeforeCleanupRestart": 1,
+      "residueCountAfterCleanupRestart": 1,
+      "residueCount": 0,
+      "cleanupReport": "vscode-1.127.0-macos-arm64.uninstall-untrusted.json"
+    },
+    "workspacePreserved": true,
+    "workspaceFileCount": 5
+  },
+  "upgrade": {
+    "status": "passed",
+    "predecessorVersion": "0.0.0",
+    "candidateVersion": "0.1.0",
+    "activationReport": "vscode-1.127.0-macos-arm64.activation-upgrade.json",
+    "activation": {
+      "schemaVersion": 1,
+      "kind": "packaged-extension-activation",
+      "status": "passed",
+      "recordedAt": "2026-07-22T06:41:13.314Z",
+      "extensionId": "straydog.okf-workbench",
+      "mode": "read-only",
+      "editor": {
+        "version": "1.127.0",
+        "expectedVersion": "1.127.0",
+        "appName": "Visual Studio Code",
+        "appHost": "desktop",
+        "remoteName": null,
+        "uiKind": 1,
+        "versionVerification": {
+          "requestedEditorVersion": "1.127.0",
+          "expectedExtensionHostVersion": "1.127.0",
+          "reportedExtensionHostVersion": "1.127.0"
+        }
+      },
+      "runtime": {
+        "platform": "darwin",
+        "architecture": "arm64",
+        "node": "24.15.0",
+        "electron": "42.2.0",
+        "chrome": "148.0.7778.97",
+        "v8": "14.8.178.14-electron.0"
+      },
+      "networkAttempts": [],
+      "commands": [
+        "okfWorkbench.initializeBundle",
+        "okfWorkbench.newConcept",
+        "okfWorkbench.validateBundle",
+        "okfWorkbench.regenerateIndexes",
+        "okfWorkbench.openGraph",
+        "okfWorkbench.setupAgentIntegration"
+      ],
+      "workspaceTrust": {
+        "expected": null,
+        "actual": true,
+        "readOnlyAvailable": true
+      },
+      "completion": {
+        "runtimePublication": {
+          "revision": 1,
+          "diagnosticsPublished": true,
+          "findingCount": 5,
+          "conceptCount": 3,
+          "edgeCount": 0
+        },
+        "graphRender": {
+          "revision": 1
+        },
+        "guardedQuiescenceMs": 500
+      },
       "readOnlyCommands": [
         "okfWorkbench.validateBundle",
         "okfWorkbench.openGraph"
       ],
       "extensionVersion": "0.1.0"
     },
+    "userSettingVerification": {
+      "key": "okfWorkbench.compatibilityUpgradeSentinel",
+      "schemaVersion": 1,
+      "predecessorVersion": "0.0.0",
+      "candidateVersion": "0.1.0",
+      "preserved": true
+    },
     "uninstall": "passed",
+    "uninstallVerification": {
+      "extensionListAbsent": true,
+      "extensionApiAbsent": true,
+      "cleanupRestartRequired": true,
+      "editorResidueBeforeRestart": {
+        "present": true,
+        "count": 2,
+        "paths": [
+          "straydog.okf-workbench-0.0.0",
+          "straydog.okf-workbench-0.1.0"
+        ]
+      },
+      "editorResidueAfterRestart": {
+        "present": true,
+        "count": 1,
+        "paths": [
+          "straydog.okf-workbench-0.1.0"
+        ]
+      },
+      "harnessCleanup": {
+        "required": true,
+        "removedCount": 1,
+        "removedVerifiedInstallationPaths": [
+          "straydog.okf-workbench-0.1.0"
+        ],
+        "policy": "remove only a direct, non-symlink extension directory whose package identity and versioned directory name match the uninstalled extension"
+      },
+      "installationResidueAbsent": true,
+      "residueCountBeforeCleanupRestart": 2,
+      "residueCountAfterCleanupRestart": 1,
+      "residueCount": 0,
+      "cleanupReport": "vscode-1.127.0-macos-arm64.uninstall-upgrade.json"
+    },
     "workspacePreserved": true
   }
 }

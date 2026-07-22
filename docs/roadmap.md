@@ -36,7 +36,7 @@ Exit gate: a user can complete the initialize-to-repair workflow without leaving
 
 ## Phase 3 — 3D exploration
 
-- Select and bundle a graph rendering library.
+- Bundle the selected graph renderer behind the repository-owned adapter.
 - Add graph search and filters.
 - Add details, backlinks, and source navigation.
 - Highlight orphans and broken links.

@@ -14,6 +14,7 @@ This directory is the source of truth for the initial OKF Workbench product and 
 
 | Document | Purpose |
 | --- | --- |
+| [Functional requirements](functional-requirements.md) | Testable MVP behaviors, acceptance scenarios, constraints, and open questions |
 | [Architecture](architecture.md) | Planned modules, data flow, security, performance, and testing |
 | [OKF v0.1 compatibility contract](okf-v0.1-contract.md) | The subset and interpretation of the OKF specification the extension must honor |
 | [Agent integration](agent-integration.md) | Safe generation of `AGENTS.md` and Agent Skill templates |

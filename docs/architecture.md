@@ -123,7 +123,7 @@ The first implementation may replace the full graph payload if profiling shows i
 - Directory hierarchy is optional presentation metadata and must not be confused with an OKF semantic relationship.
 - External citations are excluded from the main graph by default.
 
-The rendering library is not yet selected. Selection criteria include local bundling, license compatibility, WebGL behavior in Electron, accessibility hooks, and performance under representative fixtures.
+The initial renderer is the standalone `3d-force-graph` package behind a repository-owned adapter, as recorded in [ADR 0003](decisions/0003-use-3d-force-graph.md). Local bundling, license compatibility, WebGL behavior in Electron, accessibility hooks, and performance under representative fixtures remain implementation and verification requirements.
 
 ## Performance targets
 

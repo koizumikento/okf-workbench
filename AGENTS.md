@@ -25,7 +25,8 @@ Use this order when requirements conflict:
 1. The canonical [OKF v0.1 specification](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) for format behavior.
 2. Accepted records under `docs/decisions/` for repository decisions.
 3. `docs/okf-v0.1-contract.md` for the Workbench compatibility interpretation.
-4. `docs/mvp-scope.md` and `docs/architecture.md` for planned product and engineering scope.
+4. `docs/functional-requirements.md` for testable MVP behavior.
+5. `docs/mvp-scope.md` and `docs/architecture.md` for planned product and engineering scope.
 
 When the upstream OKF specification changes, document the observed version or commit and review the compatibility contract before changing behavior.
 
@@ -128,6 +129,7 @@ Use small checked-in fixtures. Never make unit tests depend on network access or
 ## Documentation workflow
 
 - Update `docs/mvp-scope.md` when adding or removing an MVP feature.
+- Update `docs/functional-requirements.md` when user-visible behavior or acceptance criteria change.
 - Update `docs/okf-v0.1-contract.md` when compatibility behavior changes.
 - Update `docs/architecture.md` when module boundaries or security assumptions change.
 - Add a record under `docs/decisions/` for choices that constrain future implementation.

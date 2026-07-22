@@ -34,6 +34,7 @@ initialize -> create -> edit -> validate -> explore -> repair
 - [Documentation index](docs/index.md)
 - [Product brief](docs/product-brief.md)
 - [MVP scope](docs/mvp-scope.md)
+- [Functional requirements](docs/functional-requirements.md)
 - [Architecture](docs/architecture.md)
 - [OKF v0.1 compatibility contract](docs/okf-v0.1-contract.md)
 - [Agent integration](docs/agent-integration.md)

@@ -1,8 +1,32 @@
 import { describe, expect, it } from 'vitest';
 
-import { assertExtensionHostVersion } from '../../../scripts/compatibility/editor-resolver.mjs';
+import {
+  assertExtensionHostVersion,
+  electronTestGraphicsArguments,
+  electronTestSandboxArguments,
+} from '../../../scripts/compatibility/editor-resolver.mjs';
 
 describe('packaged editor version oracle', () => {
+  it('disables Electron sandboxes only for the isolated Linux editor test harness', () => {
+    expect(electronTestSandboxArguments('linux')).toEqual([
+      '--no-sandbox',
+      '--disable-gpu-sandbox',
+    ]);
+    expect(electronTestSandboxArguments('darwin')).toEqual([]);
+    expect(electronTestSandboxArguments('win32')).toEqual([]);
+  });
+
+  it('opts the isolated Linux graph test harness into software WebGL explicitly', () => {
+    const githubActions = { GITHUB_ACTIONS: 'true' };
+
+    expect(electronTestGraphicsArguments('linux', githubActions)).toEqual([
+      '--enable-unsafe-swiftshader',
+    ]);
+    expect(electronTestGraphicsArguments('linux', {})).toEqual([]);
+    expect(electronTestGraphicsArguments('darwin', githubActions)).toEqual([]);
+    expect(electronTestGraphicsArguments('win32', githubActions)).toEqual([]);
+  });
+
   it('distinguishes the VSCodium release tag from its upstream Extension Host API version', () => {
     const editor = {
       editor: 'vscodium',

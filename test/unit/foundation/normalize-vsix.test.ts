@@ -194,13 +194,13 @@ describe('VSIX timestamp normalization', () => {
     );
   });
 
-  test('is wired after vsce in the repository package command', async () => {
+  test('is wired through the deterministic VSCE wrapper in the package command', async () => {
     const manifest = JSON.parse(
       await readFile(new URL('../../../package.json', import.meta.url), 'utf8'),
     ) as { readonly scripts?: { readonly package?: unknown } };
 
     expect(manifest.scripts?.package).toBe(
-      'npm run build && vsce package --out artifacts/okf-workbench.vsix && node scripts/normalize-vsix.mjs artifacts/okf-workbench.vsix',
+      'npm run build && node scripts/package-vsix.mjs artifacts/okf-workbench.vsix',
     );
   });
 });

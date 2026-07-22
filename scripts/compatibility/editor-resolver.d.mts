@@ -10,6 +10,12 @@ export interface ExtensionHostVersionEvidence {
   readonly reportedExtensionHostVersion: string;
 }
 
+export function electronTestSandboxArguments(platform?: NodeJS.Platform): readonly string[];
+export function electronTestGraphicsArguments(
+  platform?: NodeJS.Platform,
+  environment?: NodeJS.ProcessEnv,
+): readonly string[];
+
 export function assertExtensionHostVersion(
   editor: ExtensionHostVersionOracle,
   reportedVersion: unknown,

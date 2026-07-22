@@ -2,6 +2,8 @@ import { defineConfig } from '@vscode/test-cli';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { electronTestGraphicsArguments } from './scripts/compatibility/editor-resolver.mjs';
+
 const profileRoot = process.platform === 'darwin' ? '/tmp' : tmpdir();
 const isolatedUserDataDirectory = join(profileRoot, `okf-vscode-${process.pid}`);
 
@@ -10,7 +12,11 @@ export default defineConfig({
     OKF_ACCEPTANCE_DRIVER: '1',
   },
   files: 'test/extension/**/*.test.mjs',
-  launchArgs: ['--disable-workspace-trust', `--user-data-dir=${isolatedUserDataDirectory}`],
+  launchArgs: [
+    ...electronTestGraphicsArguments(),
+    '--disable-workspace-trust',
+    `--user-data-dir=${isolatedUserDataDirectory}`,
+  ],
   mocha: {
     timeout: 45_000,
   },

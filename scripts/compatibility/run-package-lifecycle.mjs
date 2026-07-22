@@ -17,6 +17,8 @@ import { runTests } from '@vscode/test-electron';
 
 import {
   assertExtensionHostVersion,
+  electronTestGraphicsArguments,
+  electronTestSandboxArguments,
   resolveAndVerifyEditor,
   runProcess,
 } from './editor-resolver.mjs';
@@ -377,6 +379,7 @@ async function activateInstalledExtension({
   const launchArgs = [
     profile.workspacePath,
     ...profileArguments(profile),
+    ...electronTestGraphicsArguments(),
     '--skip-welcome',
     '--skip-release-notes',
     '--new-window',
@@ -388,6 +391,7 @@ async function activateInstalledExtension({
     await runProcess(
       editor.executablePath,
       [
+        ...electronTestSandboxArguments(),
         ...launchArgs,
         `--extensionDevelopmentPath=${driverDirectory}`,
         `--extensionTestsPath=${driverRunner}`,

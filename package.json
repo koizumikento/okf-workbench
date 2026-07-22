@@ -172,7 +172,7 @@
     "build:dev": "node scripts/build.mjs",
     "watch": "node scripts/build.mjs --watch",
     "dependency:check": "node scripts/dependency-check.mjs",
-    "package": "npm run build && vsce package --out artifacts/okf-workbench.vsix && node scripts/normalize-vsix.mjs artifacts/okf-workbench.vsix",
+    "package": "npm run build && node scripts/package-vsix.mjs artifacts/okf-workbench.vsix",
     "package:check": "node scripts/package-check.mjs artifacts/okf-workbench.vsix",
     "check": "npm run format && npm run lint && npm run typecheck && npm run test && npm run test:acceptance && npm run test:security && npm run dependency:check && npm run build"
   },

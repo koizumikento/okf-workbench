@@ -80,6 +80,19 @@ export function spawnEditor(editor, launchArgs, options = {}) {
   });
 }
 
+export function electronTestSandboxArguments(platform = process.platform) {
+  return platform === 'linux' ? ['--no-sandbox', '--disable-gpu-sandbox'] : [];
+}
+
+export function electronTestGraphicsArguments(
+  platform = process.platform,
+  environment = process.env,
+) {
+  return platform === 'linux' && environment.GITHUB_ACTIONS === 'true'
+    ? ['--enable-unsafe-swiftshader']
+    : [];
+}
+
 export async function readEditorVersion(editor) {
   const result = await runProcess(editor.cliPath, ['--version']);
   const lines = `${result.stdout}\n${result.stderr}`

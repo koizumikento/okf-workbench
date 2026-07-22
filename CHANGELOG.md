@@ -25,7 +25,7 @@ maintainer approval are complete.
 - URI-first workspace access, session-scoped bundle selection, debounced refresh, diagnostics,
   and stale-revision rejection.
 - Reproducible unit, acceptance-component, Webview, security, benchmark, package, and compatibility
-  harnesses.
+  harnesses, including fixed VSIX entry ordering and isolated hosted-Linux WebGL launch controls.
 - Local-only Webview assets, restrictive CSP, strict message decoding, dependency inventory, and
   third-party notices.
 

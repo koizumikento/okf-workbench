@@ -1,0 +1,20 @@
+{
+  "fixtureVersion": 1,
+  "name": "minimal-valid",
+  "description": "The smallest bundle with a root index and one conformant concept.",
+  "files": ["index.md", "welcome.md"],
+  "virtualFiles": [],
+  "expected": {
+    "conceptIds": ["welcome"],
+    "reservedFiles": ["index.md"],
+    "parseFailures": [],
+    "findings": [
+      {
+        "category": "curation",
+        "code": "okf.curation.orphan-concept",
+        "path": "welcome.md"
+      }
+    ],
+    "links": []
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "npm: build:dev",
+      "type": "npm",
+      "script": "build:dev",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "npm: watch",
+      "type": "npm",
+      "script": "watch",
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
+}

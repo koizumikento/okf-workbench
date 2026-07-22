@@ -1,0 +1,12 @@
+.vscode-test
+artifacts
+coverage
+dist
+node_modules
+playwright-report
+test-results
+package-lock.json
+docs
+test/fixtures
+AGENTS.md
+README.md

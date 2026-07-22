@@ -1,0 +1,212 @@
+{
+  "name": "okf-workbench",
+  "displayName": "OKF Workbench",
+  "description": "Create, validate, index, and explore Open Knowledge Format bundles locally.",
+  "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "publisher": "straydog",
+  "icon": "assets/icon.png",
+  "type": "module",
+  "main": "./dist/extension.cjs",
+  "packageManager": "npm@11.16.0",
+  "engines": {
+    "node": "24.18.0",
+    "npm": "11.16.0",
+    "vscode": "^1.121.0"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "knowledge",
+    "markdown",
+    "okf",
+    "open-knowledge-format"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/koizumikento/okf-workbench.git"
+  },
+  "bugs": {
+    "url": "https://github.com/koizumikento/okf-workbench/issues"
+  },
+  "homepage": "https://github.com/koizumikento/okf-workbench#readme",
+  "activationEvents": [
+    "onCommand:okfWorkbench.initializeBundle",
+    "onCommand:okfWorkbench.newConcept",
+    "onCommand:okfWorkbench.validateBundle",
+    "onCommand:okfWorkbench.regenerateIndexes",
+    "onCommand:okfWorkbench.openGraph",
+    "onCommand:okfWorkbench.setupAgentIntegration"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Read-only validation and graph inspection are available; commands that write require Workspace Trust."
+    },
+    "virtualWorkspaces": {
+      "supported": true
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "okfWorkbench.initializeBundle",
+        "title": "Initialize Bundle",
+        "category": "OKF",
+        "enablement": "workspaceFolderCount > 0"
+      },
+      {
+        "command": "okfWorkbench.newConcept",
+        "title": "New Concept",
+        "category": "OKF",
+        "enablement": "workspaceFolderCount > 0"
+      },
+      {
+        "command": "okfWorkbench.validateBundle",
+        "title": "Validate Bundle",
+        "category": "OKF",
+        "enablement": "workspaceFolderCount > 0"
+      },
+      {
+        "command": "okfWorkbench.regenerateIndexes",
+        "title": "Regenerate Indexes",
+        "category": "OKF",
+        "enablement": "workspaceFolderCount > 0"
+      },
+      {
+        "command": "okfWorkbench.openGraph",
+        "title": "Open 3D Graph",
+        "category": "OKF",
+        "enablement": "workspaceFolderCount > 0"
+      },
+      {
+        "command": "okfWorkbench.setupAgentIntegration",
+        "title": "Set Up Agent Integration",
+        "category": "OKF",
+        "enablement": "workspaceFolderCount > 0"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "okfWorkbench.initializeBundle",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "okfWorkbench.newConcept",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "okfWorkbench.validateBundle",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "okfWorkbench.regenerateIndexes",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "okfWorkbench.openGraph",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "okfWorkbench.setupAgentIntegration",
+          "when": "workspaceFolderCount > 0"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "okfWorkbench.initializeBundle",
+          "when": "explorerResourceIsFolder && workspaceFolderCount > 0",
+          "group": "navigation@10"
+        },
+        {
+          "command": "okfWorkbench.newConcept",
+          "when": "explorerResourceIsFolder && workspaceFolderCount > 0",
+          "group": "navigation@11"
+        },
+        {
+          "command": "okfWorkbench.validateBundle",
+          "when": "explorerResourceIsFolder && workspaceFolderCount > 0",
+          "group": "navigation@12"
+        },
+        {
+          "command": "okfWorkbench.openGraph",
+          "when": "explorerResourceIsFolder && workspaceFolderCount > 0",
+          "group": "navigation@13"
+        },
+        {
+          "command": "okfWorkbench.regenerateIndexes",
+          "when": "explorerResourceIsFolder && workspaceFolderCount > 0",
+          "group": "navigation@14"
+        },
+        {
+          "command": "okfWorkbench.setupAgentIntegration",
+          "when": "explorerResourceIsFolder && workspaceFolderCount > 0",
+          "group": "navigation@15"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.extension.json && tsc -p tsconfig.webview.json && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:acceptance": "vitest run --config test/acceptance/vitest.config.ts",
+    "test:security": "vitest run --config test/security/vitest.config.ts",
+    "test:integration": "vscode-test --config .vscode-test.mjs",
+    "test:webview": "npm run build && playwright test",
+    "test:security:webview": "playwright test --config test/security/playwright.config.ts",
+    "test:webview:performance": "playwright test test/webview/performance.spec.ts",
+    "benchmark": "vitest bench --run test/benchmarks",
+    "benchmark:report": "node scripts/benchmark-report.mjs",
+    "build": "node scripts/build.mjs --production",
+    "build:dev": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "dependency:check": "node scripts/dependency-check.mjs",
+    "package": "npm run build && vsce package --out artifacts/okf-workbench.vsix && node scripts/normalize-vsix.mjs artifacts/okf-workbench.vsix",
+    "package:check": "node scripts/package-check.mjs artifacts/okf-workbench.vsix",
+    "check": "npm run format && npm run lint && npm run typecheck && npm run test && npm run test:acceptance && npm run test:security && npm run dependency:check && npm run build"
+  },
+  "dependencies": {
+    "3d-force-graph": "1.80.0",
+    "remark-parse": "11.0.0",
+    "unified": "11.0.5",
+    "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@playwright/test": "1.61.1",
+    "@types/node": "22.20.1",
+    "@types/vscode": "1.120.0",
+    "@vscode/test-cli": "0.0.15",
+    "@vscode/test-electron": "3.0.0",
+    "@vscode/vsce": "3.9.2",
+    "esbuild": "0.28.1",
+    "eslint": "9.39.5",
+    "ovsx": "1.0.2",
+    "prettier": "3.9.6",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.65.0",
+    "vitest": "4.1.10"
+  },
+  "overrides": {
+    "diff": "8.0.4",
+    "serialize-javascript": "7.0.7"
+  },
+  "allowScripts": {
+    "@vscode/vsce-sign@2.0.9": true,
+    "esbuild@0.28.1": true,
+    "fsevents@2.3.2": false,
+    "fsevents@2.3.3": false,
+    "keytar@7.9.0": true
+  }
+}

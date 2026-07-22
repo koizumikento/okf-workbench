@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run OKF Workbench",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "${workspaceFolder}/test/fixtures/minimal-valid"
+      ],
+      "outFiles": ["${workspaceFolder}/dist/**/*.js", "${workspaceFolder}/dist/**/*.cjs"],
+      "preLaunchTask": "npm: build:dev"
+    }
+  ]
+}

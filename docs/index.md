@@ -15,10 +15,24 @@ This directory is the source of truth for the initial OKF Workbench product and 
 | Document | Purpose |
 | --- | --- |
 | [Functional requirements](functional-requirements.md) | Testable MVP behaviors, acceptance scenarios, constraints, and open questions |
-| [Architecture](architecture.md) | Planned modules, data flow, security, performance, and testing |
+| [Architecture](architecture.md) | Module boundaries, data flow, security, performance, and testing |
 | [Implementation environment](implementation-environment.md) | Accepted runtimes, toolchain, dependencies, test layers, CI, and packaging baseline |
 | [OKF v0.1 compatibility contract](okf-v0.1-contract.md) | The subset and interpretation of the OKF specification the extension must honor |
 | [Agent integration](agent-integration.md) | Safe generation of `AGENTS.md` and Agent Skill templates |
+
+## Release and operations
+
+| Document | Purpose |
+| --- | --- |
+| [Release checklist](release-checklist.md) | Immutable candidate, approval, publication, verification, and rollback gates |
+| [Open VSX listing draft](open-vsx-listing.md) | Candidate metadata and listing copy for `straydog.okf-workbench` |
+| [Compatibility matrix](compatibility-matrix.md) | Exact editor/OS lanes and required retained lifecycle evidence |
+| [Acceptance evidence](acceptance-evidence.md) | Component coverage, packaged lifecycle evidence, and remaining scenario gaps |
+| [Performance evidence](performance-evidence.md) | Reproducible fixtures, thresholds, and headed-editor measurement authority |
+| [Security and privacy evidence](security-privacy-evidence.md) | Technical controls, findings, dependency inventory, and proof gaps |
+| [Privacy statement](privacy.md) | User-facing data-processing and network boundary |
+| [Support](support.md) | Bug, compatibility, and private vulnerability reporting guidance |
+| [Changelog](../CHANGELOG.md) | Release-candidate changes and release status |
 
 ## Decisions
 
@@ -28,6 +42,7 @@ Accepted decisions are recorded under [decisions/](decisions/):
 - [0002 — Keep the core deterministic and AI-provider-free](decisions/0002-deterministic-local-first-core.md)
 - [0003 — Use 3d-force-graph for the initial 3D renderer](decisions/0003-use-3d-force-graph.md)
 - [0004 — Use a single-package npm, TypeScript, and esbuild toolchain](decisions/0004-use-npm-typescript-esbuild-toolchain.md)
+- [0005 — Resolve the MVP implementation questions](decisions/0005-resolve-mvp-implementation-questions.md)
 
 ## Documentation rules
 

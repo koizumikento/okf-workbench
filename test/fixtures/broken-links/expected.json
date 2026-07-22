@@ -1,0 +1,46 @@
+{
+  "fixtureVersion": 1,
+  "name": "broken-links",
+  "description": "A conformant concept contains broken, out-of-bundle, and external links.",
+  "files": ["index.md", "source.md"],
+  "virtualFiles": [],
+  "expected": {
+    "conceptIds": ["source"],
+    "reservedFiles": ["index.md"],
+    "parseFailures": [],
+    "findings": [
+      {
+        "category": "curation",
+        "code": "okf.curation.orphan-concept",
+        "path": "source.md"
+      },
+      {
+        "category": "curation",
+        "code": "okf.curation.broken-link",
+        "path": "source.md"
+      },
+      {
+        "category": "curation",
+        "code": "okf.curation.out-of-bundle-link",
+        "path": "source.md"
+      }
+    ],
+    "links": [
+      {
+        "sourceId": "source",
+        "rawTarget": "missing.md",
+        "kind": "broken"
+      },
+      {
+        "sourceId": "source",
+        "rawTarget": "../outside.md",
+        "kind": "out-of-bundle"
+      },
+      {
+        "sourceId": "source",
+        "rawTarget": "https://example.com/reference",
+        "kind": "external"
+      }
+    ]
+  }
+}

@@ -1,0 +1,289 @@
+name: Compatibility
+
+on:
+  workflow_dispatch:
+    inputs:
+      previous_vsix_url:
+        description: Optional HTTPS URL of a genuine older VSIX; empty uses the deterministic 0.0.0 test predecessor
+        required: false
+        type: string
+      previous_vsix_sha256:
+        description: SHA-256 of the genuine predecessor VSIX; required when its URL is set
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: 24.18.0
+  NPM_VERSION: 11.16.0
+  EXPECTED_EXTENSION_ID: straydog.okf-workbench
+
+jobs:
+  candidate:
+    name: Build candidate VSIX
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Pin npm
+        run: npm install --global npm@${NPM_VERSION}
+
+      - name: Install from lockfile
+        run: npm ci
+
+      - name: Run source and dependency gates
+        run: |
+          npm run format
+          npm run lint
+          npm run typecheck
+          npm test
+          npm run dependency:check
+          npm audit --omit=dev --audit-level=high
+
+      - name: Package and inspect candidate
+        run: |
+          npm run package
+          npm run package:check
+
+      - name: Upload candidate VSIX
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: okf-workbench-candidate-vsix
+          path: |
+            artifacts/build-metadata.json
+            artifacts/okf-workbench.vsix
+            artifacts/runtime-licenses.json
+          if-no-files-found: error
+          retention-days: 30
+
+  acceptance:
+    name: Acceptance and Webview browser gate
+    needs: candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Pin npm
+        run: npm install --global npm@${NPM_VERSION}
+
+      - name: Install from lockfile
+        run: npm ci
+
+      - name: Run AC-001 through AC-008 component gate
+        run: npm run test:acceptance
+
+      - name: Run security boundary gate
+        run: npm run test:security
+
+      - name: Install pinned Playwright Chromium
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Run Webview browser acceptance
+        run: npm run test:webview
+
+      - name: Run hostile-content and no-egress Webview gate
+        run: npm run test:security:webview
+
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: okf-workbench-webview-acceptance
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 30
+
+  editor-lifecycle:
+    name: ${{ matrix.label }}
+    needs: candidate
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: VS Code 1.121.0 / Ubuntu 24.04
+            artifact_label: vscode-1.121.0-ubuntu-24.04
+            editor: vscode
+            editor_version: 1.121.0
+            os: ubuntu-24.04
+            platform: linux
+          - label: VS Code 1.127.0 / Ubuntu 24.04
+            artifact_label: vscode-1.127.0-ubuntu-24.04
+            editor: vscode
+            editor_version: 1.127.0
+            os: ubuntu-24.04
+            platform: linux
+          - label: VS Code 1.127.0 / macOS 15
+            artifact_label: vscode-1.127.0-macos-15
+            editor: vscode
+            editor_version: 1.127.0
+            os: macos-15
+            platform: darwin
+          - label: VS Code 1.127.0 / Windows 2025
+            artifact_label: vscode-1.127.0-windows-2025
+            editor: vscode
+            editor_version: 1.127.0
+            os: windows-2025
+            platform: win32
+          - label: VSCodium 1.121.03429 / Ubuntu 24.04
+            artifact_label: vscodium-1.121.03429-ubuntu-24.04
+            editor: vscodium
+            editor_version: 1.121.03429
+            os: ubuntu-24.04
+            platform: linux
+          - label: VSCodium 1.121.03429 / macOS 15
+            artifact_label: vscodium-1.121.03429-macos-15
+            editor: vscodium
+            editor_version: 1.121.03429
+            os: macos-15
+            platform: darwin
+          - label: VSCodium 1.121.03429 / Windows 2025
+            artifact_label: vscodium-1.121.03429-windows-2025
+            editor: vscodium
+            editor_version: 1.121.03429
+            os: windows-2025
+            platform: win32
+    env:
+      EVIDENCE_DIR: artifacts/compatibility/${{ matrix.artifact_label }}
+      PREVIOUS_VSIX_URL: ${{ inputs.previous_vsix_url }}
+      PREVIOUS_VSIX_SHA256: ${{ inputs.previous_vsix_sha256 }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Pin npm
+        shell: bash
+        run: npm install --global npm@${NPM_VERSION}
+
+      - name: Install from lockfile
+        shell: bash
+        run: npm ci
+
+      - name: Seed JSON evidence
+        shell: bash
+        run: |
+          mkdir -p "${EVIDENCE_DIR}"
+          node scripts/compatibility/pins.mjs \
+            --evidence "${EVIDENCE_DIR}/workflow.json" \
+            --editor "${{ matrix.editor }}" \
+            --version "${{ matrix.editor_version }}" \
+            --expected-extension-id "${EXPECTED_EXTENSION_ID}"
+
+      - name: Reject an incomplete predecessor input
+        if: ${{ (inputs.previous_vsix_url == '') != (inputs.previous_vsix_sha256 == '') }}
+        shell: bash
+        run: node -e "throw new Error('previous_vsix_url and previous_vsix_sha256 must be supplied together')"
+
+      - name: Download candidate VSIX
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: okf-workbench-candidate-vsix
+          path: artifacts
+
+      - name: Build deterministic test predecessor VSIX
+        id: build_test_predecessor
+        if: ${{ inputs.previous_vsix_url == '' && inputs.previous_vsix_sha256 == '' }}
+        shell: bash
+        run: |
+          node scripts/compatibility/build-test-predecessor.mjs \
+            --destination "${RUNNER_TEMP}/previous.vsix" \
+            --evidence "${EVIDENCE_DIR}/test-predecessor.json" \
+            --github-output "${GITHUB_OUTPUT}"
+
+      - name: Download and verify predecessor VSIX
+        if: ${{ inputs.previous_vsix_url != '' && inputs.previous_vsix_sha256 != '' }}
+        shell: bash
+        run: |
+          node scripts/compatibility/download-verified.mjs \
+            --url "${PREVIOUS_VSIX_URL}" \
+            --sha256 "${PREVIOUS_VSIX_SHA256}" \
+            --destination "${RUNNER_TEMP}/previous.vsix" \
+            --evidence "${EVIDENCE_DIR}/predecessor-download.json"
+
+      - name: Prepare and verify VSCodium
+        id: prepare_vscodium
+        if: ${{ matrix.editor == 'vscodium' }}
+        shell: bash
+        run: |
+          node scripts/compatibility/prepare-vscodium.mjs \
+            --platform "${{ matrix.platform }}" \
+            --destination "${RUNNER_TEMP}/vscodium" \
+            --evidence "${EVIDENCE_DIR}/vscodium-preparation.json" \
+            --github-output "${GITHUB_OUTPUT}"
+
+      - name: Run packaged editor lifecycle
+        shell: bash
+        env:
+          VSCODIUM_EXECUTABLE: ${{ steps.prepare_vscodium.outputs['editor-executable'] }}
+          VSCODIUM_CLI: ${{ steps.prepare_vscodium.outputs['editor-cli'] }}
+        run: |
+          lifecycle_args=(
+            --editor "${{ matrix.editor }}"
+            --version "${{ matrix.editor_version }}"
+            --vsix "${GITHUB_WORKSPACE}/artifacts/okf-workbench.vsix"
+            --workspace "${GITHUB_WORKSPACE}/test/fixtures/minimal-valid"
+            --evidence "${EVIDENCE_DIR}/lifecycle.json"
+            --extension-id "${EXPECTED_EXTENSION_ID}"
+            --editor-cache "${RUNNER_TEMP}/vscode-cache"
+          )
+
+          if [[ "${{ matrix.editor }}" == "vscodium" ]]; then
+            lifecycle_args+=(
+              --editor-executable "${VSCODIUM_EXECUTABLE}"
+              --editor-cli "${VSCODIUM_CLI}"
+            )
+          fi
+
+          if [[ -n "${PREVIOUS_VSIX_URL}" ]]; then
+            predecessor_sha="${PREVIOUS_VSIX_SHA256}"
+          else
+            predecessor_sha="${{ steps.build_test_predecessor.outputs['predecessor-sha256'] }}"
+          fi
+
+          lifecycle_args+=(
+            --previous-vsix "${RUNNER_TEMP}/previous.vsix"
+            --previous-vsix-sha256 "${predecessor_sha}"
+          )
+
+          if [[ "${{ matrix.platform }}" == "linux" ]]; then
+            xvfb-run --auto-servernum node \
+              scripts/compatibility/run-package-lifecycle.mjs "${lifecycle_args[@]}"
+          else
+            node scripts/compatibility/run-package-lifecycle.mjs "${lifecycle_args[@]}"
+          fi
+
+      - name: Upload compatibility JSON evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: compatibility-${{ matrix.artifact_label }}-${{ runner.arch }}
+          path: ${{ env.EVIDENCE_DIR }}/*.json
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,26 @@
+{
+  "name": "okf-workbench",
+  "displayName": "OKF Workbench Compatibility Predecessor",
+  "description": "A deterministic test-only predecessor for packaged upgrade verification.",
+  "version": "0.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "publisher": "straydog",
+  "main": "./extension.cjs",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "engines": {
+    "vscode": "^1.121.0"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "categories": [
+    "Other"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/koizumikento/okf-workbench.git"
+  }
+}

@@ -2,16 +2,22 @@
 
 ## Authority
 
-The canonical authority is the [Open Knowledge Format v0.1 specification](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md). This document records how OKF Workbench intends to consume the draft specification; it does not replace it.
+The canonical authority is the [Open Knowledge Format v0.1 specification at `ee67a5ca27044ebe7c38385f5b6cffc2305a9c1a`](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/ee67a5ca27044ebe7c38385f5b6cffc2305a9c1a/okf/SPEC.md), observed on 2026-07-22. This document records how OKF Workbench consumes that draft specification; it does not replace it.
 
 ## Bundle model
 
 An OKF bundle is a directory tree of UTF-8 Markdown files.
 
-- Every non-reserved `.md` file is a concept.
-- A concept ID is its bundle-relative path without `.md`.
+- Every non-reserved `.md` file whose basename has a non-empty stem is a concept.
+- A concept ID is its bundle-relative path without `.md`; a provider-reported file named exactly
+  `.md` cannot supply an ID and is retained as a file-scoped parse failure. Other dot-prefixed names,
+  such as `.notes.md`, remain valid concepts.
 - `index.md` and `log.md` are reserved at every directory level.
-- A root `index.md` may declare `okf_version: "0.1"`.
+- A bundle root requires `index.md`; that root index may declare `okf_version: "0.1"`.
+
+Workbench keeps an invalid non-reserved document in the concept and graph inventory as a partial
+source-backed concept. Its empty metadata/body values are recovery sentinels rather than a claim
+that the source conforms; the associated parse failure remains the conformance authority.
 
 ## Frontmatter
 
@@ -28,6 +34,19 @@ Workbench implications:
 - Validation cannot use a closed enumeration of concept types.
 - Write operations must preserve fields they do not understand.
 - Templates are authoring presets, not schemas.
+- `ParsedFrontmatter.raw` is always JSON-safe. Explicit standard YAML tags use the reserved shape
+  `{ "$okf-workbench:yaml-tag": { "tag": <canonical tag>, "value": <JSON-safe semantic value>,
+  "source": <original lexical value> } }`. Timestamp values use an ISO string, binary values use an
+  octet array, and sets use an ordered member array; `ParsedFrontmatter.source` remains the exact
+  full-source authority. This prevents `Date`, `Buffer`, `Set`, or `Map` instances from crossing a
+  core or Webview boundary without discarding producer intent.
+- Ordinary string metadata, including an explicit-zone `timestamp`, keeps its existing string
+  semantics. Supported scalar tags may supply normalized known fields, while their raw tagged
+  representation remains available for lossless inventory and supported source-preserving writes.
+- Unknown custom tags, custom runtime object prototypes, recursive aliases, and excessive alias
+  expansion fail closed as source-scoped frontmatter failures. Mapping conversion uses
+  null-prototype records, so producer keys such as `__proto__` remain data and cannot mutate a
+  JavaScript prototype.
 
 ## Links
 
@@ -49,7 +68,7 @@ Workbench implications:
 
 ### `index.md`
 
-Indexes support progressive disclosure by listing concepts and subdirectories. The extension may synthesize missing indexes and update explicitly managed content.
+Indexes support progressive disclosure by listing concepts and subdirectories. They normally contain no frontmatter; the bundle-root index alone may use frontmatter to declare `okf_version: "0.1"`. The extension may synthesize missing indexes and update explicitly managed content.
 
 ### `log.md`
 
@@ -73,5 +92,8 @@ The Problems panel must make this distinction visible through severity and wordi
 
 - The initial implementation targets OKF `0.1` only.
 - Unknown future minor versions should trigger an informational compatibility notice and best-effort reading.
-- Unsupported major versions should produce a clear warning before any write operation.
+- Unsupported major, malformed, and non-string version declarations remain selectable for validation and graph inspection, but existing-bundle write commands fail closed with a clear warning before planning or applying any file change.
+- Automatic discovery still requires a parseable semantic-string `okf_version` declaration. Explicit Explorer or directory-picker selection may override discovery when the root index is missing, unreadable, versionless, or malformed so validation can publish the underlying conformance findings.
+- Every existing-bundle write workflow checks the root before planning, then re-reads it after user approval and content preflight immediately before apply. A malformed, unreadable, invalid declared, or unsupported version refuses the operation without writing. A missing root index or absent declaration is not treated as an incompatible declaration: best-effort authoring remains available, and index regeneration can synthesize `index.md` with `okf_version: "0.1"`. For a versionless existing root, synthesis inserts only the declaration, preserves its human body and unrelated frontmatter source, and leaves managed-region updates to the selected regeneration mode.
+- Initialization is unaffected because it creates a new `0.1` bundle.
 - Specification changes must be reviewed against parser, validator, templates, indexes, fixtures, and documentation.

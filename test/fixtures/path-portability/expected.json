@@ -1,0 +1,42 @@
+{
+  "fixtureVersion": 1,
+  "name": "path-portability",
+  "description": "Portable path inputs cover spaces, Unicode, nested directories, and Windows separators.",
+  "files": [
+    "index.md",
+    "folder with spaces/日本語.md",
+    "nested/source.md",
+    "nested/deeper/target.md"
+  ],
+  "virtualFiles": [],
+  "expected": {
+    "conceptIds": ["folder with spaces/日本語", "nested/deeper/target", "nested/source"],
+    "reservedFiles": ["index.md"],
+    "parseFailures": [],
+    "findings": [],
+    "pathCases": [
+      {
+        "input": "folder with spaces\\日本語.md",
+        "normalizedConceptId": "folder with spaces/日本語"
+      },
+      {
+        "input": "nested\\deeper\\target.md",
+        "normalizedConceptId": "nested/deeper/target"
+      }
+    ],
+    "links": [
+      {
+        "sourceId": "nested/source",
+        "rawTarget": "deeper/target.md",
+        "targetId": "nested/deeper/target",
+        "kind": "internal"
+      },
+      {
+        "sourceId": "nested/source",
+        "rawTarget": "../folder%20with%20spaces/%E6%97%A5%E6%9C%AC%E8%AA%9E.md",
+        "targetId": "folder with spaces/日本語",
+        "kind": "internal"
+      }
+    ]
+  }
+}

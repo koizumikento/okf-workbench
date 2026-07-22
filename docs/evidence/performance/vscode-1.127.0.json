@@ -1,0 +1,555 @@
+{
+  "schemaVersion": 2,
+  "measurementKind": "headed-editor",
+  "capturedAt": "2026-07-22T06:26:54.690Z",
+  "environment": {
+    "hardware": "Mac16,7",
+    "os": "Darwin 25.5.0 arm64",
+    "cpu": "Apple M4 Pro; 14 logical processors",
+    "memoryGb": 48,
+    "gpu": "Google Inc. (Apple) / ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version)",
+    "editorName": "VS Code",
+    "editorVersion": "1.127.0",
+    "editorCommit": "4fe60c8b1cdac1c4c174f2fb180d0d758272d713",
+    "electronVersion": "42.2.0",
+    "chromiumVersion": "148.0.7778.97",
+    "fixtureSeed": 5196614,
+    "packageVersions": {
+      "okf-workbench": "0.1.0",
+      "3d-force-graph": "1.80.0"
+    },
+    "extensionBundleSha256": "93c75712626c20bee2b77ad74810267733c6457da85ad89c595772ac6e6d92ad",
+    "webviewBundleSha256": "853502f50117c6b565b8a9befdb474e1cbaf39bf78b8b7eb6aa3d52f92266d7b",
+    "productGraphInteractiveMs": 3420,
+    "runnerNote": "This runner launches headed VS Code and measures its real Electron Webview; it does not use Playwright Chromium.",
+    "benchmarkEditorFlags": [
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-renderer-backgrounding"
+    ]
+  },
+  "qr002": {
+    "debounceMs": 250,
+    "updateSamples": [
+      {
+        "eventKind": "create",
+        "durationMs": 604,
+        "graphPublicationMs": 604,
+        "diagnosticsPublicationMs": 597,
+        "graphRevision": 2,
+        "diagnosticsSequence": 4,
+        "diagnosticsCorrelatedRevision": 2,
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-00.md",
+            "code": "okf.curation.missing-description"
+          }
+        ]
+      },
+      {
+        "eventKind": "change",
+        "durationMs": 638,
+        "graphPublicationMs": 638,
+        "diagnosticsPublicationMs": 625,
+        "graphRevision": 3,
+        "diagnosticsSequence": 5,
+        "diagnosticsCorrelatedRevision": 3,
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-00.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "rename",
+        "durationMs": 640,
+        "graphPublicationMs": 640,
+        "diagnosticsPublicationMs": 587,
+        "graphRevision": 4,
+        "diagnosticsSequence": 6,
+        "diagnosticsCorrelatedRevision": 4,
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-00-renamed.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "delete",
+        "durationMs": 698,
+        "graphPublicationMs": 698,
+        "diagnosticsPublicationMs": 685,
+        "graphRevision": 5,
+        "diagnosticsSequence": 7,
+        "diagnosticsCorrelatedRevision": 5,
+        "expectedDiagnostics": []
+      },
+      {
+        "eventKind": "create",
+        "durationMs": 592,
+        "graphPublicationMs": 592,
+        "diagnosticsPublicationMs": 577,
+        "graphRevision": 6,
+        "diagnosticsSequence": 8,
+        "diagnosticsCorrelatedRevision": 6,
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-01.md",
+            "code": "okf.curation.missing-description"
+          }
+        ]
+      },
+      {
+        "eventKind": "change",
+        "durationMs": 650,
+        "graphPublicationMs": 650,
+        "diagnosticsPublicationMs": 602,
+        "graphRevision": 7,
+        "diagnosticsSequence": 9,
+        "diagnosticsCorrelatedRevision": 7,
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-01.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "rename",
+        "durationMs": 599,
+        "graphPublicationMs": 599,
+        "diagnosticsPublicationMs": 570,
+        "graphRevision": 8,
+        "diagnosticsSequence": 10,
+        "diagnosticsCorrelatedRevision": 8,
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-01-renamed.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "delete",
+        "durationMs": 597,
+        "graphPublicationMs": 597,
+        "diagnosticsPublicationMs": 582,
+        "graphRevision": 9,
+        "diagnosticsSequence": 11,
+        "diagnosticsCorrelatedRevision": 9,
+        "expectedDiagnostics": []
+      },
+      {
+        "eventKind": "create",
+        "durationMs": 602,
+        "graphPublicationMs": 602,
+        "diagnosticsPublicationMs": 569,
+        "graphRevision": 10,
+        "diagnosticsSequence": 12,
+        "diagnosticsCorrelatedRevision": 10,
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-02.md",
+            "code": "okf.curation.missing-description"
+          }
+        ]
+      },
+      {
+        "eventKind": "change",
+        "durationMs": 617,
+        "graphPublicationMs": 617,
+        "diagnosticsPublicationMs": 572,
+        "graphRevision": 11,
+        "diagnosticsSequence": 13,
+        "diagnosticsCorrelatedRevision": 11,
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-02.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "rename",
+        "durationMs": 662,
+        "graphPublicationMs": 662,
+        "diagnosticsPublicationMs": 611,
+        "graphRevision": 12,
+        "diagnosticsSequence": 14,
+        "diagnosticsCorrelatedRevision": 12,
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-02-renamed.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "delete",
+        "durationMs": 658,
+        "graphPublicationMs": 658,
+        "diagnosticsPublicationMs": 595,
+        "graphRevision": 13,
+        "diagnosticsSequence": 15,
+        "diagnosticsCorrelatedRevision": 13,
+        "expectedDiagnostics": []
+      },
+      {
+        "eventKind": "create",
+        "durationMs": 703,
+        "graphPublicationMs": 703,
+        "diagnosticsPublicationMs": 664,
+        "graphRevision": 14,
+        "diagnosticsSequence": 16,
+        "diagnosticsCorrelatedRevision": 14,
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-03.md",
+            "code": "okf.curation.missing-description"
+          }
+        ]
+      },
+      {
+        "eventKind": "change",
+        "durationMs": 744,
+        "graphPublicationMs": 744,
+        "diagnosticsPublicationMs": 692,
+        "graphRevision": 15,
+        "diagnosticsSequence": 17,
+        "diagnosticsCorrelatedRevision": 15,
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-03.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "rename",
+        "durationMs": 683,
+        "graphPublicationMs": 683,
+        "diagnosticsPublicationMs": 648,
+        "graphRevision": 16,
+        "diagnosticsSequence": 18,
+        "diagnosticsCorrelatedRevision": 16,
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-03-renamed.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "delete",
+        "durationMs": 688,
+        "graphPublicationMs": 688,
+        "diagnosticsPublicationMs": 655,
+        "graphRevision": 17,
+        "diagnosticsSequence": 19,
+        "diagnosticsCorrelatedRevision": 17,
+        "expectedDiagnostics": []
+      },
+      {
+        "eventKind": "create",
+        "durationMs": 646,
+        "graphPublicationMs": 646,
+        "diagnosticsPublicationMs": 589,
+        "graphRevision": 18,
+        "diagnosticsSequence": 20,
+        "diagnosticsCorrelatedRevision": 18,
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-04.md",
+            "code": "okf.curation.missing-description"
+          }
+        ]
+      },
+      {
+        "eventKind": "change",
+        "durationMs": 695,
+        "graphPublicationMs": 695,
+        "diagnosticsPublicationMs": 669,
+        "graphRevision": 19,
+        "diagnosticsSequence": 21,
+        "diagnosticsCorrelatedRevision": 19,
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-04.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "rename",
+        "durationMs": 629,
+        "graphPublicationMs": 629,
+        "diagnosticsPublicationMs": 583,
+        "graphRevision": 20,
+        "diagnosticsSequence": 22,
+        "diagnosticsCorrelatedRevision": 20,
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-04-renamed.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "delete",
+        "durationMs": 694,
+        "graphPublicationMs": 694,
+        "diagnosticsPublicationMs": 660,
+        "graphRevision": 21,
+        "diagnosticsSequence": 23,
+        "diagnosticsCorrelatedRevision": 21,
+        "expectedDiagnostics": []
+      }
+    ]
+  },
+  "qr003": {
+    "capturedAt": "2026-07-22T06:26:54.690Z",
+    "provenance": {
+      "kind": "captured"
+    },
+    "fixture": {
+      "name": "representative",
+      "nodeCount": 1000,
+      "edgeCount": 5000,
+      "seed": 5196614
+    },
+    "engines": {
+      "d3": {
+        "firstInteractiveFrameMs": [
+          328.89999997615814
+        ],
+        "cooldownReached": true,
+        "cooldownMs": [
+          3054.6999999284744
+        ],
+        "idleAnimationFramesAfterCooldown": [
+          0
+        ],
+        "interactions": {
+          "searchMs": [
+            4.399999976158142,
+            1,
+            6.199999928474426,
+            0.8999999761581421,
+            8.100000023841858,
+            0.8999999761581421,
+            11.799999952316284,
+            1,
+            6.100000023841858,
+            0.7999999523162842,
+            5.899999976158142,
+            1,
+            5.399999976158142,
+            0.8999999761581421,
+            5.5,
+            0.6999999284744263,
+            6,
+            0.7999999523162842,
+            5.700000047683716,
+            1.7999999523162842
+          ],
+          "filterMs": [
+            2.5,
+            3.200000047683716,
+            1.8000000715255737,
+            2.9000000953674316,
+            1.6999999284744263,
+            2.899999976158142,
+            2.299999952316284,
+            2.899999976158142,
+            1.399999976158142,
+            3.200000047683716,
+            1.5,
+            2.799999952316284,
+            1.5,
+            2.600000023841858,
+            1.5,
+            2.700000047683716,
+            1.5,
+            2.799999952316284,
+            1.5,
+            2.700000047683716
+          ],
+          "selectionMs": [
+            1,
+            1.399999976158142,
+            0.19999992847442627,
+            0.7999999523162842,
+            0.40000009536743164,
+            0.8000000715255737,
+            0.5,
+            0.7999999523162842,
+            0.3999999761581421,
+            0.7999999523162842,
+            0.30000007152557373,
+            0.5,
+            0.2999999523162842,
+            0.6000000238418579,
+            0.19999992847442627,
+            0.6000000238418579,
+            0.2999999523162842,
+            0.6000000238418579,
+            0.19999992847442627,
+            0.7999999523162842
+          ],
+          "navigationMs": [
+            2.299999952316284,
+            14.300000071525574,
+            1,
+            14,
+            0.8999999761581421,
+            27.5,
+            0.9000000953674316,
+            14.100000023841858,
+            0.8000000715255737,
+            14.5,
+            0.8999999761581421,
+            13.700000047683716,
+            0.8000000715255737,
+            50,
+            0.8000000715255737,
+            15.399999976158142,
+            0.8000000715255737,
+            14.600000023841858,
+            0.8000000715255737,
+            15.200000047683716
+          ]
+        },
+        "rendererJsHeapMb": 190.03036785125732,
+        "cameraFps": 57.03951028926018,
+        "memoryPeakMb": 2433.55,
+        "idleCpuPercent": 4.23,
+        "processTreePeakRssMb": 2433.55,
+        "processTreeSampleCount": 9
+      },
+      "ngraph": {
+        "firstInteractiveFrameMs": [
+          102.70000004768372
+        ],
+        "cooldownReached": false,
+        "cooldownMs": [
+          120000.30000007153
+        ],
+        "idleAnimationFramesAfterCooldown": [
+          0
+        ],
+        "interactions": {
+          "searchMs": [
+            3.6999999284744263,
+            1,
+            6,
+            0.7999999523162842,
+            6.600000023841858,
+            0.8000000715255737,
+            5.899999976158142,
+            0.7999999523162842,
+            6.899999976158142,
+            0.8000000715255737,
+            5.5,
+            0.6999999284744263,
+            5.399999976158142,
+            0.7999999523162842,
+            5.799999952316284,
+            0.7999999523162842,
+            6,
+            0.8000000715255737,
+            6.5,
+            0.8999999761581421
+          ],
+          "filterMs": [
+            1.600000023841858,
+            2.8000000715255737,
+            1.5,
+            2.8000000715255737,
+            1.600000023841858,
+            4.299999952316284,
+            1.5,
+            2.8000000715255737,
+            1.600000023841858,
+            2.799999952316284,
+            1.5,
+            2.5,
+            1.5,
+            2.5,
+            1.600000023841858,
+            2.700000047683716,
+            1.600000023841858,
+            2.6999999284744263,
+            1.6999999284744263,
+            2.899999976158142
+          ],
+          "selectionMs": [
+            0.2999999523162842,
+            0.6999999284744263,
+            0.2999999523162842,
+            0.7999999523162842,
+            0.2999999523162842,
+            0.6000000238418579,
+            0.30000007152557373,
+            0.9000000953674316,
+            0.3999999761581421,
+            0.6000000238418579,
+            0.19999992847442627,
+            0.7000000476837158,
+            0.2999999523162842,
+            0.6000000238418579,
+            0.30000007152557373,
+            0.6000000238418579,
+            0.2999999523162842,
+            0.6000000238418579,
+            0.30000007152557373,
+            0.7000000476837158
+          ],
+          "navigationMs": [
+            1,
+            15.200000047683716,
+            0.7000000476837158,
+            16.100000023841858,
+            0.8999999761581421,
+            14.699999928474426,
+            1,
+            14.799999952316284,
+            1,
+            14.100000023841858,
+            0.7000000476837158,
+            14.100000023841858,
+            0.7000000476837158,
+            16.100000023841858,
+            0.8999999761581421,
+            15.399999976158142,
+            0.7999999523162842,
+            15.200000047683716,
+            1,
+            14.799999952316284
+          ]
+        },
+        "rendererJsHeapMb": 55.52309226989746,
+        "cameraFps": 0,
+        "memoryPeakMb": 2428.63,
+        "idleCpuPercent": 0.2,
+        "processTreePeakRssMb": 2428.63,
+        "processTreeSampleCount": 225
+      }
+    }
+  },
+  "security": {
+    "webviewNetwork": {
+      "authority": "headed-vscode-webview-cdp",
+      "captureScope": "Initial Webview resources plus CDP events during watcher refresh, search, filter, selection, engine comparison, and disposal.",
+      "remoteRequestCount": 0,
+      "remoteOrigins": [],
+      "localResourceRequestCount": 2,
+      "localOrigins": [
+        "https://file+.vscode-resource.vscode-cdn.net"
+      ],
+      "otherRequestCount": 0,
+      "otherSchemes": []
+    }
+  }
+}

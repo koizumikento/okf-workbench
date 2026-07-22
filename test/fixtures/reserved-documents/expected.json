@@ -1,0 +1,20 @@
+{
+  "fixtureVersion": 1,
+  "name": "reserved-documents",
+  "description": "Index and log documents remain reserved at every directory level.",
+  "files": ["index.md", "log.md", "area/index.md", "area/log.md", "area/concept.md"],
+  "virtualFiles": [],
+  "expected": {
+    "conceptIds": ["area/concept"],
+    "reservedFiles": ["area/index.md", "area/log.md", "index.md", "log.md"],
+    "parseFailures": [],
+    "findings": [
+      {
+        "category": "curation",
+        "code": "okf.curation.orphan-concept",
+        "path": "area/concept.md"
+      }
+    ],
+    "links": []
+  }
+}

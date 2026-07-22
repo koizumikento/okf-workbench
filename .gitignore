@@ -1,7 +1,10 @@
-node_modules/
-dist/
-out/
+artifacts/
 coverage/
+dist/
+node_modules/
+out/
+playwright-report/
+test-results/
 *.vsix
 *.log
 .DS_Store

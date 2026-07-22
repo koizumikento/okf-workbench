@@ -1,0 +1,16 @@
+{
+  "name": "okf-workbench-compatibility-driver",
+  "displayName": "OKF Workbench Compatibility Driver",
+  "version": "0.0.1",
+  "publisher": "straydog-tests",
+  "private": true,
+  "engines": {
+    "vscode": "^1.121.0"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
+  "main": "./extension.cjs"
+}

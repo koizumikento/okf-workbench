@@ -63,13 +63,13 @@ Markdown files are the source of truth. Diagnostics, indexes, and the graph are 
 
 | ID | Requirement | Acceptance condition |
 | --- | --- | --- |
-| FR-020 | The parser MUST treat every non-reserved `.md` file beneath the bundle root as a concept and every `index.md` or `log.md` as reserved. | Nested fixtures produce the expected concept and reserved-document sets. |
-| FR-021 | The parser MUST derive concept IDs from bundle-relative paths without `.md`, normalized to POSIX `/` separators. | Equivalent Windows and POSIX fixture paths produce the same concept ID. |
-| FR-022 | The parser MUST retain the complete frontmatter map while exposing normalized known fields. | Unknown fields survive every supported parse-and-write round trip unchanged. |
+| FR-020 | The parser MUST treat every non-reserved `.md` file with a non-empty filename stem beneath the bundle root as a concept and every `index.md` or `log.md` as reserved. A non-reserved file whose bytes, frontmatter, or Markdown cannot be consumed MUST still retain a stable partial concept identity and source record. A provider-reported basename exactly equal to `.md` MUST instead become a file-scoped parse failure without invalidating siblings. | Nested and invalid-document fixtures produce the expected concept and reserved-document sets; partial concepts retain ID, source URI/path, and content hash with empty safe metadata/body sentinels; `.md` and `nested/.md` produce only path-addressable failures while `.notes.md` remains a concept. |
+| FR-021 | The parser MUST derive non-empty concept IDs from bundle-relative paths without `.md`, normalized to POSIX `/` separators. | Equivalent Windows and POSIX fixture paths produce the same concept ID, and an empty filename stem never produces an empty graph node ID. |
+| FR-022 | The parser MUST retain the complete frontmatter map while exposing normalized known fields. Standard YAML tagged values MUST use an explicit JSON-safe representation that retains the canonical tag, semantic value, and original lexical value; custom runtime objects and tags MUST fail closed. | Unknown fields survive every supported parse-and-write round trip unchanged; the `yaml-standard-tags` fixture inventories timestamp, binary, set, and ordered-map values without a parse failure, serializes with `JSON.stringify`, and does not pollute object prototypes. |
 | FR-023 | The link resolver MUST resolve `/`-prefixed links from the bundle root and relative links from the source document directory. | Bundle-relative, document-relative, nested, spaced, and Unicode fixtures resolve to the expected target IDs. |
 | FR-024 | The link resolver MUST distinguish resolvable internal, broken internal, external, and out-of-bundle targets. | Each target category produces the expected graph inclusion and diagnostic behavior without crashing parsing. |
 | FR-025 | Internal Markdown links MUST produce directed, untyped graph relationships. | A link from A to B produces an A-to-B relationship and does not infer a semantic edge type from surrounding prose. |
-| FR-026 | Parsing failures MUST be represented as diagnostics or operation results rather than uncaught errors. | Invalid YAML and unreadable content do not terminate processing of unrelated bundle files. |
+| FR-026 | Parsing failures MUST be represented as diagnostics or operation results rather than uncaught errors. A source-scoped parse failure owns the diagnostic for its partial concept and MUST NOT trigger misleading derived metadata or orphan findings. | Invalid YAML and undecodable UTF-8 do not terminate processing of unrelated bundle files, remain navigable in graph/model inventory, and produce one precise primary conformance finding per failure. |
 
 ### 4. Validation and diagnostics
 
@@ -133,6 +133,7 @@ Markdown files are the source of truth. Diagnostics, indexes, and the graph are 
 | FR-082 | Workspace access MUST support URI-based resources and MUST NOT require the selected workspace to use the `file:` scheme. | Core workspace flows pass against the supported remote or virtual workspace test harness. |
 | FR-083 | File watching MUST cover create, change, delete, and rename events and debounce related bursts. | One logical edit burst results in current diagnostics and graph state without persistent duplicate processing. |
 | FR-084 | User-facing failures MUST identify the affected operation and provide a corrective next step when one is known. | Expected parse, validation, collision, path, and merge failures do not expose only a raw stack trace. |
+| FR-085 | Before any proposal write, Workbench MUST inspect the write root and every existing intermediate target segment and MUST fail closed on a symbolic link or non-directory parent. | Initialize Bundle, New Concept, index regeneration, and Agent Integration leave every proposal target untouched when any target traverses a symlink or ordinary parent file; a real `file:` workspace regression proves that a linked external directory receives no generated file. |
 
 ## Implementation constraints
 
@@ -158,7 +159,14 @@ The following are release constraints or prototype targets, not claims about cur
 | QR-004 | VSCodium desktop is included in MVP compatibility testing. | Package installation and core acceptance scenarios pass on a documented VSCodium version. |
 | QR-005 | Webview content meets the keyboard navigation behavior in FR-060 even when the 3D canvas itself is not accessible. | Keyboard-only acceptance test. |
 
-QR-001 through QR-003 remain hypotheses until measured. No release documentation may present them as achieved before evidence is recorded.
+QR-001 remains a hypothesis until a timed first-use study is retained. Current-candidate schema-v2
+headed evidence passes QR-002 at 703 ms p95 over 20 correlated create/change/rename/delete samples
+and passes QR-003 with `d3` as the selected release engine. Those results are limited to the exact
+production bundles and recorded Mac16,7 / Apple M4 Pro / VS Code 1.127.0 environment described in
+[Performance evidence](performance-evidence.md); they are not a general hardware guarantee. QR-004
+and QR-005 become release claims only when the required compatibility and packaged acceptance
+evidence is retained. No release documentation may present an unmeasured or partially evidenced
+target as generally achieved.
 
 ## End-to-end acceptance scenarios
 
@@ -185,20 +193,20 @@ QR-001 through QR-003 remain hypotheses until measured. No release documentation
 - Guaranteed very-large-graph support beyond measured prototype limits.
 - Automatic maintenance of `log.md`.
 
-## Open requirements questions
+## Resolved requirements questions
 
-These items must be decided before their affected implementation is considered complete.
+These items are resolved by [ADR 0005](decisions/0005-resolve-mvp-implementation-questions.md). The identifiers remain here for traceability.
 
-| ID | Question | Affected area |
+| ID | Resolution | Affected area |
 | --- | --- | --- |
-| OQ-001 | How does the user select and switch among multiple bundle roots in one workspace? | Commands, state, file watching |
-| OQ-002 | What exact files and initial concepts does each initialization preset contain? | Initialization, fixtures |
-| OQ-003 | What marker syntax and generated entry format are used for managed `index.md` regions? | Index generation, merging |
-| OQ-004 | What deterministic rules define a suspicious timestamp? | Curation validation |
-| OQ-005 | What commands, views, and defaults are configurable, and what are their stable VS Code command IDs? | Extension manifest, settings |
-| OQ-006 | How are broken links represented visually without confusing placeholders with concepts? | Graph adapter, accessibility |
-| OQ-007 | Which VS Code, VSCodium, Electron, and operating-system versions form the MVP test matrix? | Compatibility, release |
-| OQ-008 | What fixture and interaction thresholds define "interactively navigable" for QR-003? | Performance benchmark |
+| OQ-001 | Session-scoped selection; Explorer folder invocation explicitly switches roots, read diagnostics remain available for invalid roots, and existing-bundle writes use fail-closed compatibility checks before planning and immediately before apply. | Commands, state, file watching |
+| OQ-002 | Exact Minimal, Software Project, and Data & Analytics file sets are fixed in ADR 0005. | Initialization, fixtures |
+| OQ-003 | Exact `okf-workbench:index` markers and deterministic Markdown entries are fixed in ADR 0005. | Index generation, merging |
+| OQ-004 | Explicit-zone ISO date-time validation, five-minute future tolerance, and exact duplicate-resource comparison. | Curation validation |
+| OQ-005 | Six `okfWorkbench.*` command IDs, editor Webview graph, and a fixed 250 ms debounce. | Extension manifest, settings |
+| OQ-006 | Broken links remain warnings/details owned by source nodes and never become graph nodes or edges. | Graph adapter, accessibility |
+| OQ-007 | VS Code floor/current, VSCodium, Ubuntu, macOS, and Windows evidence matrix fixed in ADR 0005. | Compatibility, release |
+| OQ-008 | Deterministic graph fixtures plus p95 update and interaction thresholds fixed in ADR 0005. | Performance benchmark |
 
 ## Traceability
 

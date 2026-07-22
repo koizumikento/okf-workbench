@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "kind": "packaged-extension-lifecycle",
+  "status": "passed",
+  "recordedAt": "2026-07-22T05:04:56.409Z",
+  "repositoryRevision": null,
+  "requestedEditor": "vscode",
+  "requestedEditorVersion": "1.127.0",
+  "extensionId": "straydog.okf-workbench",
+  "runner": {
+    "platform": "darwin",
+    "architecture": "arm64",
+    "node": "v24.18.0",
+    "runnerOs": null,
+    "runnerArchitecture": null,
+    "imageOs": null,
+    "imageVersion": null
+  },
+  "offlineBoundary": {
+    "extensionHost": "http, https, http2, net, tls, dns, dgram, fetch, and WebSocket are denied during activation and read-only commands",
+    "processEnvironment": "HTTP(S)/ALL proxy points at a closed loopback port; NO_PROXY is empty",
+    "webview": "packaged CSP is separately required to contain connect-src 'none'"
+  },
+  "editor": {
+    "acquisition": "vscode-test-electron",
+    "expectedReportedVersion": "1.127.0",
+    "reported": {
+      "reportedVersion": "1.127.0",
+      "commit": "4fe60c8b1cdac1c4c174f2fb180d0d758272d713",
+      "architecture": "arm64"
+    }
+  },
+  "candidate": {
+    "id": "straydog.okf-workbench",
+    "version": "0.1.0",
+    "sha256": "8a0c870def44844ea8c6f128cd975b2178a71f6d1c82917054360d0ad24450d3",
+    "file": "okf-workbench.vsix"
+  },
+  "predecessor": {
+    "supplied": true,
+    "sha256": "7ca5f437fb846f636b51b933b53a55f57b229018bf17958781a661c8be6e6567",
+    "file": "okf-workbench-0.0.0.vsix"
+  },
+  "cleanInstall": {
+    "status": "passed",
+    "cleanProfile": true,
+    "installedVersion": "0.1.0",
+    "activationReport": "activation-clean.json",
+    "activation": {
+      "schemaVersion": 1,
+      "kind": "packaged-extension-activation",
+      "status": "passed",
+      "recordedAt": "2026-07-22T05:05:00.524Z",
+      "extensionId": "straydog.okf-workbench",
+      "editor": {
+        "version": "1.127.0",
+        "appName": "Visual Studio Code",
+        "appHost": "desktop",
+        "remoteName": null,
+        "uiKind": 1
+      },
+      "runtime": {
+        "platform": "darwin",
+        "architecture": "arm64",
+        "node": "24.15.0",
+        "electron": "42.2.0",
+        "chrome": "148.0.7778.97",
+        "v8": "14.8.178.14-electron.0"
+      },
+      "networkAttempts": [],
+      "commands": [
+        "okfWorkbench.initializeBundle",
+        "okfWorkbench.newConcept",
+        "okfWorkbench.validateBundle",
+        "okfWorkbench.regenerateIndexes",
+        "okfWorkbench.openGraph",
+        "okfWorkbench.setupAgentIntegration"
+      ],
+      "readOnlyCommands": [
+        "okfWorkbench.validateBundle",
+        "okfWorkbench.openGraph"
+      ],
+      "extensionVersion": "0.1.0"
+    },
+    "sameVersionReinstall": "passed-not-counted-as-upgrade",
+    "uninstall": "passed",
+    "workspacePreserved": true,
+    "workspaceFileCount": 5
+  },
+  "upgrade": {
+    "status": "passed",
+    "predecessorVersion": "0.0.0",
+    "candidateVersion": "0.1.0",
+    "activationReport": "activation-upgrade.json",
+    "activation": {
+      "schemaVersion": 1,
+      "kind": "packaged-extension-activation",
+      "status": "passed",
+      "recordedAt": "2026-07-22T05:05:04.990Z",
+      "extensionId": "straydog.okf-workbench",
+      "editor": {
+        "version": "1.127.0",
+        "appName": "Visual Studio Code",
+        "appHost": "desktop",
+        "remoteName": null,
+        "uiKind": 1
+      },
+      "runtime": {
+        "platform": "darwin",
+        "architecture": "arm64",
+        "node": "24.15.0",
+        "electron": "42.2.0",
+        "chrome": "148.0.7778.97",
+        "v8": "14.8.178.14-electron.0"
+      },
+      "networkAttempts": [],
+      "commands": [
+        "okfWorkbench.initializeBundle",
+        "okfWorkbench.newConcept",
+        "okfWorkbench.validateBundle",
+        "okfWorkbench.regenerateIndexes",
+        "okfWorkbench.openGraph",
+        "okfWorkbench.setupAgentIntegration"
+      ],
+      "readOnlyCommands": [
+        "okfWorkbench.validateBundle",
+        "okfWorkbench.openGraph"
+      ],
+      "extensionVersion": "0.1.0"
+    },
+    "uninstall": "passed",
+    "workspacePreserved": true
+  }
+}

@@ -25,6 +25,13 @@ OKF Workbench does not embed an AI model or call an AI provider. It helps existi
 
 The actual bundle path replaces `knowledge/`.
 
+The location comes from the selected workspace provider, not from re-parsing a generated path as
+user input. Legal provider segment identities such as `docs:knowledge`, literal `%2F`, spaces, and
+Unicode are retained exactly in both generated outputs. The provider-safe branch still rejects an
+empty path, control characters, absolute paths, non-POSIX separators, and empty, `.` or `..`
+segments. Plain string inputs to the template API continue through the stricter user-input path
+normalizer, including stable percent decoding and URI-like path rejection.
+
 ### Agent Skill
 
 The default project-local path is:

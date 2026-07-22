@@ -1,0 +1,395 @@
+:root {
+  color-scheme: light dark;
+  font-family: var(--vscode-font-family, system-ui, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--vscode-foreground, #cccccc);
+  background: var(--vscode-editor-background, #1e1e1e);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder, #007fd4);
+  outline-offset: 2px;
+}
+
+.okf-workbench {
+  min-height: 100vh;
+  padding: 1rem;
+}
+
+.okf-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  align-items: baseline;
+  margin-block-end: 1rem;
+  border-block-end: 1px solid var(--vscode-panel-border, #3c3c3c);
+}
+
+.okf-title {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.okf-status,
+.okf-statistics {
+  margin: 0;
+  color: var(--vscode-descriptionForeground, #a0a0a0);
+}
+
+.okf-status[data-status='error'] {
+  color: var(--vscode-errorForeground, #f48771);
+}
+
+.okf-statistics {
+  margin-inline-start: auto;
+}
+
+.okf-layout {
+  display: grid;
+  grid-template-columns: minmax(13rem, 0.7fr) minmax(22rem, 2fr) minmax(15rem, 0.9fr);
+  grid-template-areas:
+    'controls graph details'
+    'results graph details';
+  gap: 0.75rem;
+  min-height: calc(100vh - 5rem);
+}
+
+.okf-controls,
+.okf-graph-panel,
+.okf-results-panel,
+.okf-details {
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--vscode-panel-border, #3c3c3c);
+  border-radius: 4px;
+  background: var(--vscode-sideBar-background, #252526);
+}
+
+.okf-controls {
+  grid-area: controls;
+  align-self: start;
+}
+
+.okf-graph-panel {
+  position: relative;
+  grid-area: graph;
+  display: flex;
+  flex-direction: column;
+  min-height: 32rem;
+  overflow: hidden;
+  background: var(--vscode-editor-background, #1e1e1e);
+}
+
+.okf-results-panel {
+  grid-area: results;
+  min-height: 15rem;
+}
+
+.okf-details {
+  grid-area: details;
+  overflow: auto;
+}
+
+.okf-panel-title,
+.okf-details__title,
+.okf-details__subheading {
+  margin-block: 0 0.65rem;
+}
+
+.okf-panel-title {
+  font-size: 1rem;
+}
+
+.okf-details__title {
+  overflow-wrap: anywhere;
+  font-size: 1.15rem;
+}
+
+.okf-details__subheading {
+  margin-block-start: 1.25rem;
+  font-size: 0.95rem;
+}
+
+.okf-label {
+  display: block;
+  margin-block-end: 0.35rem;
+  font-weight: 600;
+}
+
+.okf-search {
+  width: 100%;
+  margin-block-end: 0.75rem;
+  padding: 0.42rem 0.55rem;
+  border: 1px solid var(--vscode-input-border, transparent);
+  color: var(--vscode-input-foreground, inherit);
+  background: var(--vscode-input-background, #3c3c3c);
+}
+
+.okf-fieldset {
+  min-width: 0;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  border: 0;
+}
+
+.okf-filter-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  max-height: 8rem;
+  overflow: auto;
+}
+
+.okf-filter {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: center;
+  max-width: 100%;
+  padding: 0.2rem 0.4rem;
+  border-radius: 999px;
+  background: var(--vscode-badge-background, #4d4d4d);
+}
+
+.okf-filter span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.okf-primary-button,
+.okf-secondary-button,
+.okf-text-button,
+.okf-result {
+  border: 0;
+  color: var(--vscode-button-foreground, #ffffff);
+  cursor: pointer;
+}
+
+.okf-primary-button,
+.okf-secondary-button {
+  padding: 0.4rem 0.7rem;
+  background: var(--vscode-button-background, #0e639c);
+}
+
+.okf-primary-button:hover,
+.okf-secondary-button:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.okf-secondary-button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.okf-text-button {
+  padding: 0;
+  color: var(--vscode-textLink-foreground, #3794ff);
+  background: transparent;
+}
+
+.okf-text-button:hover {
+  color: var(--vscode-textLink-activeForeground, #4daafc);
+  text-decoration: underline;
+}
+
+.okf-graph-host {
+  flex: 1;
+  min-height: 28rem;
+  overflow: hidden;
+}
+
+.okf-graph-host canvas {
+  display: block;
+}
+
+.okf-graph-empty,
+.okf-renderer-unavailable {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  z-index: 1;
+  width: min(28rem, 80%);
+  margin: 0;
+  padding: 0.75rem;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 88%, transparent);
+}
+
+.okf-renderer-unavailable {
+  color: var(--vscode-errorForeground, #f48771);
+  border: 1px solid currentColor;
+}
+
+.okf-result-list,
+.okf-link-list,
+.okf-broken-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.okf-result-list {
+  max-height: 36vh;
+  overflow: auto;
+}
+
+.okf-result-list__item + .okf-result-list__item {
+  margin-block-start: 0.35rem;
+}
+
+.okf-result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  width: 100%;
+  padding: 0.5rem;
+  color: var(--vscode-foreground, inherit);
+  text-align: start;
+  background: var(--vscode-list-inactiveSelectionBackground, #37373d);
+}
+
+.okf-result:hover {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+.okf-result[aria-pressed='true'] {
+  color: var(--vscode-list-activeSelectionForeground, #ffffff);
+  background: var(--vscode-list-activeSelectionBackground, #04395e);
+}
+
+.okf-result__title,
+.okf-result__meta {
+  overflow-wrap: anywhere;
+}
+
+.okf-result__title {
+  font-weight: 600;
+}
+
+.okf-result__meta,
+.okf-muted {
+  color: var(--vscode-descriptionForeground, #a0a0a0);
+}
+
+.okf-result__indicators {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.okf-badge {
+  display: inline-block;
+  padding: 0.1rem 0.35rem;
+  border-radius: 2px;
+  font-size: 0.85em;
+}
+
+.okf-badge--warning {
+  color: var(--vscode-editorWarning-foreground, #cca700);
+  border: 1px solid currentColor;
+}
+
+.okf-badge--error {
+  color: var(--vscode-editorError-foreground, #f14c4c);
+  border: 1px solid currentColor;
+}
+
+.okf-empty {
+  margin-block: 0.75rem;
+  color: var(--vscode-descriptionForeground, #a0a0a0);
+}
+
+.okf-metadata {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, auto) 1fr;
+  gap: 0.35rem 0.65rem;
+  margin-block: 0 0.85rem;
+}
+
+.okf-metadata dt {
+  font-weight: 600;
+}
+
+.okf-metadata dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.okf-link-list li + li,
+.okf-broken-list li + li {
+  margin-block-start: 0.45rem;
+}
+
+.okf-broken-list__item,
+.okf-broken-list__target {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.okf-broken-list__target {
+  color: var(--vscode-editorError-foreground, #f14c4c);
+}
+
+@media (max-width: 64rem) {
+  .okf-layout {
+    grid-template-columns: minmax(13rem, 0.8fr) minmax(20rem, 1.6fr);
+    grid-template-areas:
+      'controls graph'
+      'results graph'
+      'details details';
+  }
+
+  .okf-details {
+    max-height: none;
+  }
+}
+
+@media (max-width: 42rem) {
+  .okf-statistics {
+    flex-basis: 100%;
+    margin-inline-start: 0;
+  }
+
+  .okf-layout {
+    display: block;
+  }
+
+  .okf-controls,
+  .okf-graph-panel,
+  .okf-results-panel,
+  .okf-details {
+    margin-block-end: 0.75rem;
+  }
+
+  .okf-graph-panel {
+    min-height: 24rem;
+  }
+
+  .okf-graph-host {
+    min-height: 20rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

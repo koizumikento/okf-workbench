@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "kind": "compatibility-test-predecessor",
+  "status": "passed",
+  "recordedAt": "2026-07-22T05:03:35.453Z",
+  "sourceDateEpoch": "946684800",
+  "runner": {
+    "platform": "darwin",
+    "architecture": "arm64",
+    "node": "v24.18.0",
+    "runnerOs": null,
+    "runnerArchitecture": null,
+    "imageOs": null,
+    "imageVersion": null
+  },
+  "candidate": {
+    "id": "straydog.okf-workbench",
+    "version": "0.1.0"
+  },
+  "predecessor": {
+    "id": "straydog.okf-workbench",
+    "version": "0.0.0",
+    "sha256": "7ca5f437fb846f636b51b933b53a55f57b229018bf17958781a661c8be6e6567"
+  },
+  "purpose": "test-only upgrade mechanics and workspace-preservation evidence"
+}

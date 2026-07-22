@@ -1,0 +1,1157 @@
+/* eslint-disable no-undef -- Playwright evaluate callbacks execute inside the VS Code Webview. */
+
+import { execFile, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
+import process from 'node:process';
+import { setTimeout as delay } from 'node:timers/promises';
+import { parseArgs, promisify } from 'node:util';
+
+import {
+  downloadAndUnzipVSCode,
+  resolveCliArgsFromVSCodeExecutablePath,
+} from '@vscode/test-electron';
+import { build } from 'esbuild';
+import { chromium } from 'playwright';
+
+const execFileAsync = promisify(execFile);
+const FIXTURE_SEED = 0x004f_4b46;
+const NODE_COUNT = 1_000;
+const EDGE_COUNT = 5_000;
+const UPDATE_SAMPLES = 20;
+const UPDATE_CYCLES = 5;
+const VSCODE_VERSION = '1.127.0';
+const CDP_TIMEOUT_MS = 60_000;
+const GRAPH_TIMEOUT_MS = 120_000;
+const HEADLESS_REPORT_WARNING =
+  'This runner launches headed VS Code and measures its real Electron Webview; it does not use Playwright Chromium.';
+const BENCHMARK_EDITOR_FLAGS = [
+  '--disable-background-timer-throttling',
+  '--disable-backgrounding-occluded-windows',
+  '--disable-renderer-backgrounding',
+];
+
+const { values } = parseArgs({
+  options: {
+    output: { type: 'string' },
+    version: { type: 'string', default: VSCODE_VERSION },
+    'vscode-executable': { type: 'string' },
+    'reuse-qr003': { type: 'string' },
+    'keep-workspace': { type: 'boolean', default: false },
+  },
+  strict: true,
+});
+
+const repositoryRoot = process.cwd();
+const version = values.version;
+const outputPath = path.resolve(
+  values.output ?? `artifacts/performance/headed-editor-vscode-${version}.json`,
+);
+const reportPath = outputPath.replace(/\.json$/u, '.md');
+const runRoot = await mkdtemp(path.join(os.tmpdir(), 'okf-headed-performance-'));
+const workspaceRoot = path.join(runRoot, 'workspace');
+const userDataDirectory = path.join(runRoot, 'user-data');
+const extensionsDirectory = path.join(runRoot, 'extensions');
+const diagnosticsTracePath = path.join(runRoot, 'qr002-diagnostics.jsonl');
+const diagnosticsObserverDirectory = path.join(
+  repositoryRoot,
+  'test',
+  'benchmarks',
+  'diagnostics-observer',
+);
+const reusedQr003Input =
+  values['reuse-qr003'] === undefined
+    ? undefined
+    : await loadReusableQr003(path.resolve(values['reuse-qr003']));
+let vscodeProcess;
+let browser;
+let networkRecorder;
+
+try {
+  process.stdout.write(`Preparing deterministic OKF workspace at ${workspaceRoot}\n`);
+  await createOkfWorkspace(workspaceRoot);
+  await execFileAsync(process.execPath, ['scripts/build.mjs', '--production'], {
+    cwd: repositoryRoot,
+  });
+
+  const executablePath =
+    values['vscode-executable'] ??
+    (await downloadAndUnzipVSCode({
+      version,
+      cachePath: path.join(repositoryRoot, '.vscode-test'),
+    }));
+  const editorMetadata = await readEditorMetadata(executablePath);
+  const port = await reservePort();
+  const launch = launchVscode(executablePath, port, diagnosticsTracePath);
+  vscodeProcess = launch.process;
+
+  process.stdout.write(`Connecting to headed VS Code ${version} on CDP port ${String(port)}\n`);
+  browser = await connectToEditor(port, vscodeProcess, launch.logs);
+  const mainPage = await findWorkbenchPage(browser);
+  const commandStartedAt = Date.now();
+  await openGraphFromCommandPalette(mainPage);
+  const graphFrame = await findGraphFrame(browser);
+  await graphFrame
+    .locator('.okf-statistics')
+    .filter({ hasText: `${String(NODE_COUNT)} concepts` })
+    .waitFor({ state: 'visible', timeout: GRAPH_TIMEOUT_MS });
+  await graphFrame
+    .locator('.okf-statistics')
+    .filter({ hasText: `${String(EDGE_COUNT)} links` })
+    .waitFor({ state: 'visible', timeout: GRAPH_TIMEOUT_MS });
+  const productGraphInteractiveMs = Date.now() - commandStartedAt;
+  const initialResourceUrls = await graphFrame.evaluate(() =>
+    performance.getEntriesByType('resource').map((entry) => entry.name),
+  );
+  networkRecorder = await createWebviewNetworkRecorder(port, initialResourceUrls);
+
+  await waitForDiagnosticsObserver(diagnosticsTracePath);
+  process.stdout.write(
+    'Collecting 20 headed create/change/rename/delete samples through Problems and graph publication\n',
+  );
+  const qr002 = await measureWatcherUpdates(graphFrame, workspaceRoot, diagnosticsTracePath);
+  const gpu = await captureWebviewEnvironment(graphFrame);
+
+  const packageManifest = JSON.parse(
+    await readFile(path.join(repositoryRoot, 'package.json'), 'utf8'),
+  );
+  const extensionHash = await hashFiles([
+    path.join(repositoryRoot, 'dist', 'extension.cjs'),
+    path.join(repositoryRoot, 'dist', 'webview', 'main.js'),
+  ]);
+  const webviewBundleSha256 = await sha256File(
+    path.join(repositoryRoot, 'dist', 'webview', 'main.js'),
+  );
+  const capturedAt = new Date().toISOString();
+  const environment = {
+    hardware: await hardwareModel(),
+    os: `${os.type()} ${os.release()} ${os.arch()}`,
+    cpu: `${os.cpus()[0]?.model ?? 'unknown'}; ${String(os.cpus().length)} logical processors`,
+    memoryGb: round(os.totalmem() / 1024 ** 3, 2),
+    gpu: `${gpu.vendor} / ${gpu.renderer}`,
+    editorName: 'VS Code',
+    editorVersion: editorMetadata.version,
+    editorCommit: editorMetadata.commit,
+    electronVersion: gpu.electronVersion,
+    chromiumVersion: gpu.chromiumVersion,
+    fixtureSeed: FIXTURE_SEED,
+    packageVersions: {
+      'okf-workbench': packageManifest.version,
+      '3d-force-graph': packageManifest.dependencies?.['3d-force-graph'] ?? 'unknown',
+    },
+    extensionBundleSha256: extensionHash,
+    webviewBundleSha256,
+    productGraphInteractiveMs,
+    runnerNote: HEADLESS_REPORT_WARNING,
+    benchmarkEditorFlags: BENCHMARK_EDITOR_FLAGS,
+  };
+
+  let qr003;
+  let networkCaptureScope;
+  if (reusedQr003Input === undefined) {
+    process.stdout.write('Injecting same-Electron d3/ngraph adapter harness\n');
+    const webviewNonce = await graphFrame.evaluate(() => {
+      return document.querySelector('script[nonce]')?.nonce;
+    });
+    await graphFrame.evaluate(() => {
+      window.dispatchEvent(new Event('beforeunload'));
+      document.body.replaceChildren();
+    });
+    const harnessBundle = await buildHeadedHarness();
+    await injectNonceAuthorizedHarness(graphFrame, harnessBundle, webviewNonce);
+
+    const engineResults = {};
+    for (const engine of ['d3', 'ngraph']) {
+      process.stdout.write(`Measuring ${engine} in the VS Code Webview\n`);
+      const evaluation = graphFrame.evaluate((candidate) => {
+        return globalThis.__okfHeadedHarness.measureEngine(candidate);
+      }, engine);
+      const monitored = await monitorProcessTree(vscodeProcess.pid, evaluation);
+      engineResults[engine] = {
+        ...monitored.value,
+        memoryPeakMb: monitored.peakRssMb,
+        idleCpuPercent: monitored.idleCpuPercent,
+        processTreePeakRssMb: monitored.peakRssMb,
+        processTreeSampleCount: monitored.sampleCount,
+      };
+    }
+    qr003 = {
+      capturedAt,
+      provenance: { kind: 'captured' },
+      fixture: {
+        name: 'representative',
+        nodeCount: NODE_COUNT,
+        edgeCount: EDGE_COUNT,
+        seed: FIXTURE_SEED,
+      },
+      engines: engineResults,
+    };
+    networkCaptureScope =
+      'Initial Webview resources plus CDP events during watcher refresh, search, filter, selection, engine comparison, and disposal.';
+  } else {
+    qr003 = reuseQr003(reusedQr003Input, environment);
+    networkCaptureScope =
+      'Initial Webview resources plus CDP events during the current QR-002 watcher run. QR-003 samples were reused only after exact environment and bundle-hash matching.';
+  }
+
+  const webviewNetwork = networkRecorder.snapshot(networkCaptureScope);
+  const evidence = {
+    schemaVersion: 2,
+    measurementKind: 'headed-editor',
+    capturedAt,
+    environment,
+    qr002,
+    qr003,
+    security: { webviewNetwork },
+  };
+
+  await mkdir(path.dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, `${JSON.stringify(evidence, undefined, 2)}\n`, 'utf8');
+  const report = await execFileAsync(
+    process.execPath,
+    ['scripts/benchmark-report.mjs', '--measurements', outputPath],
+    { cwd: repositoryRoot, maxBuffer: 4 * 1024 * 1024 },
+  );
+  await writeFile(reportPath, report.stdout, 'utf8');
+  process.stdout.write(`${report.stdout}\nRaw evidence: ${outputPath}\nReport: ${reportPath}\n`);
+
+  const strict = await execFileAsync(
+    process.execPath,
+    ['scripts/benchmark-report.mjs', '--measurements', outputPath, '--require-passing'],
+    { cwd: repositoryRoot, maxBuffer: 4 * 1024 * 1024 },
+  ).catch((error) => error);
+  if (typeof strict?.code === 'number' && strict.code !== 0) {
+    process.exitCode = 2;
+  }
+  if (webviewNetwork.remoteRequestCount !== 0) {
+    process.exitCode = 3;
+  }
+} finally {
+  networkRecorder?.close();
+  await browser?.close().catch(() => undefined);
+  if (vscodeProcess?.pid !== undefined && vscodeProcess.exitCode === null) {
+    vscodeProcess.kill('SIGTERM');
+    await Promise.race([onceExit(vscodeProcess), delay(5_000)]);
+    if (vscodeProcess.exitCode === null) vscodeProcess.kill('SIGKILL');
+  }
+  if (!values['keep-workspace']) {
+    await rm(runRoot, { recursive: true, force: true });
+  } else {
+    process.stdout.write(`Retained benchmark workspace: ${runRoot}\n`);
+  }
+}
+
+async function createWebviewNetworkRecorder(port, initialUrls) {
+  const targets = await fetch(`http://127.0.0.1:${String(port)}/json/list`).then((response) =>
+    response.json(),
+  );
+  const target = targets.find(
+    (candidate) =>
+      candidate.type === 'iframe' &&
+      typeof candidate.url === 'string' &&
+      candidate.url.startsWith('vscode-webview://') &&
+      candidate.url.includes('okf-workbench') &&
+      typeof candidate.webSocketDebuggerUrl === 'string',
+  );
+  if (target === undefined) {
+    throw new Error('The OKF graph Webview CDP target was not available for network capture.');
+  }
+
+  const socket = new WebSocket(target.webSocketDebuggerUrl);
+  await new Promise((resolve, reject) => {
+    socket.addEventListener('open', resolve, { once: true });
+    socket.addEventListener('error', reject, { once: true });
+  });
+  const observed = initialUrls.map(classifyNetworkUrl);
+  let confirmNetworkEnabled;
+  const networkEnabled = new Promise((resolve) => {
+    confirmNetworkEnabled = resolve;
+  });
+  socket.addEventListener('message', (event) => {
+    const message = JSON.parse(String(event.data));
+    if (message.id === 1) confirmNetworkEnabled();
+    if (
+      message.method === 'Network.requestWillBeSent' &&
+      typeof message.params?.request?.url === 'string'
+    ) {
+      observed.push(classifyNetworkUrl(message.params.request.url));
+    }
+  });
+  socket.send(JSON.stringify({ id: 1, method: 'Network.enable' }));
+  const enabled = await Promise.race([
+    networkEnabled.then(() => true),
+    delay(5_000).then(() => false),
+  ]);
+  if (!enabled) throw new Error('The OKF graph Webview did not enable CDP Network events.');
+
+  return {
+    snapshot(captureScope) {
+      const remote = observed.filter((entry) => entry.kind === 'remote');
+      const local = observed.filter((entry) => entry.kind === 'local');
+      const other = observed.filter((entry) => entry.kind === 'other');
+      return {
+        authority: 'headed-vscode-webview-cdp',
+        captureScope,
+        remoteRequestCount: remote.length,
+        remoteOrigins: [...new Set(remote.map((entry) => entry.origin))].sort(),
+        localResourceRequestCount: local.length,
+        localOrigins: [...new Set(local.map((entry) => entry.origin))].sort(),
+        otherRequestCount: other.length,
+        otherSchemes: [...new Set(other.map((entry) => entry.origin))].sort(),
+      };
+    },
+    close() {
+      socket.close();
+    },
+  };
+}
+
+function classifyNetworkUrl(value) {
+  try {
+    const parsed = new URL(value);
+    const protocol = parsed.protocol.toLowerCase();
+    const host = parsed.host.toLowerCase();
+    if (
+      protocol === 'vscode-webview:' ||
+      protocol === 'vscode-file:' ||
+      protocol === 'data:' ||
+      host.endsWith('.vscode-resource.vscode-cdn.net') ||
+      host === 'vscode-resource.vscode-cdn.net'
+    ) {
+      return { kind: 'local', origin: protocol === 'data:' ? 'data:' : `${protocol}//${host}` };
+    }
+    if (['http:', 'https:', 'ws:', 'wss:'].includes(protocol)) {
+      return { kind: 'remote', origin: `${protocol}//${host}` };
+    }
+    return { kind: 'other', origin: protocol || 'unknown:' };
+  } catch {
+    return { kind: 'other', origin: 'invalid:' };
+  }
+}
+
+async function createOkfWorkspace(root) {
+  const conceptsDirectory = path.join(root, 'concepts');
+  await mkdir(conceptsDirectory, { recursive: true });
+  await writeFile(
+    path.join(root, 'index.md'),
+    `---\nokf_version: "0.1"\n---\n# Deterministic headed performance bundle\n`,
+    'utf8',
+  );
+  const writes = [];
+  for (let index = 0; index < NODE_COUNT; index += 1) {
+    const links = Array.from({ length: 5 }, (_, offset) => {
+      const target = (index + offset + 1) % NODE_COUNT;
+      return `[Concept ${String(target).padStart(4, '0')}](./concept-${String(target).padStart(4, '0')}.md)`;
+    });
+    const content = [
+      '---',
+      `type: ${index % 7 === 0 ? 'decision' : 'concept'}`,
+      `title: Concept ${String(index).padStart(4, '0')}`,
+      'description: Deterministic headed-editor performance fixture concept.',
+      `tags: [performance, group-${String(index % 20).padStart(2, '0')}]`,
+      '---',
+      `# Concept ${String(index).padStart(4, '0')}`,
+      '',
+      ...links.map((link) => `- ${link}`),
+      '',
+    ].join('\n');
+    writes.push(
+      writeFile(
+        path.join(conceptsDirectory, `concept-${String(index).padStart(4, '0')}.md`),
+        content,
+        'utf8',
+      ),
+    );
+  }
+  await Promise.all(writes);
+}
+
+async function measureWatcherUpdates(frame, workspace, diagnosticsTrace) {
+  await frame.evaluate(() => {
+    const events = [];
+    globalThis.__okfRefreshEvents = events;
+    window.addEventListener('message', (event) => {
+      const value = event.data;
+      if (
+        typeof value === 'object' &&
+        value !== null &&
+        value.type === 'replaceGraph' &&
+        Number.isSafeInteger(value.revision)
+      ) {
+        events.push({
+          revision: value.revision,
+          at: Date.now(),
+          concepts: value.payload?.statistics?.conceptCount,
+          edges: value.payload?.statistics?.edgeCount,
+          probes: Array.isArray(value.payload?.nodes)
+            ? value.payload.nodes
+                .filter(
+                  (node) =>
+                    typeof node?.id === 'string' && node.id.startsWith('concepts/qr002-probe-'),
+                )
+                .map((node) => ({ id: node.id, brokenLinkCount: node.brokenLinkCount }))
+            : [],
+        });
+      }
+    });
+  });
+
+  const samples = [];
+  let revision = 0;
+  for (let cycle = 0; cycle < UPDATE_CYCLES; cycle += 1) {
+    const suffix = String(cycle).padStart(2, '0');
+    const createdRelativePath = `concepts/qr002-probe-${suffix}.md`;
+    const renamedRelativePath = `concepts/qr002-probe-${suffix}-renamed.md`;
+    const createdId = createdRelativePath.slice(0, -3);
+    const renamedId = renamedRelativePath.slice(0, -3);
+    const createdPath = path.join(workspace, ...createdRelativePath.split('/'));
+    const renamedPath = path.join(workspace, ...renamedRelativePath.split('/'));
+
+    revision = await measureUpdateSample({
+      diagnosticsTrace,
+      frame,
+      previousRevision: revision,
+      eventKind: 'create',
+      expectedDiagnostics: [
+        { relativePath: createdRelativePath, code: 'okf.curation.missing-description' },
+      ],
+      expectedGraph: {
+        concepts: NODE_COUNT + 1,
+        edges: EDGE_COUNT + 1,
+        probeId: createdId,
+        brokenLinkCount: 0,
+      },
+      mutate: () =>
+        writeFile(createdPath, qr002ProbeContent(suffix, { brokenLink: false }), {
+          encoding: 'utf8',
+          flag: 'wx',
+        }),
+      samples,
+    });
+    revision = await measureUpdateSample({
+      diagnosticsTrace,
+      frame,
+      previousRevision: revision,
+      eventKind: 'change',
+      expectedDiagnostics: [
+        { relativePath: createdRelativePath, code: 'okf.curation.broken-link' },
+      ],
+      expectedGraph: {
+        concepts: NODE_COUNT + 1,
+        edges: EDGE_COUNT + 1,
+        probeId: createdId,
+        brokenLinkCount: 1,
+      },
+      mutate: () => writeFile(createdPath, qr002ProbeContent(suffix, { brokenLink: true }), 'utf8'),
+      samples,
+    });
+    revision = await measureUpdateSample({
+      diagnosticsTrace,
+      frame,
+      previousRevision: revision,
+      eventKind: 'rename',
+      expectedDiagnostics: [
+        { relativePath: renamedRelativePath, code: 'okf.curation.broken-link' },
+      ],
+      expectedGraph: {
+        concepts: NODE_COUNT + 1,
+        edges: EDGE_COUNT + 1,
+        probeId: renamedId,
+        brokenLinkCount: 1,
+      },
+      mutate: () => rename(createdPath, renamedPath),
+      samples,
+    });
+    revision = await measureUpdateSample({
+      diagnosticsTrace,
+      frame,
+      previousRevision: revision,
+      eventKind: 'delete',
+      expectedDiagnostics: [],
+      expectedGraph: { concepts: NODE_COUNT, edges: EDGE_COUNT },
+      mutate: () => rm(renamedPath),
+      samples,
+    });
+  }
+  if (samples.length !== UPDATE_SAMPLES) {
+    throw new Error(`Expected ${String(UPDATE_SAMPLES)} QR-002 samples.`);
+  }
+  return { debounceMs: 250, updateSamples: samples };
+}
+
+async function measureUpdateSample(options) {
+  const diagnosticsBefore = await latestDiagnosticsRecord(options.diagnosticsTrace);
+  const startedAt = Date.now();
+  const graphWait = waitForGraphPublication(
+    options.frame,
+    options.previousRevision,
+    options.expectedGraph,
+  );
+  const diagnosticsWait = waitForDiagnosticsPublication(
+    options.diagnosticsTrace,
+    diagnosticsBefore.sequence,
+    options.expectedDiagnostics,
+  );
+  await options.mutate();
+  const [graphPublication, diagnosticsPublication] = await Promise.all([
+    graphWait,
+    diagnosticsWait,
+  ]);
+  const graphPublicationMs = graphPublication.at - startedAt;
+  const diagnosticsPublicationMs = diagnosticsPublication.observedAtEpochMs - startedAt;
+  if (graphPublicationMs < 0 || diagnosticsPublicationMs < 0) {
+    throw new Error('A QR-002 observer timestamp preceded its file mutation.');
+  }
+  options.samples.push({
+    eventKind: options.eventKind,
+    durationMs: Math.max(graphPublicationMs, diagnosticsPublicationMs),
+    graphPublicationMs,
+    diagnosticsPublicationMs,
+    graphRevision: graphPublication.revision,
+    diagnosticsSequence: diagnosticsPublication.sequence,
+    diagnosticsCorrelatedRevision: graphPublication.revision,
+    expectedDiagnostics: options.expectedDiagnostics,
+  });
+  return graphPublication.revision;
+}
+
+async function waitForGraphPublication(frame, previousRevision, expected) {
+  const matches = ({ revision, graph }) =>
+    globalThis.__okfRefreshEvents.some(
+      (event) =>
+        event.revision > revision &&
+        event.concepts === graph.concepts &&
+        event.edges === graph.edges &&
+        (graph.probeId === undefined
+          ? event.probes.length === 0
+          : event.probes.some(
+              (probe) =>
+                probe.id === graph.probeId && probe.brokenLinkCount === graph.brokenLinkCount,
+            )),
+    );
+  await frame.waitForFunction(
+    matches,
+    { revision: previousRevision, graph: expected },
+    {
+      timeout: 30_000,
+    },
+  );
+  const event = await frame.evaluate(
+    ({ revision, graph }) =>
+      globalThis.__okfRefreshEvents.find(
+        (candidate) =>
+          candidate.revision > revision &&
+          candidate.concepts === graph.concepts &&
+          candidate.edges === graph.edges &&
+          (graph.probeId === undefined
+            ? candidate.probes.length === 0
+            : candidate.probes.some(
+                (probe) =>
+                  probe.id === graph.probeId && probe.brokenLinkCount === graph.brokenLinkCount,
+              )),
+      ),
+    { revision: previousRevision, graph: expected },
+  );
+  if (event === undefined) throw new Error('The current replacement graph event disappeared.');
+  return event;
+}
+
+async function waitForDiagnosticsObserver(tracePath) {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const records = await readDiagnosticsRecords(tracePath);
+    if (records.length > 0) return records.at(-1);
+    await delay(25);
+  }
+  throw new Error('The headed diagnostics observer did not activate.');
+}
+
+async function latestDiagnosticsRecord(tracePath) {
+  const records = await readDiagnosticsRecords(tracePath);
+  const latest = records.at(-1);
+  if (latest === undefined) throw new Error('The headed diagnostics observer has no baseline.');
+  return latest;
+}
+
+async function waitForDiagnosticsPublication(tracePath, previousSequence, expected) {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const records = await readDiagnosticsRecords(tracePath);
+    const match = records.find(
+      (record) =>
+        record.sequence > previousSequence && diagnosticsMatch(record.diagnostics, expected),
+    );
+    if (match !== undefined) return match;
+    await delay(25);
+  }
+  throw new Error(`Problems did not publish current diagnostics: ${JSON.stringify(expected)}.`);
+}
+
+async function readDiagnosticsRecords(tracePath) {
+  let content;
+  try {
+    content = await readFile(tracePath, 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') return [];
+    throw error;
+  }
+  return content
+    .split(/\r?\n/u)
+    .filter((line) => line.length > 0)
+    .flatMap((line) => {
+      try {
+        const record = JSON.parse(line);
+        return record?.schemaVersion === 1 &&
+          Number.isSafeInteger(record.sequence) &&
+          Number.isFinite(record.observedAtEpochMs) &&
+          Array.isArray(record.diagnostics)
+          ? [record]
+          : [];
+      } catch {
+        return [];
+      }
+    });
+}
+
+function diagnosticsMatch(actual, expected) {
+  if (actual.length !== expected.length) return false;
+  return expected.every((candidate) =>
+    actual.some(
+      (diagnostic) =>
+        diagnostic.code === candidate.code &&
+        uriEndsWithPath(diagnostic.uri, candidate.relativePath),
+    ),
+  );
+}
+
+function uriEndsWithPath(uri, relativePath) {
+  try {
+    const pathname = decodeURIComponent(new URL(uri).pathname).replaceAll('\\', '/');
+    return pathname.endsWith(`/${relativePath}`);
+  } catch {
+    return false;
+  }
+}
+
+function qr002ProbeContent(suffix, { brokenLink }) {
+  return [
+    '---',
+    'type: performance-probe',
+    `title: QR-002 probe ${suffix}`,
+    ...(brokenLink ? ['description: Current diagnostics and graph publication probe.'] : []),
+    'tags: [performance, qr002]',
+    '---',
+    `# QR-002 probe ${suffix}`,
+    '',
+    '[Existing concept](./concept-0000.md)',
+    ...(brokenLink ? ['', '[Expected broken target](./missing-qr002-target.md)'] : []),
+    '',
+  ].join('\n');
+}
+
+async function buildHeadedHarness() {
+  const result = await build({
+    absWorkingDir: repositoryRoot,
+    bundle: true,
+    format: 'iife',
+    platform: 'browser',
+    target: 'es2022',
+    write: false,
+    stdin: {
+      contents: headedHarnessSource(),
+      loader: 'ts',
+      resolveDir: repositoryRoot,
+      sourcefile: 'okf-headed-performance-harness.ts',
+    },
+  });
+  const javascript =
+    result.outputFiles.find((file) => file.path.endsWith('.js')) ?? result.outputFiles[0];
+  if (javascript === undefined)
+    throw new Error('The headed benchmark harness did not emit JavaScript.');
+  return javascript.text;
+}
+
+async function injectNonceAuthorizedHarness(frame, bundle, webviewNonce) {
+  await frame.evaluate(
+    ({ source, nonce }) => {
+      if (nonce === undefined || nonce.length === 0) {
+        throw new Error('The graph Webview nonce was not available to the benchmark runner.');
+      }
+      const script = document.createElement('script');
+      script.nonce = nonce;
+      script.textContent = source;
+      document.documentElement.append(script);
+      script.remove();
+    },
+    { source: bundle, nonce: webviewNonce },
+  );
+  await frame.waitForFunction(() => globalThis.__okfHeadedHarness !== undefined, undefined, {
+    timeout: 30_000,
+  });
+}
+
+async function monitorProcessTree(rootPid, evaluation) {
+  let pending = true;
+  evaluation.then(
+    () => {
+      pending = false;
+    },
+    () => {
+      pending = false;
+    },
+  );
+  const samples = [];
+  while (pending) {
+    samples.push(await sampleProcessTree(rootPid));
+    await delay(500);
+  }
+  const value = await evaluation;
+  await delay(750);
+  const idleSamples = [];
+  for (let index = 0; index < 3; index += 1) {
+    idleSamples.push(await sampleProcessTree(rootPid));
+    await delay(500);
+  }
+  return {
+    value,
+    peakRssMb: round(Math.max(...samples.map((sample) => sample.rssMb)), 2),
+    idleCpuPercent: round(
+      idleSamples.reduce((sum, sample) => sum + sample.cpuPercent, 0) / idleSamples.length,
+      2,
+    ),
+    sampleCount: samples.length,
+  };
+}
+
+async function sampleProcessTree(rootPid) {
+  const { stdout } = await execFileAsync('/bin/ps', ['-axo', 'pid=,ppid=,%cpu=,rss=']);
+  const processes = stdout
+    .split(/\r?\n/u)
+    .map((line) => line.trim().split(/\s+/u))
+    .filter((fields) => fields.length === 4)
+    .map(([pid, parentPid, cpu, rss]) => ({
+      pid: Number(pid),
+      parentPid: Number(parentPid),
+      cpuPercent: Number(cpu),
+      rssKb: Number(rss),
+    }))
+    .filter((entry) =>
+      [entry.pid, entry.parentPid, entry.cpuPercent, entry.rssKb].every(Number.isFinite),
+    );
+  const included = new Set([rootPid]);
+  let added = true;
+  while (added) {
+    added = false;
+    for (const entry of processes) {
+      if (included.has(entry.parentPid) && !included.has(entry.pid)) {
+        included.add(entry.pid);
+        added = true;
+      }
+    }
+  }
+  const tree = processes.filter((entry) => included.has(entry.pid));
+  return {
+    cpuPercent: tree.reduce((sum, entry) => sum + entry.cpuPercent, 0),
+    rssMb: tree.reduce((sum, entry) => sum + entry.rssKb, 0) / 1024,
+  };
+}
+
+function launchVscode(executablePath, port, diagnosticsTrace) {
+  const arguments_ = [
+    workspaceRoot,
+    `--extensionDevelopmentPath=${repositoryRoot}`,
+    `--extensionDevelopmentPath=${diagnosticsObserverDirectory}`,
+    `--user-data-dir=${userDataDirectory}`,
+    `--extensions-dir=${extensionsDirectory}`,
+    `--remote-debugging-port=${String(port)}`,
+    '--disable-workspace-trust',
+    '--disable-telemetry',
+    '--disable-updates',
+    '--skip-release-notes',
+    '--skip-welcome',
+    '--new-window',
+    ...BENCHMARK_EDITOR_FLAGS,
+  ];
+  const child = spawn(executablePath, arguments_, {
+    cwd: repositoryRoot,
+    env: {
+      ...process.env,
+      OKF_QR002_DIAGNOSTICS_TRACE: diagnosticsTrace,
+      VSCODE_DISABLE_CRASH_REPORTER: '1',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const logs = [];
+  child.stdout?.on('data', (chunk) => logs.push(String(chunk)));
+  child.stderr?.on('data', (chunk) => logs.push(String(chunk)));
+  return { process: child, logs };
+}
+
+async function connectToEditor(port, child, logs) {
+  const deadline = Date.now() + CDP_TIMEOUT_MS;
+  let lastError;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) {
+      throw new Error(`VS Code exited before CDP was ready.\n${logs.join('').slice(-8_000)}`);
+    }
+    try {
+      return await chromium.connectOverCDP(`http://127.0.0.1:${String(port)}`);
+    } catch (error) {
+      lastError = error;
+      await delay(250);
+    }
+  }
+  throw new Error(
+    `Timed out connecting to VS Code CDP: ${String(lastError)}\n${logs.join('').slice(-8_000)}`,
+  );
+}
+
+async function findWorkbenchPage(connectedBrowser) {
+  const deadline = Date.now() + CDP_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const pages = connectedBrowser.contexts().flatMap((context) => context.pages());
+    for (const page of pages) {
+      if ((await page.locator('.monaco-workbench').count()) > 0) return page;
+    }
+    await delay(250);
+  }
+  throw new Error(
+    `VS Code workbench page was not found. Targets: ${describeTargets(connectedBrowser)}`,
+  );
+}
+
+async function openGraphFromCommandPalette(page) {
+  const shortcut = process.platform === 'darwin' ? 'Meta+Shift+P' : 'Control+Shift+P';
+  await page.keyboard.press(shortcut);
+  const input = page.locator('.quick-input-widget input');
+  await input.waitFor({ state: 'visible', timeout: 30_000 });
+  await input.fill('>OKF: Open 3D Graph');
+  const candidate = page.locator('.quick-input-list .monaco-list-row').filter({
+    hasText: 'Open 3D Graph',
+  });
+  await candidate.first().waitFor({ state: 'visible', timeout: 30_000 });
+  await page.keyboard.press('Enter');
+}
+
+async function findGraphFrame(connectedBrowser) {
+  const deadline = Date.now() + GRAPH_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    for (const page of connectedBrowser.contexts().flatMap((context) => context.pages())) {
+      for (const frame of page.frames()) {
+        if ((await frame.locator('[data-okf-workbench-root]').count()) > 0) return frame;
+      }
+    }
+    await delay(250);
+  }
+  throw new Error(
+    `OKF graph Webview frame was not found. Targets: ${describeTargets(connectedBrowser)}`,
+  );
+}
+
+function describeTargets(connectedBrowser) {
+  return connectedBrowser
+    .contexts()
+    .flatMap((context) => context.pages())
+    .flatMap((page) => page.frames().map((frame) => frame.url()))
+    .join(', ');
+}
+
+async function readEditorMetadata(executablePath) {
+  const [cli, ...prefix] = resolveCliArgsFromVSCodeExecutablePath(executablePath);
+  const { stdout } = await execFileAsync(cli, [...prefix, '--version']);
+  const [versionLine, commitLine] = stdout.trim().split(/\r?\n/u);
+  return { version: versionLine ?? version, commit: commitLine ?? 'unknown' };
+}
+
+async function reservePort() {
+  const server = createServer();
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  const port = typeof address === 'object' && address !== null ? address.port : undefined;
+  await new Promise((resolve, reject) =>
+    server.close((error) => (error ? reject(error) : resolve())),
+  );
+  if (port === undefined) throw new Error('Could not reserve a CDP port.');
+  return port;
+}
+
+async function hardwareModel() {
+  if (process.platform !== 'darwin') return `${os.machine()} ${os.arch()}`;
+  return execFileAsync('/usr/sbin/sysctl', ['-n', 'hw.model'])
+    .then(({ stdout }) => stdout.trim())
+    .catch(() => `${os.machine()} ${os.arch()}`);
+}
+
+async function hashFiles(files) {
+  const hash = createHash('sha256');
+  for (const file of files) hash.update(await readFile(file));
+  return hash.digest('hex');
+}
+
+async function sha256File(file) {
+  return createHash('sha256')
+    .update(await readFile(file))
+    .digest('hex');
+}
+
+async function captureWebviewEnvironment(frame) {
+  return frame.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    const debug = context?.getExtension('WEBGL_debug_renderer_info');
+    const userAgent = navigator.userAgent;
+    return {
+      vendor:
+        context && debug
+          ? String(context.getParameter(debug.UNMASKED_VENDOR_WEBGL))
+          : 'unavailable',
+      renderer:
+        context && debug
+          ? String(context.getParameter(debug.UNMASKED_RENDERER_WEBGL))
+          : 'unavailable',
+      chromiumVersion: /Chrome\/([^ ]+)/u.exec(userAgent)?.[1] ?? 'unavailable',
+      electronVersion: /Electron\/([^ ]+)/u.exec(userAgent)?.[1] ?? 'unavailable',
+    };
+  });
+}
+
+async function loadReusableQr003(file) {
+  const bytes = await readFile(file);
+  let evidence;
+  try {
+    evidence = JSON.parse(bytes.toString('utf8'));
+  } catch (error) {
+    throw new Error(`Could not parse reusable QR-003 evidence ${file}: ${String(error)}`);
+  }
+  return {
+    evidence,
+    sourceMeasurementSha256: createHash('sha256').update(bytes).digest('hex'),
+  };
+}
+
+function reuseQr003(input, currentEnvironment) {
+  const source = input.evidence;
+  if (
+    typeof source !== 'object' ||
+    source === null ||
+    Array.isArray(source) ||
+    source.measurementKind !== 'headed-editor' ||
+    (source.schemaVersion !== 1 && source.schemaVersion !== 2)
+  ) {
+    throw new Error(
+      'Reusable QR-003 input must be headed-editor evidence with schema version 1 or 2.',
+    );
+  }
+  const sourceEnvironment = source.environment;
+  const sourceQr003 = source.qr003;
+  if (
+    typeof sourceEnvironment !== 'object' ||
+    sourceEnvironment === null ||
+    Array.isArray(sourceEnvironment) ||
+    typeof sourceQr003 !== 'object' ||
+    sourceQr003 === null ||
+    Array.isArray(sourceQr003)
+  ) {
+    throw new Error('Reusable QR-003 input is missing environment or QR-003 measurements.');
+  }
+
+  const exactFields = [
+    'hardware',
+    'os',
+    'cpu',
+    'memoryGb',
+    'gpu',
+    'editorName',
+    'editorVersion',
+    'editorCommit',
+    'electronVersion',
+    'chromiumVersion',
+    'fixtureSeed',
+    'extensionBundleSha256',
+  ];
+  if (source.schemaVersion === 2) exactFields.push('webviewBundleSha256');
+  const mismatches = exactFields.filter(
+    (field) => sourceEnvironment[field] !== currentEnvironment[field],
+  );
+  if (
+    typeof sourceEnvironment.packageVersions !== 'object' ||
+    sourceEnvironment.packageVersions === null ||
+    sourceEnvironment.packageVersions['okf-workbench'] !==
+      currentEnvironment.packageVersions['okf-workbench'] ||
+    sourceEnvironment.packageVersions['3d-force-graph'] !==
+      currentEnvironment.packageVersions['3d-force-graph']
+  ) {
+    mismatches.push('packageVersions');
+  }
+  if (mismatches.length > 0) {
+    throw new Error(
+      `Reusable QR-003 input does not match the current headed environment and production bundle: ${mismatches.join(', ')}.`,
+    );
+  }
+
+  const capturedAt = sourceQr003.capturedAt ?? source.capturedAt;
+  if (typeof capturedAt !== 'string' || !Number.isFinite(Date.parse(capturedAt))) {
+    throw new Error('Reusable QR-003 input is missing its original capture time.');
+  }
+  return {
+    ...sourceQr003,
+    capturedAt,
+    provenance: {
+      kind: 'reused',
+      sourceMeasurementSha256: input.sourceMeasurementSha256,
+    },
+  };
+}
+
+function onceExit(child) {
+  return new Promise((resolve) => child.once('exit', resolve));
+}
+
+function round(value, places) {
+  const factor = 10 ** places;
+  return Math.round(value * factor) / factor;
+}
+
+function headedHarnessSource() {
+  return `
+  import { WorkbenchApp } from './src/webview/app.ts';
+  import { ForceGraphRenderer } from './src/webview/graph/force-graph-adapter.ts';
+  import { generatePerformanceGraph, PERFORMANCE_FIXTURES } from './test/benchmarks/graph-fixtures.ts';
+
+  const SAMPLE_COUNT = 20;
+  const graph = generatePerformanceGraph(PERFORMANCE_FIXTURES.representative);
+  const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+  const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+  const timed = (samples, operation) => {
+    const started = performance.now();
+    operation();
+    samples.push(performance.now() - started);
+  };
+
+  globalThis.__okfHeadedHarness = {
+    environment() {
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('webgl2') || canvas.getContext('webgl');
+      const debug = context?.getExtension('WEBGL_debug_renderer_info');
+      const userAgent = navigator.userAgent;
+      return {
+        vendor: context && debug ? String(context.getParameter(debug.UNMASKED_VENDOR_WEBGL)) : 'unavailable',
+        renderer: context && debug ? String(context.getParameter(debug.UNMASKED_RENDERER_WEBGL)) : 'unavailable',
+        chromiumVersion: /Chrome\\/([^ ]+)/u.exec(userAgent)?.[1] ?? 'unavailable',
+        electronVersion: /Electron\\/([^ ]+)/u.exec(userAgent)?.[1] ?? 'unavailable'
+      };
+    },
+
+    async measureEngine(engine) {
+      document.body.replaceChildren();
+      const root = document.createElement('main');
+      document.body.append(root);
+      let renderFrames = 0;
+      const restoreClearMethods = [];
+      for (const prototype of [
+        globalThis.WebGLRenderingContext?.prototype,
+        globalThis.WebGL2RenderingContext?.prototype
+      ]) {
+        if (!prototype || typeof prototype.clear !== 'function') continue;
+        const originalClear = prototype.clear;
+        prototype.clear = function(...arguments_) {
+          renderFrames += 1;
+          return Reflect.apply(originalClear, this, arguments_);
+        };
+        restoreClearMethods.push(() => { prototype.clear = originalClear; });
+      }
+
+      let stopEngine;
+      const engineStopped = new Promise((resolve) => { stopEngine = resolve; });
+      let renderer;
+      const app = new WorkbenchApp(
+        root,
+        { postMessage() {} },
+        (container, callbacks) => {
+          renderer = new ForceGraphRenderer(container, callbacks, {
+            forceEngine: engine,
+            onEngineStop: () => stopEngine()
+          });
+          return renderer;
+        }
+      );
+      const firstFrameStarted = performance.now();
+      window.dispatchEvent(new MessageEvent('message', {
+        data: { protocolVersion: 1, type: 'replaceGraph', revision: graph.revision, payload: graph }
+      }));
+      await frame();
+      await frame();
+      const firstInteractiveFrameMs = performance.now() - firstFrameStarted;
+
+      const searchMs = [];
+      const filterMs = [];
+      const selectionMs = [];
+      const navigationMs = [];
+      const search = root.querySelector('#okf-concept-search');
+      if (!search) throw new Error('Headed harness search control is missing.');
+      for (let index = 0; index < SAMPLE_COUNT; index += 1) {
+        timed(searchMs, () => {
+          search.value = index % 2 === 0 ? 'Concept 009' : '';
+          search.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        timed(filterMs, () => {
+          const checkbox = root.querySelector('.okf-filter-list input[type="checkbox"]');
+          if (!checkbox) throw new Error('Headed harness type filter is missing.');
+          checkbox.click();
+        });
+        timed(selectionMs, () => {
+          const button = root.querySelector('button[data-node-id]');
+          if (!button) throw new Error('Headed harness result is missing.');
+          button.click();
+        });
+        timed(navigationMs, () => {
+          const button = root.querySelector('button[data-node-id]');
+          if (!button) throw new Error('Headed harness result is missing.');
+          button.focus();
+          button.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+        });
+      }
+
+      const cooldownStarted = performance.now();
+      const cooldownReached = await Promise.race([
+        engineStopped.then(() => true),
+        wait(120_000).then(() => false)
+      ]);
+      const cooldownMs = performance.now() - cooldownStarted;
+      await wait(100);
+      await frame();
+      await frame();
+      const idleBaseline = renderFrames;
+      await wait(250);
+      const idleAnimationFramesAfterCooldown = renderFrames - idleBaseline;
+
+      const cameraBaseline = renderFrames;
+      const cameraStarted = performance.now();
+      renderer.focusNode(graph.nodes[0].id);
+      await wait(700);
+      const cameraDurationSeconds = (performance.now() - cameraStarted) / 1_000;
+      const cameraFps = (renderFrames - cameraBaseline) / cameraDurationSeconds;
+      const memory = performance.memory?.usedJSHeapSize;
+
+      app.dispose();
+      root.remove();
+      for (const restore of restoreClearMethods.reverse()) restore();
+      return {
+        firstInteractiveFrameMs: [firstInteractiveFrameMs],
+        cooldownReached,
+        cooldownMs: [cooldownMs],
+        idleAnimationFramesAfterCooldown: [idleAnimationFramesAfterCooldown],
+        interactions: { searchMs, filterMs, selectionMs, navigationMs },
+        rendererJsHeapMb: typeof memory === 'number' ? memory / 1024 ** 2 : null,
+        cameraFps
+      };
+    }
+  };
+`;
+}

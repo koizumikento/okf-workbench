@@ -1,0 +1,54 @@
+{
+  "fixtureVersion": 1,
+  "name": "invalid-documents",
+  "description": "Independent invalid inputs coexist with one valid concept.",
+  "files": ["index.md", "invalid-yaml.md", "missing-type.md", "valid.md"],
+  "virtualFiles": [
+    {
+      "path": "invalid-utf8.md",
+      "bytes": [45, 45, 45, 10, 116, 121, 112, 101, 58, 32, 255, 10, 45, 45, 45, 10]
+    }
+  ],
+  "expected": {
+    "conceptIds": ["invalid-utf8", "invalid-yaml", "missing-type", "valid"],
+    "reservedFiles": ["index.md"],
+    "parseFailures": [
+      {
+        "path": "invalid-utf8.md",
+        "reason": "decode"
+      },
+      {
+        "path": "invalid-yaml.md",
+        "reason": "frontmatter"
+      }
+    ],
+    "findings": [
+      {
+        "category": "conformance",
+        "code": "okf.conformance.utf8-decode",
+        "path": "invalid-utf8.md"
+      },
+      {
+        "category": "conformance",
+        "code": "okf.conformance.frontmatter",
+        "path": "invalid-yaml.md"
+      },
+      {
+        "category": "conformance",
+        "code": "okf.conformance.concept-type",
+        "path": "missing-type.md"
+      },
+      {
+        "category": "curation",
+        "code": "okf.curation.orphan-concept",
+        "path": "missing-type.md"
+      },
+      {
+        "category": "curation",
+        "code": "okf.curation.orphan-concept",
+        "path": "valid.md"
+      }
+    ],
+    "links": []
+  }
+}

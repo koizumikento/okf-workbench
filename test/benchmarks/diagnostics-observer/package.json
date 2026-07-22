@@ -1,0 +1,14 @@
+{
+  "name": "okf-workbench-diagnostics-observer",
+  "displayName": "OKF Workbench Diagnostics Observer",
+  "version": "0.0.0",
+  "private": true,
+  "publisher": "straydog-test",
+  "engines": {
+    "vscode": "^1.121.0"
+  },
+  "main": "./extension.cjs",
+  "activationEvents": [
+    "*"
+  ]
+}

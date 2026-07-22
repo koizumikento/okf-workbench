@@ -1,0 +1,21 @@
+import type { GraphPayload } from '../../core/model/types.js';
+
+export interface GraphRendererCallbacks {
+  readonly onSelect: (nodeId: string | undefined) => void;
+}
+
+/** Repository-owned boundary. No renderer-library types may escape this interface. */
+export interface GraphRenderer {
+  replaceGraph(payload: GraphPayload, visibleNodeIds: ReadonlySet<string>): void;
+  selectNode(nodeId: string | undefined): void;
+  focusNode(nodeId: string): void;
+  resize(): void;
+  pause(): void;
+  setVisible(visible: boolean): void;
+  dispose(): void;
+}
+
+export type GraphRendererFactory = (
+  container: HTMLElement,
+  callbacks: GraphRendererCallbacks,
+) => GraphRenderer;

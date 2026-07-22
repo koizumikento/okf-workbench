@@ -1,0 +1,33 @@
+{
+  "fixtureVersion": 1,
+  "name": "custom-metadata",
+  "description": "An arbitrary concept type carries nested unknown frontmatter that must survive writes.",
+  "files": ["index.md", "experiment.md"],
+  "virtualFiles": [],
+  "expected": {
+    "conceptIds": ["experiment"],
+    "reservedFiles": ["index.md"],
+    "parseFailures": [],
+    "findings": [
+      {
+        "category": "curation",
+        "code": "okf.curation.orphan-concept",
+        "path": "experiment.md"
+      }
+    ],
+    "links": [],
+    "frontmatterByConceptId": {
+      "experiment": {
+        "type": "experiment-result",
+        "title": "Portable experiment",
+        "description": "Custom fields are valid OKF metadata.",
+        "custom_scalar": "alpha",
+        "custom_nested": {
+          "enabled": true,
+          "thresholds": [1, 2, 3]
+        },
+        "custom_list": ["first", "second"]
+      }
+    }
+  }
+}

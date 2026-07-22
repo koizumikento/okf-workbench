@@ -1,0 +1,172 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: 24.18.0
+  NPM_VERSION: 11.16.0
+
+jobs:
+  quality-and-package:
+    name: Quality and VSIX package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Pin npm
+        run: npm install --global npm@${NPM_VERSION}
+
+      - name: Record tool and runner versions
+        run: |
+          node --version
+          npm --version
+          echo "runner_os=${RUNNER_OS}"
+          echo "runner_arch=${RUNNER_ARCH}"
+          echo "image_os=${ImageOS}"
+          echo "image_version=${ImageVersion}"
+
+      - name: Install from lockfile
+        run: npm ci
+
+      - name: Verify production dependency licenses and notice freshness
+        run: node scripts/security-check.mjs --check-notices
+
+      - name: Check formatting
+        run: npm run format
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Run unit and fixture tests
+        run: npm test
+
+      - name: Run acceptance component gate
+        run: npm run test:acceptance
+
+      - name: Run security boundary gate
+        run: npm run test:security
+
+      - name: Review runtime dependencies and licenses
+        run: npm run dependency:check
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Build production bundles
+        run: npm run build
+
+      - name: Package VSIX
+        run: npm run package
+
+      - name: Verify reproducible VSIX bytes
+        run: node scripts/check-vsix-reproducibility.mjs artifacts/okf-workbench.vsix
+
+      - name: Inspect VSIX contents
+        run: npm run package:check
+
+      - name: Retain package evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: okf-workbench-vsix-${{ runner.os }}-${{ runner.arch }}
+          path: |
+            artifacts/build-metadata.json
+            artifacts/okf-workbench.vsix
+            artifacts/runtime-licenses.json
+          if-no-files-found: error
+          retention-days: 14
+
+  webview-browser:
+    name: Webview browser and hostile-content gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Pin npm
+        run: npm install --global npm@${NPM_VERSION}
+
+      - name: Install from lockfile
+        run: npm ci
+
+      - name: Install pinned Playwright Chromium
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Run Webview behavior gate
+        run: npm run test:webview
+
+      - name: Run hostile-content and no-egress gate
+        run: npm run test:security:webview
+
+  extension-integration:
+    name: Extension integration (${{ matrix.label }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: minimum-1.121.0
+            vscode-version: 1.121.0
+          - label: current-1.127.0
+            vscode-version: 1.127.0
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Pin npm
+        run: npm install --global npm@${NPM_VERSION}
+
+      - name: Record editor and runner versions
+        run: |
+          echo "vscode_version=${VSCODE_TEST_VERSION}"
+          echo "runner_os=${RUNNER_OS}"
+          echo "runner_arch=${RUNNER_ARCH}"
+          echo "image_os=${ImageOS}"
+          echo "image_version=${ImageVersion}"
+        env:
+          VSCODE_TEST_VERSION: ${{ matrix.vscode-version }}
+
+      - name: Install and build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Run extension integration tests
+        run: xvfb-run --auto-servernum npm run test:integration
+        env:
+          VSCODE_TEST_VERSION: ${{ matrix.vscode-version }}

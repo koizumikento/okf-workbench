@@ -1,0 +1,70 @@
+name: Package smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: 24.18.0
+  NPM_VERSION: 11.16.0
+
+jobs:
+  package-smoke:
+    name: Package smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-15
+          - ubuntu-24.04
+          - windows-2025
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Pin npm
+        shell: bash
+        run: npm install --global npm@${NPM_VERSION}
+
+      - name: Record runner versions
+        shell: bash
+        run: |
+          node --version
+          npm --version
+          echo "runner_os=${RUNNER_OS}"
+          echo "runner_arch=${RUNNER_ARCH}"
+          echo "image_os=${ImageOS}"
+          echo "image_version=${ImageVersion}"
+
+      - name: Build, test, and inspect package
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run test:acceptance
+          npm run test:security
+          npm run dependency:check
+          npm run package
+          node scripts/check-vsix-reproducibility.mjs artifacts/okf-workbench.vsix
+          npm run package:check
+
+      - name: Retain package evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: okf-workbench-package-smoke-${{ runner.os }}-${{ runner.arch }}
+          path: |
+            artifacts/build-metadata.json
+            artifacts/okf-workbench.vsix
+            artifacts/runtime-licenses.json
+          if-no-files-found: error
+          retention-days: 14

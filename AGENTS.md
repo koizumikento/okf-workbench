@@ -16,13 +16,13 @@ initialize -> create -> edit -> validate -> explore -> repair
 
 ## Current state
 
-The repository is in product-definition and architecture-planning stage. Do not imply that commands, packages, benchmarks, or compatibility targets have already been implemented or achieved.
+The deterministic core, six MVP command workflows, diagnostics, URI-first workspace runtime, 3D Webview, agent-template generation, and release-candidate harnesses are implemented. Retained schema-v2 headed evidence for the current production bundles passes QR-002 at 703 ms p95 over 20 correlated create/change/rename/delete samples and passes QR-003 with `d3` as the release engine. That result is evidence for the recorded Mac16,7 / Apple M4 Pro / VS Code 1.127.0 environment, not a cross-machine guarantee. Packaged macOS lifecycle evidence passed for an earlier candidate on the two pinned VS Code versions and VSCodium; all three lanes still require an exact final-candidate rerun. Public distribution remains on hold until the project license, final-candidate and hosted compatibility evidence, public marketplace resources, security proof gaps, and explicit protected publication approval are complete. Do not turn a configured matrix, component test, single-machine benchmark, or prepared listing into a broader compatibility, performance, or publication claim.
 
 ## Sources of truth
 
 Use this order when requirements conflict:
 
-1. The canonical [OKF v0.1 specification](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) for format behavior.
+1. The pinned canonical [OKF v0.1 specification](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/ee67a5ca27044ebe7c38385f5b6cffc2305a9c1a/okf/SPEC.md) for format behavior.
 2. Accepted records under `docs/decisions/` for repository decisions.
 3. `docs/okf-v0.1-contract.md` for the Workbench compatibility interpretation.
 4. `docs/functional-requirements.md` for testable MVP behavior.
@@ -43,7 +43,7 @@ When the upstream OKF specification changes, document the observed version or co
 - Never silently overwrite an existing user file.
 - Preview generated or merged content when an operation may change an existing file.
 
-## Planned module boundaries
+## Module boundaries
 
 Keep the deterministic OKF core independent of VS Code APIs:
 
@@ -63,6 +63,8 @@ Do not put canonical parsing or validation logic inside Webview components.
 - Do not assume a workspace URI uses the `file:` scheme.
 - Normalize concept IDs with POSIX `/` separators regardless of host platform.
 - Reject generated paths that escape the selected bundle root.
+- Before any proposal write, reject the complete change set if the write root or an existing parent
+  segment is a symbolic link or is not a directory.
 - Resolve both bundle-relative and document-relative Markdown links.
 - Add fixtures for Windows separators, spaces, Unicode, and nested directories when path behavior changes.
 

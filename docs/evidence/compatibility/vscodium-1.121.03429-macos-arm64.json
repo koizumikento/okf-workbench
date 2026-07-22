@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "kind": "packaged-extension-lifecycle",
+  "status": "passed",
+  "recordedAt": "2026-07-22T05:05:22.321Z",
+  "repositoryRevision": null,
+  "requestedEditor": "vscodium",
+  "requestedEditorVersion": "1.121.03429",
+  "extensionId": "straydog.okf-workbench",
+  "runner": {
+    "platform": "darwin",
+    "architecture": "arm64",
+    "node": "v24.18.0",
+    "runnerOs": null,
+    "runnerArchitecture": null,
+    "imageOs": null,
+    "imageVersion": null
+  },
+  "offlineBoundary": {
+    "extensionHost": "http, https, http2, net, tls, dns, dgram, fetch, and WebSocket are denied during activation and read-only commands",
+    "processEnvironment": "HTTP(S)/ALL proxy points at a closed loopback port; NO_PROXY is empty",
+    "webview": "packaged CSP is separately required to contain connect-src 'none'"
+  },
+  "editor": {
+    "acquisition": "verified-vscodium-release",
+    "expectedReportedVersion": "1.121.03429",
+    "reported": {
+      "reportedVersion": "1.121.03429",
+      "commit": "824c4c46a288b839f13b24022655329c2aeb9f81",
+      "architecture": "arm64"
+    }
+  },
+  "candidate": {
+    "id": "straydog.okf-workbench",
+    "version": "0.1.0",
+    "sha256": "8a0c870def44844ea8c6f128cd975b2178a71f6d1c82917054360d0ad24450d3",
+    "file": "okf-workbench.vsix"
+  },
+  "predecessor": {
+    "supplied": true,
+    "sha256": "7ca5f437fb846f636b51b933b53a55f57b229018bf17958781a661c8be6e6567",
+    "file": "okf-workbench-0.0.0.vsix"
+  },
+  "cleanInstall": {
+    "status": "passed",
+    "cleanProfile": true,
+    "installedVersion": "0.1.0",
+    "activationReport": "activation-clean.json",
+    "activation": {
+      "schemaVersion": 1,
+      "kind": "packaged-extension-activation",
+      "status": "passed",
+      "recordedAt": "2026-07-22T05:05:26.284Z",
+      "extensionId": "straydog.okf-workbench",
+      "editor": {
+        "version": "1.121.0",
+        "appName": "VSCodium",
+        "appHost": "desktop",
+        "remoteName": null,
+        "uiKind": 1
+      },
+      "runtime": {
+        "platform": "darwin",
+        "architecture": "arm64",
+        "node": "22.22.1",
+        "electron": "39.8.8",
+        "chrome": "142.0.7444.265",
+        "v8": "14.2.231.22-electron.0"
+      },
+      "networkAttempts": [],
+      "commands": [
+        "okfWorkbench.initializeBundle",
+        "okfWorkbench.newConcept",
+        "okfWorkbench.validateBundle",
+        "okfWorkbench.regenerateIndexes",
+        "okfWorkbench.openGraph",
+        "okfWorkbench.setupAgentIntegration"
+      ],
+      "readOnlyCommands": [
+        "okfWorkbench.validateBundle",
+        "okfWorkbench.openGraph"
+      ],
+      "extensionVersion": "0.1.0"
+    },
+    "sameVersionReinstall": "passed-not-counted-as-upgrade",
+    "uninstall": "passed",
+    "workspacePreserved": true,
+    "workspaceFileCount": 5
+  },
+  "upgrade": {
+    "status": "passed",
+    "predecessorVersion": "0.0.0",
+    "candidateVersion": "0.1.0",
+    "activationReport": "activation-upgrade.json",
+    "activation": {
+      "schemaVersion": 1,
+      "kind": "packaged-extension-activation",
+      "status": "passed",
+      "recordedAt": "2026-07-22T05:05:30.591Z",
+      "extensionId": "straydog.okf-workbench",
+      "editor": {
+        "version": "1.121.0",
+        "appName": "VSCodium",
+        "appHost": "desktop",
+        "remoteName": null,
+        "uiKind": 1
+      },
+      "runtime": {
+        "platform": "darwin",
+        "architecture": "arm64",
+        "node": "22.22.1",
+        "electron": "39.8.8",
+        "chrome": "142.0.7444.265",
+        "v8": "14.2.231.22-electron.0"
+      },
+      "networkAttempts": [],
+      "commands": [
+        "okfWorkbench.initializeBundle",
+        "okfWorkbench.newConcept",
+        "okfWorkbench.validateBundle",
+        "okfWorkbench.regenerateIndexes",
+        "okfWorkbench.openGraph",
+        "okfWorkbench.setupAgentIntegration"
+      ],
+      "readOnlyCommands": [
+        "okfWorkbench.validateBundle",
+        "okfWorkbench.openGraph"
+      ],
+      "extensionVersion": "0.1.0"
+    },
+    "uninstall": "passed",
+    "workspacePreserved": true
+  }
+}

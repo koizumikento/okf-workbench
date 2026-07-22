@@ -1,0 +1,27 @@
+{
+  "fixtureVersion": 1,
+  "name": "nested-links",
+  "description": "Nested concepts link by document-relative and bundle-relative targets.",
+  "files": ["index.md", "target.md", "area/index.md", "area/source.md"],
+  "virtualFiles": [],
+  "expected": {
+    "conceptIds": ["area/source", "target"],
+    "reservedFiles": ["area/index.md", "index.md"],
+    "parseFailures": [],
+    "findings": [],
+    "links": [
+      {
+        "sourceId": "area/source",
+        "rawTarget": "../target.md",
+        "targetId": "target",
+        "kind": "internal"
+      },
+      {
+        "sourceId": "area/source",
+        "rawTarget": "/target.md",
+        "targetId": "target",
+        "kind": "internal"
+      }
+    ]
+  }
+}

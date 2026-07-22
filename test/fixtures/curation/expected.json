@@ -1,0 +1,53 @@
+{
+  "fixtureVersion": 1,
+  "name": "curation",
+  "description": "Conformant concepts exhibit duplicate resources, missing recommendations, and orphans.",
+  "files": ["index.md", "alpha.md", "beta.md", "orphan.md"],
+  "virtualFiles": [],
+  "expected": {
+    "conceptIds": ["alpha", "beta", "orphan"],
+    "reservedFiles": ["index.md"],
+    "parseFailures": [],
+    "findings": [
+      {
+        "category": "curation",
+        "code": "okf.curation.duplicate-resource",
+        "path": "alpha.md"
+      },
+      {
+        "category": "curation",
+        "code": "okf.curation.duplicate-resource",
+        "path": "beta.md"
+      },
+      {
+        "category": "curation",
+        "code": "okf.curation.orphan-concept",
+        "path": "orphan.md"
+      },
+      {
+        "category": "curation",
+        "code": "okf.curation.missing-description",
+        "path": "orphan.md"
+      },
+      {
+        "category": "curation",
+        "code": "okf.curation.missing-title",
+        "path": "orphan.md"
+      }
+    ],
+    "links": [
+      {
+        "sourceId": "alpha",
+        "rawTarget": "beta.md",
+        "kind": "internal",
+        "targetId": "beta"
+      },
+      {
+        "sourceId": "beta",
+        "rawTarget": "alpha.md",
+        "kind": "internal",
+        "targetId": "alpha"
+      }
+    ]
+  }
+}

@@ -3,8 +3,9 @@
 - Status: **release-candidate copy; do not publish without explicit maintainer approval**
 - Target version: `0.1.0`
 - Unique identifier: `straydog.okf-workbench`
-- Namespace: `straydog` — verified and restricted; owner/member authorization still must be
-  checked for the publishing identity immediately before release
+- Namespace: `straydog` — its existence and intended use are confirmed by the maintainer;
+  publishing-identity membership, authorization, restricted/verified registry state, and
+  Publisher Agreement status still must be checked immediately before release
 - Name availability: `straydog.okf-workbench` was unoccupied when checked on 2026-07-22; recheck
   immediately before publication
 

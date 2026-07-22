@@ -45,11 +45,14 @@ maintainer approval are complete.
   create/change/rename/delete samples and passes QR-003 with `d3` as the release engine on the
   recorded Mac16,7 / Apple M4 Pro / VS Code 1.127.0 environment. This closes the performance gate
   for the exact measured production bundles, not for other machines or candidates.
-- The current unlicensed candidate passed clean install, untrusted-workspace, upgrade, and
-  uninstall lifecycle checks on local macOS arm64 with VS Code 1.121.0, VS Code 1.127.0, and
-  VSCodium 1.121.03429. Successful hosted Ubuntu, macOS, and Windows artifacts remain required for
-  the full compatibility matrix, and any package-content change requires candidate-specific
-  lifecycle reruns.
-- Open VSX publication under `straydog.okf-workbench` requires explicit maintainer approval.
+- The current unlicensed candidate passed the required hosted compatibility matrix: clean install,
+  activation, untrusted-workspace refusal, upgrade with preserved settings and workspace data,
+  uninstall, and guarded no-egress checks across the required VS Code and VSCodium lanes on
+  Ubuntu, macOS, and Windows. Exact candidate receipts are retained in the repository evidence;
+  any package-content change requires candidate-specific lifecycle reruns.
+- The Open VSX namespace name is confirmed as `straydog`, making the intended identifier
+  `straydog.okf-workbench`. Publication still requires namespace authorization and Publisher
+  Agreement verification, the remaining release gates, and explicit exact-digest maintainer
+  approval.
 
 [0.1.0]: https://github.com/koizumikento/okf-workbench/releases/tag/v0.1.0

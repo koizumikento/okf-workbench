@@ -4,9 +4,10 @@ Create, validate, index, and explore Open Knowledge Format bundles locally in VS
 editors.
 
 > Release status: the MVP implementation is a local release candidate. It has not been published
-> to Open VSX. Project-license approval, exact final-candidate compatibility reruns, the remaining
-> hosted compatibility lanes, public support resources, and protected publication approval remain
-> release gates.
+> to Open VSX. The recorded candidate passed the required hosted compatibility matrix. Project-
+> license approval, public support resources, protected publication controls, registry
+> authorization and Publisher Agreement verification, and explicit exact-digest maintainer
+> approval remain release gates.
 
 OKF Workbench is a local-first editor extension for the
 [Open Knowledge Format (OKF) v0.1 specification](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/ee67a5ca27044ebe7c38385f5b6cffc2305a9c1a/okf/SPEC.md).
@@ -62,12 +63,15 @@ Then run **Extensions: Install from VSIX...** and select
 Command Palette. Authoring commands require a trusted workspace; read-only inspection remains
 available within the extension's declared workspace-trust boundary.
 
-The manifest targets VS Code-compatible desktop editors with API floor `^1.121.0`. A configured
-matrix is not itself a compatibility claim: retain successful per-lane evidence before declaring
-a version supported. The three recorded macOS editor lanes passed for an earlier candidate and
-still require exact final-candidate reruns. See the
+The manifest targets VS Code-compatible desktop editors with API floor `^1.121.0`. The release
+qualification matrix covers VS Code 1.121.0 on Ubuntu; VS Code 1.127.0 on Ubuntu, macOS, and
+Windows; and VSCodium 1.121.03429 on Ubuntu, macOS, and Windows. The current candidate passed every
+required hosted lane, including clean install, activation, untrusted-workspace refusal, upgrade,
+uninstall, and guarded no-egress checks. Exact commit, digest, runner, and workflow receipts are
+kept outside the package in the
 [compatibility matrix](docs/compatibility-matrix.md) and
-[acceptance evidence](docs/acceptance-evidence.md).
+[acceptance evidence](docs/acceptance-evidence.md). A package-content change invalidates that
+candidate and requires candidate-specific reruns.
 
 ## Safety model
 
@@ -118,6 +122,10 @@ The project license is an unresolved release gate. Do not publicly distribute th
 candidate until the maintainer has selected a license, added the matching root license file, and
 completed the license review in the [release checklist](docs/release-checklist.md). Third-party
 notices are tracked separately in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+The confirmed Open VSX namespace name is `straydog`, so the intended extension identifier is
+`straydog.okf-workbench`. This confirms naming only; authorization to publish under the namespace
+and Publisher Agreement status have not yet been independently verified.
 
 ## Project links
 

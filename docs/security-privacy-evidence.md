@@ -2,11 +2,11 @@
 
 - Status: **Hold for release**
 - Reviewed: 2026-07-22
-- Scope: STR-214 release preflight for the local VSIX candidate
+- Scope: STR-214 release preflight for the hosted-qualified VSIX candidate
 - Audience: maintainers and release reviewers
 - Decision controls: confirmed candidates `LIC-01`, `HOST-01`; remediated candidate `CI-01`;
-  open proof gaps `PG-01`, `PG-03`, and `PG-04`; `PG-02` closed for the exact local macOS arm64
-  candidate, with hosted cross-platform compatibility retained as a separate release gap
+  open proof gaps `PG-01`, `PG-03`, and `PG-04`; `PG-02` closed for the exact hosted-qualified
+  candidate across all seven required editor/OS lanes
 
 This is a bounded release preflight, not a claim that OKF Workbench is secure, compliant, certified, penetration-tested, or legally cleared. Local repository evidence, command output, browser-harness evidence, hosted settings, and human approval are kept separate.
 
@@ -158,7 +158,7 @@ validated by clean install, integration tests, and the full-tree audit.
 | `LIC-01` | Artifact/license | The extension has no maintainer-approved project license. | `package.json`, missing root license, `vsce` warning, packaged gate failure. | confirmed | Blocks public release. |
 | `CI-01` | CI/CD | Workflow actions are not immutable. | All workflow action references are pinned to reviewed full commit SHAs; static workflow checks reject mutable references. | remediated | Re-review action updates; no current finding. |
 | `CSP-01` | Webview | Workspace content can relax CSP or execute inline code. | HTML is a static shell, the nonce is random base64url, content is not interpolated, and the policy has `default-src 'none'`, nonce-only scripts, and `connect-src 'none'`. Tests pass. | suppressed | No finding. |
-| `NET-01` | Privacy/network | A core workflow sends bundle content to a remote service. | First-party source contains no network API or remote runtime URL; there is no runtime HTTP client; Chromium interception observed zero fetch calls. The real headed VS Code Webview CDP capture observed zero HTTP(S)/WS requests across open, refresh, interactions, engine comparison, and disposal. The exact final VSIX completed all three local editor lanes with zero guarded Extension Host transport attempts. `3d-force-graph` receives in-memory `graphData`, and CSP denies connections. | suppressed | `PG-02` is closed for the exact local candidate; hosted Linux/Windows compatibility and repeat-on-change requirements remain separate. |
+| `NET-01` | Privacy/network | A core workflow sends bundle content to a remote service. | First-party source contains no network API or remote runtime URL; there is no runtime HTTP client; Chromium interception observed zero fetch calls. The real headed VS Code Webview CDP capture observed zero HTTP(S)/WS requests across open, refresh, interactions, engine comparison, and disposal. The exact hosted-qualified VSIX completed all seven required editor/OS lanes with zero guarded Extension Host transport attempts. `3d-force-graph` receives in-memory `graphData`, and CSP denies connections. | suppressed | `PG-02` is closed for the exact hosted-qualified candidate; repeat the observation when packaged runtime content or a required lane changes. |
 | `XSS-01` | Webview/DOM | Metadata or link text reaches an executable HTML sink. | First-party Webview uses `textContent`, DOM creation, and `replaceChildren`; source scan finds no unsafe sink; hostile browser test passes. | suppressed | No finding. |
 | `PROTO-01` | Message boundary | A Webview can supply a privileged URI or malformed graph. | Strict decoders reject unknown keys, stale revisions, bad references, and source URI fields. Host maps current node IDs to private URI objects. | suppressed | No finding. |
 | `NAV-01` | Message boundary | A navigation-provider error becomes an unhandled promise rejection. | Controller catches navigator rejection, reports only the error type through the configured observer, and returns `rejected`; listener-path regression test passes. | suppressed | No finding after remediation. |
@@ -168,6 +168,7 @@ validated by clean install, integration tests, and the full-tree audit.
 | `PUBLIC-01` | Public exposure | The candidate exposes an inbound network service. | The artifact is a desktop workspace extension with no server, listener, route, webhook, or cloud resource. | not_applicable | No public-service surface reviewed. |
 | `DEP-01` | Dependency license | A production dependency has missing, forbidden, high-risk, or unresolved licensing. | Exact 78-package gate reports only MIT, ISC, and BSD-3-Clause and includes each notice text. | suppressed | Human license review remains `PG-01`. |
 | `VULN-01` | Known advisories | npm reports a known production or development vulnerability. | Live production-only and full-tree npm audits returned zero advisories on the review date after reviewed test-only transitive overrides. | suppressed | Point-in-time and known-advisory limitation applies. |
+| `COMPAT-01` | Packaged editor lifecycle | The exact candidate does not complete the required editor/OS lifecycle matrix. | [Compatibility run 29899159887](https://github.com/koizumikento/okf-workbench/actions/runs/29899159887) passed the candidate, acceptance/Webview, and all seven required VS Code/VSCodium lifecycle lanes on Ubuntu, macOS, and Windows for commit `b0848e2c68ff28f1c12e1b9927d01a54c79542b5` and SHA-256 `b9125e6b56ce73de1e2ade10626f410f103ed7e421aa1b5d28cf0b565b2a36dd`. | suppressed | Hosted cross-platform compatibility gap closed for these exact bytes. |
 | `HOST-01` | Repository/hosted settings | Protected-main and provider scanning controls are absent. | Read-only GitHub API returned zero rulesets, unprotected `main`, secret scanning disabled, and code scanning not enabled. | confirmed | Harden or explicitly accept before publication; linked to `PG-03`. |
 | `RELEASE-01` | Open VSX publishing | Publication uses protected short-lived credentials and reviewed artifacts. | The dispatch-only workflow binds approval to version, commit, and normalized VSIX digest, packages once, and exposes `OVSX_PAT` only in the publish job. The named Environment, reviewers, branch policy, credential, and namespace authorization are not configured or evidenced. | deferred | Repository control is implemented; hosted boundary remains `PG-04`. |
 
@@ -178,7 +179,7 @@ validated by clean install, integration tests, and the full-tree audit.
 | Webview CSP, content injection, and local assets | covered | Host HTML, DOM source, protocol source, unit tests, Chromium harness, production bundle, headed VS Code Webview CDP network capture | `CSP-01`, `NET-01`, `XSS-01` | The zero-egress observation is candidate/editor-specific, not a universal guarantee. |
 | Privileged source navigation and messaging | covered | Strict decoder, controller, host source map, navigation rejection regression | `PROTO-01`, `NAV-01` | No active exploit testing was performed. |
 | Workspace path/write containment | covered for pure, memory-backed, and local `file:` symlink boundaries | Path guard, proposal applicator, authoring-command regressions, VS Code `FileType.SymbolicLink` mapping, and real temporary-workspace escape regression | `PATH-01` | Remote and third-party virtual-provider behavior is owned by compatibility evidence. |
-| Secrets, logs, telemetry, and content egress | covered for the exact local candidate | First-party static scan, activation log review, browser interception, exact-candidate packaged Extension Host transport guards, headed Webview CDP capture, hosted settings API | `NET-01`, `LOG-01`, `PRIV-01`, `HOST-01` | The headed-Webview check and all three macOS editor lanes pass for the exact final VSIX. Hosted Linux/Windows compatibility remains pending, and hosted scanning is confirmed disabled. |
+| Secrets, logs, telemetry, and content egress | covered for the exact hosted-qualified candidate | First-party static scan, activation log review, browser interception, exact-candidate packaged Extension Host transport guards, headed Webview CDP capture, hosted compatibility artifacts, hosted settings API | `NET-01`, `LOG-01`, `PRIV-01`, `COMPAT-01`, `HOST-01` | The headed-Webview check and all seven required hosted editor/OS lanes pass for the exact VSIX. Hosted repository scanning is confirmed disabled. |
 | Production dependency and license inventory | covered technically | Lock graph, installed manifests, license texts, integrity, install-script gate, npm audit | `DEP-01`, `VULN-01` | Human legal/license judgment: `PG-01`. |
 | Project license and packaged notices | partial | VSIX entry inspection and exact notice comparison | `LIC-01` | Project license unresolved: `PG-01`. |
 | CI workflows and hosted repository policy | partial | Full-SHA action pins, local YAML permissions/triggers/artifacts, digest-bound release workflow; read-only ruleset/protection/scanning/environment API | `CI-01`, `HOST-01`, `RELEASE-01` | Action mutability is remediated. Protection/scanning are confirmed absent; release environment remains `PG-04`. |
@@ -195,14 +196,15 @@ validated by clean install, integration tests, and the full-tree audit.
 - Smallest safe evidence: committed project license, matching manifest identifier, reviewed notice inventory, and an explicit approval record.
 - Release before closure: **no**.
 
-### PG-02 — Actual editor network and data-egress observation (closed for the local exact candidate)
+### PG-02 — Actual editor network and data-egress observation (closed for the exact hosted candidate)
 
-- Established evidence: the `581830`-byte final VSIX from commit `524eca3f36e1a1b3da935495d3fbbd0eb0d03f56` and SHA-256 `65c137822052aa7f90ef08cc1300020fec4adcd7cbcec6aec88ae98fae64dad0` completed the packaged Extension Host lifecycle on VS Code 1.121.0, VS Code 1.127.0, and VSCodium 1.121.03429 on macOS arm64. Every clean, untrusted, and upgrade activation installed transport guards for HTTP, HTTPS, HTTP/2, TCP, TLS, DNS, UDP, `fetch`, and WebSocket; activation plus Validate/Open Graph completed with zero attempts.
+- Established evidence: the `581860`-byte VSIX from commit `b0848e2c68ff28f1c12e1b9927d01a54c79542b5` and SHA-256 `b9125e6b56ce73de1e2ade10626f410f103ed7e421aa1b5d28cf0b565b2a36dd` completed the packaged Extension Host lifecycle on VS Code 1.121.0 on Ubuntu; VS Code 1.127.0 on Ubuntu, macOS, and Windows; and VSCodium 1.121.03429 on Ubuntu, macOS, and Windows. Every clean, untrusted, and upgrade activation installed transport guards for HTTP, HTTPS, HTTP/2, TCP, TLS, DNS, UDP, `fetch`, and WebSocket; activation plus Validate Bundle and Open 3D Graph completed with zero attempts. The [Compatibility run](https://github.com/koizumikento/okf-workbench/actions/runs/29899159887) retained the per-lane result artifacts.
 - Headed Webview evidence: the exact measured VS Code 1.127.0 Webview bundle (`853502f50117c6b565b8a9befdb474e1cbaf39bf78b8b7eb6aa3d52f92266d7b`; combined Extension Host + Webview SHA-256 `93c75712626c20bee2b77ad74810267733c6457da85ad89c595772ac6e6d92ad`) was observed through its CDP target during initial packaged-resource loading, watcher refresh, search, filter, selection, engine comparison, and disposal. It made zero remote HTTP(S)/WS requests, loaded two local VS Code Webview resources, and used no other scheme.
+- Preserved historical evidence: the earlier `581830`-byte candidate from commit `524eca3f36e1a1b3da935495d3fbbd0eb0d03f56`, SHA-256 `65c137822052aa7f90ef08cc1300020fec4adcd7cbcec6aec88ae98fae64dad0`, passed the same lifecycle on all three local macOS arm64 editor lanes. Those checked-in records remain predecessor audit evidence and are not represented as records for the hosted-qualified candidate.
 - Privacy of evidence: the tracked record retains only sanitized origins and counts; it contains no workspace body or URL path.
-- Scope limit: the headed Webview result and three packaged lifecycle observations close local egress observation only for the recorded candidate and macOS arm64 editor versions. Hosted Ubuntu/Windows lanes are a separate compatibility gap, not evidence implied by this closure. Any future runtime dependency, CSP change, editor family, or candidate bundle requires the same checks again.
+- Scope limit: the headed Webview result and hosted packaged lifecycle observations close egress observation only for the recorded bundle hashes, exact VSIX bytes, and named editor/OS lanes. Any future runtime dependency, CSP change, editor family, or packaged-content change requires the applicable checks again.
 - Owner: release tester / security reviewer.
-- Local disposition: **closed for this candidate**. Cross-platform release remains blocked until the hosted compatibility gate is retained.
+- Disposition: **closed for this candidate**. This closure does not resolve project licensing, hosted repository protection/scanning, or Open VSX publication authorization.
 
 ### PG-03 — Hosted GitHub protection, scanning, and alert review
 
@@ -217,8 +219,8 @@ validated by clean install, integration tests, and the full-tree audit.
 ### PG-04 — Open VSX hosted publication boundary
 
 - Unproven fact: the `straydog` publisher namespace, credential ownership, approval environment, artifact identity, and publication process are controlled by the intended maintainer.
-- Current established state: the repository contains a dispatch-only, digest-bound workflow that packages once and scopes the secret to the publish job; all action references are immutable.
-- Why not established here: the named GitHub Environment, required reviewers, deployment policy, credential, namespace authorization, and publication approval have not been configured or validated, and no artifact was published during this preflight.
+- Current established state: the repository contains a dispatch-only, digest-bound workflow that packages once and scopes the secret to the publish job; all action references are immutable. The maintainer reports that a namespace named `straydog` exists.
+- Why not established here: namespace-name existence does not establish that the publishing identity is an authorized member or that the current Publisher Agreement is signed. The named GitHub Environment, required reviewers, deployment policy, environment-scoped credential, namespace authorization, and exact-digest publication approval have not been configured or validated, and no artifact was published during this preflight.
 - Potential impact: namespace misuse, credential leakage, or publication of an unreviewed artifact.
 - Owner: Open VSX namespace owner and release maintainer.
 - Smallest safe evidence: configure and inspect the `open-vsx` Environment and independent review policy, confirm namespace ownership and Publisher Agreement state, add only the environment-scoped credential, and retain approval for the exact workflow commit and VSIX digest immediately before publication.
@@ -233,7 +235,10 @@ validated by clean install, integration tests, and the full-tree audit.
 | `npm run build` | Pass; production extension and Webview bundles. |
 | `npx playwright test --config test/security/playwright.config.ts` | Pass in Chromium; hostile metadata remained inert and intercepted fetch count was zero. |
 | `node test/benchmarks/headed-editor-evidence.mjs ...` | Pass in headed VS Code 1.127.0; Webview CDP recorded zero remote HTTP(S)/WS requests and two local packaged-resource loads. |
-| `node scripts/compatibility/run-package-lifecycle.mjs ...` | Pass for the exact final VSIX on local macOS arm64 in VS Code 1.121.0, VS Code 1.127.0, and VSCodium 1.121.03429; clean, untrusted, upgrade, and uninstall evidence retained. |
+| [CI run 29899142563](https://github.com/koizumikento/okf-workbench/actions/runs/29899142563) | Pass; quality/package, hostile-content Webview, VS Code 1.121.0 integration, and VS Code 1.127.0 integration jobs succeeded. |
+| [Compatibility run 29899159887](https://github.com/koizumikento/okf-workbench/actions/runs/29899159887) | Pass for the exact `581860`-byte, SHA-256 `b9125e6b56ce73de1e2ade10626f410f103ed7e421aa1b5d28cf0b565b2a36dd` candidate; candidate, acceptance/Webview, and all seven required VS Code/VSCodium lifecycle jobs succeeded across Ubuntu, macOS, and Windows with zero guarded Extension Host transport attempts. |
+| [Package smoke run 29899159953](https://github.com/koizumikento/okf-workbench/actions/runs/29899159953) | Pass on macOS, Ubuntu, and Windows. macOS and Ubuntu reproduced the recorded candidate digest; Windows independently packaged content with CRLF text and therefore produced different archive bytes, so the run does not prove cross-OS byte identity. |
+| Preserved local `node scripts/compatibility/run-package-lifecycle.mjs ...` records | Pass for predecessor SHA-256 `65c137822052aa7f90ef08cc1300020fec4adcd7cbcec6aec88ae98fae64dad0` on local macOS arm64 in VS Code 1.121.0, VS Code 1.127.0, and VSCodium 1.121.03429. |
 | `npm audit --omit=dev --audit-level=high --json` | Pass; zero reported production vulnerabilities. |
 | `npm run package` | Package produced; `vsce` warned that the project license is missing. |
 | `node scripts/security-check.mjs --vsix artifacts/okf-workbench.vsix` | Expected fail: exact notice present, but zero project-license entries. |
@@ -245,9 +250,11 @@ Current recommendation: **hold public release**.
 
 - `LIC-01` is a confirmed release blocker and controls the hold decision.
 - `CI-01` is remediated. `HOST-01` must be hardened or explicitly accepted before a privileged publication path is trusted.
-- `PG-02` is closed for the exact final candidate on the three recorded local macOS arm64 lanes.
-  Hosted Ubuntu/Windows compatibility remains a separate release gap. `PG-01`, `PG-03`, and
-  `PG-04` remain open and have named owners and safe closure evidence.
+- `PG-02` is closed for the exact hosted-qualified candidate on all seven required editor/OS lanes.
+  `PG-01`, `PG-03`, and `PG-04` remain open and have named owners and safe closure evidence.
+- The reported existence of the `straydog` namespace does not close publishing-identity
+  authorization or Publisher Agreement verification. Public marketplace resources and explicit
+  maintainer approval for the exact digest also remain unchecked in the release checklist.
 - Suppressed candidates have explicit counter-evidence; not-applicable candidates identify absent surfaces; deferred candidates map to proof gaps.
 
 After F-01 is remediated, rerun the exact-notice check, full security test suite, production build, package creation, packaged VSIX gate, and npm audit. Do not convert this document to `ready` until the required human and hosted verification evidence is attached.

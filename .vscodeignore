@@ -10,6 +10,7 @@ src/**
 test/**
 *.config.*
 .gitignore
+.gitattributes
 .node-version
 .npmrc
 .nvmrc

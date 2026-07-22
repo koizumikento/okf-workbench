@@ -26,13 +26,20 @@ not a substitute for its named manual or hosted check.
 - [x] The exact `581830`-byte candidate from commit
       `524eca3f36e1a1b3da935495d3fbbd0eb0d03f56`, SHA-256
       `65c137822052aa7f90ef08cc1300020fec4adcd7cbcec6aec88ae98fae64dad0`, passed clean,
-      untrusted, upgrade, and uninstall lifecycles in all three local macOS arm64 editor lanes.
-- [ ] Every required editor/OS lane has a successful retained artifact from the
+      untrusted, upgrade, and uninstall lifecycles in all three local macOS arm64 editor lanes;
+      this is preserved predecessor evidence rather than the hosted-qualified candidate.
+- [x] The exact `581860`-byte candidate from commit
+      `b0848e2c68ff28f1c12e1b9927d01a54c79542b5`, SHA-256
+      `b9125e6b56ce73de1e2ade10626f410f103ed7e421aa1b5d28cf0b565b2a36dd`, passed the
+      [hosted Compatibility run](https://github.com/koizumikento/okf-workbench/actions/runs/29899159887).
+- [x] Every required editor/OS lane has a successful retained artifact from the
       [compatibility matrix](compatibility-matrix.md), including actual VSCodium runs.
-- [ ] Packaged-editor evidence closes the required acceptance gaps in
-      [acceptance evidence](acceptance-evidence.md).
-- [ ] The publishing identity is an authorized member of the verified, restricted `straydog`
-      namespace and has signed the current Open VSX Publisher Agreement.
+- [ ] Packaged-editor evidence plus manual inspection closes the remaining user-scenario gaps in
+      [acceptance evidence](acceptance-evidence.md); the hosted lifecycle matrix is complete, but
+      it does not exercise every interactive command UI.
+- [ ] The current registry state of the `straydog` namespace is rechecked, the publishing identity
+      is an authorized member with the required access, and that identity has signed the current
+      Open VSX Publisher Agreement.
 - [ ] Marketplace-facing repository, support, privacy, license, and notice resources are readable
       without access to the private development repository, or the maintainer has approved and
       validated durable public replacements.
@@ -151,10 +158,12 @@ logs or rebuilding in the publish job is not an allowed recovery.
 establish whether the current plan supports required reviewers for this private repository. Thus
 the hosted `open-vsx` Environment, required reviewers, deployment restrictions, plan eligibility,
 and environment-scoped `OVSX_PAT` have not been configured or observed. No protected-environment
-approval, namespace authorization command, or publication has been run. This remains
-release-blocking and does not close security evidence gap `PG-04`. Configuring the Environment or
-secret and approving a deployment are maintainer/administrator actions, not part of repository
-implementation.
+approval, namespace authorization command, or publication has been run. The maintainer has
+confirmed that a namespace named `straydog` exists; that report does not establish that the
+publishing identity is an authorized member or has signed the current Publisher Agreement. This
+remains release-blocking and does not close security evidence gap `PG-04`. Configuring the
+Environment or secret and approving a deployment are maintainer/administrator actions, not part
+of repository implementation.
 
 The release owner records this statement before running a publishing command:
 
@@ -230,15 +239,17 @@ not an automated fallback in this repository.
 | --- | --- |
 | Version | `0.1.0` |
 | Extension ID | `straydog.okf-workbench` |
-| Git revision | `524eca3f36e1a1b3da935495d3fbbd0eb0d03f56` |
-| VSIX SHA-256 | `65c137822052aa7f90ef08cc1300020fec4adcd7cbcec6aec88ae98fae64dad0` |
-| VSIX byte size | `581830` bytes |
+| Hosted-qualified Git revision | `b0848e2c68ff28f1c12e1b9927d01a54c79542b5` |
+| Hosted-qualified VSIX SHA-256 | `b9125e6b56ce73de1e2ade10626f410f103ed7e421aa1b5d28cf0b565b2a36dd` |
+| Hosted-qualified VSIX byte size | `581860` bytes |
 | Node / npm | `24.18.0` / `11.16.0` |
-| Local compatibility evidence | Pass — VS Code `1.121.0`, VS Code `1.127.0`, and VSCodium `1.121.03429` on macOS arm64; clean, untrusted, upgrade, and uninstall records retained. |
-| Hosted compatibility workflow URL | Pending |
+| Hosted CI | [Pass — run 29899142563](https://github.com/koizumikento/okf-workbench/actions/runs/29899142563); quality/package, hostile-content Webview, and both pinned VS Code integration jobs succeeded. |
+| Hosted compatibility | [Pass — run 29899159887](https://github.com/koizumikento/okf-workbench/actions/runs/29899159887); the exact candidate passed all seven required VS Code/VSCodium and Ubuntu/macOS/Windows lifecycle lanes. |
+| Hosted package smoke | [Pass — run 29899159953](https://github.com/koizumikento/okf-workbench/actions/runs/29899159953) on macOS, Ubuntu, and Windows. macOS and Ubuntu reproduced the recorded digest; the independent Windows checkout produced different archive bytes because packaged text files used CRLF, so this run is not cross-OS byte-identity evidence. |
+| Preserved local predecessor evidence | Pass — commit `524eca3f36e1a1b3da935495d3fbbd0eb0d03f56`, `581830` bytes, SHA-256 `65c137822052aa7f90ef08cc1300020fec4adcd7cbcec6aec88ae98fae64dad0`; VS Code `1.121.0`, VS Code `1.127.0`, and VSCodium `1.121.03429` on macOS arm64. |
 | Headed performance evidence | Pass — QR-002 703 ms p95 / 20 samples; QR-003 `d3`; Webview `853502f50117c6b565b8a9befdb474e1cbaf39bf78b8b7eb6aa3d52f92266d7b`; combined `93c75712626c20bee2b77ad74810267733c6457da85ad89c595772ac6e6d92ad` |
 | Security/license approver | Pending |
-| Namespace/publishing identity | Pending |
+| Namespace/publishing identity | Namespace name `straydog` confirmed by the maintainer; publishing-identity authorization, membership, and Publisher Agreement evidence pending. |
 | Publication approver and timestamp | Pending |
 | Open VSX listing URL | Pending |
 | Downloaded artifact SHA-256 | Pending |

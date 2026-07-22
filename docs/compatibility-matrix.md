@@ -1,6 +1,6 @@
 # Compatibility matrix
 
-- Status: exact candidate locally qualified on macOS arm64; hosted Ubuntu and Windows lanes pending
+- Status: exact candidate qualified in the hosted editor/OS matrix
 - Matrix date: 2026-07-22
 - Extension identifier expected by the gate: `straydog.okf-workbench`
 
@@ -19,7 +19,28 @@ fixture with a fixed `SOURCE_DATE_EPOCH`, records its digest, and upgrades from
 that package. A same-version reinstall is recorded separately and is never
 counted as upgrade evidence.
 
-## Preserved local qualification
+## Hosted final-candidate qualification
+
+The normalized `0.1.0` candidate built from commit
+`b0848e2c68ff28f1c12e1b9927d01a54c79542b5`, with byte size `581860` and
+SHA-256 `b9125e6b56ce73de1e2ade10626f410f103ed7e421aa1b5d28cf0b565b2a36dd`,
+passed every required editor/OS lifecycle lane in
+[Compatibility run 29899159887](https://github.com/koizumikento/okf-workbench/actions/runs/29899159887).
+The candidate and acceptance jobs in that run also passed. The same candidate
+passed the quality/package, hostile-content Webview, and development Extension
+Host jobs in
+[CI run 29899142563](https://github.com/koizumikento/okf-workbench/actions/runs/29899142563).
+
+The seven hosted lifecycle lanes prove clean installation and packaged
+activation, six registered commands, execution of Validate Bundle and Open 3D
+Graph, untrusted-workspace read availability with early write refusal, a real
+upgrade from the repository-owned `0.0.0` predecessor, preservation of settings
+and workspace files, uninstall, and zero attempts through the guarded
+extension-host transports. These automated results do not by themselves prove
+the manual editor-UI clauses tracked in
+[acceptance evidence](acceptance-evidence.md).
+
+## Preserved predecessor-candidate local qualification
 
 The normalized `0.1.0` candidate built from commit
 `524eca3f36e1a1b3da935495d3fbbd0eb0d03f56`, with byte size `581830` and
@@ -34,7 +55,8 @@ test-only `straydog.okf-workbench@0.0.0` predecessor with SHA-256
 | VS Code | `1.127.0` | `1.127.0` | Passed | [`vscode-1.127.0-macos-arm64.json`](evidence/compatibility/vscode-1.127.0-macos-arm64.json) |
 | VSCodium | `1.121.03429` | `1.121.0` | Passed | [`vscodium-1.121.03429-macos-arm64.json`](evidence/compatibility/vscodium-1.121.03429-macos-arm64.json) |
 
-The three primary records and their 18 linked activation/uninstall reports prove
+These predecessor-candidate records are retained as local audit evidence. The
+three primary records and their 18 linked activation/uninstall reports prove
 clean installation, packaged activation, six registered commands, execution of
 Validate Bundle and Open 3D Graph, zero guarded extension-host transport
 attempts, untrusted-workspace read availability with early write refusal,
@@ -44,20 +66,17 @@ absent after uninstall. Where the editor left a verified installation directory,
 the harness recorded that native residue separately and removed only the
 identity-checked direct extension directory. The
 [evidence README](evidence/compatibility/README.md) defines the scope and
-sanitation. The `0.0.0` package is a test fixture, not a published migration
-source.
-
-No hosted compatibility workflow has yet completed for this candidate. Ubuntu
-and Windows are therefore **pending**, and the local macOS results are not a
-cross-platform support claim.
+sanitation. They do not describe the hosted final candidate above and must not
+be used as cross-platform evidence. The `0.0.0` package is a test fixture, not
+a published migration source.
 
 ## Executable lanes
 
 | Editor | Exact version | Ubuntu 24.04 | macOS 15 | Windows 2025 | Acquisition |
 | --- | --- | --- | --- | --- | --- |
-| VS Code | `1.121.0` | Required | N/A | N/A | Pinned editor test download |
-| VS Code | `1.127.0` | Required | Required | Required | Pinned editor test download |
-| VSCodium | `1.121.03429` | Required | Required | Required | Official archive with pinned SHA-256 |
+| VS Code | `1.121.0` | Passed | N/A | N/A | Pinned editor test download |
+| VS Code | `1.127.0` | Passed | Passed | Passed | Pinned editor test download |
+| VSCodium | `1.121.03429` | Passed | Passed | Passed | Official archive with pinned SHA-256 |
 
 The API-floor lane runs on the primary Ubuntu CI environment. Cross-platform
 release smoke uses the current VS Code build and the compatible VSCodium build,
@@ -125,5 +144,6 @@ predecessor and still executes the lower-version upgrade. Supplying only one is
 an input error.
 
 Retain the workflow URL and all per-lane JSON artifacts with the release review.
-Do not convert a planned lane, a local mock, or a failed workflow into a support
-claim.
+The hosted result above qualifies that exact candidate; a later candidate must
+be rerun. Do not convert a planned lane, a local mock, or a failed workflow into
+a support claim.

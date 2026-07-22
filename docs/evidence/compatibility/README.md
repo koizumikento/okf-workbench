@@ -1,4 +1,14 @@
-# Local compatibility evidence
+# Preserved local predecessor-candidate compatibility evidence
+
+The hosted final candidate is the `581860`-byte VSIX from commit
+`b0848e2c68ff28f1c12e1b9927d01a54c79542b5`, SHA-256
+`b9125e6b56ce73de1e2ade10626f410f103ed7e421aa1b5d28cf0b565b2a36dd`. It
+passed every required editor/OS lifecycle lane in
+[Compatibility run 29899159887](https://github.com/koizumikento/okf-workbench/actions/runs/29899159887),
+and its CI qualification passed in
+[CI run 29899142563](https://github.com/koizumikento/okf-workbench/actions/runs/29899142563).
+The JSON files in this directory predate that candidate and are retained only
+as local audit evidence; they must not be attributed to the hosted candidate.
 
 These sanitized records were generated on 2026-07-22 from the same normalized
 `straydog.okf-workbench@0.1.0` VSIX built from commit
@@ -29,8 +39,8 @@ It uses the same extension identifier and a fixed `SOURCE_DATE_EPOCH`; two
 independent builds were byte-identical at SHA-256
 `7ca5f437fb846f636b51b933b53a55f57b229018bf17958781a661c8be6e6567`.
 
-Every primary record has
+Every checked-in primary record has
 `repositoryRevision: "524eca3f36e1a1b3da935495d3fbbd0eb0d03f56"` and the same
-candidate digest above. Ubuntu and Windows, and the hosted compatibility matrix
-as a whole, remain pending until the GitHub Actions workflow runs; these local
-files must not be used as cross-platform evidence.
+predecessor-candidate digest above. These local files must not be used as
+cross-platform evidence; the hosted workflow and its per-lane artifacts are the
+cross-platform evidence for the final candidate.

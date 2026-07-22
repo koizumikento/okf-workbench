@@ -13,8 +13,9 @@ export async function packageVsix(outputPath, repositoryRoot = process.cwd()) {
 
   try {
     // VSCE sorts archive entries only when SOURCE_DATE_EPOCH is present. Its
-    // timestamp is normalized again below so package bytes remain independent
-    // of the runner's clock and time zone.
+    // timestamps and platform file attributes are normalized again below so
+    // package bytes remain independent of the runner's clock, time zone, and
+    // filesystem mode defaults.
     process.env.SOURCE_DATE_EPOCH = VSIX_SOURCE_DATE_EPOCH;
     await createVSIX({ cwd: repositoryRoot, packagePath: destination });
     await normalizeVsixFile(destination);

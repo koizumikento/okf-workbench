@@ -6,6 +6,7 @@ import { describe, expect, test } from 'vitest';
 import {
   NORMALIZED_DOS_DATE,
   NORMALIZED_DOS_TIME,
+  NORMALIZED_EXTERNAL_FILE_ATTRIBUTES,
   normalizeVsixTimestamps,
 } from '../../../scripts/normalize-vsix.mjs';
 
@@ -40,6 +41,7 @@ function createZipFixture(
   dosTime: number,
   dosDate: number,
   extraField = Buffer.alloc(0),
+  externalAttributes = 0,
 ): ZipFixture {
   const localChunks: Buffer[] = [];
   const centralChunks: Buffer[] = [];
@@ -91,7 +93,7 @@ function createZipFixture(
     header.writeUInt16LE(0, 32);
     header.writeUInt16LE(0, 34);
     header.writeUInt16LE(0, 36);
-    header.writeUInt32LE(0, 38);
+    header.writeUInt32LE(externalAttributes, 38);
     header.writeUInt32LE(localOffsets[index] ?? 0xffffffff, 42);
 
     centralOffsets.push(centralOffset);
@@ -121,15 +123,15 @@ function sha256(content: Uint8Array): string {
   return createHash('sha256').update(content).digest('hex');
 }
 
-describe('VSIX timestamp normalization', () => {
+describe('VSIX archive metadata normalization', () => {
   const entries = [
     { name: 'extension/package.json', content: '{"name":"okf-workbench"}\n' },
     { name: 'extension/dist/extension.cjs', content: 'module.exports = {};\n' },
   ] as const;
 
-  test('makes archives that differ only by ZIP DOS timestamps byte-identical', () => {
-    const first = createZipFixture(entries, 0x6f25, 0x5cf6);
-    const second = createZipFixture(entries, 0x6fd2, 0x5cf6);
+  test('makes archives that differ by ZIP timestamps and host file modes byte-identical', () => {
+    const first = createZipFixture(entries, 0x6f25, 0x5cf6, Buffer.alloc(0), 0x81a40000);
+    const second = createZipFixture(entries, 0x6fd2, 0x5cf6, Buffer.alloc(0), 0x81b60000);
 
     expect(sha256(first.archive)).not.toBe(sha256(second.archive));
 
@@ -148,22 +150,26 @@ describe('VSIX timestamp normalization', () => {
     for (const offset of first.centralOffsets) {
       expect(normalizedFirst.archive.readUInt16LE(offset + 12)).toBe(NORMALIZED_DOS_TIME);
       expect(normalizedFirst.archive.readUInt16LE(offset + 14)).toBe(NORMALIZED_DOS_DATE);
+      expect(normalizedFirst.archive.readUInt32LE(offset + 38)).toBe(
+        NORMALIZED_EXTERNAL_FILE_ATTRIBUTES,
+      );
     }
   });
 
-  test('changes no non-timestamp byte and is idempotent', () => {
+  test('changes no non-metadata byte and is idempotent', () => {
     const fixture = createZipFixture(entries, 0x6f25, 0x5cf6);
     const normalized = normalizeVsixTimestamps(fixture.archive);
-    const timestampBytes = new Set<number>();
+    const metadataBytes = new Set<number>();
 
     for (const offset of fixture.localOffsets) {
-      for (let byte = offset + 10; byte < offset + 14; byte += 1) timestampBytes.add(byte);
+      for (let byte = offset + 10; byte < offset + 14; byte += 1) metadataBytes.add(byte);
     }
     for (const offset of fixture.centralOffsets) {
-      for (let byte = offset + 12; byte < offset + 16; byte += 1) timestampBytes.add(byte);
+      for (let byte = offset + 12; byte < offset + 16; byte += 1) metadataBytes.add(byte);
+      for (let byte = offset + 38; byte < offset + 42; byte += 1) metadataBytes.add(byte);
     }
     fixture.archive.forEach((value, offset) => {
-      if (!timestampBytes.has(offset)) {
+      if (!metadataBytes.has(offset)) {
         expect(normalized.archive[offset]).toBe(value);
       }
     });

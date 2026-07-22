@@ -14,6 +14,13 @@ const MAXIMUM_ZIP_COMMENT_SIZE = 65_535;
 export const NORMALIZED_DOS_TIME = 0x0000;
 export const NORMALIZED_DOS_DATE = 0x0021;
 
+// VSCE writes the host filesystem mode into the upper half of the central
+// directory external-attributes field. Windows reports generated and checked-
+// out files as 0666 while Unix runners report 0644, even when entry contents
+// are identical. VSIX entries are regular, non-executable files, so normalize
+// them to the portable Unix mode used by the reviewed package.
+export const NORMALIZED_EXTERNAL_FILE_ATTRIBUTES = (0o100644 * 0x1_0000) >>> 0;
+
 const TIMESTAMP_EXTRA_FIELD_IDS = new Set([
   0x000a, // NTFS timestamps
   0x000d, // PKWARE Unix timestamps
@@ -87,8 +94,9 @@ function rejectTimestampExtraFields(archive, offset, length, description) {
 
 /**
  * Return a copy of a VSIX with every ZIP local-header and central-directory
- * MS-DOS timestamp normalized. Entry contents, CRCs, compression, ordering,
- * attributes, and comments are left byte-for-byte unchanged.
+ * MS-DOS timestamp normalized, plus a fixed regular-file mode in each central
+ * directory entry. Entry contents, CRCs, compression, ordering, extra fields,
+ * and comments are left byte-for-byte unchanged.
  *
  * ZIP64 and split archives are intentionally rejected because @vscode/vsce
  * 3.9.2 does not emit them for this extension and silently mishandling either
@@ -116,7 +124,7 @@ export function normalizeVsixTimestamps(input) {
     centralDirectorySize === 0xffffffff ||
     centralDirectoryOffset === 0xffffffff
   ) {
-    throw new Error('Split and ZIP64 VSIX archives are not supported by the timestamp normalizer.');
+    throw new Error('Split and ZIP64 VSIX archives are not supported by the metadata normalizer.');
   }
 
   if (centralDirectoryOffset + centralDirectorySize !== endOffset) {
@@ -154,7 +162,7 @@ export function normalizeVsixTimestamps(input) {
       uncompressedSize === 0xffffffff ||
       localOffset === 0xffffffff
     ) {
-      throw new Error('ZIP64 or split VSIX entries are not supported by the timestamp normalizer.');
+      throw new Error('ZIP64 or split VSIX entries are not supported by the metadata normalizer.');
     }
     if (localOffsets.has(localOffset)) {
       throw new Error(`Duplicate local ZIP header offset ${localOffset}.`);
@@ -204,12 +212,14 @@ export function normalizeVsixTimestamps(input) {
       archive.readUInt16LE(localOffset + 10) !== NORMALIZED_DOS_TIME ||
       archive.readUInt16LE(localOffset + 12) !== NORMALIZED_DOS_DATE ||
       archive.readUInt16LE(centralOffset + 12) !== NORMALIZED_DOS_TIME ||
-      archive.readUInt16LE(centralOffset + 14) !== NORMALIZED_DOS_DATE;
+      archive.readUInt16LE(centralOffset + 14) !== NORMALIZED_DOS_DATE ||
+      archive.readUInt32LE(centralOffset + 38) !== NORMALIZED_EXTERNAL_FILE_ATTRIBUTES;
 
     archive.writeUInt16LE(NORMALIZED_DOS_TIME, localOffset + 10);
     archive.writeUInt16LE(NORMALIZED_DOS_DATE, localOffset + 12);
     archive.writeUInt16LE(NORMALIZED_DOS_TIME, centralOffset + 12);
     archive.writeUInt16LE(NORMALIZED_DOS_DATE, centralOffset + 14);
+    archive.writeUInt32LE(NORMALIZED_EXTERNAL_FILE_ATTRIBUTES, centralOffset + 38);
     if (changed) {
       changedEntryCount += 1;
     }
@@ -257,6 +267,6 @@ if (invokedPath !== undefined && resolve(invokedPath) === fileURLToPath(import.m
 
   const result = await normalizeVsixFile(filePath);
   console.log(
-    `Normalized ZIP timestamps for ${result.entryCount} VSIX entries (${result.changedEntryCount} changed).`,
+    `Normalized ZIP metadata for ${result.entryCount} VSIX entries (${result.changedEntryCount} changed).`,
   );
 }

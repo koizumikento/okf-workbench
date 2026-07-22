@@ -6,7 +6,7 @@ The roadmap describes sequencing, not committed dates.
 
 - Confirm product scope and compatibility contract.
 - Create the repository and architecture decisions.
-- Select the TypeScript build and test toolchain.
+- Scaffold the accepted npm, TypeScript, and esbuild environment from ADR 0004.
 - Establish CI for type checking, tests, packaging, and dependency review.
 - Add representative OKF fixtures.
 

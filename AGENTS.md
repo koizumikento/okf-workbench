@@ -26,7 +26,8 @@ Use this order when requirements conflict:
 2. Accepted records under `docs/decisions/` for repository decisions.
 3. `docs/okf-v0.1-contract.md` for the Workbench compatibility interpretation.
 4. `docs/functional-requirements.md` for testable MVP behavior.
-5. `docs/mvp-scope.md` and `docs/architecture.md` for planned product and engineering scope.
+5. `docs/implementation-environment.md` for accepted runtime, tooling, dependency, test, and packaging choices.
+6. `docs/mvp-scope.md` and `docs/architecture.md` for planned product and engineering scope.
 
 When the upstream OKF specification changes, document the observed version or commit and review the compatibility contract before changing behavior.
 
@@ -99,6 +100,7 @@ Diagnostics should include the most precise useful URI and source range. Do not 
 These apply once implementation begins:
 
 - Use TypeScript with strict type checking.
+- Follow the single-package npm and esbuild baseline in `docs/implementation-environment.md`; do not add an overlapping package manager, bundler, or UI framework without an accepted decision.
 - Keep public core types explicit and serializable.
 - Avoid `any`; narrow `unknown` at parsing and message boundaries.
 - Prefer small pure functions in the core.
@@ -130,6 +132,7 @@ Use small checked-in fixtures. Never make unit tests depend on network access or
 
 - Update `docs/mvp-scope.md` when adding or removing an MVP feature.
 - Update `docs/functional-requirements.md` when user-visible behavior or acceptance criteria change.
+- Update `docs/implementation-environment.md` when runtime, tooling, dependencies, test layers, CI, or packaging assumptions change.
 - Update `docs/okf-v0.1-contract.md` when compatibility behavior changes.
 - Update `docs/architecture.md` when module boundaries or security assumptions change.
 - Add a record under `docs/decisions/` for choices that constrain future implementation.

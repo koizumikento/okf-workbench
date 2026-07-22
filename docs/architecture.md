@@ -38,7 +38,17 @@ test/
 └── integration/
 ```
 
-The exact build system is not decided. The boundaries above are the architectural constraint.
+The accepted runtime, build, test, and packaging baseline is documented in [Implementation environment](implementation-environment.md) and [ADR 0004](decisions/0004-use-npm-typescript-esbuild-toolchain.md). The repository remains one npm package with separate esbuild outputs for the Node extension host and browser Webview.
+
+## Implementation baseline
+
+- Desktop-only VS Code-compatible extension for the MVP; no Web extension entry point.
+- VS Code API floor `^1.121.0`, covering the current VSCodium stable line at the decision date.
+- Node.js 24 LTS and npm for development and CI.
+- TypeScript 6 with strict checking.
+- Node 22/CommonJS extension bundle and ES2022/ESM Webview bundle produced by esbuild.
+- Plain TypeScript and DOM UI with no React or state-management framework.
+- Vitest, VS Code Test CLI, Playwright Webview harness, and packaged-editor smoke tests at distinct layers.
 
 ## Core model
 
@@ -164,3 +174,11 @@ These numbers are hypotheses and must not be documented as achieved until benchm
 - Watcher-driven updates.
 - Webview message validation.
 - Source navigation from diagnostics and graph nodes.
+
+### Webview browser tests
+
+- Search, filter, details, and keyboard navigation in a standalone harness.
+- Actual WebGL graph smoke in Chromium.
+- CSP-compatible local bundle loading.
+
+Playwright browser results are not used as Electron Webview performance evidence. Performance targets require a headed VS Code or VSCodium benchmark with the environment recorded.

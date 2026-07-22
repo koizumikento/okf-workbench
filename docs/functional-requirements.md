@@ -1,6 +1,6 @@
 # Functional requirements
 
-- Status: Draft for review
+- Status: Approved
 - Target: MVP
 - Version: 0.1
 - Date: 2026-07-22
@@ -213,4 +213,4 @@ These items must be decided before their affected implementation is considered c
 
 ## Approval
 
-- [ ] Functional requirements reviewed and approved for MVP implementation.
+- [x] Functional requirements reviewed and approved for MVP implementation.

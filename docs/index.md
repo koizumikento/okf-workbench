@@ -24,6 +24,7 @@ Accepted decisions are recorded under [decisions/](decisions/):
 
 - [0001 — Build a workbench, not a standalone viewer](decisions/0001-workbench-product-scope.md)
 - [0002 — Keep the core deterministic and AI-provider-free](decisions/0002-deterministic-local-first-core.md)
+- [0003 — Use 3d-force-graph for the initial 3D renderer](decisions/0003-use-3d-force-graph.md)
 
 ## Documentation rules
 

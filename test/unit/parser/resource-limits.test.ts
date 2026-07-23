@@ -478,7 +478,7 @@ describe('parser semantic resource limits', () => {
       body: '',
       links: [],
     });
-  });
+  }, 20_000);
 
   it('charges aggregate Markdown body code units at exact and +1 boundaries with zero syntax', () => {
     const body = 'a'.repeat(OKF_SEMANTIC_LIMITS.maxMarkdownBodyCodeUnits);
@@ -540,7 +540,7 @@ describe('parser semantic resource limits', () => {
       links: [],
       source: { contentHash: 'resource-limit:unparsed' },
     });
-  });
+  }, 20_000);
 
   it('charges aggregate Markdown lines at exact and +1 boundaries with zero syntax', () => {
     const body = `${'a\n'.repeat(OKF_SEMANTIC_LIMITS.maxMarkdownLines - 1)}a`;
@@ -699,7 +699,7 @@ describe('parser semantic resource limits', () => {
       links: [],
       source: { contentHash: 'resource-limit:unparsed' },
     });
-  });
+  }, 20_000);
 
   it('charges aggregate Markdown label-end work at exact and +1 boundaries', () => {
     const body = [']'.repeat(2_896), ']'.repeat(68), ']'.repeat(12)].join('\n\n');

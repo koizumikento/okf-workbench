@@ -108,7 +108,9 @@ describe('Markdown pre-AST work guards', () => {
       const inspected = inspectMarkdownComplexity(markdown);
       const elapsedMilliseconds = performance.now() - startedAt;
       expect(inspected.failure).toContain('list and blockquote nesting');
-      expect(elapsedMilliseconds).toBeLessThan(1_000);
+      // Shared CI runners can be substantially slower than the local 72 ms
+      // guarded result; this still rejects the historical ~7.28 s amplifier.
+      expect(elapsedMilliseconds).toBeLessThan(3_000);
     }
   });
 

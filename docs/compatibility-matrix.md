@@ -1,7 +1,7 @@
 # Compatibility matrix
 
-- Status: exact candidate qualified in the hosted editor/OS matrix
-- Matrix date: 2026-07-22
+- Status: current VS Code `1.129.1` matrix configured; exact-candidate hosted qualification pending
+- Matrix refreshed: 2026-07-23
 - Extension identifier expected by the gate: `straydog.okf-workbench`
 
 ## What this matrix proves
@@ -19,12 +19,21 @@ fixture with a fixed `SOURCE_DATE_EPOCH`, records its digest, and upgrades from
 that package. A same-version reinstall is recorded separately and is never
 counted as upgrade evidence.
 
-## Hosted final-candidate qualification
+## Current release-candidate qualification
 
-The normalized `0.1.0` candidate built from commit
+The current workflow requires VS Code `1.121.0` on Ubuntu, VS Code `1.129.1` on Ubuntu, macOS,
+and Windows, and VSCodium `1.121.03429` on Ubuntu, macOS, and Windows. No retained hosted run yet
+qualifies the current source and exact VSIX bytes on that refreshed matrix. The current candidate
+must not inherit the results below; a fresh `Compatibility` run and cross-platform package-byte
+identity run are required.
+
+## Preserved historical hosted qualification
+
+The historical normalized `0.1.0` candidate built from commit
 `aa90832aab64dac1bccf9c9092fabc004991f7b1`, with byte size `582231` and
 SHA-256 `cc8c994cd35cfe2017945c38d0019f330cb33f628a94bf6508b2930c5c57c866`,
-passed every required editor/OS lifecycle lane in
+passed every editor/OS lifecycle lane configured at that time, including the then-current VS Code
+`1.127.0` lanes, in
 [Compatibility run 29900868002](https://github.com/koizumikento/okf-workbench/actions/runs/29900868002).
 The candidate and acceptance jobs in that run also passed. The same candidate
 passed the quality/package, hostile-content Webview, and development Extension
@@ -38,20 +47,24 @@ and byte size.
 Commit `6505a7f7b017a44a851ab6edaaba28f6b6a72105` subsequently added a workflow-level
 aggregate gate that compares all three retained packages. It changes only the
 workflow, checker, its test, and implementation documentation; none of those
-files is packaged, so the qualified VSIX content and digest above are unchanged.
+files is packaged, so that historical VSIX content and digest are unchanged.
 [CI run 29901152549](https://github.com/koizumikento/okf-workbench/actions/runs/29901152549)
 passed all four jobs at that revision, and
 [Package smoke run 29901183164](https://github.com/koizumikento/okf-workbench/actions/runs/29901183164)
 passed all three OS jobs plus the aggregate byte-identity job. The aggregate
 recorded the same SHA-256 and `582231`-byte size across three artifacts.
 
-The seven hosted lifecycle lanes prove clean installation and packaged
-activation, six registered commands, execution of Validate Bundle and Open 3D
-Graph, untrusted-workspace read availability with early write refusal, a real
-upgrade from the repository-owned `0.0.0` predecessor, preservation of settings
-and workspace files, uninstall, and zero attempts through the guarded
-extension-host transports. These automated results do not by themselves prove
-the manual editor-UI clauses tracked in
+For those exact historical bytes, the seven hosted lifecycle lanes prove clean installation and packaged
+activation, six registered commands, dispatch of Validate Bundle followed by a
+newer runtime publication, dispatch of Open 3D Graph followed by a graph
+data-application acknowledgement, untrusted-workspace read availability with
+one early Initialize Bundle refusal, a real upgrade from the repository-owned
+`0.0.0` predecessor, preservation of settings and workspace files, uninstall,
+and zero calls through the listed CommonJS builtin export-owner/global hooks while installed. The retained
+schema did not correlate the asynchronous signals to their initiating requests
+and restored the hooks after a successful report; it is not request-correlated
+completion or host-exit-lifetime evidence. These automated results do not by
+themselves prove the manual editor-UI clauses tracked in
 [acceptance evidence](acceptance-evidence.md).
 
 ## Preserved predecessor-candidate local qualification
@@ -71,26 +84,27 @@ test-only `straydog.okf-workbench@0.0.0` predecessor with SHA-256
 
 These predecessor-candidate records are retained as local audit evidence. The
 three primary records and their 18 linked activation/uninstall reports prove
-clean installation, packaged activation, six registered commands, execution of
-Validate Bundle and Open 3D Graph, zero guarded extension-host transport
-attempts, untrusted-workspace read availability with early write refusal,
+clean installation, packaged activation, six registered commands, two read-command
+dispatches followed by uncorrelated runtime-publication and graph-acknowledgement
+signals, zero calls through the listed Extension Host CommonJS builtin export-owner/global hooks while installed,
+untrusted-workspace read availability with one early Initialize Bundle refusal,
 lower-version upgrade with a preserved user-setting sentinel, uninstall, and
 workspace preservation. The editor CLI and extension API reported the extension
 absent after uninstall. Where the editor left a verified installation directory,
 the harness recorded that native residue separately and removed only the
 identity-checked direct extension directory. The
 [evidence README](evidence/compatibility/README.md) defines the scope and
-sanitation. They do not describe the hosted final candidate above and must not
+sanitation. They do not describe the current candidate and must not
 be used as cross-platform evidence. The `0.0.0` package is a test fixture, not
 a published migration source.
 
-## Executable lanes
+## Current configured lanes
 
 | Editor | Exact version | Ubuntu 24.04 | macOS 15 | Windows 2025 | Acquisition |
 | --- | --- | --- | --- | --- | --- |
-| VS Code | `1.121.0` | Passed | N/A | N/A | Pinned editor test download |
-| VS Code | `1.127.0` | Passed | Passed | Passed | Pinned editor test download |
-| VSCodium | `1.121.03429` | Passed | Passed | Passed | Official archive with pinned SHA-256 |
+| VS Code | `1.121.0` | Pending current candidate | N/A | N/A | Pinned editor test download |
+| VS Code | `1.129.1` | Pending current candidate | Pending current candidate | Pending current candidate | Pinned editor test download |
+| VSCodium | `1.121.03429` | Pending current candidate | Pending current candidate | Pending current candidate | Official archive with pinned SHA-256 |
 
 The API-floor lane runs on the primary Ubuntu CI environment. Cross-platform
 release smoke uses the current VS Code build and the compatible VSCodium build,
@@ -158,6 +172,6 @@ predecessor and still executes the lower-version upgrade. Supplying only one is
 an input error.
 
 Retain the workflow URL and all per-lane JSON artifacts with the release review.
-The hosted result above qualifies that exact candidate; a later candidate must
-be rerun. Do not convert a planned lane, a local mock, or a failed workflow into
-a support claim.
+A successful current run qualifies only its exact candidate; a later candidate must be rerun. The
+preserved hosted result above qualifies only its historical bytes and old lane set. Do not convert
+a planned lane, a local mock, or a failed workflow into a support claim.

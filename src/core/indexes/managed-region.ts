@@ -14,11 +14,20 @@ export interface ManagedRegionMergeInput {
   readonly appendWhenMissing: boolean;
 }
 
-interface ScannedLine {
-  readonly text: string;
+type ManagedNewline = '\n' | '\r\n' | '\r';
+
+interface MarkerLine {
   readonly start: number;
   readonly endIncludingNewline: number;
-  readonly newline: '\n' | '\r\n' | '\r' | '';
+  readonly newline: ManagedNewline | '';
+}
+
+interface MarkerScan {
+  readonly startCount: number;
+  readonly endCount: number;
+  readonly startLine?: MarkerLine;
+  readonly endLine?: MarkerLine;
+  readonly firstNewline?: ManagedNewline;
 }
 
 function problem(
@@ -34,65 +43,85 @@ function problem(
   return { ok: false, problems: [item] };
 }
 
-function scanLines(text: string): readonly ScannedLine[] {
-  const lines: ScannedLine[] = [];
-  let start = 0;
+function scanMarkers(text: string, markers: ManagedRegionMarkers): MarkerScan {
+  // A UTF-8 BOM decoded with `ignoreBOM: true` is represented as one leading
+  // U+FEFF. It belongs to the file prefix, not to the first marker line. Keep
+  // the original offset so replacement slicing preserves the BOM verbatim.
+  let start = text.startsWith('\uFEFF') ? 1 : 0;
+  let startCount = 0;
+  let endCount = 0;
+  let startLine: MarkerLine | undefined;
+  let endLine: MarkerLine | undefined;
+  let firstNewline: ManagedNewline | undefined;
 
   while (start < text.length) {
     let end = start;
     while (end < text.length && text[end] !== '\n' && text[end] !== '\r') {
       end += 1;
     }
-    if (end === text.length) {
-      const raw = text.slice(start, end);
-      lines.push({
-        text: raw,
-        start,
-        endIncludingNewline: text.length,
-        newline: '',
-      });
-      return lines;
-    }
 
-    const crlf = text[end] === '\r' && text[end + 1] === '\n';
-    const newline: '\n' | '\r\n' | '\r' = crlf ? '\r\n' : text[end] === '\r' ? '\r' : '\n';
-    const next = end + (crlf ? 2 : 1);
-    lines.push({
-      text: text.slice(start, end),
+    const hasNewline = end < text.length;
+    const crlf = hasNewline && text[end] === '\r' && text[end + 1] === '\n';
+    const newline: ManagedNewline | '' = !hasNewline
+      ? ''
+      : crlf
+        ? '\r\n'
+        : text[end] === '\r'
+          ? '\r'
+          : '\n';
+    const next = hasNewline ? end + (crlf ? 2 : 1) : text.length;
+    if (firstNewline === undefined && newline !== '') {
+      firstNewline = newline;
+    }
+    const line: MarkerLine = {
       start,
       endIncludingNewline: next,
       newline,
-    });
+    };
+    if (lineEquals(text, start, end, markers.start)) {
+      startCount += 1;
+      startLine ??= line;
+    }
+    if (lineEquals(text, start, end, markers.end)) {
+      endCount += 1;
+      endLine ??= line;
+    }
+    if (!hasNewline) {
+      break;
+    }
     start = next;
   }
 
-  return lines;
+  return {
+    startCount,
+    endCount,
+    ...(startLine === undefined ? {} : { startLine }),
+    ...(endLine === undefined ? {} : { endLine }),
+    ...(firstNewline === undefined ? {} : { firstNewline }),
+  };
 }
 
-function preferredNewline(text: string, startLine?: ScannedLine): '\n' | '\r\n' | '\r' {
+function lineEquals(text: string, start: number, end: number, marker: string): boolean {
+  return end - start === marker.length && text.startsWith(marker, start);
+}
+
+function preferredNewline(scan: MarkerScan, startLine?: MarkerLine): ManagedNewline {
   if (startLine !== undefined && startLine.newline !== '') {
     return startLine.newline;
   }
-
-  for (let index = 0; index < text.length; index += 1) {
-    if (text[index] === '\n') {
-      return '\n';
-    }
-    if (text[index] === '\r') {
-      return text[index + 1] === '\n' ? '\r\n' : '\r';
-    }
-  }
-
-  return '\n';
+  return scan.firstNewline ?? '\n';
 }
 
-function convertLf(text: string, newline: '\n' | '\r\n' | '\r'): string {
+function convertLf(text: string, newline: ManagedNewline): string {
   const lf = text.replace(/\r\n?|\n/gu, '\n');
   return newline === '\n' ? lf : lf.replaceAll('\n', newline);
 }
 
-function appendRegion(existingText: string, renderedRegion: string): string {
-  const newline = preferredNewline(existingText);
+function appendRegion(
+  existingText: string,
+  renderedRegion: string,
+  newline: ManagedNewline,
+): string {
   const region = convertLf(renderedRegion, newline);
   if (existingText.length === 0) {
     return region;
@@ -120,38 +149,36 @@ function appendRegion(existingText: string, renderedRegion: string): string {
  * matching is exact after splitting CR, LF, or CRLF line endings.
  */
 export function mergeManagedRegion(input: ManagedRegionMergeInput): OperationResult<string> {
-  const lines = scanLines(input.existingText);
-  const starts = lines.filter((line) => line.text === input.markers.start);
-  const ends = lines.filter((line) => line.text === input.markers.end);
+  const scan = scanMarkers(input.existingText, input.markers);
 
-  if (starts.length === 0 && ends.length === 0) {
+  if (scan.startCount === 0 && scan.endCount === 0) {
     if (!input.appendWhenMissing) {
       return problem('managed-region-missing', input.markers, 'the required markers are missing');
     }
 
     return {
       ok: true,
-      value: appendRegion(input.existingText, input.renderedRegion),
+      value: appendRegion(input.existingText, input.renderedRegion, preferredNewline(scan)),
       warnings: [],
     };
   }
 
-  if (starts.length !== 1 || ends.length !== 1) {
+  if (scan.startCount !== 1 || scan.endCount !== 1) {
     const code =
-      starts.length > 1 || ends.length > 1
+      scan.startCount > 1 || scan.endCount > 1
         ? 'managed-region-duplicate-markers'
         : 'managed-region-incomplete-markers';
     return problem(
       code,
       input.markers,
-      starts.length > 1 || ends.length > 1
+      scan.startCount > 1 || scan.endCount > 1
         ? 'the marker pair is duplicated or nested'
         : 'only one marker from the pair is present',
     );
   }
 
-  const startLine = starts[0];
-  const endLine = ends[0];
+  const startLine = scan.startLine;
+  const endLine = scan.endLine;
   if (startLine === undefined || endLine === undefined || startLine.start >= endLine.start) {
     return problem(
       'managed-region-reversed-markers',
@@ -160,7 +187,7 @@ export function mergeManagedRegion(input: ManagedRegionMergeInput): OperationRes
     );
   }
 
-  const newline = preferredNewline(input.existingText, startLine);
+  const newline = preferredNewline(scan, startLine);
   const region = convertLf(input.renderedRegion, newline);
   const prefix = input.existingText.slice(0, startLine.start);
   const suffix = input.existingText.slice(endLine.endIncludingNewline);

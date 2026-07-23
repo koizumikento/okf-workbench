@@ -47,6 +47,7 @@ test('renders hostile metadata and broken-link text without script execution or 
           protocolVersion: 1,
           type: 'replaceGraph',
           revision: 1,
+          deliveryId: 1,
           payload: {
             protocolVersion: 1,
             revision: 1,

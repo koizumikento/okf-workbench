@@ -4,10 +4,17 @@ export const PROTOCOL_VERSION = 1 as const;
 
 export type WebviewStatus = 'loading' | 'ready' | 'error';
 
+export interface GraphDeliveryIdentity {
+  readonly revision: number;
+  readonly deliveryId: number;
+}
+
 export interface ReplaceGraphMessage {
   readonly protocolVersion: typeof PROTOCOL_VERSION;
   readonly type: 'replaceGraph';
   readonly revision: number;
+  /** Identifies one concrete post to one Webview context, even when the revision is unchanged. */
+  readonly deliveryId: number;
   readonly payload: GraphPayload;
 }
 
@@ -31,6 +38,7 @@ export interface GraphRenderedMessage {
   readonly protocolVersion: typeof PROTOCOL_VERSION;
   readonly type: 'graphRendered';
   readonly revision: number;
+  readonly deliveryId: number;
 }
 
 export type GraphRenderFailureReason = 'renderer-construction-failed' | 'renderer-update-failed';
@@ -40,6 +48,7 @@ export interface GraphRenderFailedMessage {
   readonly protocolVersion: typeof PROTOCOL_VERSION;
   readonly type: 'graphRenderFailed';
   readonly revision: number;
+  readonly deliveryId: number;
   readonly reason: GraphRenderFailureReason;
 }
 
@@ -47,6 +56,7 @@ export interface OpenSourceMessage {
   readonly protocolVersion: typeof PROTOCOL_VERSION;
   readonly type: 'openSource';
   readonly revision: number;
+  readonly deliveryId: number;
   readonly nodeId: string;
 }
 

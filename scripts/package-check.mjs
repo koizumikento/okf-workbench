@@ -1,15 +1,42 @@
 import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
 
 const endSignature = 0x06054b50;
 const centralSignature = 0x02014b50;
 const localSignature = 0x04034b50;
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+export const CANONICAL_PROJECT_LICENSE_TEXT = `MIT License
+
+Copyright (c) 2026 straydog contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+`;
+
+export const PROJECT_LICENSE_ENTRY = 'extension/LICENSE.txt';
 
 export const REQUIRED_VSIX_ENTRIES = Object.freeze([
   '[Content_Types].xml',
   'extension.vsixmanifest',
+  PROJECT_LICENSE_ENTRY,
   'extension/THIRD_PARTY_NOTICES.md',
   'extension/assets/icon.png',
   'extension/changelog.md',
@@ -20,15 +47,38 @@ export const REQUIRED_VSIX_ENTRIES = Object.freeze([
   'extension/package.json',
 ]);
 
-// A future license decision may choose one of these conventional root names.
-// The packaged security gate separately requires exactly one non-empty project license.
-export const OPTIONAL_VSIX_ENTRIES = Object.freeze([
-  'extension/LICENSE',
-  'extension/LICENSE.md',
-  'extension/LICENSE.txt',
-]);
+const allowedEntries = new Set(REQUIRED_VSIX_ENTRIES);
 
-const allowedEntries = new Set([...REQUIRED_VSIX_ENTRIES, ...OPTIONAL_VSIX_ENTRIES]);
+export function validateProjectLicense(input) {
+  if (!(input instanceof Uint8Array)) {
+    throw new TypeError('validateProjectLicense expects the repository LICENSE bytes.');
+  }
+  if (!Buffer.from(input).equals(Buffer.from(CANONICAL_PROJECT_LICENSE_TEXT, 'utf8'))) {
+    throw new Error(
+      'The repository LICENSE must exactly match the canonical MIT License text and accepted copyright notice.',
+    );
+  }
+}
+
+export function validateVsixManifestProjectLicense(vsixManifest) {
+  if (typeof vsixManifest !== 'string') {
+    throw new TypeError('validateVsixManifestProjectLicense expects the VSIX manifest text.');
+  }
+
+  const projectLicenseDeclarations = [
+    ...vsixManifest.matchAll(
+      /<(?:[A-Za-z_][\w.-]*:)?License\b(?:[^>]*\/>|[^>]*>[^<]*<\/(?:[A-Za-z_][\w.-]*:)?License\s*>)/gu,
+    ),
+  ];
+  if (
+    projectLicenseDeclarations.length !== 1 ||
+    projectLicenseDeclarations[0][0] !== '<License>extension/LICENSE.txt</License>'
+  ) {
+    throw new Error(
+      'extension.vsixmanifest must contain exactly one canonical project-license declaration.',
+    );
+  }
+}
 
 function findEndRecord(archive) {
   if (archive.length < 22) {
@@ -43,10 +93,14 @@ function findEndRecord(archive) {
   throw new Error('The VSIX does not contain a valid ZIP end record.');
 }
 
-export function validateVsixArchive(input) {
+export function validateVsixArchive(input, expectedProjectLicense) {
   if (!(input instanceof Uint8Array)) {
     throw new TypeError('validateVsixArchive expects a Uint8Array.');
   }
+  if (!(expectedProjectLicense instanceof Uint8Array)) {
+    throw new TypeError('validateVsixArchive expects the canonical project license bytes.');
+  }
+  validateProjectLicense(expectedProjectLicense);
 
   const archive = Buffer.from(input);
   const endOffset = findEndRecord(archive);
@@ -121,13 +175,61 @@ export function validateVsixArchive(input) {
     manifest.name !== 'okf-workbench' ||
     manifest.publisher !== 'straydog' ||
     manifest.version !== '0.1.0' ||
+    manifest.license !== 'MIT' ||
+    manifest.repository !== undefined ||
+    manifest.bugs !== undefined ||
+    manifest.homepage !== undefined ||
     manifest.icon !== 'assets/icon.png' ||
     manifest.main !== './dist/extension.cjs' ||
     manifest.engines?.vscode !== '^1.121.0'
   ) {
     throw new Error(
-      'The packaged manifest does not preserve the accepted identity, icon, entry point, and API floor.',
+      'The packaged manifest does not preserve the accepted identity, MIT license, private-link exclusions, icon, entry point, and API floor.',
     );
+  }
+
+  const packagedProjectLicense = readEntry(PROJECT_LICENSE_ENTRY);
+  if (!packagedProjectLicense.equals(Buffer.from(expectedProjectLicense))) {
+    throw new Error(
+      `${PROJECT_LICENSE_ENTRY} does not exactly match the canonical repository LICENSE.`,
+    );
+  }
+
+  const vsixManifest = readEntry('extension.vsixmanifest').toString('utf8');
+  validateVsixManifestProjectLicense(vsixManifest);
+  const contentLicenseAssets = [
+    ...vsixManifest.matchAll(
+      /<Asset\b[^>]*\bType="Microsoft\.VisualStudio\.Services\.Content\.License"[^>]*\/>/gu,
+    ),
+  ];
+  if (
+    contentLicenseAssets.length !== 1 ||
+    !/\bPath="extension\/LICENSE\.txt"/u.test(contentLicenseAssets[0][0]) ||
+    !/\bAddressable="true"/u.test(contentLicenseAssets[0][0])
+  ) {
+    throw new Error(
+      'extension.vsixmanifest must contain exactly one canonical addressable project-license asset.',
+    );
+  }
+  if (
+    /Microsoft\.VisualStudio\.Services\.Links\.(?:Source|Support|Learn|GitHub|Getstarted)/u.test(
+      vsixManifest,
+    ) ||
+    /github\.com\/koizumikento\/okf-workbench/iu.test(vsixManifest)
+  ) {
+    throw new Error('extension.vsixmanifest contains private repository marketplace metadata.');
+  }
+
+  for (const packagedDocument of ['extension/readme.md', 'extension/changelog.md']) {
+    const content = readEntry(packagedDocument).toString('utf8');
+    if (
+      /github\.com\/koizumikento\/okf-workbench/iu.test(content) ||
+      /\]\((?:\.\/)?docs\//iu.test(content)
+    ) {
+      throw new Error(
+        `${packagedDocument} contains a private repository or excluded documentation link.`,
+      );
+    }
   }
 
   for (const webviewFile of ['extension/dist/webview/main.css', 'extension/dist/webview/main.js']) {
@@ -143,8 +245,15 @@ export function validateVsixArchive(input) {
   return { entryCount: entries.size };
 }
 
-export async function validateVsixFile(filePath) {
-  return validateVsixArchive(await readFile(resolve(filePath)));
+export async function validateVsixFile(
+  filePath,
+  projectLicensePath = resolve(repositoryRoot, 'LICENSE'),
+) {
+  const [archive, projectLicense] = await Promise.all([
+    readFile(resolve(filePath)),
+    readFile(resolve(projectLicensePath)),
+  ]);
+  return validateVsixArchive(archive, projectLicense);
 }
 
 const invokedPath =

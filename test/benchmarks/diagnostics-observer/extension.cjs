@@ -9,6 +9,8 @@ const vscode = require('vscode');
 
 const TRACE_ENVIRONMENT_VARIABLE = 'OKF_QR002_DIAGNOSTICS_TRACE';
 const OKF_SOURCES = new Set(['OKF Compatibility', 'OKF Conformance', 'OKF Curation']);
+const OKF_EXTENSION_ID = 'straydog.okf-workbench';
+const CORRELATION_AUTHORITY = 'okf-acceptance-runtime-publication';
 
 exports.activate = function activate(context) {
   const tracePath = process.env[TRACE_ENVIRONMENT_VARIABLE];
@@ -20,8 +22,11 @@ exports.activate = function activate(context) {
   let captureTimer;
   let pendingWrites = Promise.resolve();
 
-  const capture = () => {
+  const capture = async () => {
     captureTimer = undefined;
+    const okfExtension = vscode.extensions.getExtension(OKF_EXTENSION_ID);
+    const api = okfExtension === undefined ? undefined : await okfExtension.activate();
+    const publicationBefore = readRuntimePublication(api);
     const diagnostics = vscode.languages
       .getDiagnostics()
       .flatMap(([uri, values]) =>
@@ -42,11 +47,28 @@ exports.activate = function activate(context) {
           left.code.localeCompare(right.code) ||
           left.source.localeCompare(right.source),
       );
+    const publicationAfter = readRuntimePublication(api);
+    const correlatedPublication =
+      sameRuntimePublication(publicationBefore, publicationAfter) &&
+      publicationAfter.findingCount === diagnostics.length
+        ? publicationAfter
+        : undefined;
     const record = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       sequence: (captureSequence += 1),
       observedAtEpochMs: Date.now(),
       diagnostics,
+      diagnosticsCorrelation:
+        correlatedPublication === undefined
+          ? null
+          : {
+              authority: CORRELATION_AUTHORITY,
+              revision: correlatedPublication.revision,
+              diagnosticsPublished: true,
+              findingCount: correlatedPublication.findingCount,
+              conceptCount: correlatedPublication.conceptCount,
+              edgeCount: correlatedPublication.edgeCount,
+            },
     };
     pendingWrites = pendingWrites
       .then(() => fs.appendFile(tracePath, `${JSON.stringify(record)}\n`, 'utf8'))
@@ -59,7 +81,9 @@ exports.activate = function activate(context) {
     }
     // FindingDiagnosticsPublisher clears then repopulates its collection synchronously.
     // Coalesce that event burst and observe the final Problems state.
-    captureTimer = setTimeout(capture, 10);
+    captureTimer = setTimeout(() => {
+      void capture().catch(() => undefined);
+    }, 10);
   };
 
   context.subscriptions.push(vscode.languages.onDidChangeDiagnostics(scheduleCapture), {
@@ -71,3 +95,41 @@ exports.activate = function activate(context) {
 };
 
 exports.deactivate = function deactivate() {};
+
+function readRuntimePublication(api) {
+  if (
+    api === undefined ||
+    api === null ||
+    typeof api !== 'object' ||
+    api.schemaVersion !== 1 ||
+    typeof api.getCompletionState !== 'function'
+  ) {
+    return undefined;
+  }
+  const publication = api.getCompletionState()?.runtimePublication;
+  return publication !== null &&
+    typeof publication === 'object' &&
+    Number.isSafeInteger(publication.revision) &&
+    publication.revision >= 0 &&
+    publication.diagnosticsPublished === true &&
+    Number.isSafeInteger(publication.findingCount) &&
+    publication.findingCount >= 0 &&
+    Number.isSafeInteger(publication.conceptCount) &&
+    publication.conceptCount >= 0 &&
+    Number.isSafeInteger(publication.edgeCount) &&
+    publication.edgeCount >= 0
+    ? publication
+    : undefined;
+}
+
+function sameRuntimePublication(left, right) {
+  return (
+    left !== undefined &&
+    right !== undefined &&
+    left.revision === right.revision &&
+    left.diagnosticsPublished === right.diagnosticsPublished &&
+    left.findingCount === right.findingCount &&
+    left.conceptCount === right.conceptCount &&
+    left.edgeCount === right.edgeCount
+  );
+}

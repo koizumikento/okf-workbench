@@ -1,7 +1,9 @@
 import type { LinkClassification } from '../model/index.js';
+import { OKF_SEMANTIC_LIMITS } from '../model/resource-limits.js';
 
 export type CanonicalBundlePathResult =
-  { readonly ok: true; readonly path: string } | { readonly ok: false; readonly message: string };
+  | { readonly ok: true; readonly path: string }
+  | { readonly ok: false; readonly message: string; readonly resourceLimit?: true };
 
 export interface ResolvedLinkTarget {
   readonly classification: LinkClassification;
@@ -18,6 +20,7 @@ export interface LinkResolutionInventory {
 
 const URI_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*:/u;
 const WINDOWS_DRIVE = /^[A-Za-z]:\//u;
+const utf8Encoder = new TextEncoder();
 
 /**
  * Canonicalizes a logical bundle path without consulting the host filesystem.
@@ -26,6 +29,16 @@ const WINDOWS_DRIVE = /^[A-Za-z]:\//u;
 export function canonicalizeBundlePath(rawPath: string): CanonicalBundlePathResult {
   if (rawPath.length === 0) {
     return { ok: false, message: 'Bundle path is empty.' };
+  }
+  if (
+    rawPath.length > OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits ||
+    utf8Encoder.encode(rawPath).byteLength > OKF_SEMANTIC_LIMITS.maxProviderPathBytes
+  ) {
+    return {
+      ok: false,
+      resourceLimit: true,
+      message: `Bundle path exceeds the ${String(OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits)}-code-unit or ${String(OKF_SEMANTIC_LIMITS.maxProviderPathBytes)}-byte identity safety limit. Shorten the provider-relative path, then retry.`,
+    };
   }
 
   const posixPath = rawPath.replace(/\\/gu, '/');
@@ -49,6 +62,13 @@ export function canonicalizeBundlePath(rawPath: string): CanonicalBundlePathResu
       continue;
     }
     parts.push(part);
+    if (parts.length > OKF_SEMANTIC_LIMITS.maxProviderPathSegments) {
+      return {
+        ok: false,
+        resourceLimit: true,
+        message: `Bundle path exceeds the ${String(OKF_SEMANTIC_LIMITS.maxProviderPathSegments)}-segment identity safety limit. Reduce directory nesting, then retry.`,
+      };
+    }
   }
 
   if (parts.length === 0) {

@@ -10,7 +10,16 @@ const packageManifest = JSON.parse(await readFile(resolve(repositoryRoot, 'packa
 const packageLock = JSON.parse(
   await readFile(resolve(repositoryRoot, 'package-lock.json'), 'utf8'),
 );
-const expectedRuntimeDependencies = new Set(['3d-force-graph', 'remark-parse', 'unified', 'yaml']);
+const expectedRuntimeDependencies = new Set([
+  '3d-force-graph',
+  'micromark',
+  'micromark-core-commonmark',
+  'micromark-util-decode-string',
+  'micromark-util-subtokenize',
+  'remark-parse',
+  'unified',
+  'yaml',
+]);
 
 const runtimeDependencyNames = Object.keys(packageManifest.dependencies ?? {}).sort();
 const unexpectedDependencies = runtimeDependencyNames.filter(

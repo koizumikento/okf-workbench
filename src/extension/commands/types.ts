@@ -3,6 +3,7 @@ import type { BundleDirectoryInput } from '../../core/templates/index.js';
 import type { ProposalApplicator } from '../workspace/proposalApplicator.js';
 import type { WorkspacePort } from '../workspace/types.js';
 import type { WorkspaceUriCodec } from '../workspace/uriCodec.js';
+import type { WorkspaceFolderMembershipSession } from '../workspace/workspaceFolderMembership.js';
 
 export interface SelectionItem<TValue extends string> {
   readonly value: TValue;
@@ -23,6 +24,7 @@ export interface ConfirmationOptions {
   readonly title: string;
   readonly detail: string;
   readonly confirmLabel: string;
+  readonly previewIdentity: ProposalPreviewIdentity;
   /** Preview confirmations must leave the editor usable while this prompt is pending. */
   readonly modeless: true;
 }
@@ -47,10 +49,20 @@ export interface ProposalPresentation {
   readonly summary: readonly string[];
 }
 
+/** Stable identity shared by one summary, all of its diffs, and its approval notification. */
+export interface ProposalPreviewIdentity {
+  readonly id: string;
+  readonly label: string;
+  readonly targetUri: string;
+}
+
 /** Shows immutable, read-only snapshots of every proposed change. */
 export interface ProposalPreviewSession {
-  /** Releases provider-held preview bytes after the confirmation flow finishes. */
-  dispose(): void;
+  readonly identity: ProposalPreviewIdentity;
+  /** Fails synchronously when this exact preview is no longer available for a decision. */
+  assertActive(): void;
+  /** Closes this run's preview tabs and releases its provider-held bytes and registration. */
+  dispose(): Promise<void>;
 }
 
 export interface ProposalPreviewer<TUri> {
@@ -62,15 +74,40 @@ export interface ProposalPreviewer<TUri> {
   ): Promise<ProposalPreviewSession>;
 }
 
+declare const proposalWorkflowLeaseBrand: unique symbol;
+
+/** Opaque proof that the extension-wide write-command gate is currently owned. */
+export interface ProposalWorkflowLease {
+  readonly [proposalWorkflowLeaseBrand]: true;
+}
+
+export interface ProposalWorkflowScheduler {
+  /** Starts immediately or rejects as busy; implementations must never retain the callback. */
+  runExclusive<TResult>(
+    workflow: (lease: ProposalWorkflowLease) => Promise<TResult>,
+  ): Promise<TResult>;
+  /** Fails when the lease did not come from this scheduler or its command already settled. */
+  assertActive(lease: ProposalWorkflowLease): void;
+}
+
 export interface ProposalWorkflowDependencies<TUri> {
   readonly port: WorkspacePort<TUri>;
   readonly uris: WorkspaceUriCodec<TUri>;
   readonly applicator: ProposalApplicator<TUri>;
   readonly ui: CommandUi<TUri>;
   readonly previewer: ProposalPreviewer<TUri>;
+  /** Fail-fast gate covering each complete write command, including selection and planning. */
+  readonly workflowScheduler: ProposalWorkflowScheduler;
   readonly isWorkspaceTrusted: () => boolean;
   /** Optional host-owned compatibility recheck used immediately before existing-bundle writes. */
   readonly revalidateBundleWrite?: (bundleRootUri: TUri) => Promise<OperationProblem | undefined>;
+  /**
+   * Captures the exact open workspace folder that authorized a proposal.
+   * Removal is irreversible for the returned workflow session.
+   */
+  readonly captureWorkspaceFolderMembership: (
+    workspaceSafetyRootUri: TUri,
+  ) => WorkspaceFolderMembershipSession;
 }
 
 export type CommandOutcome =
@@ -82,6 +119,8 @@ export type CommandOutcome =
 
 export interface SelectedBundle<TUri> {
   readonly bundleRootUri: TUri;
+  /** Open workspace folder used to validate every ancestor of the bundle root before writes. */
+  readonly workspaceSafetyRootUri: TUri;
   readonly label?: string;
 }
 
@@ -89,6 +128,8 @@ export type SelectBundle<TUri> = () => Promise<SelectedBundle<TUri> | undefined>
 
 export interface InitializationTarget<TUri> {
   readonly targetRootUri: TUri;
+  /** Open workspace folder containing `targetRootUri`. */
+  readonly workspaceSafetyRootUri: TUri;
   readonly label: string;
   readonly suggestedBundleDirectory: string;
 }

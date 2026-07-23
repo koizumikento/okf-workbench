@@ -7,6 +7,9 @@ import {
   EXPECTED_INSTALL_SCRIPT_DECISIONS,
   installScriptPolicyFailures,
   licenseNoticeWorkflowFailures,
+  releaseWorkflowSafetyFailures,
+  securityPackageScriptFailures,
+  securityWorkflowGateFailures,
   validateRepositorySupplyChainPolicy,
   workflowActionReferenceFailures,
 } from '../../../scripts/supply-chain-policy.mjs';
@@ -67,6 +70,207 @@ describe('supply-chain policy', () => {
     expect(
       licenseNoticeWorkflowFailures('.github/workflows/open-vsx-release.yml', gateBeforeInstall),
     ).toEqual([expect.stringContaining('after npm ci')]);
+  });
+
+  test('requires each hosted security boundary exactly once in its owning job', () => {
+    const wrongCompatibilityJob = [
+      'jobs:',
+      '  candidate:',
+      '    steps:',
+      '      - run: npm run test:security:webview',
+      '  acceptance:',
+      '    steps:',
+      '      - run: npm run test:security',
+    ].join('\n');
+    const duplicateCiGate = [
+      'jobs:',
+      '  quality-and-package:',
+      '    steps:',
+      '      - run: npm run test:security',
+      '      - run: npm run test:security',
+      '  webview-browser:',
+      '    steps:',
+      '      - run: npm run test:security:webview',
+    ].join('\n');
+
+    expect(
+      securityWorkflowGateFailures('.github/workflows/compatibility.yml', wrongCompatibilityJob),
+    ).toEqual([
+      expect.stringContaining('jobs.candidate'),
+      expect.stringContaining('jobs.acceptance'),
+    ]);
+    expect(securityWorkflowGateFailures('.github/workflows/ci.yml', duplicateCiGate)).toEqual([
+      expect.stringContaining('found 2'),
+    ]);
+  });
+
+  test('runs Node security in every Package smoke OS lane behind the browser security job', () => {
+    const missingDependency = [
+      'jobs:',
+      '  security-boundaries:',
+      '    steps:',
+      '      - run: npm run test:security:webview',
+      '  package-smoke:',
+      '    strategy:',
+      '      matrix:',
+      '        os: [ubuntu-24.04, macos-15, windows-2025]',
+      '    steps:',
+      '      - run: npm run test:security',
+      '      - run: npm run package',
+    ].join('\n');
+
+    expect(
+      securityWorkflowGateFailures('.github/workflows/package-smoke.yml', missingDependency),
+    ).toEqual([expect.stringContaining('must need security-boundaries')]);
+  });
+
+  test('rejects conditional or non-blocking hosted security gates', () => {
+    const bypassablePackageSmoke = [
+      'jobs:',
+      '  security-boundaries:',
+      '    steps:',
+      '      - if: ${{ false }}',
+      '        run: npm run test:security:webview',
+      '  package-smoke:',
+      '    needs: security-boundaries',
+      '    steps:',
+      '      - continue-on-error: true',
+      '        run: npm run test:security',
+    ].join('\n');
+
+    expect(
+      securityWorkflowGateFailures('.github/workflows/package-smoke.yml', bypassablePackageSmoke),
+    ).toEqual([
+      expect.stringContaining('test:security'),
+      expect.stringContaining('test:security:webview'),
+    ]);
+  });
+
+  test('requires durable pre-publication evidence before the irreversible Open VSX command', () => {
+    const unsafeRelease = [
+      'jobs:',
+      '  publish:',
+      '    steps:',
+      '      - name: Verify',
+      '        env:',
+      '          OVSX_PAT: ${{ secrets.OVSX_PAT }}',
+      '        run: ./node_modules/.bin/ovsx verify-pat straydog',
+      '      - name: Create evidence',
+      '        run: |',
+      "          approvalBinding='matched'",
+      "          namespaceAuthorization='passed'",
+      "          output='prepublication-evidence.json'",
+      '      - name: Publish',
+      '        env:',
+      '          OVSX_PAT: ${{ secrets.OVSX_PAT }}',
+      '        run: ./node_modules/.bin/ovsx publish "${VSIX_NAME}"',
+      '      - name: Too-late evidence',
+      '        uses: actions/upload-artifact@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      '        with:',
+      '          path: |',
+      '            release-candidate/prepublication-evidence.json',
+      '            release-candidate/open-vsx-registry-publish.json',
+      '          if-no-files-found: error',
+    ].join('\n');
+
+    expect(
+      releaseWorkflowSafetyFailures('.github/workflows/open-vsx-release.yml', unsafeRelease),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('before the irreversible publish command'),
+        expect.stringContaining('post-publish artifact upload'),
+        expect.stringContaining('publication-attempt receipt'),
+      ]),
+    );
+  });
+
+  test('rejects release-job error tolerance, bypassable PAT verification, and bracket secret leakage', async () => {
+    const source = await readFile(
+      new URL('../../../.github/workflows/open-vsx-release.yml', import.meta.url),
+      'utf8',
+    );
+    expect(releaseWorkflowSafetyFailures('.github/workflows/open-vsx-release.yml', source)).toEqual(
+      [],
+    );
+
+    const tolerantJob = source.replace(
+      [
+        '  publish:',
+        '    name: Verify namespace and publish the retained VSIX',
+        '    needs: build-candidate',
+        '    runs-on: ubuntu-24.04',
+      ].join('\n'),
+      [
+        '  publish:',
+        '    name: Verify namespace and publish the retained VSIX',
+        '    needs: build-candidate',
+        '    runs-on: ubuntu-24.04',
+        '    continue-on-error: true',
+      ].join('\n'),
+    );
+    expect(
+      releaseWorkflowSafetyFailures('.github/workflows/open-vsx-release.yml', tolerantJob),
+    ).toContainEqual(expect.stringContaining('unconditional fail-closed protected job'));
+
+    const bypassablePat = source.replace(
+      '      - name: Verify straydog namespace authorization\n',
+      '      - name: Verify straydog namespace authorization\n        continue-on-error: true\n',
+    );
+    expect(
+      releaseWorkflowSafetyFailures('.github/workflows/open-vsx-release.yml', bypassablePat),
+    ).toContainEqual(expect.stringContaining('PAT verification step'));
+
+    const leakedBracketSecret = source.replace(
+      '          APPROVAL: ${{ inputs.approval }}\n',
+      [
+        "          LEAKED_PAT: ${{ secrets['OVSX_PAT'] }}",
+        '          APPROVAL: ${{ inputs.approval }}',
+        '',
+      ].join('\n'),
+    );
+    expect(
+      releaseWorkflowSafetyFailures('.github/workflows/open-vsx-release.yml', leakedBracketSecret),
+    ).toContainEqual(expect.stringContaining('OVSX_PAT must be exposed only'));
+
+    const duplicatePublish = source.replace(
+      '        run: ./node_modules/.bin/ovsx publish "${VSIX_NAME}"',
+      [
+        '        run: |',
+        '          ./node_modules/.bin/ovsx publish other.vsix',
+        '          ./node_modules/.bin/ovsx publish "${VSIX_NAME}"',
+      ].join('\n'),
+    );
+    expect(
+      releaseWorkflowSafetyFailures('.github/workflows/open-vsx-release.yml', duplicatePublish),
+    ).toContainEqual(expect.stringContaining('exactly one Open VSX publish invocation'));
+  });
+
+  test('requires the local aggregate to build between the disjoint security suites', () => {
+    const validScripts = {
+      scripts: {
+        check: 'npm run format && npm run test:security:all',
+        'test:security': 'vitest run --config test/security/vitest.config.ts',
+        'test:security:all':
+          'npm run test:security && npm run build && npm run test:security:webview',
+        'test:security:webview': 'playwright test --config test/security/playwright.config.ts',
+      },
+    };
+
+    expect(securityPackageScriptFailures(validScripts)).toEqual([]);
+    expect(
+      securityPackageScriptFailures({
+        scripts: {
+          ...validScripts.scripts,
+          check:
+            'npm run test:security && npm run test:security:all && npm run test:security:webview',
+          'test:security:all':
+            'npm run test:security:webview && npm run build && npm run test:security',
+        },
+      }),
+    ).toEqual([
+      expect.stringContaining('exactly once and in that order'),
+      expect.stringContaining('instead of duplicating'),
+    ]);
   });
 
   test('requires strict npm enforcement and exact reviewed decisions', () => {

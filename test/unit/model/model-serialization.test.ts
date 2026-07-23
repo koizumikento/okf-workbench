@@ -60,6 +60,9 @@ describe('serializable core models', () => {
           },
           frontmatter: {
             raw: producerFields,
+            explicitTags: {
+              tagged_timestamp: 'tag:yaml.org,2002:timestamp',
+            },
             source:
               'type: experiment-result\ntitle: Unicode 知識\ntags: [alpha, beta]\ncustom:\n  enabled: true\n',
             range: documentRange,
@@ -177,13 +180,14 @@ describe('serializable core models', () => {
     };
     const proposal: ChangeSetProposal = {
       operation: 'regenerate-indexes',
+      workspaceSafetyRootUri: bundle.rootUri,
       writeRootUri: bundle.rootUri,
       changes: [
         {
           targetUri: `${bundle.rootUri}/index.md`,
           relativePath: 'index.md',
           operation: 'update',
-          expected: { kind: 'sha256', value: 'current-index-hash' },
+          expected: { kind: 'sha256', value: 'current-index-hash', byteLength: 42 },
           encoding: 'utf8',
           proposedText: '# Knowledge\n\n<!-- managed -->\n',
         },

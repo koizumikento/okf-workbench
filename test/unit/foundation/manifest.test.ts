@@ -2,14 +2,13 @@ import { readFile } from 'node:fs/promises';
 
 import { describe, expect, test } from 'vitest';
 
-const expectedCommands = [
-  ['okfWorkbench.initializeBundle', 'Initialize Bundle'],
-  ['okfWorkbench.newConcept', 'New Concept'],
-  ['okfWorkbench.validateBundle', 'Validate Bundle'],
-  ['okfWorkbench.regenerateIndexes', 'Regenerate Indexes'],
-  ['okfWorkbench.openGraph', 'Open 3D Graph'],
-  ['okfWorkbench.setupAgentIntegration', 'Set Up Agent Integration'],
-] as const;
+import {
+  EXPECTED_COMMAND_CATALOG,
+  EXPECTED_WRITE_COMMAND_IDS,
+} from '../../../scripts/compatibility/driver/command-catalog.cjs';
+import { OKF_COMMANDS } from '../../../src/extension/commands/ids.js';
+
+const expectedCommands = EXPECTED_COMMAND_CATALOG.map(({ id, title }) => [id, title] as const);
 
 interface ManifestCommand {
   readonly category?: unknown;
@@ -27,6 +26,7 @@ interface ManifestMenuCommand {
 interface ExtensionManifest {
   readonly activationEvents?: unknown;
   readonly browser?: unknown;
+  readonly bugs?: unknown;
   readonly contributes?: {
     readonly commands?: readonly ManifestCommand[];
     readonly menus?: {
@@ -39,7 +39,10 @@ interface ExtensionManifest {
   };
   readonly main?: unknown;
   readonly icon?: unknown;
+  readonly homepage?: unknown;
+  readonly license?: unknown;
   readonly publisher?: unknown;
+  readonly repository?: unknown;
   readonly version?: unknown;
 }
 
@@ -60,7 +63,15 @@ describe('extension manifest', () => {
     const manifest = await readManifest();
     expect(manifest.publisher).toBe('straydog');
     expect(manifest.version).toBe('0.1.0');
+    expect(manifest.license).toBe('MIT');
     expect(manifest.icon).toBe('assets/icon.png');
+  });
+
+  test('does not publish links that require access to the private source repository', async () => {
+    const manifest = await readManifest();
+    expect(manifest.repository).toBeUndefined();
+    expect(manifest.bugs).toBeUndefined();
+    expect(manifest.homepage).toBeUndefined();
   });
 
   test('contributes exactly six stable, workspace-gated commands', async () => {
@@ -72,6 +83,19 @@ describe('extension manifest', () => {
     expect(commands.every(({ enablement }) => enablement === 'workspaceFolderCount > 0')).toBe(
       true,
     );
+  });
+
+  test('shares one exhaustive read/write command classification with packaged acceptance', () => {
+    expect(OKF_COMMANDS).toEqual(EXPECTED_COMMAND_CATALOG);
+    expect(
+      OKF_COMMANDS.filter(({ workspaceAccess }) => workspaceAccess === 'write').map(({ id }) => id),
+    ).toEqual(EXPECTED_WRITE_COMMAND_IDS);
+    expect(EXPECTED_WRITE_COMMAND_IDS).toEqual([
+      'okfWorkbench.initializeBundle',
+      'okfWorkbench.newConcept',
+      'okfWorkbench.regenerateIndexes',
+      'okfWorkbench.setupAgentIntegration',
+    ]);
   });
 
   test('activates and exposes the palette for those IDs only', async () => {

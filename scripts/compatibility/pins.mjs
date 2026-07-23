@@ -15,7 +15,7 @@ export const COMPATIBILITY_PINS = Object.freeze({
   extensionId: 'straydog.okf-workbench',
   nodeVersion: '24.18.0',
   npmVersion: '11.16.0',
-  vscodeVersions: Object.freeze(['1.121.0', '1.127.0']),
+  vscodeVersions: Object.freeze(['1.121.0', '1.129.1']),
   vscodium: Object.freeze({
     releaseVersion: '1.121.03429',
     /** Version printed by the VSCodium command-line wrapper. */

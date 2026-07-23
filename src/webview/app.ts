@@ -46,6 +46,7 @@ interface AppElements {
 type FilterGroup = 'tag' | 'type';
 
 type FocusAnchor =
+  | { readonly kind: 'control'; readonly value: 'clearFilters' | 'search' }
   | { readonly kind: 'result'; readonly value: string; readonly index: number }
   | {
       readonly kind: 'filter';
@@ -71,12 +72,17 @@ export class WorkbenchApp {
   readonly #renderer: GraphRenderer;
   #rendererOperational: boolean;
   #rendererFailureReason: GraphRenderFailureReason | undefined;
-  #reportedFailureRevision: number | undefined;
+  #deliveryId: number | undefined;
+  #reportedFailureDeliveryId: number | undefined;
   #state: PresentationState = createInitialPresentationState();
   #disposed = false;
 
   readonly #onWindowMessage = (event: MessageEvent<unknown>): void => {
-    const decoded = decodeExtensionToWebviewMessage(event.data, this.#state.revision);
+    const decoded = decodeExtensionToWebviewMessage(
+      event.data,
+      this.#state.revision,
+      this.#deliveryId ?? 0,
+    );
     if (!decoded.ok) return;
 
     if (decoded.value.type === 'replaceGraph') {
@@ -85,6 +91,8 @@ export class WorkbenchApp {
         type: 'replaceGraph',
         graph: decoded.value.payload,
       });
+      this.#deliveryId = decoded.value.deliveryId;
+      this.#reportedFailureDeliveryId = undefined;
       this.#renderAll();
       const renderFailure = this.#syncGraphData();
       this.#restoreFocusAnchor(focusAnchor);
@@ -93,6 +101,7 @@ export class WorkbenchApp {
           protocolVersion: PROTOCOL_VERSION,
           type: 'graphRendered',
           revision: this.#state.revision,
+          deliveryId: decoded.value.deliveryId,
         });
       } else {
         this.#reportGraphRenderFailure(renderFailure);
@@ -141,7 +150,8 @@ export class WorkbenchApp {
       this.#rendererFailureReason = 'renderer-construction-failed';
       this.#showRendererUnavailable();
     }
-    this.#reportedFailureRevision = undefined;
+    this.#deliveryId = undefined;
+    this.#reportedFailureDeliveryId = undefined;
 
     this.#bindControls();
     window.addEventListener('message', this.#onWindowMessage);
@@ -166,6 +176,7 @@ export class WorkbenchApp {
 
   #bindControls(): void {
     this.#elements.search.addEventListener('input', () => {
+      const focusAnchor = this.#captureFocusAnchor();
       this.#state = presentationReducer(this.#state, {
         type: 'setSearch',
         query: this.#elements.search.value,
@@ -173,6 +184,7 @@ export class WorkbenchApp {
       this.#renderResults();
       this.#renderGraphEmpty();
       this.#syncGraphDataAndReportFailure();
+      this.#restoreFocusAnchor(focusAnchor);
     });
     this.#elements.search.addEventListener('keydown', (event) => {
       if (event.key !== 'ArrowDown') return;
@@ -183,11 +195,13 @@ export class WorkbenchApp {
       }
     });
     this.#elements.clearFilters.addEventListener('click', () => {
+      const focusAnchor = this.#captureFocusAnchor();
       this.#state = presentationReducer(this.#state, { type: 'clearFilters' });
       this.#updateFilterControls();
       this.#renderResults();
       this.#renderGraphEmpty();
       this.#syncGraphDataAndReportFailure();
+      this.#restoreFocusAnchor(focusAnchor);
     });
     this.#elements.results.addEventListener('keydown', (event) => {
       if (!isListNavigationKey(event.key)) return;
@@ -220,9 +234,7 @@ export class WorkbenchApp {
     }
     this.#renderResultSelection();
     this.#renderDetails();
-    if (focusAnchor?.kind === 'details') {
-      if (nodeId === undefined || !this.#focusResult(nodeId)) this.#elements.search.focus();
-    }
+    this.#restoreFocusAnchor(focusAnchor);
   }
 
   #revealAndSelectNode(nodeId: string): void {
@@ -238,11 +250,17 @@ export class WorkbenchApp {
   }
 
   #openSource(nodeId: string): void {
-    if (this.#state.graph?.nodes.some((node) => node.id === nodeId) !== true) return;
+    if (
+      this.#deliveryId === undefined ||
+      this.#state.graph?.nodes.some((node) => node.id === nodeId) !== true
+    ) {
+      return;
+    }
     this.#api.postMessage({
       protocolVersion: PROTOCOL_VERSION,
       type: 'openSource',
       revision: this.#state.revision,
+      deliveryId: this.#deliveryId,
       nodeId,
     });
   }
@@ -286,11 +304,13 @@ export class WorkbenchApp {
       availableTypes(this.#state),
       this.#state.selectedTypes,
       (value) => {
+        const focusAnchor = this.#captureFocusAnchor();
         this.#state = presentationReducer(this.#state, { type: 'toggleType', value });
         this.#updateFilterControls();
         this.#renderResults();
         this.#renderGraphEmpty();
         this.#syncGraphDataAndReportFailure();
+        this.#restoreFocusAnchor(focusAnchor);
       },
     );
     renderFilterGroup(
@@ -300,11 +320,13 @@ export class WorkbenchApp {
       availableTags(this.#state),
       this.#state.selectedTags,
       (value) => {
+        const focusAnchor = this.#captureFocusAnchor();
         this.#state = presentationReducer(this.#state, { type: 'toggleTag', value });
         this.#updateFilterControls();
         this.#renderResults();
         this.#renderGraphEmpty();
         this.#syncGraphDataAndReportFailure();
+        this.#restoreFocusAnchor(focusAnchor);
       },
     );
     this.#elements.clearFilters.disabled =
@@ -333,14 +355,29 @@ export class WorkbenchApp {
     button.type = 'button';
     button.dataset.nodeId = node.id;
     button.setAttribute('aria-pressed', String(node.id === this.#state.selectedNodeId));
+    if (node.sourceFailed === true) {
+      button.setAttribute(
+        'aria-label',
+        `${node.id}. Source could not be parsed; repair it using the Problems panel.`,
+      );
+    }
     button.append(
       createElement('span', 'okf-result__title', node.title ?? node.id),
-      createElement('span', 'okf-result__meta', `${node.id} · ${displayConceptType(node.type)}`),
+      createElement(
+        'span',
+        'okf-result__meta',
+        node.sourceFailed === true
+          ? `${node.id} · Source unavailable`
+          : `${node.id} · ${displayConceptType(node.type)}`,
+      ),
     );
     const indicators = createElement('span', 'okf-result__indicators');
-    if (node.orphan)
+    if (node.sourceFailed === true) {
+      indicators.append(createElement('span', 'okf-badge okf-badge--error', 'Source unavailable'));
+    } else if (node.orphan) {
       indicators.append(createElement('span', 'okf-badge okf-badge--warning', 'Orphan'));
-    if (node.brokenLinkCount > 0) {
+    }
+    if (node.sourceFailed !== true && node.brokenLinkCount > 0) {
       indicators.append(
         createElement(
           'span',
@@ -420,12 +457,15 @@ export class WorkbenchApp {
 
   #reportGraphRenderFailure(reason: GraphRenderFailureReason): void {
     const revision = this.#state.graph?.revision;
-    if (revision === undefined || this.#reportedFailureRevision === revision) return;
-    this.#reportedFailureRevision = revision;
+    const deliveryId = this.#deliveryId;
+    if (revision === undefined || deliveryId === undefined) return;
+    if (this.#reportedFailureDeliveryId === deliveryId) return;
+    this.#reportedFailureDeliveryId = deliveryId;
     this.#api.postMessage({
       protocolVersion: PROTOCOL_VERSION,
       type: 'graphRenderFailed',
       revision,
+      deliveryId,
       reason,
     });
   }
@@ -465,6 +505,11 @@ export class WorkbenchApp {
     const active = document.activeElement;
     if (!(active instanceof HTMLElement)) return undefined;
 
+    if (active === this.#elements.search) return { kind: 'control', value: 'search' };
+    if (active === this.#elements.clearFilters) {
+      return { kind: 'control', value: 'clearFilters' };
+    }
+
     const resultButtons = this.#resultButtons();
     const resultIndex = resultButtons.findIndex((button) => button === active);
     if (resultIndex >= 0) {
@@ -494,17 +539,18 @@ export class WorkbenchApp {
   #restoreFocusAnchor(anchor: FocusAnchor | undefined): void {
     if (anchor === undefined) return;
 
-    if (anchor.kind === 'result') {
+    if (anchor.kind === 'control') {
+      const control =
+        anchor.value === 'search' ? this.#elements.search : this.#elements.clearFilters;
+      if (this.#focusElement(control)) return;
+    } else if (anchor.kind === 'result') {
       const buttons = this.#resultButtons();
       const index = preservedItemIndex(
         anchor.value,
         anchor.index,
         buttons.map((button) => button.dataset.nodeId ?? ''),
       );
-      if (index !== undefined) {
-        buttons[index]?.focus();
-        return;
-      }
+      if (index !== undefined && this.#focusElement(buttons[index])) return;
     } else if (anchor.kind === 'filter') {
       const inputs = this.#filterInputs(anchor.group);
       const index = preservedItemIndex(
@@ -512,10 +558,7 @@ export class WorkbenchApp {
         anchor.index,
         inputs.map((input) => input.dataset.filterValue ?? ''),
       );
-      if (index !== undefined) {
-        inputs[index]?.focus();
-        return;
-      }
+      if (index !== undefined && this.#focusElement(inputs[index])) return;
     } else {
       const buttons = Array.from(
         this.#elements.details.querySelectorAll<HTMLButtonElement>('button[data-focus-key]'),
@@ -525,10 +568,7 @@ export class WorkbenchApp {
         anchor.index,
         buttons.map((button) => button.dataset.focusKey ?? ''),
       );
-      if (index !== undefined) {
-        buttons[index]?.focus();
-        return;
-      }
+      if (index !== undefined && this.#focusElement(buttons[index])) return;
       if (
         this.#state.selectedNodeId !== undefined &&
         this.#focusResult(this.#state.selectedNodeId)
@@ -537,13 +577,27 @@ export class WorkbenchApp {
       }
     }
 
-    this.#elements.search.focus();
+    this.#focusElement(this.#elements.search);
   }
 
   #focusResult(nodeId: string): boolean {
     const button = this.#resultButtons().find((candidate) => candidate.dataset.nodeId === nodeId);
-    button?.focus();
-    return button !== undefined;
+    return this.#focusElement(button);
+  }
+
+  #focusElement(element: HTMLElement | undefined): boolean {
+    if (
+      element === undefined ||
+      !element.isConnected ||
+      element.hidden ||
+      element.closest('[hidden]') !== null ||
+      ((element instanceof HTMLButtonElement || element instanceof HTMLInputElement) &&
+        element.disabled)
+    ) {
+      return false;
+    }
+    element.focus();
+    return document.activeElement === element;
   }
 }
 

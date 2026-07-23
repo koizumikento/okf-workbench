@@ -8,19 +8,19 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 
 const vscode = require('vscode');
-
-const expectedCommands = [
-  'okfWorkbench.initializeBundle',
-  'okfWorkbench.newConcept',
-  'okfWorkbench.validateBundle',
-  'okfWorkbench.regenerateIndexes',
-  'okfWorkbench.openGraph',
-  'okfWorkbench.setupAgentIntegration',
-];
+const {
+  EXPECTED_COMMAND_CATALOG,
+  EXPECTED_COMMAND_IDS,
+  EXPECTED_WRITE_COMMAND_IDS,
+} = require('./command-catalog.cjs');
+const {
+  activeNetworkObservation,
+  installNetworkGuard,
+  postUninstallNetworkObservation,
+} = require('./network-guard.cjs');
 
 const defaultCompletionTimeoutMs = 20_000;
 const guardedQuiescenceMs = 500;
-const untrustedWriteCommand = 'okfWorkbench.initializeBundle';
 
 function completionTimeout() {
   const raw = process.env.OKF_ACCEPTANCE_COMPLETION_TIMEOUT_MS;
@@ -36,9 +36,123 @@ function completionTimeout() {
 function assertAcceptanceApi(value) {
   assert.ok(value && typeof value === 'object', 'The packaged acceptance API was not exposed.');
   assert.equal(value.schemaVersion, 1, 'The packaged acceptance API version is unsupported.');
-  for (const method of ['getCompletionState', 'waitForRuntimePublication', 'waitForGraphRender']) {
+  for (const method of [
+    'getCompletionState',
+    'getCommandCatalog',
+    'waitForRuntimePublication',
+    'waitForGraphRender',
+    'waitForValidationCompletion',
+    'waitForGraphOpenCompletion',
+  ]) {
     assert.equal(typeof value[method], 'function', `Acceptance API method ${method} is missing.`);
   }
+  return value;
+}
+
+function assertCommandCatalog(value) {
+  assert.ok(Array.isArray(value), 'The packaged acceptance command catalog is missing.');
+  const catalog = value.map((command) => {
+    assert.ok(command && typeof command === 'object', 'A command catalog entry is invalid.');
+    assert.deepEqual(
+      Object.keys(command).sort(),
+      ['id', 'title', 'workspaceAccess'],
+      `Command catalog entry ${String(command.id)} has an unexpected shape.`,
+    );
+    assert.ok(
+      command.workspaceAccess === 'read' || command.workspaceAccess === 'write',
+      `Command catalog entry ${String(command.id)} has invalid workspace access.`,
+    );
+    return {
+      id: command.id,
+      title: command.title,
+      workspaceAccess: command.workspaceAccess,
+    };
+  });
+  assert.deepEqual(
+    catalog,
+    EXPECTED_COMMAND_CATALOG,
+    'The packaged command catalog drifted from the compatibility contract.',
+  );
+  return catalog;
+}
+
+function assertInstalledCommands(extension, catalog, registeredCommands) {
+  const contributed = extension.packageJSON?.contributes?.commands;
+  assert.ok(
+    Array.isArray(contributed),
+    'The installed manifest command contributions are missing.',
+  );
+  assert.deepEqual(
+    contributed.map((command) => ({ id: command.command, title: command.title })),
+    catalog.map(({ id, title }) => ({ id, title })),
+    'The installed manifest command IDs or titles drifted from the acceptance catalog.',
+  );
+
+  const registeredOkfCommands = registeredCommands
+    .filter((command) => command.startsWith('okfWorkbench.'))
+    .sort();
+  assert.deepEqual(
+    registeredOkfCommands,
+    [...EXPECTED_COMMAND_IDS].sort(),
+    'The packaged extension did not register exactly the stable command IDs.',
+  );
+}
+
+function assertCommandTicket(value, expectedCommand) {
+  assert.ok(value && typeof value === 'object', `${expectedCommand} did not return a ticket.`);
+  assert.equal(
+    value.kind,
+    'okf-acceptance-command',
+    `${expectedCommand} was cancelled, refused, or failed before scheduling completion.`,
+  );
+  assert.equal(value.command, expectedCommand, `${expectedCommand} returned the wrong ticket.`);
+  assert.ok(
+    Number.isSafeInteger(value.requestId) && value.requestId > 0,
+    `${expectedCommand} returned an invalid request ID.`,
+  );
+  return value;
+}
+
+function assertCompletionState(value) {
+  assert.ok(value && typeof value === 'object', 'Acceptance completion state is missing.');
+  if (value.runtimePublication !== null) {
+    assert.ok(
+      Number.isSafeInteger(value.runtimePublication?.revision) &&
+        value.runtimePublication.revision >= 0,
+      'Acceptance runtime revision is invalid.',
+    );
+  }
+  return value;
+}
+
+function assertRuntimePublication(value, requestId, afterRevision) {
+  assert.ok(value && typeof value === 'object', 'Runtime publication completion is missing.');
+  assert.equal(value.requestId, requestId, 'Validate completed with the wrong request ID.');
+  assert.ok(
+    Number.isSafeInteger(value.revision) && value.revision > afterRevision,
+    'Validate did not publish a newer runtime revision.',
+  );
+  assert.equal(
+    value.diagnosticsPublished,
+    true,
+    'Validate completed without publishing diagnostics.',
+  );
+  for (const count of ['findingCount', 'conceptCount', 'edgeCount']) {
+    assert.ok(
+      Number.isSafeInteger(value[count]) && value[count] >= 0,
+      `Runtime publication ${count} is invalid.`,
+    );
+  }
+  return value;
+}
+
+function assertGraphRender(value, requestId, minimumRevision) {
+  assert.ok(value && typeof value === 'object', 'Graph render completion is missing.');
+  assert.equal(value.requestId, requestId, 'Open Graph completed with the wrong request ID.');
+  assert.ok(
+    Number.isSafeInteger(value.revision) && value.revision > minimumRevision,
+    'Open Graph did not apply a fresh post-command runtime revision in the Webview.',
+  );
   return value;
 }
 
@@ -63,60 +177,6 @@ async function withTimeout(operation, timeoutMs, label) {
   }
 }
 
-function installNetworkGuard(attempts) {
-  const restorations = [];
-  const guarded = [
-    ['node:http', ['get', 'request']],
-    ['node:https', ['get', 'request']],
-    ['node:http2', ['connect']],
-    ['node:net', ['connect', 'createConnection']],
-    ['node:tls', ['connect']],
-    ['node:dns', ['lookup', 'resolve', 'resolve4', 'resolve6']],
-    ['node:dgram', ['createSocket']],
-  ];
-  for (const [moduleName, methods] of guarded) {
-    const owner = require(moduleName);
-    for (const method of methods) {
-      const original = owner[method];
-      owner[method] = () => {
-        attempts.push(`${moduleName}.${method}`);
-        throw new Error(
-          `Outbound network access is denied by the acceptance driver: ${moduleName}.${method}`,
-        );
-      };
-      restorations.push(() => {
-        owner[method] = original;
-      });
-    }
-  }
-
-  const originalFetch = globalThis.fetch;
-  if (typeof originalFetch === 'function') {
-    globalThis.fetch = () => {
-      attempts.push('globalThis.fetch');
-      return Promise.reject(
-        new Error('Outbound network access is denied by the acceptance driver: fetch'),
-      );
-    };
-    restorations.push(() => {
-      globalThis.fetch = originalFetch;
-    });
-  }
-  const OriginalWebSocket = globalThis.WebSocket;
-  if (typeof OriginalWebSocket === 'function') {
-    globalThis.WebSocket = function DeniedWebSocket() {
-      attempts.push('globalThis.WebSocket');
-      throw new Error('Outbound network access is denied by the acceptance driver: WebSocket');
-    };
-    restorations.push(() => {
-      globalThis.WebSocket = OriginalWebSocket;
-    });
-  }
-  return () => {
-    for (const restore of restorations.reverse()) restore();
-  };
-}
-
 async function writeReport(reportPath, report) {
   await fs.mkdir(path.dirname(reportPath), { recursive: true });
   await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
@@ -128,6 +188,7 @@ async function run() {
   const expectedEditorApiVersion = process.env.OKF_ACCEPTANCE_EDITOR_API_VERSION;
   const mode = process.env.OKF_ACCEPTANCE_MODE ?? 'read-only';
   const reportPath = process.env.OKF_ACCEPTANCE_REPORT_PATH;
+  const observesNetwork = mode !== 'post-uninstall';
   assert.ok(reportPath, 'OKF_ACCEPTANCE_REPORT_PATH is required.');
   assert.ok(
     mode === 'read-only' || mode === 'untrusted' || mode === 'post-uninstall',
@@ -156,8 +217,10 @@ async function run() {
       chrome: process.versions.chrome ?? null,
       v8: process.versions.v8 ?? null,
     },
-    networkAttempts: [],
+    networkAttempts: observesNetwork ? [] : null,
+    networkObservation: observesNetwork ? null : postUninstallNetworkObservation(),
     commands: [],
+    commandCatalog: [],
     workspaceTrust: {
       expected: mode === 'untrusted' ? false : null,
       actual: vscode.workspace.isTrusted,
@@ -165,11 +228,16 @@ async function run() {
     completion: {
       runtimePublication: null,
       graphRender: null,
-      guardedQuiescenceMs,
+      guardedQuiescenceMs: observesNetwork ? guardedQuiescenceMs : null,
     },
   };
-  const restoreNetwork =
-    mode === 'post-uninstall' ? () => undefined : installNetworkGuard(report.networkAttempts);
+  if (observesNetwork) {
+    const networkGuard = installNetworkGuard(report.networkAttempts);
+    report.networkObservation = activeNetworkObservation(
+      networkGuard.interceptedMethods,
+      guardedQuiescenceMs,
+    );
+  }
 
   try {
     if (expectedEditorApiVersion !== undefined) {
@@ -206,61 +274,89 @@ async function run() {
       );
     }
     const acceptanceApi = assertAcceptanceApi(await extension.activate());
+    const commandCatalog = assertCommandCatalog(acceptanceApi.getCommandCatalog());
     const commands = await vscode.commands.getCommands(true);
-    report.commands = expectedCommands.filter((command) => commands.includes(command));
-    assert.deepEqual(
-      report.commands,
-      expectedCommands,
-      'The packaged extension did not register every command.',
-    );
+    assertInstalledCommands(extension, commandCatalog, commands);
+    report.commands = [...EXPECTED_COMMAND_IDS];
+    report.commandCatalog = commandCatalog;
 
     if (process.env.OKF_ACCEPTANCE_RUN_READ_ONLY_COMMANDS !== '0') {
-      const initialCompletion = acceptanceApi.getCompletionState();
+      const timeoutMs = completionTimeout();
+      const initialCompletion = assertCompletionState(acceptanceApi.getCompletionState());
       const previousRevision = initialCompletion.runtimePublication?.revision ?? 0;
-      await vscode.commands.executeCommand('okfWorkbench.validateBundle');
-      report.completion.runtimePublication = await acceptanceApi.waitForRuntimePublication(
+      const validationTicket = assertCommandTicket(
+        await withTimeout(
+          vscode.commands.executeCommand('okfWorkbench.validateBundle'),
+          timeoutMs,
+          'the Validate command dispatch',
+        ),
+        'validateBundle',
+      );
+      report.completion.runtimePublication = assertRuntimePublication(
+        await withTimeout(
+          acceptanceApi.waitForValidationCompletion(validationTicket.requestId, timeoutMs),
+          timeoutMs + 1_000,
+          'Validate diagnostics and runtime publication',
+        ),
+        validationTicket.requestId,
         previousRevision,
-        completionTimeout(),
       );
-      await vscode.commands.executeCommand('okfWorkbench.openGraph');
-      report.completion.graphRender = await acceptanceApi.waitForGraphRender(
+
+      const graphTicket = assertCommandTicket(
+        await withTimeout(
+          vscode.commands.executeCommand('okfWorkbench.openGraph'),
+          timeoutMs,
+          'the Open Graph command dispatch',
+        ),
+        'openGraph',
+      );
+      report.completion.graphRender = assertGraphRender(
+        await withTimeout(
+          acceptanceApi.waitForGraphOpenCompletion(graphTicket.requestId, timeoutMs),
+          timeoutMs + 1_000,
+          'the Open Graph Webview data-application acknowledgement',
+        ),
+        graphTicket.requestId,
         report.completion.runtimePublication.revision,
-        completionTimeout(),
       );
-      await delay(guardedQuiescenceMs);
       report.readOnlyCommands = ['okfWorkbench.validateBundle', 'okfWorkbench.openGraph'];
       report.workspaceTrust.readOnlyAvailable = true;
     }
     if (mode === 'untrusted') {
-      const startedAt = Date.now();
-      const outcome = await withTimeout(
-        vscode.commands.executeCommand(untrustedWriteCommand),
-        5_000,
-        'the untrusted write-command refusal',
-      );
-      assert.equal(outcome?.kind, 'refused', 'The untrusted write command was not refused.');
-      const problemCodes = Array.isArray(outcome.problems)
-        ? outcome.problems
-            .map((problem) => problem?.code)
-            .filter((code) => typeof code === 'string')
-        : [];
-      assert.ok(
-        problemCodes.includes('workspace-untrusted'),
-        'The untrusted write refusal did not include workspace-untrusted.',
-      );
-      report.untrustedWrite = {
-        command: untrustedWriteCommand,
-        outcome: outcome.kind,
-        problemCodes,
-        completedWithoutInputAutomation: true,
-        durationMs: Date.now() - startedAt,
-      };
+      report.untrustedWrites = [];
+      for (const command of EXPECTED_WRITE_COMMAND_IDS) {
+        const startedAt = Date.now();
+        const outcome = await withTimeout(
+          vscode.commands.executeCommand(command),
+          5_000,
+          `the untrusted refusal for ${command}`,
+        );
+        assert.equal(outcome?.kind, 'refused', `${command} was not refused when untrusted.`);
+        const problemCodes = Array.isArray(outcome.problems)
+          ? outcome.problems
+              .map((problem) => problem?.code)
+              .filter((code) => typeof code === 'string')
+          : [];
+        assert.ok(
+          problemCodes.includes('workspace-untrusted'),
+          `${command} refusal did not include workspace-untrusted.`,
+        );
+        report.untrustedWrites.push({
+          command,
+          outcome: outcome.kind,
+          problemCodes,
+          completedWithoutInputAutomation: true,
+          durationMs: Date.now() - startedAt,
+        });
+      }
     }
+    await delay(guardedQuiescenceMs);
     assert.deepEqual(
       report.networkAttempts,
       [],
       'The packaged extension attempted outbound access.',
     );
+    report.networkObservation.result = 'zero-attempts-observed';
     report.extensionVersion = extension.packageJSON.version;
     report.status = 'passed';
   } catch (error) {
@@ -268,8 +364,9 @@ async function run() {
     report.error = error instanceof Error ? error.message : String(error);
     throw error;
   } finally {
-    restoreNetwork();
     await writeReport(reportPath, report);
+    // Active phases intentionally retain the hooks after the report is written. The Extension Host
+    // process exit is the boundary; restoring them earlier would leave an unobserved tail window.
   }
 }
 

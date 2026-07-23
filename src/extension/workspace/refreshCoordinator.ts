@@ -35,6 +35,11 @@ export interface RefreshScheduler<THandle> {
 }
 
 export const WORKSPACE_REFRESH_DEBOUNCE_MILLISECONDS = 250;
+export const WORKSPACE_REFRESH_MAX_LATENCY_MILLISECONDS = 1_000;
+export const WORKSPACE_REFRESH_MAX_PENDING_PATHS = 512;
+
+const RESCAN_CHANGE_KEY = 'rescan';
+const WORKSPACE_REFRESH_MAX_PENDING_CHANGES = WORKSPACE_REFRESH_MAX_PENDING_PATHS + 1;
 
 const defaultScheduler: RefreshScheduler<ReturnType<typeof setTimeout>> = {
   set(callback, delayMilliseconds) {
@@ -69,9 +74,16 @@ export class RefreshCoordinator<
 
   #context: TContext | undefined;
   #subscription: DisposableLike | undefined;
-  #timer: THandle | undefined;
+  #debounceTimer: THandle | undefined;
+  #maximumLatencyTimer: THandle | undefined;
+  #debounceTimerGeneration = 0;
+  #maximumLatencyTimerGeneration = 0;
   #abortController: AbortController | undefined;
-  #pending: WorkspaceChange<TUri>[] = [];
+  #inFlight: Promise<void> | undefined;
+  readonly #pending = new Map<string, WorkspaceChange<TUri>>();
+  readonly #pendingPaths = new Set<string>();
+  #pendingCollapsedToRescan = false;
+  #pendingReady = false;
   #generation = 0;
   #revision = 0;
   #disposed = false;
@@ -117,15 +129,8 @@ export class RefreshCoordinator<
 
     this.#generation += 1;
     this.#abortController?.abort();
-    this.#abortController = undefined;
-    this.#pending.push(change);
-    if (this.#timer !== undefined) {
-      this.#scheduler.clear(this.#timer);
-    }
-    this.#timer = this.#scheduler.set(() => {
-      this.#timer = undefined;
-      void this.#runRefresh();
-    }, WORKSPACE_REFRESH_DEBOUNCE_MILLISECONDS);
+    this.#retainPending(change);
+    this.#schedulePending();
   }
 
   dispose(): void {
@@ -139,12 +144,12 @@ export class RefreshCoordinator<
 
   async #runRefresh(): Promise<void> {
     const context = this.#context;
-    if (context === undefined || this.#disposed || this.#pending.length === 0) {
+    if (context === undefined || this.#disposed || this.#pending.size === 0) {
       return;
     }
 
-    const changes = this.#coalesce(this.#pending);
-    this.#pending = [];
+    const changes = [...this.#pending.values()];
+    this.#clearPending();
     const generation = this.#generation;
     const abortController = new AbortController();
     this.#abortController = abortController;
@@ -178,29 +183,148 @@ export class RefreshCoordinator<
       if (this.#abortController === abortController) {
         this.#abortController = undefined;
       }
+      this.#inFlight = undefined;
+      this.#startRefreshIfReady();
     }
   }
 
-  #coalesce(changes: readonly WorkspaceChange<TUri>[]): readonly WorkspaceChange<TUri>[] {
-    const unique = new Map<string, WorkspaceChange<TUri>>();
-    for (const change of changes) {
-      const key = `${change.kind}\0${String(change.previousUri ?? '')}\0${String(
-        change.uri ?? '',
-      )}`;
-      unique.set(key, change);
+  #retainPending(change: WorkspaceChange<TUri>): void {
+    if (this.#pendingCollapsedToRescan) {
+      return;
     }
-    return [...unique.values()];
+
+    const key = this.#changeKey(change);
+    const newPaths = this.#newPaths(change);
+    const exceedsChangeLimit =
+      !this.#pending.has(key) && this.#pending.size >= WORKSPACE_REFRESH_MAX_PENDING_CHANGES;
+    const exceedsPathLimit =
+      this.#pendingPaths.size + newPaths.length > WORKSPACE_REFRESH_MAX_PENDING_PATHS;
+    if (exceedsChangeLimit || exceedsPathLimit) {
+      this.#collapsePendingToRescan();
+      return;
+    }
+
+    this.#pending.set(key, change);
+    for (const path of newPaths) {
+      this.#pendingPaths.add(path);
+    }
+  }
+
+  #schedulePending(): void {
+    if (this.#pendingReady) {
+      return;
+    }
+
+    this.#clearDebounceTimer();
+    const debounceTimerGeneration = this.#debounceTimerGeneration;
+    this.#debounceTimer = this.#scheduler.set(() => {
+      if (debounceTimerGeneration !== this.#debounceTimerGeneration) {
+        return;
+      }
+      this.#debounceTimer = undefined;
+      this.#markPendingReady();
+    }, WORKSPACE_REFRESH_DEBOUNCE_MILLISECONDS);
+
+    if (this.#maximumLatencyTimer === undefined) {
+      const maximumLatencyTimerGeneration = this.#maximumLatencyTimerGeneration;
+      this.#maximumLatencyTimer = this.#scheduler.set(() => {
+        if (maximumLatencyTimerGeneration !== this.#maximumLatencyTimerGeneration) {
+          return;
+        }
+        this.#maximumLatencyTimer = undefined;
+        this.#markPendingReady();
+      }, WORKSPACE_REFRESH_MAX_LATENCY_MILLISECONDS);
+    }
+  }
+
+  #markPendingReady(): void {
+    if (this.#pending.size === 0 || this.#disposed || this.#context === undefined) {
+      return;
+    }
+    this.#pendingReady = true;
+    this.#clearPendingTimers();
+    this.#startRefreshIfReady();
+  }
+
+  #startRefreshIfReady(): void {
+    if (
+      !this.#pendingReady ||
+      this.#inFlight !== undefined ||
+      this.#disposed ||
+      this.#context === undefined ||
+      this.#pending.size === 0
+    ) {
+      return;
+    }
+
+    this.#inFlight = this.#runRefresh();
+    void this.#inFlight.catch(() => {
+      // #runRefresh reports current-generation errors through onError. Keep a
+      // throwing onError callback from becoming an unhandled rejection.
+    });
+  }
+
+  #changeKey(change: WorkspaceChange<TUri>): string {
+    if (change.kind === 'rescan' && change.previousUri === undefined && change.uri === undefined) {
+      return RESCAN_CHANGE_KEY;
+    }
+    return `${change.kind}\0${String(change.previousUri ?? '')}\0${String(change.uri ?? '')}`;
+  }
+
+  #newPaths(change: WorkspaceChange<TUri>): string[] {
+    const newPaths: string[] = [];
+    for (const uri of [change.previousUri, change.uri]) {
+      if (uri === undefined) {
+        continue;
+      }
+      const path = String(uri);
+      if (!this.#pendingPaths.has(path) && !newPaths.includes(path)) {
+        newPaths.push(path);
+      }
+    }
+    return newPaths;
+  }
+
+  #collapsePendingToRescan(): void {
+    this.#pending.clear();
+    this.#pendingPaths.clear();
+    this.#pending.set(RESCAN_CHANGE_KEY, { kind: 'rescan' });
+    this.#pendingCollapsedToRescan = true;
+  }
+
+  #clearPending(): void {
+    this.#pending.clear();
+    this.#pendingPaths.clear();
+    this.#pendingCollapsedToRescan = false;
+    this.#pendingReady = false;
+    this.#clearPendingTimers();
+  }
+
+  #clearDebounceTimer(): void {
+    this.#debounceTimerGeneration += 1;
+    if (this.#debounceTimer !== undefined) {
+      this.#scheduler.clear(this.#debounceTimer);
+      this.#debounceTimer = undefined;
+    }
+  }
+
+  #clearMaximumLatencyTimer(): void {
+    this.#maximumLatencyTimerGeneration += 1;
+    if (this.#maximumLatencyTimer !== undefined) {
+      this.#scheduler.clear(this.#maximumLatencyTimer);
+      this.#maximumLatencyTimer = undefined;
+    }
+  }
+
+  #clearPendingTimers(): void {
+    this.#clearDebounceTimer();
+    this.#clearMaximumLatencyTimer();
   }
 
   #stopCurrent(): void {
     this.#generation += 1;
-    if (this.#timer !== undefined) {
-      this.#scheduler.clear(this.#timer);
-      this.#timer = undefined;
-    }
+    this.#clearPending();
     this.#abortController?.abort();
-    this.#abortController = undefined;
-    this.#pending = [];
     this.#subscription?.dispose();
     this.#subscription = undefined;
   }

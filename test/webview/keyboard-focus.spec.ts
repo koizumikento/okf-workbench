@@ -7,6 +7,11 @@ interface FixtureNode {
   readonly tags: readonly string[];
 }
 
+interface FixtureEdge {
+  readonly source: string;
+  readonly target: string;
+}
+
 const INITIAL_NODES: readonly FixtureNode[] = [
   { id: 'alpha', type: 'note', title: 'Alpha', tags: ['red'] },
   { id: 'beta', type: 'note', title: 'Beta', tags: ['blue'] },
@@ -88,8 +93,18 @@ test('keeps filter and selected-result focus during keyboard-only interaction', 
   await expect(decisionFilter).not.toBeChecked();
   await expect(decisionFilter).toBeFocused();
 
-  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Space');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  const clearFilters = page.getByRole('button', { name: 'Clear filters' });
+  await expect(clearFilters).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(clearFilters).toBeDisabled();
   await expect(search).toBeFocused();
+  await expect(page.locator('button[data-node-id]')).toHaveCount(3);
+
   await page.keyboard.press('ArrowDown');
   const alpha = page.locator('button[data-node-id="alpha"]');
   await expect(alpha).toBeFocused();
@@ -97,6 +112,40 @@ test('keeps filter and selected-result focus during keyboard-only interaction', 
   await expect(alpha).toHaveAttribute('aria-pressed', 'true');
   await expect(alpha).toBeFocused();
   await expect(page.getByRole('heading', { name: 'Alpha' })).toBeVisible();
+});
+
+test('preserves stable details and selection focus across rerenders', async ({ page }) => {
+  await sendGraph(page, 2, INITIAL_NODES, [
+    { source: 'alpha', target: 'beta' },
+    { source: 'alpha', target: 'gamma' },
+  ]);
+  const alpha = page.locator('button[data-node-id="alpha"]');
+  await alpha.focus();
+  await page.keyboard.press('Enter');
+  await expect(alpha).toBeFocused();
+
+  const gammaLink = page.getByRole('button', { name: 'Gamma', exact: true });
+  await gammaLink.focus();
+  await expect(gammaLink).toBeFocused();
+
+  await sendGraph(
+    page,
+    3,
+    INITIAL_NODES.map((node) => (node.id === 'gamma' ? { ...node, title: 'Gamma updated' } : node)),
+    [
+      { source: 'alpha', target: 'gamma' },
+      { source: 'alpha', target: 'beta' },
+    ],
+  );
+  await expect(page.getByRole('button', { name: 'Gamma updated', exact: true })).toBeFocused();
+
+  const openSource = page.getByRole('button', { name: 'Open source Markdown' });
+  await openSource.focus();
+  await alpha.evaluate((element) => {
+    if (!(element instanceof HTMLButtonElement)) throw new Error('Expected an Alpha button.');
+    element.click();
+  });
+  await expect(openSource).toBeFocused();
 });
 
 test('restores semantic or nearest focus across graph replacement and opens source by keyboard', async ({
@@ -144,7 +193,13 @@ test('restores semantic or nearest focus across graph replacement and opens sour
         return messages?.at(-1);
       }),
     )
-    .toEqual({ protocolVersion: 1, type: 'openSource', revision: 3, nodeId: 'alpha' });
+    .toEqual({
+      protocolVersion: 1,
+      type: 'openSource',
+      revision: 3,
+      deliveryId: 3,
+      nodeId: 'alpha',
+    });
 });
 
 test('preserves a focused filter by value and falls back within its group after refresh', async ({
@@ -190,24 +245,27 @@ async function sendGraph(
   page: Page,
   revision: number,
   nodes: readonly FixtureNode[],
+  fixtureEdges?: readonly FixtureEdge[],
 ): Promise<void> {
   await page.evaluate(
-    ({ graphRevision, graphNodes }) => {
+    ({ graphRevision, graphNodes, requestedEdges }) => {
       const nodeIds = new Set(graphNodes.map((node) => node.id));
-      const edges =
-        nodeIds.has('alpha') && nodeIds.has('beta')
-          ? [
-              {
-                id: 'alpha:0:beta',
-                source: 'alpha',
-                target: 'beta',
-                sourceRange: {
-                  start: { offset: 0, line: 0, character: 0 },
-                  end: { offset: 4, line: 0, character: 4 },
-                },
-              },
-            ]
-          : [];
+      const validEdges = (requestedEdges ?? [{ source: 'alpha', target: 'beta' }]).filter(
+        (edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target),
+      );
+      const edges = validEdges.map((edge, index) => ({
+        id: `edge:${index.toString(36)}`,
+        ...edge,
+        sourceRange: {
+          start: { offset: index * 5, line: index, character: 0 },
+          end: { offset: index * 5 + 4, line: index, character: 4 },
+        },
+      }));
+      const connectedIds = new Set<string>();
+      for (const edge of validEdges) {
+        connectedIds.add(edge.source);
+        connectedIds.add(edge.target);
+      }
       const typeCounts: Record<string, number> = {};
       const tagCounts: Record<string, number> = {};
       for (const node of graphNodes) {
@@ -215,7 +273,7 @@ async function sendGraph(
         for (const tag of node.tags) tagCounts[tag] = (tagCounts[tag] ?? 0) + 1;
       }
       const backlinks = Object.fromEntries(graphNodes.map((node) => [node.id, [] as string[]]));
-      if (nodeIds.has('alpha') && nodeIds.has('beta')) backlinks.beta = ['alpha'];
+      for (const edge of validEdges) backlinks[edge.target]?.push(edge.source);
 
       window.dispatchEvent(
         new MessageEvent('message', {
@@ -223,13 +281,14 @@ async function sendGraph(
             protocolVersion: 1,
             type: 'replaceGraph',
             revision: graphRevision,
+            deliveryId: graphRevision,
             payload: {
               protocolVersion: 1,
               revision: graphRevision,
               nodes: graphNodes.map((node) => ({
                 ...node,
                 description: `${node.title} fixture`,
-                orphan: !nodeIds.has('alpha') || !nodeIds.has('beta'),
+                orphan: !connectedIds.has(node.id),
                 brokenLinkCount: 0,
               })),
               edges,
@@ -238,8 +297,7 @@ async function sendGraph(
               statistics: {
                 conceptCount: graphNodes.length,
                 edgeCount: edges.length,
-                orphanCount: graphNodes.filter(() => !nodeIds.has('alpha') || !nodeIds.has('beta'))
-                  .length,
+                orphanCount: graphNodes.filter((node) => !connectedIds.has(node.id)).length,
                 brokenLinkCount: 0,
                 typeCounts,
                 tagCounts,
@@ -249,6 +307,6 @@ async function sendGraph(
         }),
       );
     },
-    { graphRevision: revision, graphNodes: nodes },
+    { graphRevision: revision, graphNodes: nodes, requestedEdges: fixtureEdges },
   );
 }

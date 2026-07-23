@@ -9,6 +9,10 @@ const providerScheme = 'okfmem';
 const providerAuthority = 'straydev-test';
 const providerRoot = vscode.Uri.parse(`${providerScheme}://${providerAuthority}/workspace`, true);
 const bundleRoot = vscode.Uri.joinPath(providerRoot, 'knowledge');
+const versionlessRoot = vscode.Uri.joinPath(providerRoot, 'versionless');
+const missingIndexRoot = vscode.Uri.joinPath(providerRoot, 'missing-index');
+const malformedRoot = vscode.Uri.joinPath(providerRoot, 'malformed');
+const unsupportedRoot = vscode.Uri.joinPath(providerRoot, 'unsupported');
 const conceptName = 'provider %2F 日本語.md';
 const conceptUri = vscode.Uri.joinPath(bundleRoot, conceptName);
 const completionTimeoutMs = 20_000;
@@ -43,7 +47,16 @@ class ReadOnlyMemoryFileSystemProvider {
     this.changeEmitter = new vscode.EventEmitter();
     this.onDidChangeFile = this.changeEmitter.event;
     this.directories = new Map([
-      [providerRoot.path, [['knowledge', vscode.FileType.Directory]]],
+      [
+        providerRoot.path,
+        [
+          ['knowledge', vscode.FileType.Directory],
+          ['versionless', vscode.FileType.Directory],
+          ['missing-index', vscode.FileType.Directory],
+          ['malformed', vscode.FileType.Directory],
+          ['unsupported', vscode.FileType.Directory],
+        ],
+      ],
       [
         bundleRoot.path,
         [
@@ -51,10 +64,26 @@ class ReadOnlyMemoryFileSystemProvider {
           [conceptName, vscode.FileType.File],
         ],
       ],
+      [versionlessRoot.path, [['index.md', vscode.FileType.File]]],
+      [missingIndexRoot.path, []],
+      [malformedRoot.path, [['index.md', vscode.FileType.File]]],
+      [unsupportedRoot.path, [['index.md', vscode.FileType.File]]],
     ]);
     this.files = new Map([
       [vscode.Uri.joinPath(bundleRoot, 'index.md').path, encoder.encode(indexSource)],
       [conceptUri.path, encoder.encode(conceptSource)],
+      [
+        vscode.Uri.joinPath(versionlessRoot, 'index.md').path,
+        encoder.encode('# Versionless bundle\n'),
+      ],
+      [
+        vscode.Uri.joinPath(malformedRoot, 'index.md').path,
+        encoder.encode('---\nokf_version: [\n---\n# Malformed bundle\n'),
+      ],
+      [
+        vscode.Uri.joinPath(unsupportedRoot, 'index.md').path,
+        encoder.encode('---\nokf_version: "1.0"\n---\n# Unsupported bundle\n'),
+      ],
     ]);
   }
 
@@ -125,6 +154,16 @@ function acceptanceApi(value) {
   assert.equal(typeof value.getCompletionState, 'function');
   assert.equal(typeof value.waitForRuntimePublication, 'function');
   assert.equal(typeof value.waitForGraphRender, 'function');
+  assert.equal(typeof value.waitForValidationCompletion, 'function');
+  assert.equal(typeof value.waitForGraphOpenCompletion, 'function');
+  return value;
+}
+
+function acceptanceTicket(value, command) {
+  assert.ok(value && typeof value === 'object', `${command} did not return a completion ticket.`);
+  assert.equal(value.kind, 'okf-acceptance-command');
+  assert.equal(value.command, command);
+  assert.ok(Number.isSafeInteger(value.requestId) && value.requestId > 0);
   return value;
 }
 
@@ -214,11 +253,13 @@ suite('OKF Workbench provider URI boundary', () => {
       const extension = vscode.extensions.getExtension(extensionId);
       assert.ok(extension, `Extension ${extensionId} was not found.`);
       const api = acceptanceApi(await extension.activate());
-      const previousRevision = api.getCompletionState().runtimePublication?.revision ?? 0;
 
-      await vscode.commands.executeCommand('okfWorkbench.validateBundle', bundleRoot);
-      const publication = await api.waitForRuntimePublication(
-        previousRevision,
+      const validationTicket = acceptanceTicket(
+        await vscode.commands.executeCommand('okfWorkbench.validateBundle', bundleRoot),
+        'validateBundle',
+      );
+      const publication = await api.waitForValidationCompletion(
+        validationTicket.requestId,
         completionTimeoutMs,
       );
       assert.equal(publication.diagnosticsPublished, true);
@@ -245,9 +286,15 @@ suite('OKF Workbench provider URI boundary', () => {
         `OKF diagnostics escaped the provider URI: ${okfDiagnosticUris.map((uri) => uri.toString()).join(', ')}`,
       );
 
-      await vscode.commands.executeCommand('okfWorkbench.openGraph', bundleRoot);
-      const rendered = await api.waitForGraphRender(publication.revision, completionTimeoutMs);
-      assert.ok(rendered.revision >= publication.revision);
+      const graphTicket = acceptanceTicket(
+        await vscode.commands.executeCommand('okfWorkbench.openGraph', bundleRoot),
+        'openGraph',
+      );
+      const rendered = await api.waitForGraphOpenCompletion(
+        graphTicket.requestId,
+        completionTimeoutMs,
+      );
+      assert.ok(rendered.revision > publication.revision);
 
       assert.ok(
         conceptUri.toString().includes('provider%20%252F%20%E6%97%A5%E6%9C%AC%E8%AA%9E.md'),
@@ -266,6 +313,92 @@ suite('OKF Workbench provider URI boundary', () => {
         'The bundle root was not traversed through the registered workspace provider.',
       );
       assert.deepEqual(provider.mutations, [], 'Read-only commands attempted provider writes.');
+
+      for (const scenario of [
+        {
+          root: versionlessRoot,
+          expectedCode: undefined,
+        },
+        {
+          root: missingIndexRoot,
+          expectedCode: 'okf.conformance.root-index',
+        },
+        {
+          root: malformedRoot,
+          expectedCode: 'okf.conformance.frontmatter',
+        },
+        {
+          root: unsupportedRoot,
+          expectedCode: 'okf.compatibility.unsupported-version',
+        },
+      ]) {
+        const ticket = acceptanceTicket(
+          await vscode.commands.executeCommand('okfWorkbench.validateBundle', scenario.root),
+          'validateBundle',
+        );
+        const switched = await api.waitForValidationCompletion(
+          ticket.requestId,
+          completionTimeoutMs,
+        );
+        assert.equal(
+          switched.conceptCount,
+          0,
+          `Explicit validation did not switch to ${scenario.root.toString()}.`,
+        );
+
+        const selectedDiagnostics = vscode.languages
+          .getDiagnostics()
+          .filter(([uri]) => uri.toString().startsWith(scenario.root.toString()))
+          .flatMap(([, diagnostics]) => diagnostics);
+        if (scenario.expectedCode === undefined) {
+          assert.deepEqual(
+            selectedDiagnostics,
+            [],
+            'A valid versionless root should remain available for read-only validation.',
+          );
+        } else {
+          assert.ok(
+            selectedDiagnostics.some((diagnostic) => diagnostic.code === scenario.expectedCode),
+            `Expected ${scenario.expectedCode} after explicitly selecting ${scenario.root.toString()}.`,
+          );
+        }
+      }
+      assert.deepEqual(
+        provider.mutations,
+        [],
+        'Explicit validation of invalid or unsupported roots attempted provider writes.',
+      );
+
+      const supersededTicket = acceptanceTicket(
+        await vscode.commands.executeCommand('okfWorkbench.validateBundle', versionlessRoot),
+        'validateBundle',
+      );
+      const replacementTicket = acceptanceTicket(
+        await vscode.commands.executeCommand('okfWorkbench.validateBundle', bundleRoot),
+        'validateBundle',
+      );
+      await assert.rejects(
+        api.waitForValidationCompletion(supersededTicket.requestId, completionTimeoutMs),
+        /Reason: (?:selection-changed|superseded)\./u,
+        'Changing bundle roots did not fail the older pending command ticket.',
+      );
+      await api.waitForValidationCompletion(replacementTicket.requestId, completionTimeoutMs);
+
+      const removedWorkspaceTicket = acceptanceTicket(
+        await vscode.commands.executeCommand('okfWorkbench.validateBundle', bundleRoot),
+        'validateBundle',
+      );
+      await removeWorkspaceFolder(providerRoot);
+      await assert.rejects(
+        api.waitForValidationCompletion(removedWorkspaceTicket.requestId, completionTimeoutMs),
+        /Reason: workspace-removed\./u,
+        'Removing the selected workspace did not fail its pending command ticket.',
+      );
+      assert.deepEqual(
+        provider.mutations,
+        [],
+        'Pending-command cleanup attempted provider writes.',
+      );
     } finally {
       await removeWorkspaceFolder(providerRoot);
       registration.dispose();

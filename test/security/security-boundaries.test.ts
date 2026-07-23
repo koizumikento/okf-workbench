@@ -13,6 +13,7 @@ import {
   normalizeContainedRelativePath,
 } from '../../src/extension/workspace/pathSafety.js';
 import { ProposalApplicator } from '../../src/extension/workspace/proposalApplicator.js';
+import { WorkspaceFolderMembershipTracker } from '../../src/extension/workspace/workspaceFolderMembership.js';
 import {
   decodeExtensionToWebviewMessage,
   decodeWebviewToExtensionMessage,
@@ -135,10 +136,11 @@ describe('Webview CSP and asset boundary', () => {
 
 describe('strict protocol and authoritative source mapping', () => {
   it('rejects stale, oversized, unknown-field, forged-URI, and malformed graph messages', () => {
+    const delivery = { revision: 7, deliveryId: 3 };
     expect(
       decodeWebviewToExtensionMessage(
-        { protocolVersion: 1, type: 'openSource', revision: 6, nodeId: 'alpha' },
-        7,
+        { protocolVersion: 1, type: 'openSource', revision: 6, deliveryId: 3, nodeId: 'alpha' },
+        delivery,
       ),
     ).toMatchObject({ ok: false, error: { code: 'stale-revision' } });
     expect(
@@ -147,16 +149,23 @@ describe('strict protocol and authoritative source mapping', () => {
           protocolVersion: 1,
           type: 'openSource',
           revision: 7,
+          deliveryId: 3,
           nodeId: 'alpha',
           sourceUri: 'file:///forged.md',
         },
-        7,
+        delivery,
       ),
     ).toMatchObject({ ok: false, error: { code: 'invalid-payload' } });
     expect(
       decodeWebviewToExtensionMessage(
-        { protocolVersion: 1, type: 'openSource', revision: 7, nodeId: 'a'.repeat(4_097) },
-        7,
+        {
+          protocolVersion: 1,
+          type: 'openSource',
+          revision: 7,
+          deliveryId: 3,
+          nodeId: 'a'.repeat(4_097),
+        },
+        delivery,
       ),
     ).toMatchObject({ ok: false, error: { code: 'invalid-payload' } });
 
@@ -167,6 +176,7 @@ describe('strict protocol and authoritative source mapping', () => {
           protocolVersion: 1,
           type: 'replaceGraph',
           revision: 7,
+          deliveryId: 1,
           payload: {
             ...payload,
             nodes: [{ ...payload.nodes[0], sourceUri: 'file:///secret.md' }],
@@ -181,6 +191,7 @@ describe('strict protocol and authoritative source mapping', () => {
           protocolVersion: 1,
           type: 'replaceGraph',
           revision: 7,
+          deliveryId: 1,
           payload: {
             ...payload,
             edges: [{ id: 'forged', source: 'alpha', target: 'missing', sourceRange }],
@@ -210,12 +221,15 @@ describe('strict protocol and authoritative source mapping', () => {
       graph(),
       new Map([['alpha', { uri: 'memfs://private/bundle/alpha.md', range: sourceRange }]]),
     );
+    await controller.handleWebviewMessage({ protocolVersion: 1, type: 'ready' });
+    const deliveryId = (panel.webview.posted.at(-1) as { readonly deliveryId: number }).deliveryId;
 
     await expect(
       controller.handleWebviewMessage({
         protocolVersion: 1,
         type: 'openSource',
         revision: 7,
+        deliveryId,
         nodeId: 'forged',
       }),
     ).resolves.toBe('rejected');
@@ -224,6 +238,7 @@ describe('strict protocol and authoritative source mapping', () => {
         protocolVersion: 1,
         type: 'openSource',
         revision: 7,
+        deliveryId,
         nodeId: 'alpha',
       }),
     ).resolves.toBe('opened-source');
@@ -231,8 +246,6 @@ describe('strict protocol and authoritative source mapping', () => {
       uri: 'memfs://private/bundle/alpha.md',
       range: sourceRange,
     });
-
-    await controller.handleWebviewMessage({ protocolVersion: 1, type: 'ready' });
     expect(JSON.stringify(panel.webview.posted)).not.toContain('memfs://private');
     expect(panel.webview.html).not.toContain('<script>not executable</script>');
   });
@@ -256,10 +269,13 @@ describe('strict protocol and authoritative source mapping', () => {
       graph(),
       new Map([['alpha', { uri: 'memfs://private/bundle/alpha.md', range: sourceRange }]]),
     );
+    await controller.handleWebviewMessage({ protocolVersion: 1, type: 'ready' });
+    const deliveryId = (panel.webview.posted.at(-1) as { readonly deliveryId: number }).deliveryId;
     const message = {
       protocolVersion: 1,
       type: 'openSource',
       revision: 7,
+      deliveryId,
       nodeId: 'alpha',
     };
 
@@ -309,6 +325,7 @@ describe('workspace containment before writes', () => {
     const root = 'memfs://workspace/bundle';
     const proposal: ChangeSetProposal = {
       operation: 'security-test',
+      workspaceSafetyRootUri: root,
       writeRootUri: root,
       changes: [
         {
@@ -336,5 +353,23 @@ describe('workspace containment before writes', () => {
     expect(result.completed).toEqual([]);
     expect(result.failed).toHaveLength(2);
     expect(port.writes).toEqual([]);
+  });
+
+  it('does not let a parent folder or same-URI re-add revive removed write authorization', () => {
+    const parent = 'memfs://workspace';
+    const exactRoot = `${parent}/knowledge`;
+    let openFolders: readonly string[] = [parent, exactRoot];
+    const tracker = new WorkspaceFolderMembershipTracker(stringUriCodec, () => openFolders);
+    const session = tracker.capture(exactRoot);
+
+    // The host may already expose the re-added folder when it delivers the removal event.
+    openFolders = [parent, exactRoot];
+    tracker.handleWorkspaceFoldersChanged({ removed: [exactRoot] });
+
+    expect(session.currentProblem()).toMatchObject({
+      code: 'workspace-folder-unavailable',
+      uri: exactRoot,
+    });
+    expect(tracker.capture(exactRoot).currentProblem()).toBeUndefined();
   });
 });

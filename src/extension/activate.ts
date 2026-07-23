@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 import type { GraphRenderFailureReason } from '../shared/protocol/index.js';
 import { bundlePathWithinIntegrationRoot } from './composition/bundle-path.js';
+import { bundleSelectionChoices } from './composition/bundle-selection.js';
 import {
   guardBundleWriteSelection,
   inspectBundleWriteAccess,
@@ -14,18 +15,25 @@ import {
   createRegenerateIndexesCommand,
   createSetupAgentIntegrationCommand,
   problemsMessage,
-  untrustedWorkspaceProblem,
+  runPublicProposalCommand,
+  SerialProposalWorkflowScheduler,
   VscodeCommandUi,
   type CommandOutcome,
   type InitializationTarget,
+  type ProposalWorkflowLease,
   type SelectedBundle,
 } from './commands/index.js';
-import { OKF_COMMANDS, type OkfCommandId } from './commands/ids.js';
+import { OKF_COMMANDS, type OkfCommandId, type OkfCommandMetadata } from './commands/ids.js';
 import { VscodeProposalPreviewer } from './preview/index.js';
+import { FailFastReadCommandGate, readCommandBusyProblem } from './read-command-gate.js';
 import {
   BUNDLE_UNAVAILABLE_NOTIFICATION,
   RuntimeAvailabilityNotificationState,
 } from './runtimeAvailabilityNotifications.js';
+import {
+  activeWorkspaceSafetyRootWasRemoved,
+  type RuntimeSelectionIdentity,
+} from './runtimeSelection.js';
 import {
   createVscodeBundleRuntime,
   type BundleRuntimeContext,
@@ -33,37 +41,52 @@ import {
 } from './runtime/index.js';
 import {
   createAcceptanceCompletionSignals,
+  type AcceptanceCommandTicket,
   type OkfWorkbenchAcceptanceApi,
 } from './runtime/acceptanceSignals.js';
-import { VscodeGraphPanelService } from './webview/index.js';
+import { VscodeGraphPanelService, type GraphDeliveryFailureReason } from './webview/index.js';
 import {
   BundleContextService,
+  inspectWorkspaceDirectoryChain,
   isUriContained,
   ProposalApplicator,
   vscodeUriCodec,
   VscodeWorkspacePort,
+  WorkspaceFolderMembershipTracker,
   type BundleCandidate,
 } from './workspace/index.js';
 
 const OUTPUT_CHANNEL_NAME = 'OKF Workbench';
 
-type CommandResult = CommandOutcome | undefined;
-type CommandHandler = (...arguments_: readonly unknown[]) => Promise<CommandResult>;
+type CommandResult = CommandOutcome | AcceptanceCommandTicket | undefined;
+type CommandHandler = (
+  arguments_: readonly unknown[],
+  proposalLease: ProposalWorkflowLease | undefined,
+) => Promise<CommandResult>;
 
-interface PendingRuntimeActions {
-  graphRoot?: string;
-  validationRoot?: string;
+interface PendingRuntimeAction {
+  readonly root: string;
+  readonly acceptanceRequestId: number | undefined;
 }
 
-const WRITE_COMMAND_IDS: ReadonlySet<OkfCommandId> = new Set([
-  'okfWorkbench.initializeBundle',
-  'okfWorkbench.newConcept',
-  'okfWorkbench.regenerateIndexes',
-  'okfWorkbench.setupAgentIntegration',
-]);
+interface PendingRuntimeActions {
+  graph?: PendingRuntimeAction;
+  validation?: PendingRuntimeAction;
+}
+
+type PendingRuntimeActionKind = keyof PendingRuntimeActions;
 
 function errorKind(error: unknown): string {
   return error instanceof Error && error.name.length > 0 ? error.name : 'UnknownError';
+}
+
+function requireProposalLease(
+  proposalLease: ProposalWorkflowLease | undefined,
+): ProposalWorkflowLease {
+  if (proposalLease === undefined) {
+    throw new Error('A write command reached its handler without public-entry admission.');
+  }
+  return proposalLease;
 }
 
 function findingCounts(snapshot: BundleRuntimeSnapshot<vscode.Uri>): {
@@ -110,11 +133,19 @@ function uriArgument(value: unknown): vscode.Uri | undefined {
 }
 
 export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptanceApi | undefined {
-  const acceptanceSignals = createAcceptanceCompletionSignals(process.env['OKF_ACCEPTANCE_DRIVER']);
+  const acceptanceSignals = createAcceptanceCompletionSignals(
+    process.env['OKF_ACCEPTANCE_DRIVER'],
+    OKF_COMMANDS,
+  );
   const output = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME, { log: true });
   const ui = new VscodeCommandUi();
   const previewer = new VscodeProposalPreviewer();
+  const workflowScheduler = new SerialProposalWorkflowScheduler();
+  const readCommandGate = new FailFastReadCommandGate();
   const port = new VscodeWorkspacePort();
+  const workspaceFolderMembership = new WorkspaceFolderMembershipTracker(vscodeUriCodec, () =>
+    (vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri),
+  );
   const applicator = new ProposalApplicator(port, vscodeUriCodec);
   const graphPanels = new VscodeGraphPanelService(context, {
     onRejectedMessage: () => output.warn('webview.message rejected=true'),
@@ -145,7 +176,64 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
   );
   const pending: PendingRuntimeActions = {};
   const availabilityNotifications = new RuntimeAvailabilityNotificationState();
-  let selectedRuntimeRoot: string | undefined;
+  let selectedRuntimeSelection: RuntimeSelectionIdentity | undefined;
+
+  const takePending = (
+    kind: PendingRuntimeActionKind,
+    root?: string,
+  ): PendingRuntimeAction | undefined => {
+    const action = pending[kind];
+    if (action === undefined || (root !== undefined && action.root !== root)) {
+      return undefined;
+    }
+    if (kind === 'graph') {
+      delete pending.graph;
+    } else {
+      delete pending.validation;
+    }
+    return action;
+  };
+  const failPending = (kind: PendingRuntimeActionKind, reason: string, root?: string): boolean => {
+    const action = takePending(kind, root);
+    if (action === undefined) return false;
+    if (action.acceptanceRequestId !== undefined) {
+      if (kind === 'graph') {
+        acceptanceSignals?.recordGraphOpenFailure(action.acceptanceRequestId, reason);
+      } else {
+        acceptanceSignals?.recordValidationFailure(action.acceptanceRequestId, reason);
+      }
+    }
+    return true;
+  };
+  const discardPending = (
+    kind: PendingRuntimeActionKind,
+    reason: string,
+    root?: string,
+  ): boolean => {
+    const action = takePending(kind, root);
+    if (action === undefined) return false;
+    if (action.acceptanceRequestId !== undefined) {
+      if (kind === 'graph') {
+        acceptanceSignals?.discardGraphOpenCommand(action.acceptanceRequestId, reason);
+      } else {
+        acceptanceSignals?.discardValidationCommand(action.acceptanceRequestId, reason);
+      }
+    }
+    return true;
+  };
+  const replacePending = (kind: PendingRuntimeActionKind, action: PendingRuntimeAction): void => {
+    failPending(kind, 'superseded');
+    pending[kind] = action;
+  };
+  const failAllPending = (reason: string): void => {
+    failPending('graph', reason);
+    failPending('validation', reason);
+  };
+  const failAllAcceptanceRequests = (reason: string): void => {
+    failAllPending(reason);
+    acceptanceSignals?.failActiveGraphOpenCommands(reason);
+    acceptanceSignals?.failActiveValidationCommands(reason);
+  };
 
   const showBackgroundError = (message: string): void => {
     void ui.showError(message).catch((error: unknown) => {
@@ -162,28 +250,61 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
       output.error(`notification.failed=true error_type=${errorKind(error)}`);
     });
   };
+  const runReadCommand = async (
+    operation: () => Promise<CommandResult>,
+  ): Promise<CommandResult> => {
+    const admission = await readCommandGate.run(operation);
+    if (admission.admitted) {
+      return admission.value;
+    }
+
+    const problem = readCommandBusyProblem();
+    output.warn('read-command refused=true reason=read-command-busy');
+    if (admission.shouldNotify && acceptanceSignals === undefined) {
+      showBackgroundWarning(problemsMessage('Read operation is already starting.', [problem]));
+    }
+    return { kind: 'refused', problems: [problem] };
+  };
 
   const onRuntimePublish = (snapshot: BundleRuntimeSnapshot<vscode.Uri>): void => {
     const root = snapshot.context.rootUriString;
+    const pendingGraph = takePending('graph', root);
+    const pendingValidation = takePending('validation', root);
     if (availabilityNotifications.recordPublication(root)) {
       output.info('bundle.refresh availability=recovered');
     }
     try {
-      if (pending.graphRoot === root) {
-        delete pending.graphRoot;
-        graphPanels.open(snapshot.graph, snapshot.nodeSources);
+      if (pendingGraph !== undefined) {
+        if (pendingGraph.acceptanceRequestId !== undefined) {
+          acceptanceSignals?.armGraphOpenCommand(
+            pendingGraph.acceptanceRequestId,
+            snapshot.revision,
+          );
+        }
+        const graphRequestId = pendingGraph.acceptanceRequestId;
+        const onDeliveryFailure =
+          graphRequestId === undefined
+            ? undefined
+            : (reason: GraphDeliveryFailureReason): void =>
+                acceptanceSignals?.recordGraphOpenFailure(graphRequestId, reason);
+        graphPanels.open(snapshot.graph, snapshot.nodeSources, onDeliveryFailure);
       } else {
         graphPanels.replaceCurrent(snapshot.graph, snapshot.nodeSources);
       }
     } catch (error: unknown) {
+      if (pendingGraph?.acceptanceRequestId !== undefined) {
+        acceptanceSignals?.recordGraphOpenFailure(
+          pendingGraph.acceptanceRequestId,
+          'panel-open-failed',
+        );
+      }
       output.error(`webview.open failed=true error_type=${errorKind(error)}`);
       showBackgroundError(
         'OKF Workbench refreshed the bundle, but could not open the graph. Close any stale graph tab and run OKF: Open 3D Graph again.',
       );
     }
 
-    if (pending.validationRoot === root) {
-      delete pending.validationRoot;
+    if (pendingValidation !== undefined) {
       const counts = findingCounts(snapshot);
       showBackgroundInformation(
         `OKF validation complete: ${counts.errors} error(s), ${counts.warnings} warning(s), and ${counts.information} information item(s). Review OKF Conformance, Curation, and Compatibility entries in Problems.`,
@@ -194,19 +315,21 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
       `bundle.refresh revision=${snapshot.revision} concepts=${snapshot.graph.statistics.conceptCount} findings=${snapshot.findings.length}`,
     );
     acceptanceSignals?.recordRuntimePublication(snapshot);
+    if (pendingValidation?.acceptanceRequestId !== undefined) {
+      acceptanceSignals?.recordValidationCompletion(
+        pendingValidation.acceptanceRequestId,
+        snapshot,
+      );
+    }
   };
   const onRuntimeError = (
     error: unknown,
     runtimeContext: BundleRuntimeContext<vscode.Uri>,
   ): void => {
-    const pendingGraphFailed = pending.graphRoot === runtimeContext.rootUriString;
-    const pendingValidationFailed = pending.validationRoot === runtimeContext.rootUriString;
-    if (pendingGraphFailed) {
-      delete pending.graphRoot;
-    }
-    if (pendingValidationFailed) {
-      delete pending.validationRoot;
-    }
+    failPending('graph', 'runtime-failed', runtimeContext.rootUriString);
+    failPending('validation', 'runtime-failed', runtimeContext.rootUriString);
+    acceptanceSignals?.failActiveGraphOpenCommands('runtime-failed');
+    acceptanceSignals?.failActiveValidationCommands('runtime-failed');
     const shouldNotify = availabilityNotifications.shouldNotifyFailure(
       runtimeContext.rootUriString,
     );
@@ -219,30 +342,48 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
   };
   const runtime = createVscodeBundleRuntime({
     onPublish: onRuntimePublish,
-    onClear: () => graphPanels.closeCurrent(),
+    onClear: () => {
+      failAllAcceptanceRequests('runtime-cleared');
+      graphPanels.closeCurrent();
+    },
     onError: onRuntimeError,
   });
 
-  const ensureRuntimeSelection = (candidate: BundleCandidate<vscode.Uri>): void => {
-    if (selectedRuntimeRoot === candidate.rootUriString) {
+  const ensureRuntimeSelection = (
+    candidate: BundleCandidate<vscode.Uri>,
+    workspaceSafetyRootUri: vscode.Uri,
+    force = false,
+  ): void => {
+    const workspaceSafetyRoot = vscodeUriCodec.serialize(workspaceSafetyRootUri);
+    if (
+      !force &&
+      selectedRuntimeSelection?.root === candidate.rootUriString &&
+      selectedRuntimeSelection.workspaceSafetyRoot === workspaceSafetyRoot
+    ) {
       return;
     }
-    if (pending.graphRoot !== candidate.rootUriString) {
-      delete pending.graphRoot;
-    }
-    if (pending.validationRoot !== candidate.rootUriString) {
-      delete pending.validationRoot;
-    }
-    selectedRuntimeRoot = candidate.rootUriString;
+    failAllAcceptanceRequests('selection-changed');
+    selectedRuntimeSelection = {
+      root: candidate.rootUriString,
+      workspaceSafetyRoot,
+    };
     availabilityNotifications.select(candidate.rootUriString);
-    runtime.select(candidate.rootUri);
+    runtime.select(candidate.rootUri, workspaceSafetyRootUri);
     output.info('bundle.selection changed=true');
   };
 
   const selectCandidate = (candidate: BundleCandidate<vscode.Uri>): SelectedBundle<vscode.Uri> => {
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(candidate.rootUri);
+    if (workspaceFolder === undefined) {
+      throw new Error('The selected bundle is outside every open workspace folder.');
+    }
     bundleContext.select(candidate);
-    ensureRuntimeSelection(candidate);
-    return { bundleRootUri: candidate.rootUri, label: candidateLabel(candidate) };
+    ensureRuntimeSelection(candidate, workspaceFolder.uri);
+    return {
+      bundleRootUri: candidate.rootUri,
+      workspaceSafetyRootUri: workspaceFolder.uri,
+      label: candidateLabel(candidate),
+    };
   };
 
   const chooseExplicitBundleRoot = async (
@@ -264,11 +405,30 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
     if (rootUri === undefined) {
       return undefined;
     }
-    if (vscode.workspace.getWorkspaceFolder(rootUri) === undefined) {
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(rootUri);
+    if (workspaceFolder === undefined) {
       await ui.showError('Select a bundle directory inside an open workspace folder.');
       return undefined;
     }
-    const inspection = await inspectExplicitBundleRoot(rootUri, port, vscodeUriCodec);
+    const unsafeDirectory = await inspectWorkspaceDirectoryChain(
+      workspaceFolder.uri,
+      rootUri,
+      port,
+      vscodeUriCodec,
+    );
+    if (unsafeDirectory !== undefined) {
+      await ui.showError(
+        `Workbench refused the selected directory before reading it. ${unsafeDirectory.message}`,
+      );
+      output.warn('bundle.selection refused=true reason=unsafe-workspace-path');
+      return undefined;
+    }
+    const inspection = await inspectExplicitBundleRoot(
+      rootUri,
+      port,
+      vscodeUriCodec,
+      workspaceFolder.uri,
+    );
     if (!inspection.ok) {
       await ui.showError(
         'Workbench could not safely inspect the selected directory. Check that it is an accessible workspace folder, then try again.',
@@ -321,10 +481,9 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
 
     if (resolution.reason === 'ambiguous') {
       const selected = await vscode.window.showQuickPick(
-        discovery.candidates.map((candidate) => ({
+        bundleSelectionChoices(discovery.candidates, (candidate) => ({
           label: candidateLabel(candidate),
           description: vscode.workspace.asRelativePath(candidate.indexUri, false),
-          candidate,
         })),
         {
           title: 'OKF: Select Bundle',
@@ -332,7 +491,14 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
           ignoreFocusOut: true,
         },
       );
-      return selected === undefined ? undefined : selectCandidate(selected.candidate);
+      if (selected === undefined) {
+        return undefined;
+      }
+      if (selected.choiceKind === 'candidate') {
+        return selectCandidate(selected.candidate);
+      }
+      const explicit = await chooseExplicitBundleRoot(workspaceFolders[0]?.uri);
+      return explicit === undefined ? undefined : selectCandidate(explicit);
     }
 
     const explicit = await chooseExplicitBundleRoot(workspaceFolders[0]?.uri);
@@ -359,8 +525,22 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
       const folder = vscode.workspace.getWorkspaceFolder(invokedResource);
       const stat = folder === undefined ? undefined : await port.stat(invokedResource);
       if (folder !== undefined && stat?.type === 'directory') {
+        const unsafeDirectory = await inspectWorkspaceDirectoryChain(
+          folder.uri,
+          invokedResource,
+          port,
+          vscodeUriCodec,
+        );
+        if (unsafeDirectory !== undefined) {
+          await ui.showError(
+            `Workbench refused the initialization target. ${unsafeDirectory.message}`,
+          );
+          output.warn('workspace.initialization_target refused=true reason=unsafe-workspace-path');
+          return undefined;
+        }
         return {
           targetRootUri: invokedResource,
+          workspaceSafetyRootUri: folder.uri,
           label: vscode.workspace.asRelativePath(invokedResource, false),
           suggestedBundleDirectory: 'knowledge',
         };
@@ -383,6 +563,7 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
     }
     return {
       targetRootUri: folder.uri,
+      workspaceSafetyRootUri: folder.uri,
       label: folder.name,
       suggestedBundleDirectory: 'knowledge',
     };
@@ -420,7 +601,21 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
   };
 
   const revalidateBundleWrite = async (bundleRootUri: vscode.Uri) => {
-    const access = await inspectBundleWriteAccess(bundleRootUri, port, vscodeUriCodec);
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(bundleRootUri);
+    if (workspaceFolder === undefined) {
+      return {
+        code: 'bundle-write-root-revalidation-failed',
+        message: 'The selected bundle root is no longer inside an open workspace folder.',
+        correctiveAction:
+          'No files were written. Reopen the workspace folder and select the bundle again.',
+      };
+    }
+    const access = await inspectBundleWriteAccess(
+      bundleRootUri,
+      port,
+      vscodeUriCodec,
+      workspaceFolder.uri,
+    );
     return access.ok ? undefined : access.problem;
   };
 
@@ -430,79 +625,123 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
     applicator,
     ui,
     previewer,
+    workflowScheduler,
     isWorkspaceTrusted: () => vscode.workspace.isTrusted,
+    captureWorkspaceFolderMembership: (workspaceSafetyRootUri: vscode.Uri) =>
+      workspaceFolderMembership.capture(workspaceSafetyRootUri),
     revalidateBundleWrite,
   };
   const refreshAfterWrite = (outcome: CommandOutcome): void => {
-    if (outcome.kind === 'applied' && selectedRuntimeRoot !== undefined) {
+    if (outcome.kind === 'applied' && selectedRuntimeSelection !== undefined) {
       runtime.requestFullRefresh();
       output.info(`workspace.write completed=${outcome.report.completed.length} refresh=requested`);
     }
   };
 
   const handlers: Record<OkfCommandId, CommandHandler> = {
-    'okfWorkbench.initializeBundle': async (...arguments_) => {
-      const command = createInitializeBundleCommand({
-        ...workflowDependencies,
-        selectInitializationTarget: () => selectInitializationTarget(uriArgument(arguments_[0])),
-        selectInitializedBundle,
-        now: () => new Date().toISOString(),
-      });
+    'okfWorkbench.initializeBundle': async (arguments_, proposalLease) => {
+      const command = createInitializeBundleCommand(
+        {
+          ...workflowDependencies,
+          selectInitializationTarget: () => selectInitializationTarget(uriArgument(arguments_[0])),
+          selectInitializedBundle,
+          now: () => new Date().toISOString(),
+        },
+        requireProposalLease(proposalLease),
+      );
       const outcome = await command();
       refreshAfterWrite(outcome);
       return outcome;
     },
-    'okfWorkbench.newConcept': async (...arguments_) => {
-      const command = createNewConceptCommand({
-        ...workflowDependencies,
-        selectBundle: () => selectWritableBundle(uriArgument(arguments_[0])),
-      });
+    'okfWorkbench.newConcept': async (arguments_, proposalLease) => {
+      const command = createNewConceptCommand(
+        {
+          ...workflowDependencies,
+          selectBundle: () => selectWritableBundle(uriArgument(arguments_[0])),
+        },
+        requireProposalLease(proposalLease),
+      );
       const outcome = await command();
       refreshAfterWrite(outcome);
       return outcome;
     },
-    'okfWorkbench.validateBundle': async (...arguments_) => {
-      const selection = await selectBundle(uriArgument(arguments_[0]));
-      if (selection === undefined) {
-        return { kind: 'cancelled' };
-      }
-      const root = vscodeUriCodec.serialize(selection.bundleRootUri);
-      pending.validationRoot = root;
-      runtime.requestFullRefresh();
-      output.info('bundle.validation requested=true');
-      return undefined;
-    },
-    'okfWorkbench.regenerateIndexes': async (...arguments_) => {
-      const command = createRegenerateIndexesCommand({
-        ...workflowDependencies,
-        selectBundle: () => selectWritableBundle(uriArgument(arguments_[0])),
-      });
+    'okfWorkbench.validateBundle': (arguments_) =>
+      runReadCommand(async () => {
+        const selection = await selectBundle(uriArgument(arguments_[0]));
+        if (selection === undefined) {
+          return { kind: 'cancelled' };
+        }
+        const root = vscodeUriCodec.serialize(selection.bundleRootUri);
+        const acceptanceTicket = acceptanceSignals?.beginValidationCommand();
+        replacePending('validation', {
+          root,
+          acceptanceRequestId: acceptanceTicket?.requestId,
+        });
+        try {
+          runtime.requestFullRefresh();
+        } catch (error: unknown) {
+          discardPending('validation', 'schedule-failed');
+          throw error;
+        }
+        output.info('bundle.validation requested=true');
+        return acceptanceTicket;
+      }),
+    'okfWorkbench.regenerateIndexes': async (arguments_, proposalLease) => {
+      const command = createRegenerateIndexesCommand(
+        {
+          ...workflowDependencies,
+          selectBundle: () => selectWritableBundle(uriArgument(arguments_[0])),
+        },
+        requireProposalLease(proposalLease),
+      );
       const outcome = await command();
       refreshAfterWrite(outcome);
       return outcome;
     },
-    'okfWorkbench.openGraph': async (...arguments_) => {
-      const selection = await selectBundle(uriArgument(arguments_[0]));
-      if (selection === undefined) {
-        return { kind: 'cancelled' };
-      }
-      const root = vscodeUriCodec.serialize(selection.bundleRootUri);
-      const snapshot = runtime.current;
-      if (snapshot?.context.rootUriString === root) {
-        graphPanels.open(snapshot.graph, snapshot.nodeSources);
-      } else {
-        pending.graphRoot = root;
-        runtime.requestFullRefresh();
-      }
-      output.info('graph.open requested=true');
-      return undefined;
-    },
-    'okfWorkbench.setupAgentIntegration': async (...arguments_) => {
-      const command = createSetupAgentIntegrationCommand({
-        ...workflowDependencies,
-        selectAgentIntegrationTarget: () =>
-          selectAgentIntegrationTarget(uriArgument(arguments_[0])),
-      });
+    'okfWorkbench.openGraph': (arguments_) =>
+      runReadCommand(async () => {
+        const selection = await selectBundle(uriArgument(arguments_[0]));
+        if (selection === undefined) {
+          return { kind: 'cancelled' };
+        }
+        const root = vscodeUriCodec.serialize(selection.bundleRootUri);
+        const snapshot = runtime.current;
+        const acceptanceTicket = acceptanceSignals?.beginGraphOpenCommand();
+        if (acceptanceTicket !== undefined) {
+          replacePending('graph', {
+            root,
+            acceptanceRequestId: acceptanceTicket.requestId,
+          });
+          // Acceptance must observe a graph produced after this command, never a cached Webview ACK.
+          try {
+            runtime.requestFullRefresh();
+          } catch (error: unknown) {
+            discardPending('graph', 'schedule-failed');
+            throw error;
+          }
+        } else if (snapshot?.context.rootUriString === root) {
+          graphPanels.open(snapshot.graph, snapshot.nodeSources);
+        } else {
+          replacePending('graph', { root, acceptanceRequestId: undefined });
+          try {
+            runtime.requestFullRefresh();
+          } catch (error: unknown) {
+            discardPending('graph', 'schedule-failed');
+            throw error;
+          }
+        }
+        output.info('graph.open requested=true');
+        return acceptanceTicket;
+      }),
+    'okfWorkbench.setupAgentIntegration': async (arguments_, proposalLease) => {
+      const command = createSetupAgentIntegrationCommand(
+        {
+          ...workflowDependencies,
+          selectAgentIntegrationTarget: () =>
+            selectAgentIntegrationTarget(uriArgument(arguments_[0])),
+        },
+        requireProposalLease(proposalLease),
+      );
       const outcome = await command();
       refreshAfterWrite(outcome);
       return outcome;
@@ -510,26 +749,41 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
   };
 
   const executeCommand = async (
-    commandId: OkfCommandId,
+    command: OkfCommandMetadata,
     arguments_: readonly unknown[],
   ): Promise<CommandResult> => {
+    const commandId = command.id;
     output.info(`command.start id=${commandId}`);
-    if (WRITE_COMMAND_IDS.has(commandId) && !vscode.workspace.isTrusted) {
-      const problem = untrustedWorkspaceProblem();
-      output.warn(`command.finish id=${commandId} outcome=refused reason=workspace-untrusted`);
-      // The packaged acceptance driver must observe the refusal result without a modal obscuring
-      // the command boundary. Ordinary sessions still receive the user-facing explanation.
-      if (acceptanceSignals === undefined) {
-        void ui
-          .showError(problemsMessage('Write operation refused.', [problem]))
-          .catch((error: unknown) => {
-            output.error(`notification.failed=true error_type=${errorKind(error)}`);
-          });
-      }
-      return { kind: 'refused', problems: [problem] };
-    }
     try {
-      const result = await handlers[commandId](...arguments_);
+      const result =
+        command.workspaceAccess === 'write'
+          ? await runPublicProposalCommand(
+              workflowDependencies,
+              async (proposalLease) => {
+                const handlerResult = await handlers[commandId](arguments_, proposalLease);
+                if (
+                  handlerResult === undefined ||
+                  handlerResult.kind === 'okf-acceptance-command'
+                ) {
+                  throw new Error('A write command returned a non-write command result.');
+                }
+                return handlerResult;
+              },
+              async (problem) => {
+                output.warn(`command.refused id=${commandId} reason=${problem.code}`);
+                // The packaged acceptance driver observes the structured result without a
+                // notification obscuring its command boundary.
+                if (acceptanceSignals !== undefined) {
+                  return;
+                }
+                try {
+                  await ui.showError(problemsMessage('Write operation refused.', [problem]));
+                } catch (error: unknown) {
+                  output.error(`notification.failed=true error_type=${errorKind(error)}`);
+                }
+              },
+            )
+          : await handlers[commandId](arguments_, undefined);
       output.info(`command.finish id=${commandId} outcome=${result?.kind ?? 'completed'}`);
       return result;
     } catch (error: unknown) {
@@ -545,32 +799,46 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
     }
   };
 
-  context.subscriptions.push(output, previewer, graphPanels, runtime);
+  context.subscriptions.push(output, previewer, graphPanels, runtime, workspaceFolderMembership);
   context.subscriptions.push(
-    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+    vscode.workspace.onDidChangeWorkspaceFolders((event) => {
+      workspaceFolderMembership.handleWorkspaceFoldersChanged({
+        removed: event.removed.map((folder) => folder.uri),
+      });
       const current = bundleContext.current;
-      const folders = vscode.workspace.workspaceFolders ?? [];
-      if (
-        current === undefined ||
-        folders.some((folder) => isUriContained(folder.uri, current.rootUri))
-      ) {
+      const selectedSafetyRootWasRemoved = activeWorkspaceSafetyRootWasRemoved(
+        selectedRuntimeSelection,
+        event.removed.map((folder) => vscodeUriCodec.serialize(folder.uri)),
+      );
+      if (current === undefined && selectedRuntimeSelection === undefined) {
+        return;
+      }
+      const containingFolder =
+        current === undefined ? undefined : vscode.workspace.getWorkspaceFolder(current.rootUri);
+      if (current !== undefined && containingFolder !== undefined) {
+        ensureRuntimeSelection(current, containingFolder.uri, selectedSafetyRootWasRemoved);
         return;
       }
       bundleContext.clear();
+      failAllAcceptanceRequests('workspace-removed');
       runtime.clear();
       availabilityNotifications.clear();
-      selectedRuntimeRoot = undefined;
-      delete pending.graphRoot;
-      delete pending.validationRoot;
+      selectedRuntimeSelection = undefined;
       output.info('bundle.selection cleared=true reason=workspace-folder-change');
     }),
   );
   for (const command of OKF_COMMANDS) {
     context.subscriptions.push(
       vscode.commands.registerCommand(command.id, (...arguments_: readonly unknown[]) =>
-        executeCommand(command.id, arguments_),
+        executeCommand(command, arguments_),
       ),
     );
+  }
+
+  if (acceptanceSignals !== undefined) {
+    context.subscriptions.push({
+      dispose: () => acceptanceSignals.dispose(),
+    });
   }
 
   output.info(`extension.activate commands=${OKF_COMMANDS.length}`);

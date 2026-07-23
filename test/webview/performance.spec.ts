@@ -45,6 +45,7 @@ test.describe('performance evidence harness', () => {
                 protocolVersion: 1,
                 type: 'replaceGraph',
                 revision: graph.revision,
+                deliveryId: 1,
                 payload: graph,
               },
             }),

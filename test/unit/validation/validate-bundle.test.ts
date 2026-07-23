@@ -12,6 +12,11 @@ import type {
   ReservedDocument,
   SourceRange,
 } from '../../../src/core/model/index.js';
+import {
+  parseBundle,
+  YAML_TAGGED_VALUE_KEY,
+  type BundleDocumentInput,
+} from '../../../src/core/parser/index.js';
 import { VALIDATION_CODES, validateBundle } from '../../../src/core/validation/index.js';
 
 const rootUri = 'vscode-remote://ssh-remote+example/workspace/knowledge';
@@ -88,6 +93,7 @@ function concept(options: ConceptOptions): Concept {
 
   const frontmatter: ParsedFrontmatter = {
     raw,
+    explicitTags: {},
     source: 'type: Producer Custom Type\n',
     range: frontmatterRange,
     fields,
@@ -133,6 +139,7 @@ function rootIndex(okfVersion: JsonValue = '0.1'): ReservedDocument {
     },
     frontmatter: {
       raw: { okf_version: okfVersion },
+      explicitTags: {},
       source: `okf_version: ${okfVersion}\n`,
       range: range(0, 24),
       fields: { okf_version: range(4, 20) },
@@ -164,6 +171,14 @@ function bundle(
 
 function codes(findings: readonly Finding[]): readonly string[] {
   return findings.map((finding) => finding.code);
+}
+
+function document(bundlePath: string, content: string): BundleDocumentInput {
+  return {
+    uri: `${rootUri}/${bundlePath}`,
+    bundlePath,
+    content,
+  };
 }
 
 describe('validateBundle', () => {
@@ -339,6 +354,35 @@ describe('validateBundle', () => {
     });
   });
 
+  it('does not derive valid-sibling connectivity from a failed source', () => {
+    const failed = concept({
+      id: 'failed',
+      links: [link('failed', 'internal', './valid.md', 100, 'valid')],
+    });
+    const valid = concept({ id: 'valid' });
+    const failedSource: ParseFailure = {
+      kind: 'parse-failure',
+      uri: failed.source.uri,
+      bundlePath: failed.source.bundlePath,
+      reason: 'frontmatter',
+      message: 'YAML frontmatter is invalid.',
+    };
+
+    const findings = validateBundle(bundle([failed, valid], { failures: [failedSource] }), {
+      now: '2026-07-22T00:00:00Z',
+    });
+
+    expect(findings.filter(({ code }) => code === VALIDATION_CODES.orphanConcept)).toEqual([
+      expect.objectContaining({
+        uri: valid.source.uri,
+        message: expect.stringContaining('"valid"'),
+      }),
+    ]);
+    expect(
+      findings.some(({ uri, category }) => uri === failed.source.uri && category === 'curation'),
+    ).toBe(false);
+  });
+
   it('does not report unknown producer fields or custom types solely for being unknown', () => {
     const first = concept({
       id: 'custom/first',
@@ -401,6 +445,103 @@ describe('validateBundle', () => {
         now: '2026-07-22T00:00:00Z',
       }),
     ).toEqual(findings);
+  });
+
+  it('validates parser-proven explicit timestamps while rejecting non-string lookalikes', () => {
+    const parsed = parseBundle({
+      rootUri,
+      revision: 8,
+      documents: [
+        document('index.md', '---\nokf_version: "0.1"\n---\n# Root\n'),
+        document(
+          'explicit-timestamp.md',
+          [
+            '---',
+            'type: reference',
+            'title: Explicit timestamp',
+            'description: Uses a standard YAML timestamp tag.',
+            'timestamp: !!timestamp 2026-07-22T09:30:00.1Z',
+            '---',
+            '# Explicit timestamp',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'numeric-timestamp.md',
+          [
+            '---',
+            'type: reference',
+            'title: Numeric timestamp',
+            'description: Keeps a non-string producer value.',
+            'timestamp: 20260722',
+            '---',
+            '# Numeric timestamp',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'mapping-timestamp.md',
+          [
+            '---',
+            'type: reference',
+            'title: Mapping timestamp',
+            'description: Keeps a non-string producer mapping.',
+            'timestamp:',
+            '  value: 2026-07-22T09:30:00Z',
+            '---',
+            '# Mapping timestamp',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'lookalike-timestamp.md',
+          [
+            '---',
+            'type: reference',
+            'title: Lookalike timestamp',
+            'description: Keeps an unproven serialization lookalike.',
+            'timestamp:',
+            `  ${YAML_TAGGED_VALUE_KEY}:`,
+            '    tag: tag:yaml.org,2002:timestamp',
+            '    value: 2026-07-22T09:30:00.100Z',
+            '    source: 2026-07-22T09:30:00.1Z',
+            '---',
+            '# Lookalike timestamp',
+            '',
+          ].join('\n'),
+        ),
+      ],
+    });
+
+    expect(parsed.failures).toEqual([]);
+    const explicit = parsed.concepts.find(({ id }) => id === 'explicit-timestamp');
+    expect(explicit).toBeDefined();
+    expect(explicit?.timestamp).toBe('2026-07-22T09:30:00.100Z');
+    expect(explicit?.frontmatter.explicitTags.timestamp).toBe('tag:yaml.org,2002:timestamp');
+    expect(explicit?.frontmatter.raw.timestamp).toEqual({
+      [YAML_TAGGED_VALUE_KEY]: {
+        tag: 'tag:yaml.org,2002:timestamp',
+        value: '2026-07-22T09:30:00.100Z',
+        source: '2026-07-22T09:30:00.1Z',
+      },
+    });
+
+    const findings = validateBundle(parsed, { now: '2026-07-22T12:00:00Z' });
+    const invalidTimestampUris = findings
+      .filter(({ code }) => code === VALIDATION_CODES.invalidTimestamp)
+      .map(({ uri }) => uri);
+
+    expect(invalidTimestampUris).toHaveLength(3);
+    expect(invalidTimestampUris).toEqual(
+      expect.arrayContaining([
+        `${rootUri}/numeric-timestamp.md`,
+        `${rootUri}/mapping-timestamp.md`,
+        `${rootUri}/lookalike-timestamp.md`,
+      ]),
+    );
+    expect(invalidTimestampUris).not.toContain(`${rootUri}/explicit-timestamp.md`);
+    expect(JSON.parse(JSON.stringify(parsed))).toEqual(parsed);
+    expect(JSON.parse(JSON.stringify(findings))).toEqual(findings);
   });
 
   it('recognizes CommonMark Setext headings in reserved index and log documents', () => {

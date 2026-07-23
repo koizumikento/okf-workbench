@@ -99,6 +99,12 @@ Additional graph rules:
 - Development and CI tooling: Node.js 24.18.0 and npm 11.16.0.
 - Electron, Chromium, GPU, OS, and editor build versions are evidence fields, not inferred compatibility claims.
 
+Implementation note (2026-07-22): `1.127.0` above is the decision-date snapshot, not a permanent
+pin. The current release-candidate workflow refreshes the current-stable lane to VS Code `1.129.1`;
+the recorded schema-v3 VS Code `1.127.0` headed run is a superseded historical record bound to its
+recorded identities and does not qualify the current performance contract or current compatibility
+candidate.
+
 ### OQ-008 — Performance fixtures and thresholds
 
 Checked-in deterministic generators produce 100-node/500-edge, 1,000-node/5,000-edge, and larger stress payloads.

@@ -3,39 +3,90 @@ import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-async function collectCandidates(directory) {
-  const entries = await readdir(directory, { withFileTypes: true });
-  const candidates = [];
+export const EXPECTED_CROSS_PLATFORM_ARTIFACT_LABELS = Object.freeze([
+  'okf-workbench-package-smoke-Linux-X64',
+  'okf-workbench-package-smoke-Windows-X64',
+  'okf-workbench-package-smoke-macOS-ARM64',
+]);
 
-  for (const entry of entries) {
-    const entryPath = resolve(directory, entry.name);
-    if (entry.isDirectory()) {
-      candidates.push(...(await collectCandidates(entryPath)));
-    } else if (entry.isFile() && entry.name === 'okf-workbench.vsix') {
-      candidates.push(entryPath);
-    }
-  }
+export const CROSS_PLATFORM_VSIX_FILENAME = 'okf-workbench.vsix';
 
-  return candidates;
+function entryKind(entry) {
+  if (entry.isDirectory()) return 'directory';
+  if (entry.isFile()) return 'file';
+  if (entry.isSymbolicLink()) return 'symbolic link';
+  return 'other';
 }
 
-export async function verifyCrossPlatformVsix(rootDirectory, expectedCount = 3) {
-  if (!Number.isSafeInteger(expectedCount) || expectedCount < 2) {
-    throw new Error('The expected VSIX count must be an integer of at least two.');
-  }
+function formatDirectoryInventory(entries) {
+  if (entries.length === 0) return '  (empty)';
+  return entries.map((entry) => `  ${JSON.stringify(entry.name)} [${entryKind(entry)}]`).join('\n');
+}
 
-  const root = resolve(rootDirectory);
-  const paths = (await collectCandidates(root)).sort((left, right) => left.localeCompare(right));
-  if (paths.length !== expectedCount) {
+function validateRootLayout(root, entries) {
+  const expectedLabels = new Set(EXPECTED_CROSS_PLATFORM_ARTIFACT_LABELS);
+  const missing = EXPECTED_CROSS_PLATFORM_ARTIFACT_LABELS.filter(
+    (label) => !entries.some((entry) => entry.name === label && entry.isDirectory()),
+  );
+  const unexpected = entries.filter(
+    (entry) => !expectedLabels.has(entry.name) || !entry.isDirectory(),
+  );
+
+  if (missing.length === 0 && unexpected.length === 0) return;
+
+  const details = [];
+  if (missing.length > 0) details.push(`Missing artifact directories: ${missing.join(', ')}`);
+  if (unexpected.length > 0) {
+    details.push(
+      `Unexpected root entries: ${unexpected
+        .map((entry) => `${JSON.stringify(entry.name)} [${entryKind(entry)}]`)
+        .join(', ')}`,
+    );
+  }
+  throw new Error(
+    `Cross-platform artifact layout is invalid under ${root}.\n${details.join('\n')}\nRoot inventory:\n${formatDirectoryInventory(entries)}`,
+  );
+}
+
+async function locateCandidate(root, artifactLabel) {
+  const artifactDirectory = resolve(root, artifactLabel);
+  const entries = await readdir(artifactDirectory, { withFileTypes: true });
+  const candidateEntries = entries.filter((entry) => entry.name === CROSS_PLATFORM_VSIX_FILENAME);
+  const additionalVsixEntries = entries.filter(
+    (entry) => entry.name !== CROSS_PLATFORM_VSIX_FILENAME && entry.name.endsWith('.vsix'),
+  );
+  const nestedDirectories = entries.filter((entry) => entry.isDirectory());
+  const unsafeEntries = entries.filter((entry) => !entry.isDirectory() && !entry.isFile());
+  const hasOneDirectRegularCandidate =
+    candidateEntries.length === 1 && candidateEntries[0]?.isFile() === true;
+
+  if (
+    !hasOneDirectRegularCandidate ||
+    additionalVsixEntries.length > 0 ||
+    nestedDirectories.length > 0 ||
+    unsafeEntries.length > 0
+  ) {
     throw new Error(
-      `Expected ${String(expectedCount)} cross-platform VSIX files under ${root}; found ${String(paths.length)}.`,
+      `Artifact directory ${artifactLabel} is invalid at ${artifactDirectory}.\n` +
+        `Expected exactly one direct regular ${CROSS_PLATFORM_VSIX_FILENAME}, no additional .vsix files, and no nested or non-regular entries.\n` +
+        `Artifact inventory:\n${formatDirectoryInventory(entries)}`,
     );
   }
 
+  return resolve(artifactDirectory, CROSS_PLATFORM_VSIX_FILENAME);
+}
+
+export async function verifyCrossPlatformVsix(rootDirectory) {
+  const root = resolve(rootDirectory);
+  const rootEntries = await readdir(root, { withFileTypes: true });
+  validateRootLayout(root, rootEntries);
+
   const candidates = await Promise.all(
-    paths.map(async (path) => {
+    EXPECTED_CROSS_PLATFORM_ARTIFACT_LABELS.map(async (artifactLabel) => {
+      const path = await locateCandidate(root, artifactLabel);
       const content = await readFile(path);
       return {
+        artifactLabel,
         path,
         sha256: createHash('sha256').update(content).digest('hex'),
         size: content.length,
@@ -50,7 +101,10 @@ export async function verifyCrossPlatformVsix(rootDirectory, expectedCount = 3) 
   );
   if (mismatch !== undefined) {
     const inventory = candidates
-      .map((candidate) => `${candidate.sha256} ${String(candidate.size)} ${candidate.path}`)
+      .map(
+        (candidate) =>
+          `${candidate.artifactLabel}: ${candidate.sha256} ${String(candidate.size)} ${candidate.path}`,
+      )
       .join('\n');
     throw new Error(`Cross-platform VSIX bytes differ:\n${inventory}`);
   }
@@ -62,14 +116,10 @@ const invokedPath =
   process.argv[1] === undefined ? undefined : pathToFileURL(resolve(process.argv[1])).href;
 if (invokedPath === import.meta.url) {
   const rootDirectory = process.argv[2];
-  const expectedCountArgument = process.argv[3];
-  if (rootDirectory === undefined || process.argv.length > 4) {
-    throw new Error(
-      'Usage: node scripts/check-cross-platform-vsix.mjs <artifact-root> [expected-count]',
-    );
+  if (rootDirectory === undefined || process.argv.length > 3) {
+    throw new Error('Usage: node scripts/check-cross-platform-vsix.mjs <artifact-root>');
   }
-  const expectedCount = expectedCountArgument === undefined ? 3 : Number(expectedCountArgument);
-  const result = await verifyCrossPlatformVsix(rootDirectory, expectedCount);
+  const result = await verifyCrossPlatformVsix(rootDirectory);
   console.log(
     `Cross-platform VSIX byte identity passed: ${result.sha256} (${String(result.size)} bytes, ${String(result.candidates.length)} artifacts).`,
   );

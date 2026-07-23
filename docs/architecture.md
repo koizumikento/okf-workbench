@@ -44,6 +44,11 @@ The accepted runtime, build, test, and packaging baseline is documented in [Impl
 
 - Desktop-only VS Code-compatible extension for the MVP; no Web extension entry point.
 - VS Code API floor `^1.121.0`, covering the current VSCodium stable line at the decision date.
+- Release qualification pins the API-floor lane to VS Code `1.121.0`, the current-stable lane to
+  VS Code `1.129.1`, and the compatible-editor lane to VSCodium `1.121.03429`. The current exact
+  candidate still requires fresh hosted results on those lanes; the recorded VS Code `1.127.0`
+  headed run is a superseded historical record and does not qualify the current performance
+  contract.
 - Node.js 24 LTS and npm for development and CI.
 - TypeScript 6 with strict checking.
 - Node 22/CommonJS extension bundle and ES2022/ESM Webview bundle produced by esbuild.
@@ -85,9 +90,15 @@ interface ConceptLink {
 Explicit standard YAML tags are represented by the reserved `$okf-workbench:yaml-tag` object with
 their canonical tag name, JSON-safe semantic value, and original lexical value source. In
 particular, YAML timestamps, binary data, and sets never leak `Date`, `Buffer`, or `Set` instances
-into the model. The exact frontmatter source remains separately available for source-preserving
-writes. Null-prototype mappings and a closed standard-tag converter prevent prototype pollution and
-fail closed on custom runtime objects. The normalized fields are conveniences, not a closed schema.
+into the model. This object is a serialization representation, not a trust signal:
+`ParsedFrontmatter.explicitTags` is a separate sidecar derived only from the YAML AST. A direct
+explicit tag and an alias resolved to the same real tagged node retain provenance; a producer
+mapping or sequence that imitates the reserved object does not. Semantic-string compatibility
+checks accept a plain string or an AST-proven `!!str` scalar, including its aliases, and reject
+lookalike mappings, sequences, and values tagged with anything other than `!!str`. The exact
+frontmatter source remains separately available for source-preserving writes. Null-prototype
+mappings and a closed standard-tag converter prevent prototype pollution and fail closed on custom
+runtime objects. The normalized fields are conveniences, not a closed schema.
 Link state is represented by the explicit `LinkClassification` union rather than overlapping
 boolean flags.
 
@@ -114,43 +125,147 @@ workspace URIs
 
 1. Resolve an explicit or detected bundle root. Automatic discovery streams exact-name `index.md`
    candidates, skips known VCS/dependency/generated trees, and records an unreadable subtree while
-   continuing with its siblings.
+   continuing with its siblings. It is intentionally bounded to 32 workspace roots, 16 relative
+   path segments, 512 candidate indexes, 1 MiB per index, 8 MiB of total index content, and 64
+   retained failure records. Provider traversal also stops at 10,000 directories or 100,000
+   entries per root. Any access or safety-limit truncation prevents automatic/current-candidate
+   selection and routes the user to explicit directory selection.
 2. Stream Markdown through the URI-first workspace port. Provider-reported relative path segments
    retain their verbatim identity; they never re-enter the percent-decoding path used to validate
    user-entered write targets. An unreadable document or child subtree becomes a path- and
    URI-scoped conformance finding while readable siblings continue through parsing, validation, and
-   graph construction. Failure to enumerate the selected root itself remains fatal for that refresh.
+   graph construction. One load admits at most 2,000 Markdown documents, 2 MiB per document,
+   32 MiB of reported and actual Markdown bytes, eight concurrent provider calls, 64 path segments,
+   32 MiB of cumulative traversal identity, and 128 retained failures. A 4 KiB relative path uses a
+   16 KiB serialized-URI envelope to accommodate percent expansion. One oversized document is
+   retained as a typed identity-only input; aggregate, root, count, depth, and traversal-identity
+   failures remain fatal for that refresh. Already-started provider calls settle before another
+   generation may perform physical I/O. Every materialized byte is charged to the actual-byte
+   aggregate before any later parent-access failure or resource limit discards that document. The
+   runtime retains both the logical bundle root and its
+   containing workspace safety root. Every load, including watcher refreshes, captures the complete
+   URI/provider directory chain between them before traversal and rechecks that same generation
+   after enumeration, after each bounded read batch, and before publication. A missing,
+   symbolic-link, non-directory, or changed-generation segment fails closed and clears all
+   previously derived graph and diagnostic state. Traversal additionally captures the
+   workspace-root-to-current-directory chain for every directory it enters and does not release any
+   `readDirectory` tuple until both that chain and the traversal-root chain have been revalidated.
+   A nested generation failure is fatal to the complete load rather than an ordinary unreadable
+   subtree. Before every distinct document stat/read batch, the loader captures its complete
+   workspace-root-to-parent chain and sandwiches the file operation with parent and bundle-root
+   checks; safe siblings cannot make a generation failure publishable as a partial result.
+
+   For a local `file:` URI, `stat` captures native `lstat` identity
+   (`dev`, `ino`, mode, nanosecond ctime, and birthtime). A later read must present that identity,
+   opens one handle with `O_NOFOLLOW` where the host defines it, verifies the handle with `fstat`
+   before reading, reads only through that handle, and compares the handle and pathname generations
+   again before returning bytes. This prevents a transient ancestor or final-file swap from
+   redirecting the read even when the original path is restored before the caller resumes, and the
+   handle is closed on every outcome. A close rejection also rejects otherwise valid bytes; when a
+   read and close both fail, the read failure remains primary and the close failure is attached for
+   diagnosis. Non-`file:` providers expose no file handle, inode, ETag, or conditional read through
+   VS Code, so they use an explicit trusted-provider metadata sandwich (`stat` / `readFile` /
+   `stat`) plus the directory-generation checks. That branch is a provider trust boundary, not an
+   atomic-snapshot claim.
 3. Parse frontmatter and Markdown links. Every enumerated in-bundle non-reserved input contributes
    a concept identity; decode or parse failure yields a safe partial concept plus a precise failure.
 4. Resolve concept IDs and internal targets.
-5. Produce diagnostics and a serializable graph payload.
+5. Produce diagnostics and a bounded serializable graph payload. A document-scoped failure remains
+   an identity-only `sourceFailed` node so it is navigable and included in concept cardinality, but
+   it contributes no invented type, tag, outgoing-link, broken-link, or orphan state. Valid siblings
+   may still link to that stable identity. A bundle-scoped resource
+   failure invalidates the complete derived view.
 
 ### Incremental update
 
 1. Listen for create, change, delete, and rename events.
-2. Debounce related file events.
+2. Coalesce equal events at insertion time. Retain at most 512 distinct pending paths, collapsing
+   overflow to one rescan. Use a 250 ms trailing debounce with a 1,000 ms maximum latency.
 3. Reparse changed concepts.
 4. Recompute affected outgoing links, backlinks, and diagnostics.
 5. Send a graph patch or replacement payload to the Webview.
 
-The first implementation may replace the full graph payload if profiling shows it is sufficiently fast. Incremental rendering is a performance optimization, not a correctness requirement.
+Refresh work is strictly single-flight: invalidated work is aborted logically, but a replacement
+does not start until every already-issued provider promise settles; at most one trailing refresh
+runs next. The first implementation may replace the full graph payload if profiling shows it is
+sufficiently fast. Incremental rendering is a performance optimization, not a correctness
+requirement.
 
 ## VS Code integration
 
 - Use commands and Explorer context menus as the primary entry points.
 - Use `DiagnosticCollection` for conformance and curation findings.
 - Use an editor Webview for the 3D graph.
-- Use `vscode.workspace.fs` rather than Node `fs` for workspace content when possible.
+- Use `vscode.workspace.fs` for provider-backed workspace content. Route local `file:` reads through
+  the URI-first port's native identity-bound handle implementation; do not silently fall back to
+  provider reads when native identity is unavailable.
 - Treat all workspace resources as URIs; do not assume the `file:` scheme.
+- Include both bundle root and containing workspace-folder URI in runtime selection identity.
+  Revalidate the captured workspace-to-bundle directory generation at the start of every full load,
+  between enumeration and content reads, after each read batch, and immediately before publication
+  rather than relying on the earlier picker/discovery check. Require the same identity-bound read
+  primitive for automatic discovery, explicit-root inspection, proposal previews, Agent Integration
+  snapshots, proposal preflight, and post-write verification. This preserves virtual-provider URI
+  identity, handles overlapping workspace folders deterministically, and prevents a reused
+  selection or watcher refresh from publishing content reached through a transiently swapped
+  `file:` ancestor outside the workspace. A host workspace-folder removal forces a new runtime
+  generation and watcher even when a replacement folder with the same serialized URI is added in
+  that event, so pre-removal provider work cannot publish into the replacement selection.
+  Discovery rechecks a candidate chain after an asynchronous index inspector returns. Preview and
+  Agent Integration code capture each resource parent independently; preview retains and
+  deduplicates those snapshots and revalidates all of them as its last workspace pass before
+  presenting any bodies. A safely absent parent suffix is classified without probing through that
+  suffix, then its deepest existing ancestor and absence state are rechecked.
+- Admit at most one complete write-command workflow per Extension Host activation, acquiring its
+  opaque lease at the registered command entry before trust checks, trust notifications, target
+  selection, workspace reads, or proposal planning. Pass that same lease into the authoring factory
+  rather than nesting scheduler admission, and retain it through preflight, preview, modeless
+  approval, apply, and cleanup. While it is active, reject every concurrent invocation
+  immediately with the structured `proposal-workflow-busy` problem and an actionable instruction to
+  finish or cancel the active workflow before retrying. Do not retain the rejected proposal in a
+  FIFO or other pending queue, and coalesce the modeless busy warning to one unresolved notification
+  per active lease. Reuse one run/target identity across the summary, diff titles, and approval
+  notification so a decision cannot be confused with another bundle's proposal. Keep that exact
+  preview alive through the result, and fail closed after asynchronous guards and immediately before
+  every write if it is no longer active.
+- Capture the proposal's workspace safety root as an exact open-folder URI when the common write
+  workflow starts. The host's workspace-folder change listener irreversibly invalidates only
+  sessions whose exact root was removed and closes their active previews; a containing parent,
+  another authority, or a same-URI re-add cannot revive an already reviewed proposal. Recheck the
+  live exact folder set before the first and every subsequent change, then pass the same
+  authorization callback into the workspace adapter so it runs again after preparatory provider
+  awaits and immediately before `applyEdit` or `writeFile`.
+- Admit only one `Validate Bundle` or `Open 3D Graph` selection-and-scheduling phase at a time.
+  Acquire this read-command gate before bundle discovery or any bundle picker. Concurrent read
+  commands fail immediately with `read-command-busy`; their callbacks and explicit-root arguments
+  are neither retained nor shared with the admitted command. Coalesce the ordinary-session busy
+  warning to one notification per active phase.
+- Run a pure preview-feasibility check before workspace preflight or any workspace I/O. Inclusive
+  limits are 64 changes, 2 MiB for each proposed output and each declared existing
+  `expected.byteLength`, 16 MiB for cumulative UTF-8 before-and-after bodies, and 1 MiB for the
+  generated summary. After that check passes, prepare every before/after snapshot before registering
+  a virtual-document provider or opening any tab. Refuse the whole proposal rather than exposing a
+  partial change set when a limit or later snapshot read fails; exact-boundary proposals remain
+  eligible for a complete preview.
 - Keep provider path identity and user-input normalization as separate APIs. A literal provider
   filename such as `encoded%2Fsegment.md` must not alias `encoded/segment.md`, while encoded
-  traversal in user input remains rejected.
+  traversal in user input remains rejected. Both branches use the same pre-allocation envelope:
+  4,096 UTF-16 code units, 4,096 UTF-8 bytes, and 64 relative path segments. The guard runs again
+  after user-input percent decoding so an encoded separator cannot bypass the depth limit.
+  Serialized source/provider URIs have a separate 16 KiB code-unit/UTF-8 envelope because a valid
+  multibyte 4 KiB path may expand to roughly 12 KiB when percent-encoded.
 - Resolve proposal targets from an explicit write root. Before the first change, inspect that root
   and every existing parent segment through the URI-first workspace port. A symbolic link, ordinary
   file, or unknown resource in any ancestor refuses the complete proposal, preventing logical URI
   containment from becoming an external filesystem write through a `file:` symlink. Initialization
   uses the selected workspace target as its write root so would-be bundle-directory ancestors are
   included; virtual providers remain supported through their `stat` result rather than Node paths.
+  If an optional missing parent appears while preflight captures the deepest existing baseline, the
+  proposal is refused before the target is statted or read. Update hash comparison and post-write
+  verification carry caller-owned target-parent snapshots through the workspace adapter and check
+  them before and after each internal stat/read. This detects parent changes around those reads but
+  does not create an atomic update transaction: VS Code exposes no conditional existing-file write,
+  and Node's path API here exposes no `openat` walk spanning the provider mutation.
 
 ## Webview security
 
@@ -169,7 +284,16 @@ The first implementation may replace the full graph payload if profiling shows i
 - Directory hierarchy is optional presentation metadata and must not be confused with an OKF semantic relationship.
 - External citations are excluded from the main graph by default.
 
-The renderer is the standalone `3d-force-graph` package behind a repository-owned adapter, as recorded in [ADR 0003](decisions/0003-use-3d-force-graph.md). It is locally bundled, exposes an accessible non-spatial navigation surface, stops its animation loop after cooldown, and uses the `d3` engine selected by strict schema-v2 headed evidence for the exact measured production bundles. Dependency licensing and packaged notices are reviewed separately from the project-license gate. Any renderer or candidate-bundle change invalidates that evidence binding and requires a new evaluation.
+Graph construction admits at most 2,000 nodes, 10,000 retained internal/broken relationships, 128
+tags per concept, 20,000 tag assignments, 512 unique types, and 4,096 unique tags. Edge identities
+are compact deterministic base-36 ordinals assigned after stable relationship sorting; producer
+concept IDs are not copied into the edge ID. Producer concept/source/failure/finding identities are
+bounded to 4 MiB in aggregate before lookup keys are built. Before publication, a streaming escaped-JSON byte
+counter computes the exact serialization size without creating the JSON string and refuses payloads
+over 16 MiB. The extension-to-Webview decoder mirrors the same string, count, cardinality,
+reference, backlink, statistics, and byte limits.
+
+The renderer is the standalone `3d-force-graph` package behind a repository-owned adapter, as recorded in [ADR 0003](decisions/0003-use-3d-force-graph.md). It is locally bundled, exposes an accessible non-spatial navigation surface, stops its animation loop after cooldown, and uses `d3` as the checked-in runtime fallback. The former schema-v3 headed comparison selected `d3`, but the strengthened evidence contract invalidated that selection for release qualification. A fresh full same-Electron comparison must observe real WebGL clears/draws, verify every interaction outcome, and produce a positive coherent camera rate with camera-period graph draws covering every observed clear before selecting the current release engine. Dependency licensing and packaged notices are reviewed separately from the project-license gate. Any renderer or candidate-bundle change invalidates an evidence binding and requires a new evaluation.
 
 ## Performance targets
 
@@ -179,12 +303,12 @@ Accepted MVP thresholds:
 - Opening the graph does not block normal text editing.
 - File changes are reflected within one second after debounce for representative bundles.
 
-The retained schema-v2 run on Mac16,7 / Apple M4 Pro / VS Code 1.127.0 passes QR-002 at 703 ms p95
-over 20 create/change/rename/delete samples correlated across current Problems diagnostics and graph
-publication. The same candidate passes QR-003 with `d3`; `ngraph` failed the cooldown requirement
-after 120,000.3 ms. See [performance evidence](performance-evidence.md) for the raw samples, exact
-bundle hashes, environment, authority rules, and candidate-binding limits. These measurements do
-not establish a cross-machine guarantee.
+A genuine current-input schema-v3 headed VS Code `1.129.1` run passes QR-002 at `832 ms` p95 across
+20 samples and QR-003 with `d3` selected; its strict CDP envelope records zero remote HTTP(S)/WS or
+other-scheme requests. The retained VS Code `1.127.0` run predates the current
+diagnostics-correlation, WebGL/UI-outcome, causal-timing, and network-envelope requirements and
+remains historical-only. See [performance evidence](performance-evidence.md) for the exact
+environment, authority rules, and candidate-binding limits.
 
 ## Testing strategy
 

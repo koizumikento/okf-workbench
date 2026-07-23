@@ -9,6 +9,7 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -37,15 +38,20 @@ import {
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const driverDirectory = resolve(repositoryRoot, 'scripts/compatibility/driver');
 const driverRunner = resolve(driverDirectory, 'run.cjs');
+const compatibilityRequire = createRequire(import.meta.url);
+const { EXPECTED_COMMAND_CATALOG, EXPECTED_COMMAND_IDS, EXPECTED_WRITE_COMMAND_IDS } =
+  compatibilityRequire('./driver/command-catalog.cjs');
+const {
+  NETWORK_GUARD_LIFETIME,
+  NETWORK_GUARD_LIMITATIONS,
+  NETWORK_GUARD_SCOPE,
+  OPTIONAL_GLOBAL_INTERCEPTED_METHODS,
+  STATIC_INTERCEPTED_METHODS,
+  assertActiveNetworkEvidence,
+  assertPostUninstallNetworkEvidence,
+} = compatibilityRequire('./driver/network-guard.cjs');
 const upgradeSentinelKey = 'okfWorkbench.compatibilityUpgradeSentinel';
-const expectedCommands = [
-  'okfWorkbench.initializeBundle',
-  'okfWorkbench.newConcept',
-  'okfWorkbench.validateBundle',
-  'okfWorkbench.regenerateIndexes',
-  'okfWorkbench.openGraph',
-  'okfWorkbench.setupAgentIntegration',
-];
+const guardedQuiescenceMs = 500;
 
 async function readManifest() {
   return JSON.parse(await readFile(resolve(repositoryRoot, 'package.json'), 'utf8'));
@@ -414,17 +420,33 @@ async function activateInstalledExtension({
       `Packaged activation report did not pass: ${report.error ?? 'unknown failure'}.`,
     );
   }
-  if (JSON.stringify(report.commands) !== JSON.stringify(expectedCommands)) {
+  if (JSON.stringify(report.commands) !== JSON.stringify(EXPECTED_COMMAND_IDS)) {
     throw new Error('Packaged activation report did not contain all stable commands.');
   }
-  if (Array.isArray(report.networkAttempts) && report.networkAttempts.length > 0) {
-    throw new Error(
-      `Packaged activation attempted network access: ${report.networkAttempts.join(', ')}.`,
-    );
+  if (JSON.stringify(report.commandCatalog) !== JSON.stringify(EXPECTED_COMMAND_CATALOG)) {
+    throw new Error('Packaged activation report command metadata is incomplete or drifted.');
   }
+  assertActiveNetworkEvidence(report, guardedQuiescenceMs);
   report.editor.versionVerification = assertExtensionHostVersion(editor, report.editor?.version);
   if (workspaceTrust === 'untrusted') {
-    if (report.workspaceTrust?.actual !== false || report.untrustedWrite?.outcome !== 'refused') {
+    const untrustedWrites = report.untrustedWrites;
+    const refusedIds = Array.isArray(untrustedWrites)
+      ? untrustedWrites.map(({ command }) => command)
+      : [];
+    const completeRefusals =
+      Array.isArray(untrustedWrites) &&
+      untrustedWrites.every(
+        ({ outcome, problemCodes, completedWithoutInputAutomation }) =>
+          outcome === 'refused' &&
+          Array.isArray(problemCodes) &&
+          problemCodes.includes('workspace-untrusted') &&
+          completedWithoutInputAutomation === true,
+      );
+    if (
+      report.workspaceTrust?.actual !== false ||
+      JSON.stringify(refusedIds) !== JSON.stringify(EXPECTED_WRITE_COMMAND_IDS) ||
+      !completeRefusals
+    ) {
       throw new Error('The fresh-profile untrusted-workspace acceptance report was incomplete.');
     }
   }
@@ -461,9 +483,15 @@ async function runPostUninstallCleanup({ editor, profile, extensionId, reportPat
   if (report.status !== 'passed' || report.uninstall?.extensionApiAbsent !== true) {
     throw new Error('The post-uninstall Extension Host verification did not pass.');
   }
+  assertPostUninstallNetworkEvidence(report);
   report.editor.versionVerification = assertExtensionHostVersion(editor, report.editor?.version);
   await writeJson(reportPath, report);
-  return report.uninstall;
+  return {
+    ...report.uninstall,
+    networkAttempts: report.networkAttempts,
+    networkObservation: report.networkObservation,
+    guardedQuiescenceMs: report.completion?.guardedQuiescenceMs,
+  };
 }
 
 async function cleanInstallLifecycle(options) {
@@ -543,7 +571,7 @@ async function untrustedWorkspaceLifecycle(options) {
     workspaceTrustEnabled: true,
     workspaceTrusted: false,
     readOnlyAvailable: activation.workspaceTrust?.readOnlyAvailable === true,
-    refusedWriteCommand: activation.untrustedWrite,
+    refusedWriteCommands: activation.untrustedWrites,
     activationReport: basename(options.activationReportPath),
     activation,
     uninstall: 'passed',
@@ -660,10 +688,17 @@ async function main() {
     extensionId,
     runner: runnerEvidence(),
     offlineBoundary: {
-      extensionHost:
-        'http, https, http2, net, tls, dns, dgram, fetch, and WebSocket are denied during activation and read-only commands',
+      extensionHost: {
+        scope: NETWORK_GUARD_SCOPE,
+        requiredInterceptedMethods: STATIC_INTERCEPTED_METHODS,
+        optionalAvailableGlobals: OPTIONAL_GLOBAL_INTERCEPTED_METHODS,
+        lifetime: NETWORK_GUARD_LIFETIME,
+        limitations: NETWORK_GUARD_LIMITATIONS,
+      },
       processEnvironment: 'HTTP(S)/ALL proxy points at a closed loopback port; NO_PROXY is empty',
       webview: "packaged CSP is separately required to contain connect-src 'none'",
+      postUninstall:
+        'No network observer is installed; that phase verifies extension API absence only.',
     },
   };
   let temporaryRoot;

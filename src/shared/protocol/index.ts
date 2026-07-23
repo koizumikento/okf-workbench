@@ -6,6 +6,7 @@ export {
 export {
   PROTOCOL_VERSION,
   type ExtensionToWebviewMessage,
+  type GraphDeliveryIdentity,
   type GraphRenderFailedMessage,
   type GraphRenderFailureReason,
   type GraphRenderedMessage,

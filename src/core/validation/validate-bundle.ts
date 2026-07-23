@@ -8,8 +8,8 @@ import type {
   SourcePosition,
   SourceRange,
 } from '../model/index.js';
+import { OKF_SEMANTIC_LIMITS } from '../model/resource-limits.js';
 import { extractMarkdownHeadings } from '../parser/markdown.js';
-import { YAML_TAGGED_VALUE_KEY } from '../parser/frontmatter.js';
 import { SourceRangeIndex } from '../parser/source-range.js';
 
 export interface ValidationOptions {
@@ -22,6 +22,7 @@ export const VALIDATION_CODES = {
   frontmatter: 'okf.conformance.frontmatter',
   markdown: 'okf.conformance.markdown',
   read: 'okf.conformance.read',
+  resourceLimit: 'okf.conformance.resource-limit',
   rootIndex: 'okf.conformance.root-index',
   conceptType: 'okf.conformance.concept-type',
   reservedFrontmatter: 'okf.conformance.reserved-frontmatter',
@@ -61,15 +62,14 @@ export function validateBundle(
   const findings: Finding[] = [...bundle.findings];
   const nowMs = parseReferenceTime(options.now);
   const concepts = [...bundle.concepts].sort(compareConcepts);
-  const failedConceptKeys = new Set(
-    bundle.failures
-      .filter((failure) => failure.reason !== 'read')
-      .map((failure) => sourceKey(failure.uri, failure.bundlePath)),
-  );
+  const failedConceptSources = indexFailedSources(bundle.failures);
   const failedConceptIds = new Set(
     concepts
-      .filter((concept) =>
-        failedConceptKeys.has(sourceKey(concept.source.uri, concept.source.bundlePath)),
+      .filter(
+        (concept) =>
+          failedConceptSources
+            .get(concept.source.uri)
+            ?.has(normalizeBundlePath(concept.source.bundlePath)) === true,
       )
       .map((concept) => concept.id),
   );
@@ -143,6 +143,10 @@ function findingForParseFailure(failure: ParseFailure): Finding {
       code: VALIDATION_CODES.read,
       action: 'Make the document readable and validate the bundle again.',
     },
+    'resource-limit': {
+      code: VALIDATION_CODES.resourceLimit,
+      action: 'Reduce or split the document or bundle, then validate it again.',
+    },
   };
   const detail = details[failure.reason];
 
@@ -158,10 +162,7 @@ function findingForParseFailure(failure: ParseFailure): Finding {
 }
 
 function validateConceptConformance(concept: Concept, findings: Finding[]): void {
-  const rawType = concept.frontmatter.raw.type;
-  const semanticType =
-    typeof rawType === 'string' ? rawType : standardTaggedString(rawType, 'tag:yaml.org,2002:str');
-  if (semanticType !== undefined && semanticType.trim().length > 0) {
+  if (concept.type.trim().length > 0) {
     return;
   }
 
@@ -175,22 +176,6 @@ function validateConceptConformance(concept: Concept, findings: Finding[]): void
     correctiveAction:
       'Set `type` to a descriptive, non-empty string. Custom type values are allowed.',
   });
-}
-
-function standardTaggedString(value: unknown, expectedTag: string): string | undefined {
-  if (value === null || Array.isArray(value) || typeof value !== 'object') {
-    return undefined;
-  }
-  const wrapper = value as Readonly<Record<string, unknown>>;
-  if (Object.keys(wrapper).length !== 1) {
-    return undefined;
-  }
-  const details = wrapper[YAML_TAGGED_VALUE_KEY];
-  if (details === null || Array.isArray(details) || typeof details !== 'object') {
-    return undefined;
-  }
-  const tagged = details as Readonly<Record<string, unknown>>;
-  return tagged.tag === expectedTag && typeof tagged.value === 'string' ? tagged.value : undefined;
 }
 
 function validateConceptLinks(concept: Concept, findings: Finding[]): void {
@@ -262,9 +247,11 @@ function validateRecommendedMetadata(concept: Concept, nowMs: number, findings: 
     return;
   }
 
-  const rawTimestamp = concept.frontmatter.raw.timestamp;
+  // Validate the parser's semantic field rather than its source-preserving raw representation.
+  // A real explicit YAML tag is retained as a JSON-safe wrapper in `raw`, while non-string
+  // mappings, sequences, and unproven wrapper lookalikes are not exposed on the concept.
   const timestampMs =
-    typeof rawTimestamp === 'string' ? parseExplicitZoneTimestamp(rawTimestamp) : undefined;
+    concept.timestamp === undefined ? undefined : parseExplicitZoneTimestamp(concept.timestamp);
   if (timestampMs === undefined) {
     findings.push({
       code: VALIDATION_CODES.invalidTimestamp,
@@ -303,6 +290,9 @@ function validateOrphans(
   const connectedIds = new Set<string>();
 
   for (const concept of concepts) {
+    if (suppressedConceptIds.has(concept.id)) {
+      continue;
+    }
     for (const link of concept.links) {
       if (
         link.classification === 'internal' &&
@@ -354,23 +344,45 @@ function validateDuplicateResources(concepts: readonly Concept[], findings: Find
       continue;
     }
     const sortedGroup = [...group].sort(compareConcepts);
-    for (const concept of sortedGroup) {
-      const others = sortedGroup
-        .filter((candidate) => candidate !== concept)
-        .map((candidate) => candidate.id)
-        .join(', ');
+    for (let conceptIndex = 0; conceptIndex < sortedGroup.length; conceptIndex += 1) {
+      const concept = sortedGroup[conceptIndex];
+      if (concept === undefined) {
+        continue;
+      }
+      const peerIds: string[] = [];
+      for (
+        let peerIndex = 0;
+        peerIndex < sortedGroup.length &&
+        peerIds.length < OKF_SEMANTIC_LIMITS.maxDuplicateResourcePeerIds;
+        peerIndex += 1
+      ) {
+        if (peerIndex === conceptIndex) {
+          continue;
+        }
+        const peer = sortedGroup[peerIndex];
+        if (peer !== undefined) {
+          peerIds.push(boundedDiagnosticText(peer.id));
+        }
+      }
+      const omitted = sortedGroup.length - 1 - peerIds.length;
+      const peers = `${peerIds.join(', ')}${omitted > 0 ? `, and ${String(omitted)} more` : ''}`;
       findings.push({
         code: VALIDATION_CODES.duplicateResource,
         category: 'curation',
         severity: 'warning',
         uri: concept.source.uri,
         range: concept.frontmatter.fields.resource ?? concept.frontmatter.range,
-        message: `OKF curation: resource ${quote(resource)} is also declared by ${others}.`,
+        message: `OKF curation: resource ${quote(boundedDiagnosticText(resource))} is also declared by ${peers}.`,
         correctiveAction:
           'Confirm whether these concepts intentionally describe the same exact resource identifier.',
       });
     }
   }
+}
+
+function boundedDiagnosticText(value: string): string {
+  const maximumCodeUnits = 160;
+  return value.length <= maximumCodeUnits ? value : `${value.slice(0, maximumCodeUnits - 1)}…`;
 }
 
 function validateReservedDocument(reserved: ReservedDocument, findings: Finding[]): void {
@@ -439,7 +451,8 @@ function validateDeclaredVersion(reserved: ReservedDocument, findings: Finding[]
 
   const range = reserved.frontmatter?.fields.okf_version ?? reserved.frontmatter?.range;
   const declaredValue = raw.okf_version;
-  if (typeof declaredValue !== 'string') {
+  const declared = reserved.okfVersion;
+  if (declared === undefined) {
     findings.push({
       code: VALIDATION_CODES.unsupportedVersion,
       category: 'compatibility',
@@ -452,7 +465,6 @@ function validateDeclaredVersion(reserved: ReservedDocument, findings: Finding[]
     return;
   }
 
-  const declared = declaredValue;
   if (declared === '0.1') {
     return;
   }
@@ -637,8 +649,20 @@ function normalizeBundlePath(bundlePath: string): string {
   return bundlePath.replaceAll('\\', '/').replace(/^\.\//, '');
 }
 
-function sourceKey(uri: string, bundlePath: string): string {
-  return JSON.stringify([uri, normalizeBundlePath(bundlePath)]);
+function indexFailedSources(
+  failures: readonly ParseFailure[],
+): ReadonlyMap<string, ReadonlySet<string>> {
+  const index = new Map<string, Set<string>>();
+  for (const failure of failures) {
+    const path = normalizeBundlePath(failure.bundlePath);
+    const paths = index.get(failure.uri);
+    if (paths === undefined) {
+      index.set(failure.uri, new Set([path]));
+    } else {
+      paths.add(path);
+    }
+  }
+  return index;
 }
 
 function compareConcepts(left: Concept, right: Concept): number {

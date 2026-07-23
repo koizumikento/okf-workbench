@@ -1,12 +1,23 @@
-import { TextEncoder } from 'node:util';
-
 import type { ChangeSetProposal, FileChangeProposal } from '../../core/model/index.js';
 import type { IndexChange } from '../../core/indexes/index.js';
 import type { AgentIntegrationPlan, RenderedTemplateFile } from '../../core/templates/index.js';
-import { sha256Content } from '../workspace/contentHash.js';
 import type { WorkspaceUriCodec } from '../workspace/uriCodec.js';
 
-const encoder = new TextEncoder();
+export interface ExpectedContentSnapshot {
+  /** SHA-256 computed from the exact provider bytes read before preview. */
+  readonly sha256: string;
+  /** Exact length of the same provider byte array. */
+  readonly byteLength: number;
+}
+
+interface ExpectedContentSnapshotOptions {
+  readonly expectedContentSnapshots: ReadonlyMap<string, ExpectedContentSnapshot>;
+}
+
+interface WorkspaceSafetyRootOptions<TUri> {
+  /** Open workspace directory whose descendant chain contains the write root. */
+  readonly workspaceSafetyRoot?: TUri;
+}
 
 function targetFor<TUri>(root: TUri, relativePath: string, uris: WorkspaceUriCodec<TUri>): string {
   return uris.serialize(uris.joinContained(root, relativePath));
@@ -55,10 +66,9 @@ export function existingFileProposal<TUri>(
   root: TUri,
   relativePath: string,
   operation: 'update' | 'replace',
-  previousText: string,
   proposedText: string,
   uris: WorkspaceUriCodec<TUri>,
-  expectedContentHash?: string,
+  expectedContent: ExpectedContentSnapshot,
 ): FileChangeProposal {
   return {
     targetUri: targetFor(root, relativePath, uris),
@@ -66,11 +76,25 @@ export function existingFileProposal<TUri>(
     operation,
     expected: {
       kind: 'sha256',
-      value: expectedContentHash ?? sha256Content(encoder.encode(previousText)),
+      value: expectedContent.sha256,
+      byteLength: expectedContent.byteLength,
     },
     encoding: 'utf8',
     proposedText,
   };
+}
+
+function expectedContentSnapshot(
+  relativePath: string,
+  snapshots: ReadonlyMap<string, ExpectedContentSnapshot>,
+): ExpectedContentSnapshot {
+  const snapshot = snapshots.get(relativePath);
+  if (snapshot === undefined) {
+    throw new Error(
+      `Existing file ${relativePath} is missing the SHA-256 and byte length of its original provider bytes.`,
+    );
+  }
+  return snapshot;
 }
 
 export function bundleFilesToProposal<TUri>(
@@ -78,13 +102,14 @@ export function bundleFilesToProposal<TUri>(
   root: TUri,
   files: readonly RenderedTemplateFile[],
   uris: WorkspaceUriCodec<TUri>,
-  options: { readonly relativePathPrefix?: string } = {},
+  options: WorkspaceSafetyRootOptions<TUri> & { readonly relativePathPrefix?: string } = {},
 ): ChangeSetProposal {
   const prefix = options.relativePathPrefix;
   const relativePath = (path: string): string =>
     prefix === undefined || prefix === '.' ? path : `${prefix}/${path}`;
   return {
     operation,
+    workspaceSafetyRootUri: uris.serialize(options.workspaceSafetyRoot ?? root),
     writeRootUri: uris.serialize(root),
     changes: files.map((file) =>
       createProposalChange(root, { ...file, relativePath: relativePath(file.relativePath) }, uris),
@@ -96,10 +121,11 @@ export function indexChangesToProposal<TUri>(
   root: TUri,
   changes: readonly IndexChange[],
   uris: WorkspaceUriCodec<TUri>,
-  options: { readonly expectedContentHashes?: ReadonlyMap<string, string> } = {},
+  options: ExpectedContentSnapshotOptions & WorkspaceSafetyRootOptions<TUri>,
 ): ChangeSetProposal {
   return {
     operation: 'regenerate-indexes',
+    workspaceSafetyRootUri: uris.serialize(options.workspaceSafetyRoot ?? root),
     writeRootUri: uris.serialize(root),
     changes: changes.map((change) => {
       if (change.operation === 'create') {
@@ -112,10 +138,9 @@ export function indexChangesToProposal<TUri>(
         root,
         change.relativePath,
         'update',
-        change.previousText,
         change.proposedText,
         uris,
-        options.expectedContentHashes?.get(change.relativePath),
+        expectedContentSnapshot(change.relativePath, options.expectedContentSnapshots),
       );
     }),
   };
@@ -126,10 +151,11 @@ export function providerIndexChangesToProposal<TUri>(
   root: TUri,
   changes: readonly IndexChange[],
   uris: WorkspaceUriCodec<TUri>,
-  options: { readonly expectedContentHashes?: ReadonlyMap<string, string> } = {},
+  options: ExpectedContentSnapshotOptions & WorkspaceSafetyRootOptions<TUri>,
 ): ChangeSetProposal {
   return {
     operation: 'regenerate-indexes',
+    workspaceSafetyRootUri: uris.serialize(options.workspaceSafetyRoot ?? root),
     writeRootUri: uris.serialize(root),
     changes: changes.map((change): FileChangeProposal => {
       const base = {
@@ -149,14 +175,17 @@ export function providerIndexChangesToProposal<TUri>(
       if (change.previousText === undefined) {
         throw new Error(`Index update ${change.relativePath} is missing its previous text.`);
       }
+      const expected = expectedContentSnapshot(
+        change.relativePath,
+        options.expectedContentSnapshots,
+      );
       return {
         ...base,
         operation: 'update',
         expected: {
           kind: 'sha256',
-          value:
-            options.expectedContentHashes?.get(change.relativePath) ??
-            sha256Content(encoder.encode(change.previousText)),
+          value: expected.sha256,
+          byteLength: expected.byteLength,
         },
       };
     }),
@@ -170,8 +199,8 @@ export function agentPlanToProposal<TUri>(
   uris: WorkspaceUriCodec<TUri>,
   options: {
     readonly includeReplacementRequired?: boolean;
-    readonly expectedContentHashes?: ReadonlyMap<string, string>;
-  } = {},
+    readonly expectedContentSnapshots: ReadonlyMap<string, ExpectedContentSnapshot>;
+  } & WorkspaceSafetyRootOptions<TUri>,
 ): ChangeSetProposal {
   const changes: FileChangeProposal[] = [];
   const agents = plan.agentsFile;
@@ -187,10 +216,9 @@ export function agentPlanToProposal<TUri>(
           root,
           agents.relativePath,
           'update',
-          agents.previousText,
           agents.proposedText,
           uris,
-          options.expectedContentHashes?.get(agents.relativePath),
+          expectedContentSnapshot(agents.relativePath, options.expectedContentSnapshots),
         ),
       );
     }
@@ -213,10 +241,9 @@ export function agentPlanToProposal<TUri>(
           root,
           skill.relativePath,
           'replace',
-          skill.previousText,
           skill.proposedText,
           uris,
-          options.expectedContentHashes?.get(skill.relativePath),
+          expectedContentSnapshot(skill.relativePath, options.expectedContentSnapshots),
         ),
       );
     }
@@ -224,6 +251,7 @@ export function agentPlanToProposal<TUri>(
 
   return {
     operation: 'setup-agent-integration',
+    workspaceSafetyRootUri: uris.serialize(options.workspaceSafetyRoot ?? root),
     writeRootUri: uris.serialize(root),
     changes,
   };

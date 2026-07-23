@@ -2,6 +2,7 @@ import { TextDecoder } from 'node:util';
 
 import { describe, expect, test } from 'vitest';
 
+import { buildGraphPayload } from '../../../src/core/graph/index.js';
 import type { Concept } from '../../../src/core/model/index.js';
 import { conceptIdFromBundlePath, parseBundle } from '../../../src/core/parser/index.js';
 import { validateBundle } from '../../../src/core/validation/index.js';
@@ -65,9 +66,77 @@ function asPlainJson<T>(value: T): unknown {
   return JSON.parse(JSON.stringify(value)) as unknown;
 }
 
+interface FixtureGraphProjection {
+  readonly nodeIds: readonly string[];
+  readonly edges: readonly {
+    readonly sourceId: string;
+    readonly targetId: string;
+  }[];
+  readonly orphanIds: readonly string[];
+  readonly backlinks: Readonly<Record<string, readonly string[]>>;
+  readonly brokenLinks: readonly {
+    readonly sourceId: string;
+    readonly rawTarget: string;
+  }[];
+  readonly statistics: {
+    readonly conceptCount: number;
+    readonly edgeCount: number;
+    readonly orphanCount: number;
+    readonly brokenLinkCount: number;
+  };
+}
+
+function expectedGraphProjection(expected: FixtureExpectedContract): FixtureGraphProjection {
+  const edges = expected.links.flatMap((link) =>
+    link.kind === 'internal' && link.targetId !== undefined
+      ? [{ sourceId: link.sourceId, targetId: link.targetId }]
+      : [],
+  );
+  const connectedIds = new Set(edges.flatMap(({ sourceId, targetId }) => [sourceId, targetId]));
+  const backlinkSets = new Map(
+    expected.conceptIds.map((conceptId) => [conceptId, new Set<string>()]),
+  );
+  for (const { sourceId, targetId } of edges) {
+    backlinkSets.get(targetId)?.add(sourceId);
+  }
+
+  const failedConceptIds = new Set(
+    expected.parseFailures
+      .map(({ path }) => conceptIdFromBundlePath(path))
+      .filter((conceptId): conceptId is string => conceptId !== undefined),
+  );
+  const orphanIds = expected.conceptIds.filter(
+    (conceptId) => !connectedIds.has(conceptId) && !failedConceptIds.has(conceptId),
+  );
+  const brokenLinks = expected.links.flatMap((link) =>
+    link.kind === 'broken' ? [{ sourceId: link.sourceId, rawTarget: link.rawTarget }] : [],
+  );
+
+  return {
+    nodeIds: expected.conceptIds,
+    edges,
+    orphanIds,
+    backlinks: Object.fromEntries(
+      expected.conceptIds.map((conceptId) => [
+        conceptId,
+        [...(backlinkSets.get(conceptId) ?? [])].sort(compareText),
+      ]),
+    ),
+    brokenLinks,
+    statistics: {
+      conceptCount: expected.conceptIds.length,
+      edgeCount: edges.length,
+      orphanCount: orphanIds.length,
+      brokenLinkCount: brokenLinks.length,
+    },
+  };
+}
+
 async function evaluateFixture(name: string): Promise<{
   readonly actual: FixtureExpectedContract;
   readonly expected: FixtureExpectedContract;
+  readonly actualGraph: FixtureGraphProjection;
+  readonly expectedGraph: FixtureGraphProjection;
 }> {
   const fixture = await loadFixture(name);
   const files = await readFixtureFiles(fixture);
@@ -87,6 +156,7 @@ async function evaluateFixture(name: string): Promise<{
     })),
   });
   const findings = validateBundle(bundle, { now: '2026-07-22T12:00:00Z' });
+  const graph = buildGraphPayload(bundle);
   const expected = fixture.manifest.expected;
 
   const actual: FixtureExpectedContract = {
@@ -134,6 +204,20 @@ async function evaluateFixture(name: string): Promise<{
   return {
     actual: asPlainJson(actual) as FixtureExpectedContract,
     expected: asPlainJson(expected) as FixtureExpectedContract,
+    actualGraph: asPlainJson({
+      nodeIds: graph.nodes.map(({ id }) => id),
+      edges: graph.edges.map(({ source, target }) => ({ sourceId: source, targetId: target })),
+      orphanIds: graph.nodes.filter(({ orphan }) => orphan).map(({ id }) => id),
+      backlinks: graph.backlinks,
+      brokenLinks: graph.brokenLinks.map(({ sourceId, rawTarget }) => ({ sourceId, rawTarget })),
+      statistics: {
+        conceptCount: graph.statistics.conceptCount,
+        edgeCount: graph.statistics.edgeCount,
+        orphanCount: graph.statistics.orphanCount,
+        brokenLinkCount: graph.statistics.brokenLinkCount,
+      },
+    }) as FixtureGraphProjection,
+    expectedGraph: asPlainJson(expectedGraphProjection(expected)) as FixtureGraphProjection,
   };
 }
 
@@ -156,10 +240,11 @@ describe('canonical fixture corpus', () => {
   });
 
   test.each(expectedFixtureNames)(
-    '%s exactly matches its parser and validator contract',
+    '%s exactly matches its parser, validator, and graph contract',
     async (name) => {
-      const { actual, expected } = await evaluateFixture(name);
+      const { actual, expected, actualGraph, expectedGraph } = await evaluateFixture(name);
       expect(actual).toEqual(expected);
+      expect(actualGraph).toEqual(expectedGraph);
     },
   );
 

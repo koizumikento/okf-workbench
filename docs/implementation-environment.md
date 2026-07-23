@@ -48,7 +48,7 @@ The shipped trust boundaries are:
 | Type checker | TypeScript `6.0.3` | Mature stable line; TypeScript 7 adoption is deferred until extension tooling compatibility is verified |
 | VS Code compile-time types | `@types/vscode` `1.120.0` | Conservative ceiling because npm does not publish `1.121.0`; this does not claim exact type coverage for the `1.121.0` API floor |
 | Minimum editor test | VS Code `1.121.0` | Matches the manifest API floor |
-| Current editor test | VS Code `1.127.0` | Stable VS Code release at the decision date |
+| Current editor test | VS Code `1.129.1` | Stable VS Code release pinned for the current release-candidate qualification |
 | VSCodium test | VSCodium `1.121.03429` | Stable VSCodium release at the decision date |
 
 Node.js 26 is Current rather than LTS at the decision date, so it is not the development baseline. The extension must not include native Node add-ons; the VSIX should remain platform-independent.
@@ -57,9 +57,16 @@ References:
 
 - [Node.js release status and schedule](https://nodejs.org/en/about/previous-releases)
 - [Node.js 24.18.0 archive metadata](https://nodejs.org/en/download/archive/v24.18.0)
-- [VS Code 1.127 release notes](https://code.visualstudio.com/updates/v1_127)
+- [VS Code 1.129 release notes](https://code.visualstudio.com/updates/v1_129)
 - [VS Code 1.121 source manifest](https://github.com/microsoft/vscode/blob/1.121.0/package.json)
 - [VSCodium releases](https://github.com/VSCodium/vscodium/releases)
+
+The current-stable test pin is refreshed for each release candidate. The current matrix is pinned
+to VS Code `1.129.1`; fresh hosted results for the current exact candidate are pending. The retained
+VS Code `1.127.0` headed capture is historical after strengthening the schema-v3 evidence contract;
+the genuine current-input VS Code `1.129.1` headed capture passes QR-002 at `832 ms` p95, QR-003
+with `d3` selected, and the strict zero-remote-request Webview network gate on its recorded
+hardware.
 
 ## Repository and package management
 
@@ -186,12 +193,17 @@ Vite, webpack, and Vite+ are not part of the initial pipeline. Esbuild directly 
 | Purpose | Package baseline | Usage boundary |
 | --- | --- | --- |
 | YAML parsing | `yaml` `2.9.x` | Core parser; parse AST nodes with error details, retain original source, and normalize supported tags without carrying YAML-created object prototypes into the serializable model |
+| Markdown pre-AST tokenization | `micromark` `4.0.x`, `micromark-core-commonmark` `2.0.x`, `micromark-util-decode-string` `2.0.x`, `micromark-util-subtokenize` `2.1.x` | Core parser; wrap the public CommonMark list, quote, label-open, label-close, and attention constructs with fail-fast work guards, apply the same guarded grammar when constructing mdast, then enforce link, image, definition, autolink, label, and destination limits |
 | Markdown AST | `unified` `11.0.x`, `remark-parse` `11.0.x`, and focused unist visitors | Core parser; extract links and source positions without rendering HTML |
 | 3D graph | `3d-force-graph` `1.80.x` | Webview renderer adapter only |
 
 References:
 
 - [`yaml`](https://www.npmjs.com/package/yaml)
+- [`micromark`](https://www.npmjs.com/package/micromark)
+- [`micromark-core-commonmark`](https://www.npmjs.com/package/micromark-core-commonmark)
+- [`micromark-util-decode-string`](https://www.npmjs.com/package/micromark-util-decode-string)
+- [`micromark-util-subtokenize`](https://www.npmjs.com/package/micromark-util-subtokenize)
 - [`unified`](https://www.npmjs.com/package/unified)
 - [`remark-parse`](https://www.npmjs.com/package/remark-parse)
 - [`3d-force-graph`](https://www.npmjs.com/package/3d-force-graph)
@@ -204,18 +216,134 @@ Extension/Webview messages use discriminated unions containing a protocol versio
 
 ## Workspace access and write safety
 
-All workspace reads and writes go through an extension-side port implemented with `vscode.workspace.fs` and `vscode.Uri`. Core modules receive text, byte arrays, normalized concept IDs, and operation inputs rather than VS Code objects.
+All workspace reads and writes go through an extension-side, URI-first port. Non-`file:` resources
+use `vscode.workspace.fs`; local `file:` resources use Node's file-handle API behind that same port
+only for identity-bound reads. Core modules receive text, byte arrays, normalized concept IDs, and
+operation inputs rather than VS Code objects.
+
+For a local file, `stat` uses `lstat({ bigint: true })` and returns an opaque generation containing
+device, inode, mode, nanosecond ctime, and birthtime. `read` requires that generation, opens with
+`O_RDONLY | O_NOFOLLOW` where `O_NOFOLLOW` exists, checks the opened regular file with `fstat`
+before reading, reads through the already verified handle, then checks the handle and pathname
+generations again. A missing or unusable native identity fails closed rather than falling back to
+`workspace.fs.readFile`. Bytes are not returned until the handle closes successfully; a close
+failure rejects an otherwise successful read, while a simultaneous primary read failure remains
+primary with the close failure attached. Node exposes no `openat`-style directory-handle walk here,
+so this is an identity-bound local-file guarantee for the tested filesystems, not a claim of a
+formally atomic arbitrary pathname walk against privileged mount changes.
+
+A runtime selection retains the containing workspace-folder URI separately from the bundle-root
+URI and captures the native/provider generation of every directory between them. Every full load
+revalidates that snapshot before traversal, between enumeration and Markdown reads, after each
+bounded read batch, and before publication; a failure clears stale graph and diagnostics and
+discards the load result. Automatic discovery, explicit-root and write-version inspection,
+proposal-preview snapshots, Agent Integration reads, proposal preflight, and internal write
+verification use the same identity-bearing stat/read contract. Traversal separately captures the
+root-to-current-directory chain before each `readDirectory` and releases no provider child tuple
+until that chain and the root snapshot pass afterward. A generation failure at any nested directory
+is load-fatal, not an ordinary partial-access finding. Each distinct Markdown/index/authoring
+resource also receives a root-to-parent snapshot around its stat/read; discovery rechecks after an
+asynchronous inspector returns or rejects. A nested parent permission/unavailability failure
+discards only affected document bytes and retains independently verified siblings, but the
+materialized bytes are still charged to the 32 MiB actual-content aggregate before discard.
+
+VS Code exposes only `type`, `size`, `ctime`, and `mtime` around a whole-resource `readFile` for
+non-`file:` providers, with no handle, inode, ETag, or conditional read. This branch therefore uses
+a trusted-provider `stat` / `readFile` / `stat` metadata sandwich plus directory-generation
+revalidation. Provider compatibility tests must exercise this boundary; the implementation does not
+describe it as an atomic snapshot.
 
 Generated changes are handled as a two-step flow:
 
 1. Build an immutable proposal containing target URI, expected current content hash, and proposed bytes.
 2. Preview, re-check the expected content, and apply only after explicit confirmation.
 
-Diff previews use a read-only virtual document provider and the built-in VS Code diff editor. Approval is a modeless continuation so the user can switch among every opened diff before applying or cancelling. Provider-held before/after bodies are scoped to that confirmation session, released afterward, and replaced by an explicit expired-preview document if a stale virtual URI is requested later. The extension preflights all targets before starting a multi-file write. That preflight calls the workspace port's `stat` for the proposal write root and every existing intermediate segment; `FileType.SymbolicLink`, a normal file used as a parent, or an unknown entry refuses the entire proposal before the first write. Missing parents remain provider-creatable. Initialization anchors the proposal at the selected workspace target, while existing-bundle and agent operations anchor at their bundle or integration root, so the same URI-first rule covers every write workflow without assuming `file:` resources. Because virtual workspace providers do not guarantee a cross-file transaction, a partial failure after a successful preflight must stop remaining writes and report completed, failed, and untouched targets explicitly.
+Diff previews use a read-only virtual document provider and the built-in VS Code diff editor. Approval
+is a modeless continuation so the user can switch among every opened diff before applying or
+cancelling. One extension-scoped scheduler admits only one complete write-command workflow at a
+time. Its opaque lease is acquired by the registered command entry before trust checks, trust
+notifications, target selection, workspace reads, or proposal planning. The entry passes that same
+lease into the selected authoring factory instead of reacquiring the scheduler, and it remains
+active through preflight, preview, decision, apply, and cleanup.
+While that workflow is active, every concurrent
+invocation settles immediately with the structured `proposal-workflow-busy` problem and an
+actionable instruction to finish or cancel the active workflow before retrying. The scheduler does
+not retain the rejected workflow callback, proposal, or a FIFO queue entry. It grants only the first
+busy refusal in an active lease permission to start the modeless warning, so a command flood cannot
+accumulate notification promises; every refusal still settles immediately, and warning rejection is
+contained. Cancellation and thrown failures release both the active slot and notification claim in
+`finally`, after which a newly invoked workflow may proceed and notify once for its own busy phase.
+
+Validate Bundle and Open 3D Graph use a separate extension-scoped fail-fast gate around their
+complete bundle-selection and refresh-scheduling phase. The gate is acquired before automatic
+discovery, explicit-root inspection, QuickPick, or folder selection. A concurrent read command
+settles immediately with a structured `read-command-busy` result; its callback is not invoked or
+retained, so roots from separate Explorer invocations cannot be conflated. Ordinary sessions show
+at most one busy warning per admitted phase, and success, cancellation, or failure releases the gate
+in `finally`.
+
+Each Extension Host activation creates a cryptographically random nonce, and every confirmation
+combines that nonce with its run, target fingerprint, and complete write-root URI. The nonce keeps
+provider schemes and virtual-document URIs unique across host restarts, so an editor-cached document
+from an earlier activation cannot satisfy a current preview. The shared identity appears in the
+summary filename and body, every diff title, and the confirmation notification.
+
+Before any workspace `stat`, read, or proposal preflight, Workbench performs a pure feasibility
+check over the immutable proposal and generated presentation. It accepts the inclusive boundaries
+of 64 changes, 2 MiB of UTF-8 for each proposed output, 2 MiB for each declared existing
+`expected.byteLength`, 16 MiB of cumulative UTF-8 before-and-after bodies, and 1 MiB for the
+generated summary. A proposal exceeding any boundary is refused without workspace I/O, provider
+registration, or tab creation. The 64-change ceiling is deliberately conservative because the
+current review surface opens one pinned diff per change, for at most 65 run-owned editor tabs
+including the summary; it is a reliability guard rather than a measured editor-performance claim.
+Raising it requires a virtualized or multi-diff review surface with new evidence. After feasibility
+passes, Workbench prepares every accepted before/after snapshot with overflow-safe accounting before
+registering the run's provider or opening any tab. An oversized or inconsistent existing snapshot,
+decode failure, or later read failure therefore refuses the entire preview without leaving a partial
+summary, diff set, registration, or retained body. Create previews validate either a stable absent
+target under an existing parent or a stably absent parent suffix without reading through it.
+Snapshots for all distinct target parents are retained and deduplicated, and the last workspace
+pass before returning the prepared bodies revalidates every snapshot.
+
+After approval, cancellation, failure, or host disposal, the extension closes only the summary and
+diff tabs whose URIs exactly match that activation and run, then releases the before/after bodies and
+registration so no retained provider can reopen a stale preview URI. Disposal is checked after each
+awaited preview operation and cleanup rescans exact owned URIs, preventing a late editor result from
+restoring a disposed tab or body. Once opening completes, the session retains the current VS Code
+`Tab` object and URI identity for the summary and each exact before/after diff pair. An explicit
+close event or input replacement permanently expires the session, even when the same URI opens in
+that event or a duplicate remains. VS Code 1.121 can rebuild all API `Tab` objects for an unrelated
+group-model update, so a group-change event may rebind only a single unambiguous tab with the
+unchanged URI identity and no explicit close; synchronous checks otherwise require the current
+objects and input pairs to remain present. Reopening a closed virtual URI cannot revive approval,
+and listener disposal precedes owned-tab cleanup. Agent Skill replacement uses one
+replacement-and-apply decision over the final proposal, keeping that exact preview open through the
+write result. The workflow verifies that preview synchronously after preflight and asynchronous
+compatibility guards and again immediately before every individual write; closing it refuses the
+first write or stops the remaining writes with an explicit partial report. The proposal also captures the exact open
+workspace-folder URI that supplied its safety root. Removing that folder irreversibly invalidates
+the active workflow and disposes its preview; leaving a containing parent open or re-adding the same
+URI requires a new command and preview. Exact membership is checked before the first and each later
+change. The authorization callback is also carried into the workspace port, which invokes it before
+directory creation and again after absence/hash verification immediately before `applyEdit` or
+`workspace.fs.writeFile`. This closes membership changes that occur during provider preparation;
+the provider API still offers no atomic lock spanning an already-started asynchronous mutation and
+the editor's folder-change event.
+The extension preflights all targets before starting a multi-file write. That preflight calls the workspace port's `stat` for
+the proposal write root and every existing intermediate segment; `FileType.SymbolicLink`, a normal
+file used as a parent, or an unknown entry refuses the entire proposal before the first write.
+Missing parents remain provider-creatable only after the deepest existing parent is captured and
+every segment initially observed absent is rechecked; a segment that appears during that baseline
+refuses the proposal before target content is inspected. Initialization anchors the proposal at the selected
+workspace target, while existing-bundle and agent operations anchor at their bundle or integration
+root, so the same URI-first rule covers every write workflow without assuming `file:` resources.
+Because virtual workspace providers do not guarantee a cross-file transaction, a partial failure
+after a successful preflight must stop remaining writes and report completed, failed, and untouched
+targets explicitly.
 
 Creates use `WorkspaceEdit.createFile` with overwrite and ignore-if-exists both disabled and with the proposed bytes supplied as the initial content. This is the strongest provider-neutral no-overwrite create exposed by the supported VS Code API. The adapter does not fall back to `workspace.fs.writeFile` when a provider cannot apply that resource edit; it fails closed instead.
 
-Updates retain the SHA-256 of the original provider bytes, including an optional UTF-8 BOM, instead of deriving the guard by decoding and re-encoding text. They re-read and compare that exact preview hash as the final awaited operation before starting `workspace.fs.writeFile`, then verify the resulting bytes. VS Code's public workspace filesystem API does not expose an expected version, ETag, hash precondition, or other compare-and-swap option for an existing resource. A provider or remote actor can therefore change an existing file in the narrow interval between the hash check and the write, and the write can overwrite that change. The MVP reports this limitation explicitly and does not claim full update CAS. Remote and virtual provider acceptance evidence must exercise collision and failure behavior for each supported editor/provider combination.
+Updates retain the SHA-256 of the original provider bytes, including an optional UTF-8 BOM, instead of deriving the guard by decoding and re-encoding text. They re-read and compare that exact preview hash as the final awaited operation before starting `workspace.fs.writeFile`, then verify the resulting bytes. Caller-owned target-parent snapshots are prepared before both internal reads and checked around their stat/read boundaries, including the post-write readback. VS Code's public workspace filesystem API does not expose an expected version, ETag, hash precondition, or other compare-and-swap option for an existing resource. A provider or remote actor can therefore change an existing file in the narrow interval between the hash check and the write, and the write can overwrite that change; similarly, no directory lock spans the provider mutation. The MVP reports this limitation explicitly as a fail-detect boundary and does not claim full update CAS or a universal atomic pathname walk. Remote and virtual provider acceptance evidence must exercise collision and failure behavior for each supported editor/provider combination.
 
 The extension maintains an in-memory parsed-bundle cache keyed by selected bundle and document revision. Markdown remains authoritative. No parsed concept body or frontmatter is stored in `globalState`, `workspaceState`, a database, or an external service.
 
@@ -232,7 +360,7 @@ font-src <webview-source>;
 connect-src 'none';
 ```
 
-Only packaged resources are exposed through narrow `localResourceRoots`. The graph does not need network access. Message receivers validate the protocol version, message type, graph revision, IDs, and payload shape before any privileged action.
+Only packaged resources are exposed through narrow `localResourceRoots`. The graph does not need network access. Message receivers validate the protocol version, message type, graph revision, per-post delivery ID, IDs, payload shape, reference/backlink/statistics consistency, and the shared resource limits before any privileged action. The graph boundary permits at most 2,000 nodes, 10,000 retained relationships, 128 tags per concept, 20,000 tag assignments, 512 unique types, 4,096 unique tags, and 16 MiB of exact escaped JSON. Its size gate counts UTF-8 and JSON escapes in one pass without first allocating the serialized payload. Every replacement post receives a new delivery ID, including a repost of the same revision after Webview context recreation. The Webview accepts only a greater delivery ID for an already displayed revision, so a delayed or replayed replacement cannot roll the UI back. Render success, render failure, and source-navigation messages echo that ID, so a queued message from the destroyed context cannot complete or act on the replacement context's delivery.
 
 The graph renderer adapter owns the render loop, resize observer, subscriptions, WebGL resources, and disposal. Hiding, reopening, switching bundles, or closing the panel must not leave an active simulation or stale listener.
 
@@ -255,7 +383,71 @@ The Webview owns presentation-only state:
 
 Every graph payload carries a monotonically increasing revision. Webview actions include the revision they were based on, and the extension rejects actions from a stale bundle or graph revision when acting on them would target the wrong resource.
 
-File events are debounced and processed through cancelable refresh work. A newer refresh result always supersedes an older one. Failure to enumerate the selected bundle root, or another unhandled current-generation refresh failure, clears the prior diagnostics and graph rather than leaving stale derived state visible; later watcher activity can recover the still-selected context. The first fatal failure in one unavailable period also raises one modeless warning that identifies workspace availability or read permissions and tells the user to restore access, then save Markdown or run `OKF: Validate Bundle` to retry. Repeated watcher batches suppress that warning until a successful publication resets the notification state. An unreadable child subtree or individual Markdown file is instead retained as a URI- and provider-path-scoped read finding, and readable siblings still produce current diagnostics and graph state. The first implementation sends a full replacement graph; patch messages are introduced only after benchmark evidence shows they are needed.
+File events are processed through cancelable, strictly single-flight refresh work. Equal pending
+changes coalesce when inserted; more than 512 distinct pending paths collapse to one full rescan.
+The scheduler combines a 250 ms trailing debounce with a 1,000 ms maximum latency, so a continuous
+event stream still runs. A newer request invalidates an older result, but no replacement starts
+until all physical provider calls issued by the prior refresh settle, and at most one trailing
+refresh runs afterward. Failure to enumerate the selected bundle root, a bundle-scoped semantic
+resource failure, or another unhandled current-generation refresh failure clears the prior
+diagnostics and graph rather than leaving stale derived state visible; later watcher activity can
+recover the still-selected context. The first fatal failure in one unavailable period also raises
+one modeless warning that identifies workspace availability or read permissions and tells the user
+to restore access, then save Markdown or run `OKF: Validate Bundle` to retry. Repeated watcher
+batches suppress that warning until a successful publication resets the notification state. An
+unreadable child subtree, individual Markdown file, or document-scoped semantic limit is instead
+retained as a URI- and provider-path-scoped finding, and readable siblings still produce current
+diagnostics and graph state. A partial concept crosses the graph boundary only as an identity-only
+`sourceFailed` node: it remains navigable and counts as a concept but produces no derived
+type/tag/orphan/outgoing-link/broken-link claim; valid siblings may still link to its stable
+identity. The first implementation sends a full replacement graph; patch messages are introduced
+only after benchmark evidence shows they are needed.
+
+Generated and provider-relative paths share one early resource guard before decoding, splitting,
+joining, or rendering: 4,096 UTF-16 code units, 4,096 UTF-8 bytes, and 64 segments. User-input paths
+are checked again after stable percent decoding. Initialize Bundle validates every preset output
+after prefixing the requested directory, New Concept validates the combined destination and
+filename, and Agent Integration validates the selected bundle identity before reading an existing
+instruction file. Serialized bundle/source/provider URIs use a separate inclusive 16 KiB
+code-unit/UTF-8 envelope. This admits the roughly 12 KiB percent-encoded representation of a valid
+4 KiB multibyte path while still bounding retained URI identities.
+
+One selected-bundle refresh admits at most 2,000 Markdown documents, 2 MiB for each reported and
+actual document, 32 MiB of cumulative Markdown bytes, eight concurrent provider operations,
+64 traversal segments, 32 MiB of cumulative retained path/URI identity, and 128 retained failures.
+Every fixed concurrency batch uses `Promise.allSettled`; cancellation or one fatal result is
+reported only after all already-issued physical calls settle. Provider metadata is checked before
+avoidable reads, then each materialized byte array is checked immediately. The workspace API cannot
+prevent a dishonest provider from first allocating and returning an oversized array, but Workbench
+does not hash, decode, or retain that body. A per-document overflow becomes one typed identity-only
+resource failure and leaves siblings publishable. Document-count, aggregate-byte, root, depth, and
+traversal-identity overflows invalidate the refresh.
+
+Before constructing YAML or Markdown ASTs, the parser checks per-document byte/code-unit, line,
+YAML collection and Markdown media nesting, indentation, structural-token, syntax-candidate,
+link-candidate, label, and target limits. Markdown additionally caps emphasis at 1,024 delimiter
+runs and marker code units, 8,388,608 attention grammar-event work units, 65,536 list/blockquote
+continuation work units, and 8,388,608 prospective link-label closing scan units per document.
+It also applies overflow-safe bundle-level work budgets before later ASTs and caps retained semantic
+output afterward. Every completed Markdown inspection, including reserved documents and inspections
+that already found a document limit, is charged before its document failure is handled. The
+Markdown aggregate envelope is 8 MiB of body code units, 100,000 body lines, 33,554,432 attention
+grammar-event work units, 262,144 list/blockquote continuation work units, 33,554,432 link-label
+closing work units, 80,000 syntax candidates, and 20,000 link candidates. A document-scoped limit
+retains only stable source identity and empty safe sentinels; a bundle-scoped aggregate limit
+preserves later identity-only entries and prevents diagnostics or graph publication. Exact and
+one-over tests cover these boundaries, including compact YAML sequences, syntax-free body/line
+inputs, attention grammar-event work, container continuation work, link-label closing work, and
+dense Markdown reference syntax.
+
+Automatic bundle discovery is a bounded convenience scan. Its defaults are 32 workspace roots,
+depth 16, 512 `index.md` files, 1 MiB per index, 8 MiB total index bytes, and 64 retained failure
+records. The VS Code workspace adapter separately caps one traversal at 10,000 directories and
+100,000 provider entries. A depth, access, count, or byte limit produces an incomplete result;
+Workbench does not auto-select even a previously selected candidate from that partial view and
+instead opens the explicit directory picker. The provider API necessarily returns one directory's
+entry array before its size is known, but the adapter rejects an oversized array before sorting or
+retaining individual entries, and discovery uses `stat.size` to avoid avoidable oversized reads.
 
 ## Testing environment
 
@@ -263,10 +455,11 @@ File events are debounced and processed through cancelable refresh work. A newer
 | --- | --- | --- |
 | Core unit and fixture tests | Vitest `4.1.x`, Node environment | Parsing, preservation, resolution, validation, indexes, templates, graph model |
 | Webview state unit tests | Vitest `4.1.x`, Node environment | Pure search, filtering, focus, presentation, color, and message-decoding state without claiming browser DOM behavior |
+| Security boundaries | Dedicated Vitest and Playwright configs | Host/path/protocol boundaries plus hostile-content DOM execution and browser egress interception |
 | Extension integration | `@vscode/test-cli` `0.0.x` and `@vscode/test-electron` `3.0.x` with Mocha | Commands, workspace FS, diagnostics, watchers, URI behavior, source navigation, and the registered non-`file:` read boundary |
 | Webview browser harness | Playwright `1.61.x` on Chromium | Real DOM, WebGL smoke, CSP-compatible bundle loading, keyboard interaction |
 | Release smoke | Packaged VSIX in VS Code and VSCodium | Installation, activation, packaged resources, upgrade, uninstall |
-| Performance | Headed VS Code/VSCodium benchmark harness | QR-002 and QR-003 evidence on recorded hardware |
+| Performance | Headed VS Code `1.129.1` release benchmark harness | QR-002 and QR-003 evidence on recorded hardware; VSCodium performance may be investigated separately but cannot satisfy the current strict release record |
 
 References:
 
@@ -277,6 +470,25 @@ References:
 - [Playwright Test](https://www.npmjs.com/package/@playwright/test)
 
 Playwright is not treated as proof of Electron Webview performance. WebGL performance claims require the headed editor benchmark with hardware, GPU, editor, Electron, and fixture versions recorded.
+That benchmark starts through a built-in-only bootstrap which copies the exact runner, recorder,
+build/report helpers, Playwright, `@vscode/test-electron`, esbuild, and their runtime closure into
+an owner-only temporary module root outside the repository. The checked-in performance-toolchain
+manifest binds platform-native esbuild and installed platform-optional files by exact hash while
+keeping the candidate identity portable between the macOS capture host and Ubuntu release
+verification. The portable identities retain esbuild's JavaScript and metadata but hash-bind an
+exclusion for its postinstall host-native `bin/esbuild` mirror. Before any build, the bootstrap and
+shared verifier require the npm lock integrity plus the manifest's exact inventory and hashes for
+every other portable esbuild file, rejecting persisted install-time binary overrides; the
+execution snapshot and per-platform manifest still verify native bytes exactly. The runner rejects
+repository-root execution, resolver fallback, toolchain overrides, mixed-case dangerous
+environment variables, and any original/staged input change. A live production or QR-003 build is
+used only to discover esbuild's input graph. The exact discovered bytes and resolver manifests are
+then materialized
+under the owner-only benchmark root, and every authoritative production bundle and injected QR-003
+harness is built twice from those private trees. The captured private inputs are verified before,
+between and after the builds, through strict evaluation, and after each file's atomic rename under
+`artifacts/performance`. Success is reported only after the complete JSON/Markdown pair is committed
+and read back, closing transient source-change-and-restore and output-alias races.
 
 The integration configuration exposes the narrow acceptance-completion API only in its isolated
 test Extension Host. Its provider-boundary scenario registers a read-only `okfmem:`
@@ -286,9 +498,31 @@ Webview render acknowledgement, and rejects any provider mutation. This developm
 does not substitute for packaged VSIX lifecycle evidence, an external remote provider, or write-flow
 UI automation.
 
+The packaged lifecycle driver derives the six-command contract from acceptance-only command
+metadata and compares it with the installed manifest and registered IDs. In an untrusted workspace
+it probes all metadata-classified write commands: Initialize Bundle, New Concept, Regenerate
+Indexes, and Set Up Agent Integration. Each must refuse with `workspace-untrusted` before requesting
+interactive input. Validate Bundle and Open 3D Graph are the two read commands.
+For those commands, the driver requires a request ticket and waits for completion using that exact
+request ID; a generic later runtime or graph signal cannot satisfy the command assertion.
+
+The same driver installs a deliberately narrow Extension Host network observer for active phases.
+It replaces properties on the CommonJS builtin export-owner objects returned by `require`: `node:http.get/request`, `node:https.get/request`, `node:http2.connect`,
+`node:net.connect/createConnection`, `node:tls.connect`,
+`node:dns.lookup/resolve/resolve4/resolve6`, `node:dgram.createSocket`, and the available
+`globalThis.fetch` and `globalThis.WebSocket` globals, inventories the installed hooks, observes a
+500 ms quiescence window, and leaves the hooks installed until Extension Host exit. Lifecycle
+validation rejects a missing attempt array, incomplete inventory, nonzero attempt list, restored
+guard, or incomplete metadata. This is CommonJS export-owner/global-hook evidence, not OS-level isolation; it
+does not observe ESM named bindings, cached references, prototype or raw bindings, `dns.promises`, child processes,
+editor-owned traffic, or Webview traffic. The persisted attempt list ends at report creation; the
+hooks remain installed to deny later tail calls until process exit. The post-uninstall phase installs no network observer and
+records attempts and guarded quiescence as not observed because it verifies extension API absence
+only. Webview egress is covered separately by CSP and the candidate-specific headed capture.
+
 ## Code quality
 
-The scaffold uses ESLint 9 with the compatible `typescript-eslint` 8 line and Prettier 3. Formatting, linting, type checking, unit tests, integration tests, Webview tests, build, package validation, dependency review, and benchmark-harness entry points are exposed through package-local scripts.
+The scaffold uses ESLint 9 with the compatible `typescript-eslint` 8 line and Prettier 3. Formatting, linting, type checking, unit tests, integration tests, Webview tests, build, package validation, dependency review, and benchmark-harness entry points are exposed through package-local scripts. `npm run check` invokes `test:security:all`, which runs the dedicated Node boundary suite, creates a current production build, and then runs the dedicated Playwright hostile-content suite. A fresh machine must install the pinned Playwright Chromium binary once before invoking this aggregate; the test command does not download tooling at runtime.
 
 The repository does not currently use `vp`, so Vite+ commands are not introduced. Documentation must reference script names only after those scripts exist in `package.json`.
 
@@ -303,6 +537,7 @@ Required pull-request gates:
 - Clean `npm ci` using Node 24.18.0.
 - Format, lint, and strict type checks.
 - Core and Webview unit tests.
+- Dedicated Node boundary tests and the dedicated Chromium hostile-content/no-egress test.
 - Extension integration tests on a pinned minimum VS Code and the current stable VS Code.
 - Production build and VSIX package inspection.
 - Production dependency license classification and deterministic `THIRD_PARTY_NOTICES.md`
@@ -310,7 +545,55 @@ Required pull-request gates:
 
 Ubuntu 24.04 is the primary CI environment. Release smoke also runs on current supported GitHub-hosted Windows and macOS images, with exact runner images recorded by each workflow run. VSCodium validation installs the pinned VSCodium release rather than assuming `@vscode/test-electron` represents it.
 
-Package with `@vscode/vsce` `3.9.x`. Validate and publish an already built VSIX with `ovsx` `1.0.x`. Publication uses `OVSX_PAT` only in a protected, manually approved release environment. Pull requests and ordinary branch builds never have publishing credentials or publish capability.
+Security suites have one explicit owner in every aggregate workflow so a passing ordinary test command is never reported as dedicated security coverage:
+
+| Gate | Node security owner | Playwright security owner | Candidate ordering |
+| --- | --- | --- | --- |
+| Local `npm run check` | `test:security:all` | `test:security:all` after its production build | Both are part of the aggregate |
+| Pull-request CI | `quality-and-package` | `webview-browser` after `test:webview` builds | Both jobs are required by the workflow |
+| Compatibility | `candidate` before packaging | `acceptance` after its current Webview build | Node boundary pass precedes candidate upload; the browser lane gates the workflow |
+| Package smoke | Every `package-smoke` matrix lane | `security-boundaries` after its production build | Node host/path/junction boundaries run on Ubuntu, macOS, and Windows; the Chromium boundary passes before any OS package lane |
+| Open VSX release | `build-candidate` | `build-candidate` after its current Webview build | Both pass before the candidate is retained |
+
+The repository supply-chain policy parses these workflows and fails on a missing, misplaced,
+duplicate, conditional, or failure-tolerating security command. The default Vitest config includes
+only `test/unit`, and the default Playwright config includes only `test/webview`; neither is counted
+as a substitute for the dedicated configs under `test/security`.
+
+Package with `@vscode/vsce` `3.9.x`. Validate and publish an already built VSIX with `ovsx`
+`1.0.x`. The root `package.json` keeps `"private": true` as an npm-registry publish guard; it does
+not make the GitHub repository private and does not prevent an MIT-licensed VSIX from being
+submitted to Open VSX. Publication uses `OVSX_PAT` only in a protected, manually approved release
+environment. Pull requests and ordinary branch builds never have publishing credentials or
+publish capability.
+
+Before a candidate is retained, the release workflow performs a credential-free, fail-closed
+public-registry preflight. It requires namespace `straydog` to have the exact public identity,
+verified state, and restricted access, and requires the exact target extension version to return
+not found. Each response must carry a strictly parsed HTTP `Date`; a present `Age` must be no more
+than 30 seconds, while an absent `Age` makes `Date` authoritative and requires an inclusive
+zero-to-30-second effective age with no future time. The timestamped JSON retains the raw headers,
+validation source, effective age, and per-response validation time with the release evidence. This proves
+public namespace and version state only; authenticated `ovsx verify-pat`, the current Publisher
+Agreement, and Environment approval remain separate controls. `ovsx verify-pat` is the automated
+PAT and namespace-permission gate. Agreement review is an out-of-band profile prerequisite, and
+the Open VSX publish endpoint also rejects an unsigned publisher. The protected Environment is the
+hosted human-approval gate. After that approval wait, the publish job repeats the no-store public
+registry preflight, verifies the PAT, builds a token-free record bound to the exact approval,
+revision, VSIX digest and bytes, registry response, and namespace authorization, and durably uploads
+that complete pre-publication evidence. The upload is a required fail-closed barrier before
+`ovsx publish`; a later best-effort receipt records only the publish-step outcome and is not
+post-publication registry verification.
+
+The same repository policy fails if the protected Environment or two-step secret isolation is
+removed, the pre-publication evidence is created or retained after publication, its upload becomes
+non-blocking, or the always-run best-effort attempt receipt is omitted or made release-blocking.
+
+The hosted repository enforces GitHub Actions SHA pinning in addition to repository-owned workflow
+checks. Every `uses:` reference remains a reviewed full commit SHA. Artifact downloads use the
+Node 24-based `actions/download-artifact` v8 line, and the aggregate package gate requires the exact
+Linux x64, Windows x64, and macOS arm64 artifact labels and one regular VSIX per label before
+comparing byte size and SHA-256.
 
 The ordinary pull-request CI and the protected Open VSX candidate job invoke that same repository-owned license and notice command after `npm ci`. License classification, production-graph traversal, and notice rendering therefore have one implementation and one allowlist; the release workflow adds packaged-VSIX checks but does not redefine the source gate.
 

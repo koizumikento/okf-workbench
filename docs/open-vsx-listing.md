@@ -1,13 +1,15 @@
 # Open VSX listing draft
 
-- Status: **release-candidate copy; do not publish without explicit maintainer approval**
+- Status: **Hold — all release-checklist gates and exact-digest maintainer approval are required**
 - Target version: `0.1.0`
 - Unique identifier: `straydog.okf-workbench`
-- Namespace: `straydog` — its existence and intended use are confirmed by the maintainer;
-  publishing-identity membership, authorization, restricted/verified registry state, and
-  Publisher Agreement status still must be checked immediately before release
-- Name availability: `straydog.okf-workbench` was unoccupied when checked on 2026-07-22; recheck
-  immediately before publication
+- Namespace: `straydog` — the public registry API reported `verified: true` and
+  `access: "restricted"` at `2026-07-23T08:35:06.452Z`; current authenticated publishing
+  authorization, PAT, and Publisher Agreement status still must be checked immediately before
+  release
+- Name availability: `straydog.okf-workbench@0.1.0` was unoccupied in the public registry check
+  retained at [Open VSX registry evidence](evidence/open-vsx-registry.json); the protected release
+  workflow repeats this fail-closed check before retaining a candidate
 
 ## Listing metadata
 
@@ -18,18 +20,19 @@
 | Categories | Other; Visualization |
 | Keywords | `knowledge`; `markdown`; `okf`; `open-knowledge-format` |
 | Icon | `assets/icon.png` |
-| Repository | <https://github.com/koizumikento/okf-workbench> |
-| Issues / support | <https://github.com/koizumikento/okf-workbench/issues> |
-| Homepage | <https://github.com/koizumikento/okf-workbench#readme> |
-| Privacy | <https://github.com/koizumikento/okf-workbench/blob/main/docs/privacy.md> |
-| License | **Unresolved release gate; do not substitute or publish until approved** |
-| Third-party notices | <https://github.com/koizumikento/okf-workbench/blob/main/THIRD_PARTY_NOTICES.md> |
+| Repository | Omitted while the source repository is private |
+| Issues / support | Omitted; a durable public contact route remains a release blocker |
+| Homepage | Omitted while the source repository is private |
+| Privacy | Stated inline in the packaged README and listing copy |
+| License | MIT; VSCE packages the canonical root `LICENSE` as `extension/LICENSE.txt` |
+| Third-party notices | Packaged as `extension/THIRD_PARTY_NOTICES.md`; no private URL is advertised |
 
-The manifest, README, changelog, icon, repository links, license identifier, and candidate version
-must match this table before the package is approved. The repository is private while this draft is
-being prepared. Before publication, either make marketplace-facing resources readable without
-repository access or replace these URLs with durable public support, privacy, license, and source
-locations approved by the maintainer.
+The manifest, README, changelog, icon, license identifier, candidate version, and deliberate URL
+omissions must match this table before the package is approved. The source repository remains
+private, so `repository`, `bugs`, and `homepage` are omitted from the public manifest rather than
+advertising inaccessible resources. The packaged README and changelog contain no private-repository,
+excluded-documentation, or speculative release-tag links. A durable public support and
+security-contact route must still be selected before publication; no placeholder URL is acceptable.
 
 ## Suggested listing copy
 
@@ -55,27 +58,33 @@ Agent Skill, or both. OKF Workbench does not embed or invoke an AI model.
 
 No account is required. The extension has no built-in telemetry, analytics, AI provider, content
 upload, synchronization service, or runtime network client. Bundle parsing and generation happen
-through editor workspace APIs, and Webview assets are packaged locally. Read the full
-[privacy statement](https://github.com/koizumikento/okf-workbench/blob/main/docs/privacy.md) and
-[security evidence](https://github.com/koizumikento/okf-workbench/blob/main/docs/security-privacy-evidence.md).
+through editor workspace APIs, and Webview assets are packaged locally. It does not intentionally
+send bundle content, filenames, frontmatter, links, prompts, diagnostics, or graph data to the
+maintainer or a hosted service. Editor update checks, registries, remote-workspace providers,
+synchronization tools, and external agents are outside the extension's bundle-processing boundary.
 
 ### Compatibility and performance
 
-The manifest targets VS Code-compatible desktop editors with API floor `^1.121.0`. Exact support
-claims are governed by the retained
-[compatibility-matrix evidence](https://github.com/koizumikento/okf-workbench/blob/main/docs/compatibility-matrix.md),
-not by the configured lanes alone. The retained schema-v2
-[headed-editor evidence](https://github.com/koizumikento/okf-workbench/blob/main/docs/performance-evidence.md)
-passes QR-002 at 703 ms p95 over 20 correlated file-event samples and passes QR-003 with `d3` as
-the release engine for the exact measured production bundles. This result is limited to Mac16,7 /
-Apple M4 Pro / VS Code 1.127.0 and is not a general performance guarantee.
+The manifest targets VS Code-compatible desktop editors with API floor `^1.121.0`. Compatibility
+is specific to the editor version, operating system, and exact extension package; the API floor is
+not a universal compatibility guarantee. A genuine current-input schema-v3 headed VS Code
+`1.129.1` capture passes QR-002 at `832 ms` p95, QR-003 with `d3` selected, and the strict
+zero-remote-request Webview network gate on its recorded hardware; retained VS Code `1.127.0`
+measurements are historical only. Fresh hosted compatibility and packaged lifecycle qualification
+remain pending for the exact release candidate.
 
 ## Required resources in the packaged listing
 
-- `README.md` describes implemented behavior and unresolved gates.
+- `README.md` describes implemented behavior, the local-first privacy boundary, MIT licensing, and
+  bundled third-party notices.
 - `CHANGELOG.md` contains the `0.1.0` candidate entry and a publication date at release time.
 - `assets/icon.png` is included and referenced by the manifest.
-- Repository, issue, homepage, privacy, project-license, and third-party-notice links resolve.
+- The fresh candidate contains exactly one project-license entry, `extension/LICENSE.txt`, whose
+  bytes match the canonical root `LICENSE`; its packaged JSON manifest declares exactly `MIT`, and
+  `extension.vsixmanifest` points both license metadata entries to that same canonical path.
+- The packaged manifest omits `repository`, `bugs`, and `homepage`; the README and changelog contain
+  no links to private source resources, excluded documentation, or an uncreated release tag.
+- The README states privacy behavior, project licensing, and bundled-notice availability inline.
 - The package contains no local development artifact, secret, source map, or unapproved license
   claim.
 
@@ -88,11 +97,17 @@ and only namespace members can publish in a restricted namespace. Verified statu
 the namespace owner and publishing-user membership described by the
 [namespace-access rules](https://github.com/eclipse-openvsx/openvsx/wiki/Namespace-Access).
 
+The retained public API check confirms the namespace identity and target-version availability without
+using a credential. This does not prove the current PAT or exact namespace role; the protected
+workflow checks those with `ovsx verify-pat`. Publisher Agreement status is a separate out-of-band
+profile prerequisite, and Open VSX also enforces it at the publish endpoint.
+
 Do not place a token on a command line or in a repository file. After all checklist gates pass and
 the maintainer explicitly approves the exact commit, version, and digest, dispatch the reviewed
 `Open VSX release` workflow from that same default-branch revision with the four inputs documented
 in the [release checklist](release-checklist.md). Only its protected `open-vsx` Environment may
-provide `OVSX_PAT`; the workflow verifies `straydog` authorization and publishes the retained,
-rehash-verified VSIX without rebuilding it. A local `ovsx publish` command is not an approved
-fallback. Publication is an external state change and is not part of building this release
-candidate.
+provide `OVSX_PAT`; the workflow verifies `straydog` authorization, durably uploads complete
+token-free pre-publication evidence bound to the approval, revision, and rehash-verified VSIX, and
+only then publishes those retained bytes without rebuilding them. A local `ovsx publish` command
+is not an approved fallback. Publication is an external state change and is not part of building
+this release candidate.

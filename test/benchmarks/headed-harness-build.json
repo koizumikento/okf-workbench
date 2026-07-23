@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "entryPoint": "test/benchmarks/headed-harness-entry.mjs",
+  "bundle": true,
+  "format": "iife",
+  "platform": "browser",
+  "target": "es2022",
+  "tsconfigRaw": {
+    "compilerOptions": {}
+  },
+  "write": false
+}

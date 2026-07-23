@@ -1,10 +1,12 @@
 import {
+  CST,
   isAlias,
   isMap,
   isNode,
   isPair,
   isScalar,
   isSeq,
+  Parser,
   parseDocument,
   type Document,
   type Node,
@@ -19,6 +21,7 @@ import type {
   ParsedFrontmatter,
   SourceRange,
 } from '../model/index.js';
+import { OKF_SEMANTIC_LIMITS } from '../model/resource-limits.js';
 import type { SourceRangeIndex } from './source-range.js';
 
 export type FrontmatterResult =
@@ -29,7 +32,12 @@ export type FrontmatterResult =
       readonly body: string;
       readonly bodyStart: number;
     }
-  | { readonly kind: 'failure'; readonly message: string; readonly range: SourceRange };
+  | {
+      readonly kind: 'failure';
+      readonly message: string;
+      readonly range: SourceRange;
+      readonly resourceLimit?: true;
+    };
 
 /**
  * JSON object key used when an exact YAML integer cannot be represented safely by a JavaScript
@@ -72,9 +80,75 @@ const SUPPORTED_EXPLICIT_YAML_TAGS = new Set([
   YAML_TIMESTAMP_TAG,
 ]);
 const MAX_ALIAS_EXPANSIONS = 100;
+const utf8Encoder = new TextEncoder();
+
+export type FrontmatterPreparseInspection =
+  | { readonly kind: 'absent' }
+  | {
+      readonly kind: 'failure';
+      readonly message: string;
+      readonly start: number;
+      readonly end: number;
+      readonly resourceLimit?: true;
+      readonly sourceCodeUnits?: number;
+      readonly structuralTokens?: number;
+    }
+  | {
+      readonly kind: 'success';
+      readonly yamlStart: number;
+      readonly yamlEnd: number;
+      readonly bodyStart: number;
+      readonly sourceCodeUnits: number;
+      readonly structuralTokens: number;
+    };
+
+/** Performs all YAML amplification checks without constructing a source-range index or YAML AST. */
+export function inspectFrontmatterPreparse(text: string): FrontmatterPreparseInspection {
+  const region = findFrontmatterRegion(text);
+  if (region.kind !== 'success') {
+    return region;
+  }
+  const source = text.slice(region.yamlStart, region.yamlEnd);
+  const sourceCodeUnits = source.length;
+  const structuralTokens = frontmatterWorkTokens(source);
+  const complexityFailure = frontmatterComplexityFailure(source);
+  if (complexityFailure === undefined) {
+    return {
+      ...region,
+      sourceCodeUnits,
+      structuralTokens,
+    };
+  }
+  return {
+    kind: 'failure',
+    message: complexityFailure,
+    start: region.yamlStart,
+    end: region.yamlEnd,
+    resourceLimit: true,
+    sourceCodeUnits,
+    structuralTokens,
+  };
+}
+
+function frontmatterWorkTokens(source: string): number {
+  let tokens = 0;
+  for (let index = 0; index < source.length; index += 1) {
+    const code = source.charCodeAt(index);
+    if (
+      (code > 0 && code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) ||
+      (code >= 0x21 && code <= 0x2f) ||
+      (code >= 0x3a && code <= 0x40) ||
+      (code >= 0x5b && code <= 0x60) ||
+      (code >= 0x7b && code <= 0x7e)
+    ) {
+      tokens += 1;
+    }
+  }
+  return tokens;
+}
 
 export function parseFrontmatter(text: string, ranges: SourceRangeIndex): FrontmatterResult {
-  const region = findFrontmatterRegion(text);
+  const region = inspectFrontmatterPreparse(text);
   if (region.kind !== 'success') {
     if (region.kind === 'absent') {
       return region;
@@ -83,13 +157,14 @@ export function parseFrontmatter(text: string, ranges: SourceRangeIndex): Frontm
       kind: 'failure',
       message: region.message,
       range: ranges.range(region.start, region.end),
+      ...(region.resourceLimit === true ? { resourceLimit: true as const } : {}),
     };
   }
 
   const source = text.slice(region.yamlStart, region.yamlEnd);
   // yaml's lexer accepts LF and CRLF, while CommonMark also treats a lone CR as a line ending.
   // Replacing only lone CR characters preserves every UTF-16 offset used by diagnostics.
-  const parserSource = source.replace(/\r(?!\n)/gu, '\n');
+  const parserSource = normalizeYamlLineEndings(source);
   try {
     const document = parseDocument(parserSource, {
       intAsBigInt: true,
@@ -131,12 +206,16 @@ export function parseFrontmatter(text: string, ranges: SourceRangeIndex): Frontm
 
     const converted = toJsonObject(document.contents, document, source);
     if (!converted.ok) {
+      const resourceLimit = converted.message.startsWith('semantic output exceeds');
       return {
         kind: 'failure',
         message: `YAML frontmatter is not JSON-safe: ${converted.message}`,
         range: ranges.range(region.yamlStart, region.yamlEnd),
+        ...(resourceLimit ? { resourceLimit: true as const } : {}),
       };
     }
+
+    const explicitTags = collectTopLevelExplicitTags(document.contents, document);
 
     const fields: Record<string, SourceRange> = Object.create(null) as Record<string, SourceRange>;
     for (const pair of document.contents.items) {
@@ -155,10 +234,11 @@ export function parseFrontmatter(text: string, ranges: SourceRangeIndex): Frontm
 
     const frontmatter: ParsedFrontmatter = {
       raw: converted.value,
+      explicitTags,
       source,
       range: ranges.range(region.yamlStart, region.yamlEnd),
       fields,
-      normalized: normalizeFrontmatter(converted.value),
+      normalized: normalizeFrontmatter(converted.value, explicitTags),
     };
 
     return {
@@ -241,6 +321,129 @@ function readLine(text: string, start: number): { readonly text: string; readonl
   };
 }
 
+/** Rejects YAML parser-amplification inputs before the yaml package builds an AST. */
+function frontmatterComplexityFailure(source: string): string | undefined {
+  if (source.length > OKF_SEMANTIC_LIMITS.maxFrontmatterSourceCodeUnits) {
+    return `YAML frontmatter exceeds the ${String(OKF_SEMANTIC_LIMITS.maxFrontmatterSourceCodeUnits)}-code-unit pre-parse safety limit. Reduce the metadata, then retry.`;
+  }
+  if (utf8Length(source) > OKF_SEMANTIC_LIMITS.maxFrontmatterSourceBytes) {
+    return `YAML frontmatter exceeds the ${String(OKF_SEMANTIC_LIMITS.maxFrontmatterSourceBytes)}-byte pre-parse safety limit. Reduce the metadata, then retry.`;
+  }
+
+  let lineCount = source.length === 0 ? 0 : 1;
+  let structuralTokens = 0;
+  let atLineStart = true;
+  let indent = 0;
+  for (let index = 0; index < source.length; index += 1) {
+    const code = source.charCodeAt(index);
+    if (code === 0x0a || (code === 0x0d && source.charCodeAt(index + 1) !== 0x0a)) {
+      // A final line ending terminates the current line; it does not create an additional empty
+      // source line. This keeps the inclusive 4,000-line boundary usable for normal YAML, whose
+      // closing frontmatter delimiter requires the preceding content line to be terminated.
+      if (index + 1 < source.length) {
+        lineCount += 1;
+      }
+      if (lineCount > OKF_SEMANTIC_LIMITS.maxFrontmatterLines) {
+        return `YAML frontmatter exceeds the ${String(OKF_SEMANTIC_LIMITS.maxFrontmatterLines)}-line pre-parse safety limit. Reduce the metadata, then retry.`;
+      }
+      atLineStart = true;
+      indent = 0;
+      continue;
+    }
+    if (atLineStart && code === 0x20) {
+      indent += 1;
+      if (indent > OKF_SEMANTIC_LIMITS.maxFrontmatterIndentColumns) {
+        return `YAML frontmatter indentation exceeds the ${String(OKF_SEMANTIC_LIMITS.maxFrontmatterIndentColumns)}-column pre-parse safety limit. Reduce nesting, then retry.`;
+      }
+      continue;
+    }
+    if (code !== 0x09) {
+      atLineStart = false;
+    }
+    if (
+      (code > 0 && code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) ||
+      (code >= 0x21 && code <= 0x2f) ||
+      (code >= 0x3a && code <= 0x40) ||
+      (code >= 0x5b && code <= 0x60) ||
+      (code >= 0x7b && code <= 0x7e)
+    ) {
+      structuralTokens += 1;
+    }
+    if (structuralTokens > OKF_SEMANTIC_LIMITS.maxFrontmatterStructuralTokens) {
+      return `YAML frontmatter exceeds the ${String(OKF_SEMANTIC_LIMITS.maxFrontmatterStructuralTokens)}-token pre-parse complexity limit. Reduce the metadata, then retry.`;
+    }
+  }
+  return yamlCstNestingFailure(normalizeYamlLineEndings(source));
+}
+
+/**
+ * The yaml composer normalizes a lone CR as a line ending. Keep the pre-AST CST inspection on the
+ * same length-preserving input so it cannot observe a shallower structure than semantic parsing.
+ */
+function normalizeYamlLineEndings(source: string): string {
+  return source.replace(/\r(?!\n)/gu, '\n');
+}
+
+/**
+ * Uses yaml's concrete-syntax parser, but not its semantic AST composer, so comments, scalar
+ * styles, node properties, flow collections, and indentless sequences share the package's grammar
+ * rather than a second handwritten YAML lexer.
+ */
+function yamlCstNestingFailure(source: string): string | undefined {
+  const pending: Array<{ readonly token: CST.Token; readonly parentDepth: number }> = [];
+  try {
+    for (const token of new Parser().parse(source)) {
+      pending.push({ token, parentDepth: -1 });
+    }
+  } catch {
+    return 'YAML frontmatter could not be inspected safely before semantic parsing. Reduce the metadata, then retry.';
+  }
+
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current === undefined) {
+      continue;
+    }
+    const { token, parentDepth } = current;
+    const depth = CST.isCollection(token) ? parentDepth + 1 : parentDepth;
+    if (depth > OKF_SEMANTIC_LIMITS.maxFrontmatterNestingDepth) {
+      return `YAML frontmatter collection nesting exceeds the ${String(OKF_SEMANTIC_LIMITS.maxFrontmatterNestingDepth)}-level pre-parse safety limit. Reduce nesting, then retry.`;
+    }
+    if (token.type === 'document') {
+      if (token.value !== undefined) {
+        pending.push({ token: token.value, parentDepth: depth });
+      }
+    } else if (token.type === 'block-map' || token.type === 'flow-collection') {
+      for (const item of token.items) {
+        // In a flow sequence, a keyed entry is composed as an implicit YAMLMap even though the CST
+        // does not expose a collection token for that map. This includes explicit and null keys.
+        const itemParentDepth =
+          token.type === 'flow-collection' &&
+          token.start.type === 'flow-seq-start' &&
+          item.key !== undefined
+            ? depth + 1
+            : depth;
+        if (itemParentDepth > OKF_SEMANTIC_LIMITS.maxFrontmatterNestingDepth) {
+          return `YAML frontmatter collection nesting exceeds the ${String(OKF_SEMANTIC_LIMITS.maxFrontmatterNestingDepth)}-level pre-parse safety limit. Reduce nesting, then retry.`;
+        }
+        if (item.key !== undefined && item.key !== null) {
+          pending.push({ token: item.key, parentDepth: itemParentDepth });
+        }
+        if (item.value !== undefined) {
+          pending.push({ token: item.value, parentDepth: itemParentDepth });
+        }
+      }
+    } else if (token.type === 'block-seq') {
+      for (const item of token.items) {
+        if (item.value !== undefined) {
+          pending.push({ token: item.value, parentDepth: depth });
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
 interface RelativeYamlRange {
   readonly start: number;
   readonly end: number;
@@ -301,28 +504,38 @@ function findNonStringMappingKey(node: unknown): RelativeYamlRange | undefined {
   return undefined;
 }
 
-function normalizeFrontmatter(raw: JsonObject): NormalizedFrontmatter {
-  const tags = semanticValue(raw.tags);
+function normalizeFrontmatter(
+  raw: JsonObject,
+  explicitTags: Readonly<Record<string, string>>,
+): NormalizedFrontmatter {
+  const tags = semanticValue(raw.tags, explicitTags.tags);
   return {
-    ...optionalString('type', raw.type),
-    ...optionalString('title', raw.title),
-    ...optionalString('description', raw.description),
-    ...optionalString('resource', raw.resource),
+    ...optionalString('type', raw.type, explicitTags.type),
+    ...optionalString('title', raw.title, explicitTags.title),
+    ...optionalString('description', raw.description, explicitTags.description),
+    ...optionalString('resource', raw.resource, explicitTags.resource),
     tags: Array.isArray(tags) && tags.every((tag) => typeof tag === 'string') ? [...tags] : [],
-    ...optionalString('timestamp', raw.timestamp),
+    ...optionalString('timestamp', raw.timestamp, explicitTags.timestamp),
   };
 }
 
 function optionalString<Key extends 'type' | 'title' | 'description' | 'resource' | 'timestamp'>(
   key: Key,
   value: JsonValue | undefined,
+  explicitTag: string | undefined,
 ): Partial<Record<Key, string>> {
-  const semantic = semanticValue(value);
+  const semantic = semanticValue(value, explicitTag);
   return typeof semantic === 'string' ? ({ [key]: semantic } as Record<Key, string>) : {};
 }
 
-function semanticValue(value: JsonValue | undefined): JsonValue | undefined {
+function semanticValue(
+  value: JsonValue | undefined,
+  explicitTag: string | undefined,
+): JsonValue | undefined {
   if (value === undefined || value === null || Array.isArray(value) || typeof value !== 'object') {
+    return value;
+  }
+  if (explicitTag === undefined) {
     return value;
   }
   const objectValue = value as JsonObject;
@@ -334,9 +547,61 @@ function semanticValue(value: JsonValue | undefined): JsonValue | undefined {
     return value;
   }
   const detailsObject = details as JsonObject;
-  return typeof detailsObject.tag === 'string' && typeof detailsObject.source === 'string'
+  return detailsObject.tag === explicitTag && typeof detailsObject.source === 'string'
     ? detailsObject.value
     : value;
+}
+
+/** Returns a semantic string only for a plain string or a parser-proven explicit `!!str`. */
+export function semanticFrontmatterString(
+  frontmatter: ParsedFrontmatter,
+  field: string,
+): string | undefined {
+  const value = frontmatter.raw[field];
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (frontmatter.explicitTags[field] !== YAML_STR_TAG) {
+    return undefined;
+  }
+  const semantic = semanticValue(value, YAML_STR_TAG);
+  return typeof semantic === 'string' ? semantic : undefined;
+}
+
+function collectTopLevelExplicitTags(
+  mapping: YAMLMap,
+  document: Document,
+): Readonly<Record<string, string>> {
+  const tags: Record<string, string> = Object.create(null) as Record<string, string>;
+  for (const pair of mapping.items) {
+    if (!isScalar(pair.key) || typeof pair.key.value !== 'string') {
+      continue;
+    }
+    const tag = explicitTag(pair.value, document);
+    if (tag !== undefined) {
+      tags[pair.key.value] = tag;
+    }
+  }
+  return tags;
+}
+
+function explicitTag(value: unknown, document: Document): string | undefined {
+  let current = value;
+  const aliases = new Set<object>();
+  for (let depth = 0; depth <= MAX_ALIAS_EXPANSIONS; depth += 1) {
+    if (!isNode(current)) {
+      return undefined;
+    }
+    if (!isAlias(current)) {
+      return current.tag;
+    }
+    if (aliases.has(current)) {
+      return undefined;
+    }
+    aliases.add(current);
+    current = current.resolve(document);
+  }
+  return undefined;
 }
 
 type JsonConversion<T> =
@@ -349,6 +614,7 @@ function toJsonObject(
 ): JsonConversion<JsonObject> {
   const converted = toJsonValue(value, {
     aliasExpansions: 0,
+    outputUnits: 0,
     ancestors: new Set<object>(),
     document,
     source,
@@ -368,12 +634,17 @@ function toJsonObject(
 
 interface YamlConversionContext {
   aliasExpansions: number;
+  outputUnits: number;
   readonly ancestors: Set<object>;
   readonly document: Document;
   readonly source: string;
 }
 
 function toJsonValue(value: unknown, context: YamlConversionContext): JsonConversion<JsonValue> {
+  const nodeBudgetFailure = chargeSemanticOutput(context, 1);
+  if (nodeBudgetFailure !== undefined) {
+    return { ok: false, message: nodeBudgetFailure };
+  }
   if (value === null) {
     return { ok: true, value: null };
   }
@@ -383,6 +654,10 @@ function toJsonValue(value: unknown, context: YamlConversionContext): JsonConver
   }
 
   if (isAlias(value)) {
+    const aliasBudgetFailure = chargeSemanticOutput(context, 1);
+    if (aliasBudgetFailure !== undefined) {
+      return { ok: false, message: aliasBudgetFailure };
+    }
     context.aliasExpansions += 1;
     if (context.aliasExpansions > MAX_ALIAS_EXPANSIONS) {
       return {
@@ -405,13 +680,21 @@ function toJsonValue(value: unknown, context: YamlConversionContext): JsonConver
     return converted;
   }
 
+  const originalSource = originalNodeSource(value, context.source);
+  const wrapperBudgetFailure = chargeSemanticOutput(
+    context,
+    3 + utf8Length(value.tag) + utf8Length(originalSource),
+  );
+  if (wrapperBudgetFailure !== undefined) {
+    return { ok: false, message: wrapperBudgetFailure };
+  }
   return {
     ok: true,
     value: {
       [YAML_TAGGED_VALUE_KEY]: {
         tag: value.tag,
         value: converted.value,
-        source: originalNodeSource(value, context.source),
+        source: originalSource,
       },
     },
   };
@@ -422,7 +705,7 @@ function convertNodeContent(
   context: YamlConversionContext,
 ): JsonConversion<JsonValue> {
   if (isScalar(value)) {
-    return toJsonScalar(value.value, value.tag);
+    return toJsonScalar(value.value, value.tag, context);
   }
   if (isMap(value)) {
     return value.tag === YAML_SET_TAG ? toJsonSet(value, context) : toJsonMapping(value, context);
@@ -433,11 +716,26 @@ function convertNodeContent(
   return { ok: false, message: 'custom YAML object types are not supported' };
 }
 
-function toJsonScalar(value: unknown, tag: string | undefined): JsonConversion<JsonValue> {
+function toJsonScalar(
+  value: unknown,
+  tag: string | undefined,
+  context: YamlConversionContext,
+): JsonConversion<JsonValue> {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') {
+    const failure = chargeSemanticOutput(
+      context,
+      typeof value === 'string' ? utf8Length(value) : 1,
+    );
+    if (failure !== undefined) {
+      return { ok: false, message: failure };
+    }
     return { ok: true, value };
   }
   if (typeof value === 'number') {
+    const failure = chargeSemanticOutput(context, 8);
+    if (failure !== undefined) {
+      return { ok: false, message: failure };
+    }
     if (Number.isFinite(value)) {
       return { ok: true, value };
     }
@@ -450,12 +748,17 @@ function toJsonScalar(value: unknown, tag: string | undefined): JsonConversion<J
     return { ok: false, message: 'non-finite numbers are not supported' };
   }
   if (typeof value === 'bigint') {
+    const decimal = value.toString(10);
+    const failure = chargeSemanticOutput(context, 2 + utf8Length(decimal));
+    if (failure !== undefined) {
+      return { ok: false, message: failure };
+    }
     if (value >= BigInt(Number.MIN_SAFE_INTEGER) && value <= BigInt(Number.MAX_SAFE_INTEGER)) {
       return { ok: true, value: Number(value) };
     }
     return {
       ok: true,
-      value: { [EXACT_YAML_INTEGER_KEY]: value.toString(10) },
+      value: { [EXACT_YAML_INTEGER_KEY]: decimal },
     };
   }
 
@@ -463,12 +766,20 @@ function toJsonScalar(value: unknown, tag: string | undefined): JsonConversion<J
     if (tag !== YAML_TIMESTAMP_TAG || !Number.isFinite(value.getTime())) {
       return { ok: false, message: 'custom YAML object types are not supported' };
     }
-    return { ok: true, value: value.toISOString() };
+    const iso = value.toISOString();
+    const failure = chargeSemanticOutput(context, utf8Length(iso));
+    return failure === undefined ? { ok: true, value: iso } : { ok: false, message: failure };
   }
 
   if (value instanceof Uint8Array) {
     if (tag !== YAML_BINARY_TAG) {
       return { ok: false, message: 'custom YAML object types are not supported' };
+    }
+    // A JSON number is charged at eight units plus one array slot. Budget the complete octet
+    // array before spreading so a compact base64 scalar cannot amplify into an unbounded array.
+    const failure = chargeSemanticOutput(context, 1 + value.byteLength * 9);
+    if (failure !== undefined) {
+      return { ok: false, message: failure };
     }
     return { ok: true, value: [...value] };
   }
@@ -486,6 +797,11 @@ function toJsonMapping(value: YAMLMap, context: YamlConversionContext): JsonConv
     if (!isScalar(pair.key) || typeof pair.key.value !== 'string') {
       context.ancestors.delete(value);
       return { ok: false, message: 'mapping keys must be strings' };
+    }
+    const keyBudgetFailure = chargeSemanticOutput(context, 1 + utf8Length(pair.key.value));
+    if (keyBudgetFailure !== undefined) {
+      context.ancestors.delete(value);
+      return { ok: false, message: keyBudgetFailure };
     }
     const converted = toJsonValue(pair.value, context);
     if (!converted.ok) {
@@ -508,6 +824,11 @@ function toJsonSequence(
   context.ancestors.add(value);
   const result: JsonValue[] = [];
   for (const item of value.items) {
+    const entryBudgetFailure = chargeSemanticOutput(context, 1);
+    if (entryBudgetFailure !== undefined) {
+      context.ancestors.delete(value);
+      return { ok: false, message: entryBudgetFailure };
+    }
     const converted = isPair(item)
       ? toJsonPairAsObject(item.key, item.value, context)
       : toJsonValue(item, context);
@@ -529,6 +850,10 @@ function toJsonPairAsObject(
   if (!isScalar(key) || typeof key.value !== 'string') {
     return { ok: false, message: 'ordered mapping keys must be strings' };
   }
+  const keyBudgetFailure = chargeSemanticOutput(context, 1 + utf8Length(key.value));
+  if (keyBudgetFailure !== undefined) {
+    return { ok: false, message: keyBudgetFailure };
+  }
   const converted = toJsonValue(value, context);
   if (!converted.ok) {
     return converted;
@@ -548,6 +873,11 @@ function toJsonSet(
   context.ancestors.add(value);
   const result: JsonValue[] = [];
   for (const pair of value.items) {
+    const entryBudgetFailure = chargeSemanticOutput(context, 1);
+    if (entryBudgetFailure !== undefined) {
+      context.ancestors.delete(value);
+      return { ok: false, message: entryBudgetFailure };
+    }
     const convertedKey = toJsonValue(pair.key, context);
     if (!convertedKey.ok) {
       context.ancestors.delete(value);
@@ -566,6 +896,25 @@ function toJsonSet(
   }
   context.ancestors.delete(value);
   return { ok: true, value: result };
+}
+
+function chargeSemanticOutput(
+  context: YamlConversionContext,
+  additionalUnits: number,
+): string | undefined {
+  if (
+    !Number.isSafeInteger(additionalUnits) ||
+    additionalUnits < 0 ||
+    context.outputUnits > OKF_SEMANTIC_LIMITS.maxFrontmatterOutputUnits - additionalUnits
+  ) {
+    return `semantic output exceeds the ${String(OKF_SEMANTIC_LIMITS.maxFrontmatterOutputUnits)}-unit per-document safety limit`;
+  }
+  context.outputUnits += additionalUnits;
+  return undefined;
+}
+
+function utf8Length(value: string): number {
+  return utf8Encoder.encode(value).byteLength;
 }
 
 function originalNodeSource(

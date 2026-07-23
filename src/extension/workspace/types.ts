@@ -1,14 +1,69 @@
 import type { Uri } from 'vscode';
 
-import type { ExpectedContent } from '../../core/model/index.js';
+import type { ExpectedContent, OperationProblem } from '../../core/model/index.js';
 
 export type WorkspaceEntryType = 'directory' | 'file' | 'symbolic-link' | 'unknown';
+
+/**
+ * Opaque resource generation captured by a WorkspacePort and consumed only by
+ * the same port when it performs the corresponding read.
+ */
+export type WorkspaceReadIdentity =
+  | {
+      readonly kind: 'native-file';
+      readonly device: string;
+      readonly inode: string;
+      readonly mode: string;
+      readonly ctimeNs: string;
+      readonly birthtimeNs: string;
+    }
+  | {
+      /**
+       * VS Code exposes no handle or conditional-read API for arbitrary
+       * providers. The provider metadata is therefore an explicit trusted
+       * boundary rather than an atomic filesystem identity.
+       */
+      readonly kind: 'trusted-provider';
+      readonly type: WorkspaceEntryType;
+      readonly size: number;
+      readonly ctime: number;
+      readonly mtime: number;
+    };
+
+export function sameWorkspaceReadIdentity(
+  left: WorkspaceReadIdentity | undefined,
+  right: WorkspaceReadIdentity | undefined,
+): boolean {
+  if (left === undefined || right === undefined || left.kind !== right.kind) {
+    return left === right;
+  }
+  if (left.kind === 'native-file' && right.kind === 'native-file') {
+    return (
+      left.device === right.device &&
+      left.inode === right.inode &&
+      left.mode === right.mode &&
+      left.ctimeNs === right.ctimeNs &&
+      left.birthtimeNs === right.birthtimeNs
+    );
+  }
+  if (left.kind === 'trusted-provider' && right.kind === 'trusted-provider') {
+    return (
+      left.type === right.type &&
+      left.size === right.size &&
+      left.ctime === right.ctime &&
+      left.mtime === right.mtime
+    );
+  }
+  return false;
+}
 
 export interface WorkspaceStat {
   readonly type: WorkspaceEntryType;
   readonly size: number;
   readonly ctime: number;
   readonly mtime: number;
+  /** Present when this port can verify a later read against the captured generation. */
+  readonly readIdentity?: WorkspaceReadIdentity;
 }
 
 export interface WorkspaceEntry<TUri = Uri> {
@@ -40,6 +95,8 @@ export type WorkspaceTraversalEvent<TUri = Uri> =
       /** POSIX provider path relative to the traversal root; empty for the root itself. */
       readonly relativePath: string;
       readonly message: string;
+      /** Safety and generation failures invalidate a complete current-bundle load. */
+      readonly reason?: 'access' | 'generation-changed' | 'safety-limit';
     };
 
 export interface WorkspaceWriteOptions {
@@ -51,6 +108,43 @@ export interface WorkspaceWriteOptions {
    * provider exposes a conditional write API.
    */
   readonly expected: ExpectedContent;
+  /**
+   * Rechecks host-owned authorization immediately before a provider mutation.
+   * Implementations must invoke it after any preparatory await and before each
+   * create/write primitive when supplied.
+   */
+  readonly assertAuthorized?: () => void;
+  /**
+   * Anchors the adapter's internal compare-before-write and read-back reads to
+   * caller-owned directory generations. The caller prepares a fresh
+   * post-mutation snapshot because a create legitimately changes its parent.
+   */
+  readonly readBoundary?: WorkspaceWriteReadBoundary;
+}
+
+export interface WorkspaceWriteReadBoundary {
+  prepareExpectedRead(): Promise<void>;
+  assertExpectedRead(): Promise<void>;
+  prepareVerificationRead(): Promise<void>;
+  assertVerificationRead(): Promise<void>;
+}
+
+export interface WorkspaceReadOptions {
+  /**
+   * Generation returned by the immediately preceding stat. Native `file:`
+   * implementations must fail closed when it is absent or no longer matches.
+   */
+  readonly expectedIdentity?: WorkspaceReadIdentity | undefined;
+}
+
+export class WorkspaceWriteAuthorizationError extends Error {
+  readonly problem: OperationProblem;
+
+  constructor(problem: OperationProblem) {
+    super(problem.message);
+    this.name = 'WorkspaceWriteAuthorizationError';
+    this.problem = problem;
+  }
 }
 
 /**
@@ -58,7 +152,7 @@ export interface WorkspaceWriteOptions {
  * resources and must enforce `WorkspaceWriteOptions.expected`.
  */
 export interface WorkspacePort<TUri = Uri> {
-  read(uri: TUri): Promise<Uint8Array>;
+  read(uri: TUri, options?: WorkspaceReadOptions): Promise<Uint8Array>;
   /** Streams traversal results and reports unreadable subtrees without aborting siblings. */
   traverse(
     root: TUri,

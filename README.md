@@ -1,17 +1,10 @@
 # OKF Workbench
 
 Create, validate, index, and explore Open Knowledge Format bundles locally in VS Code-compatible
-editors.
+desktop editors.
 
-> Release status: the MVP implementation is a local release candidate. It has not been published
-> to Open VSX. The recorded candidate passed the required hosted compatibility matrix. Project-
-> license approval, public support resources, protected publication controls, registry
-> authorization and Publisher Agreement verification, and explicit exact-digest maintainer
-> approval remain release gates.
-
-OKF Workbench is a local-first editor extension for the
-[Open Knowledge Format (OKF) v0.1 specification](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/ee67a5ca27044ebe7c38385f5b6cffc2305a9c1a/okf/SPEC.md).
-It supports the complete authoring loop instead of acting only as a graph viewer:
+OKF Workbench implements a local authoring loop for the
+[Open Knowledge Format (OKF) v0.1 specification](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/ee67a5ca27044ebe7c38385f5b6cffc2305a9c1a/okf/SPEC.md):
 
 ```text
 initialize -> create -> edit -> validate -> explore -> repair
@@ -32,10 +25,6 @@ initialize -> create -> edit -> validate -> explore -> repair
   changes.
 - Generates a managed `AGENTS.md` section and a project-local Agent Skill after preview.
 
-The extension is deterministic and local-first. It has no built-in AI provider, account,
-authentication flow, telemetry, content upload, or cloud service. See the
-[privacy statement](docs/privacy.md) for the exact boundary.
-
 ## Commands
 
 | Command Palette title | Stable command ID |
@@ -47,89 +36,45 @@ authentication flow, telemetry, content upload, or cloud service. See the
 | `OKF: Open 3D Graph` | `okfWorkbench.openGraph` |
 | `OKF: Set Up Agent Integration` | `okfWorkbench.setupAgentIntegration` |
 
-## Try the release candidate
+Open a workspace folder and run the `OKF:` commands from the Command Palette or an Explorer folder
+context menu. Authoring commands require a trusted workspace. Validation and graph inspection
+remain read-only.
 
-Until an approved Open VSX release exists, build and install the VSIX locally:
+The extension targets VS Code-compatible desktop editors with API floor `^1.121.0`. Compatibility
+is specific to the editor version, operating system, and exact extension package; the manifest
+floor is not a universal compatibility guarantee.
 
-```sh
-mise x node@24.18.0 -- npm ci
-mise x node@24.18.0 -- npm run check
-mise x node@24.18.0 -- npm run package
-mise x node@24.18.0 -- npm run package:check
-```
-
-Then run **Extensions: Install from VSIX...** and select
-`artifacts/okf-workbench.vsix`. Open a workspace folder and use the `OKF:` commands from the
-Command Palette. Authoring commands require a trusted workspace; read-only inspection remains
-available within the extension's declared workspace-trust boundary.
-
-The manifest targets VS Code-compatible desktop editors with API floor `^1.121.0`. The release
-qualification matrix covers VS Code 1.121.0 on Ubuntu; VS Code 1.127.0 on Ubuntu, macOS, and
-Windows; and VSCodium 1.121.03429 on Ubuntu, macOS, and Windows. The current candidate passed every
-required hosted lane, including clean install, activation, untrusted-workspace refusal, upgrade,
-uninstall, and guarded no-egress checks. Exact commit, digest, runner, and workflow receipts are
-kept outside the package in the
-[compatibility matrix](docs/compatibility-matrix.md) and
-[acceptance evidence](docs/acceptance-evidence.md). A package-content change invalidates that
-candidate and requires candidate-specific reruns.
-
-## Safety model
+## Safety and file ownership
 
 - Markdown in the workspace is the source of truth; the graph is derived and read-only.
 - Generated changes are previewed, path-contained, and collision-checked before application.
 - Existing unrelated `index.md` and `AGENTS.md` content is preserved through managed regions.
 - Unknown frontmatter fields and arbitrary non-empty concept types remain valid.
 - Webview scripts and styles are packaged locally under a restrictive Content Security Policy.
-- Uninstalling the extension does not delete generated bundles or agent instructions.
+- Disabling or uninstalling the extension does not delete generated bundles or agent instructions.
 
-Review the [security and privacy evidence](docs/security-privacy-evidence.md) for implemented
-controls, known findings, and proof gaps. The tracked schema-v2
-[headed-editor performance evidence](docs/performance-evidence.md) passes QR-002 at 703 ms p95 over
-20 correlated file-event samples and passes QR-003 with `d3` as the release engine for the exact
-measured production bundles. This is evidence for Mac16,7 / Apple M4 Pro / VS Code 1.127.0, not a
-general performance guarantee.
+## Privacy
 
-## Development
+OKF Workbench processes workspace Markdown and file metadata locally through editor workspace APIs.
+It has no built-in account, authentication flow, telemetry, analytics, advertising, AI provider,
+content upload, synchronization service, or runtime HTTP client. It does not intentionally send
+bundle content, filenames, frontmatter, links, prompts, diagnostics, or graph data to the
+maintainer or a hosted service.
 
-Use Node.js `24.18.0` and npm `11.16.0`. The repository commits both `.node-version` and `.nvmrc`;
-using `mise` is optional.
+Only a serializable graph presentation payload crosses into the Webview. Source URIs and proposed
+file contents stay in the Extension Host, and the Webview's Content Security Policy disables
+network connections. The output channel is designed to record operational metadata without
+workspace bodies, proposed content, source URIs, credentials, or secret-bearing fields.
 
-| Script | Purpose |
-| --- | --- |
-| `npm run build` | Produce release extension-host and Webview bundles |
-| `npm run build:dev` | Produce debuggable local bundles |
-| `npm run check` | Run formatting, lint, strict type, unit, dependency, and build gates |
-| `npm run test:integration` | Run the extension test harness against the selected VS Code version |
-| `npm run test:webview` | Build and run the standalone Chromium Webview harness |
-| `npm run package` | Create `artifacts/okf-workbench.vsix` |
-| `npm run package:check` | Inspect the VSIX allowlist, exclusions, manifest, and local assets |
+Editor update checks, extension-registry access, Git, remote-workspace providers, filesystem
+synchronization, and any external coding agent configured by the user are separate software and
+are outside this extension's bundle-processing boundary. `OKF: Set Up Agent Integration` only
+generates local instruction files; it does not install, invoke, or configure an AI model.
 
-Press F5 with the repository open to build and launch an extension-development host.
+## License and notices
 
-## Documentation and support
+OKF Workbench is licensed under the MIT License. The packaged VSIX includes the complete project
+license as `LICENSE.txt` and the bundled production-dependency inventory and license texts as
+`THIRD_PARTY_NOTICES.md`.
 
-- [Documentation index](docs/index.md)
-- [MVP scope](docs/mvp-scope.md)
-- [Functional requirements](docs/functional-requirements.md)
-- [OKF v0.1 compatibility contract](docs/okf-v0.1-contract.md)
-- [Architecture](docs/architecture.md)
-- [Agent integration](docs/agent-integration.md)
-- [Support and issue reporting](docs/support.md)
-- [Privacy statement](docs/privacy.md)
-- [Changelog](CHANGELOG.md)
-
-The project license is an unresolved release gate. Do not publicly distribute the `0.1.0`
-candidate until the maintainer has selected a license, added the matching root license file, and
-completed the license review in the [release checklist](docs/release-checklist.md). Third-party
-notices are tracked separately in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-The confirmed Open VSX namespace name is `straydog`, so the intended extension identifier is
-`straydog.okf-workbench`. This confirms naming only; authorization to publish under the namespace
-and Publisher Agreement status have not yet been independently verified.
-
-## Project links
-
-- [Repository](https://github.com/koizumikento/okf-workbench)
-- [Issues](https://github.com/koizumikento/okf-workbench/issues)
-- [Open VSX Registry](https://open-vsx.org/)
-- [Open VSX draft listing](docs/open-vsx-listing.md)
+The extension identifier is `straydog.okf-workbench`.

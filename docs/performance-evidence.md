@@ -1,42 +1,58 @@
 # Performance evidence
 
-- Status: current-candidate schema-v2 headed evidence passes QR-002 and QR-003; `d3` selected
-- Date: 2026-07-22
+- Status: **current local headed evidence passes**; hosted compatibility and release gates remain
+  separate
+- Date: 2026-07-23
 - Governing decision:
   [ADR 0005, OQ-008](decisions/0005-resolve-mvp-implementation-questions.md#oq-008--performance-fixtures-and-thresholds)
 
-## Current result
+## Current schema-v3 measurement and binding status
+
+The tracked [current schema-v3 report](evidence/performance/vscode-1.129.1.md) and
+[current raw samples](evidence/performance/vscode-1.129.1.json) were captured in a genuine headed
+VS Code `1.129.1` session on 2026-07-23 and pass the strict current-input evaluator. The record is
+bound to the production runtime, build inputs, diagnostics observer, QR-003 harness inputs and
+definition, injected harness bytes, and editor/runtime metadata recorded in those files. Samples
+were captured in one run; none were copied or synthesized.
 
 | Target | Current status | Evidence |
 | --- | --- | --- |
-| QR-002 — update p95 at or below 1,000 ms | **Pass for the recorded candidate** | 703 ms nearest-rank p95 over 20 end-to-end samples: five each of create, change, rename, and delete. Every sample correlates current Problems diagnostics and graph publication to the same revision after the 250 ms debounce. |
-| QR-003 — representative graph remains interactive | **Pass for the recorded candidate** | On the 1,000-node / 5,000-edge fixture, `d3` reached its first interactive frame in 328.9 ms, cooled down in 3,054.7 ms, kept interaction p95 values at or below 27.5 ms, and scheduled zero post-cooldown idle frames. |
-| Release force-engine default | **`d3` selected** | `d3` passed every threshold. `ngraph` reached its first interactive frame in 102.7 ms but failed the required cooldown signal after 120,000.3 ms, so it was not an eligible release default. |
+| QR-002 — update p95 at or below 1,000 ms | **Pass** | `832.00 ms` nearest-rank p95 across 20 create/change/rename/delete samples, with runtime-originated same-revision Problems and graph correlation. |
+| QR-003 — representative graph remains interactive | **Pass** | `d3` first-frame maximum `299.50 ms`, cooldown mean `2,872.70 ms`, interaction p95 values `7.80/15.60/1.10/0.60 ms`, and zero idle frames. |
+| Headed Webview network | **Pass** | Strict pre-navigation CDP observation recorded zero remote HTTP(S)/WS requests, two packaged-resource loads, two internal Webview navigations, and zero other-scheme requests. |
+| Release force-engine default | **`d3` selected** | Same-Electron comparison passed `d3`; `ngraph` recorded a structured WebGL draw timeout after 5,000 ms and was not selected. |
 
-The tracked [schema-v2 report](evidence/performance/vscode-1.127.0.md) and
-[sanitized raw samples](evidence/performance/vscode-1.127.0.json) pass the strict evaluator against
-the current manifest, exact `3d-force-graph` dependency, Webview bundle, and combined Extension Host
-and Webview bytes. The result is evidence for the recorded Mac16,7 / Apple M4 Pro / VS Code 1.127.0
-environment and exact candidate only; it is not a guarantee for other machines, editors, or future
-candidate bytes. A unit test, Node benchmark, or headless Chromium run must not be relabeled as
-headed-editor evidence.
+This local record applies only to the recorded Mac16,7 / Apple M4 Pro environment, VS Code
+`1.129.1` commit `8a7abeba6e03ea3af87bfbce9a1b7e48fed567b8`, and the exact bound inputs. It is
+not a guarantee for other machines, editors, or future candidate bytes, and it does not replace
+the separate hosted compatibility, packaged lifecycle, manual UI, license, or publication gates.
+A unit test, Node benchmark, or headless Chromium run must not be relabeled as headed-editor
+evidence.
 
-### What the tracked QR-002 result establishes
+The [former schema-v3 report](evidence/performance/vscode-1.127.0.md) and
+[former raw samples](evidence/performance/vscode-1.127.0.json) remain historical,
+non-qualifying measurements. Their identities no longer match, and the old record lacks the
+newly mandatory runtime diagnostics correlation, WebGL frame/draw proof, interaction outcome
+assertions, coherent timestamps, and strict Webview-network envelope. `--require-passing` rejects
+it.
 
-The headed runner performed five cycles of create, change, rename, and delete operations for 20
+### Historical QR-002 measurement boundary
+
+The former runner performed five cycles of create, change, rename, and delete operations for 20
 total structured samples. Each sample records both publication durations, the graph revision, a
 strictly increasing diagnostics-observer sequence, the revision to which the diagnostics were
 correlated, and the expected bundle-relative diagnostic path/code pairs. `durationMs` is the maximum
 of the diagnostics and graph publication durations, so a sample cannot end before both current
-results are observed. The resulting 703 ms p95 is below the accepted 1,000 ms threshold in the
-recorded environment.
+results are observed. That run reported 719 ms p95, but its correlation field was assigned by the
+runner after independently observing the two publications. It therefore does not satisfy the
+current same-revision correlation contract and is not release evidence for the current candidate.
 
 The Problems observation comes from the test-only extension under
 `test/benchmarks/diagnostics-observer`. It subscribes to VS Code's diagnostics API and records only
 the OKF diagnostic sources needed for correlation. The headed runner loads it as a separate
 extension-development path; it is not part of the production extension bundle or packaged VSIX.
 
-## Recorded schema-v2 environment
+## Former schema-v3 environment (historical, non-qualifying)
 
 | Field | Recorded value |
 | --- | --- |
@@ -46,24 +62,38 @@ extension-development path; it is not part of the production extension bundle or
 | Editor | VS Code 1.127.0, commit `4fe60c8b1cdac1c4c174f2fb180d0d758272d713` |
 | Electron / Chromium | 42.2.0 / 148.0.7778.97 |
 | Package versions | OKF Workbench 0.1.0; `3d-force-graph` 1.80.0 |
-| Product graph command-to-interactive | 3,420 ms |
-| `d3` peak process-tree RSS / idle CPU / camera | 2,433.55 MB / 4.23% / 57.04 fps |
-| Recorded Webview SHA-256 | `853502f50117c6b565b8a9befdb474e1cbaf39bf78b8b7eb6aa3d52f92266d7b` |
-| Recorded extension + Webview SHA-256 | `93c75712626c20bee2b77ad74810267733c6457da85ad89c595772ac6e6d92ad` |
+| Product graph command-to-interactive | 2,497 ms |
+| `d3` peak process-tree RSS / idle CPU / camera | 2,665.92 MB / 0.83% / 69.13716813703441 fps |
+| Extension Host JavaScript SHA-256 | `36cbc9669b790d4633a2277a257c5037281df25080fec758abe4c7ffd26c9ded` |
+| Webview JavaScript SHA-256 | `153b9891bdab9a1eb05357a2a1c8f58dc92bd48362839621b7c877d1ac5ffc35` |
+| Webview CSS SHA-256 | `8f47124ac42ffdc619489d9b9a618bedad59e63eea9fcb5beb8d79b8facb7ce4` |
+| Domain-separated production bundle-set SHA-256 | `d1ceefe1a35532335b9d20bb691fe7144a354c0f2cb282c41504b6fd2d0ea9d6` |
+| Full production runtime snapshot SHA-256 | `2e881d977b2f06e96f960003f7c3ed5df2cd1987363ac56329fb6db8efb7663d` |
+| Production build-input snapshot SHA-256 | `4582b2dd27e91cb320447208208b07e6695c938dfdfe031822097c57f2a9d447` |
+| QR-002 diagnostics-observer snapshot SHA-256 | `7673ed26ca74fcaa1d6960c01c57b64d5b5637f384b00515bdee718825480e94` |
+| QR-003 harness-input snapshot SHA-256 | `db5fab6a6cd40e3d1c33621325a7dffeb191078be45b5c269861ca94e2fa6790` |
+| QR-003 harness-definition SHA-256 | `56bab3d9a7f2656554e346b6be9437d05ce29027488c290187838705f0c364fa` |
+| QR-003 injected harness bundle SHA-256 | `3e26a468e1d275765468f1fa882aeea53c296e56eae444310fc773be7726fc11` |
 | Webview remote network requests | 0 HTTP(S)/WS requests; 2 local packaged-resource loads |
 
-The combined SHA-256 is over the bytes of `dist/extension.cjs` followed by the bytes of
-`dist/webview/main.js`. The separately recorded Webview hash binds the renderer bytes directly.
+The former record includes the individual SHA-256 for `dist/extension.cjs`,
+`dist/webview/main.js`, and `dist/webview/main.css`, plus the framed bundle-set hash defined under
+[Current-candidate binding](#current-candidate-binding). The six input identities bind the complete
+runtime tree, production build inputs, diagnostics observer, QR-003 harness inputs and definition,
+and the exact injected harness bundle.
 
 The runner used three recorded Chromium automation flags to prevent an unattended headed window
 from being throttled in the background. It did not disable GPU acceleration. These are present in
 the raw evidence and do not create a cross-machine guarantee.
 
-The schema-v2 run also attached CDP `Network` events directly to the real OKF Webview target. It
+The former run also attached CDP `Network` events directly to the real OKF Webview target. It
 combined those events with the Webview's initial resource timing entries across refresh, search,
 filter, selection, engine comparison, and disposal. It observed zero remote HTTP(S)/WS requests,
 two local packaged-resource loads from the VS Code Webview resource origin, and no other schemes.
 Only sanitized origins and counts are retained; no workspace content or URL paths are recorded.
+Those observations are historical because the old recorder attached after initial graph load and
+did not prove pre-navigation coverage, WebSocket-specific events, a live final CDP barrier, the
+mandatory security envelope, or current input identities.
 
 ## Reproducible fixtures
 
@@ -92,12 +122,34 @@ mise x node@24.18.0 -- npm run benchmark:report -- --measurements /absolute/path
 mise x node@24.18.0 -- node test/benchmarks/headed-editor-evidence.mjs --vscode-executable /absolute/path/to/VS-Code-executable --output artifacts/performance/headed-editor.json
 ```
 
+The current qualification was captured with the full comparison against the pinned VS Code
+1.129.1 executable. Re-run the same commands whenever a bound input changes:
+
+```sh
+mise x node@24.18.0 -- node test/benchmarks/headed-editor-evidence.mjs \
+  --version 1.129.1 \
+  --vscode-executable "/absolute/path/to/VS-Code-1.129.1-executable" \
+  --output artifacts/performance/vscode-1.129.1-final.json
+
+mise x node@24.18.0 -- npm run benchmark:report -- \
+  --measurements artifacts/performance/vscode-1.129.1-final.json \
+  --require-passing
+```
+
+The runner snapshots the exact final `package.json`, `assets/icon.png`, complete `dist/` tree,
+esbuild production inputs, test-only diagnostics observer, graph fixture, headed harness entry and
+build definition, runner/report/network-recorder scripts, emitted harness bytes, and the complete
+runtime dependency closure of Playwright, `@vscode/test-electron`, and esbuild. A checked-in
+platform-neutral toolchain manifest records the exact authorized native esbuild and installed
+platform-optional package file inventories. Any later change to one of those inputs requires
+another full capture.
+
 | Command | What it measures | Can pass QR-002/QR-003? |
 | --- | --- | --- |
 | `npm run benchmark` | Generator, protocol decoder, and pure presentation-state overhead in Node | No |
 | `npm run test:webview:performance` | Real WebGL construction, `d3`/`ngraph` cooldown, idle-loop behavior, and accessible interactions in headless Playwright Chromium | No; useful for regression and harness validation only |
-| `npm run benchmark:report` | Strict evaluation of an optional measurement file against the current manifest and production bundle bytes | Only when the input is complete schema-v2 headed-editor evidence bound to the current candidate |
-| `--require-passing` | Returns exit code 2 unless both QR-002 and QR-003 pass | Release/manual gate |
+| `npm run benchmark:report` | Strict evaluation of an optional measurement file against the current manifest and production bundle bytes | Only when the input is complete schema-v3 headed-editor evidence bound to the current candidate |
+| `--require-passing` | Returns exit code 2 unless QR-002, QR-003, and the headed Webview network observation all pass | Release/manual gate |
 | `node test/benchmarks/headed-editor-evidence.mjs ...` | Isolated headed VS Code, real watcher, test-only diagnostics observer, production Webview, same-Electron engine candidates, process tree, GPU, and interactions | Yes |
 
 Playwright attaches `browser-interaction-harness.json` and
@@ -111,26 +163,41 @@ not Electron Webview evidence.
 
 The report generator applies the accepted thresholds without widening them:
 
-- QR-002 requires at least 20 end-to-end one-file refresh samples and at least one create, change,
-  rename, and delete sample. Each starts at the file mutation and ends only after current Problems
-  diagnostics and the replacement graph are published, including the fixed 250 ms debounce.
-  Nearest-rank p95 of `durationMs` must be at or below 1,000 ms.
-- QR-003 uses the 1,000-node / 5,000-edge fixture. Every recorded first-interactive-frame sample
-  must be at or below 5,000 ms.
-- Search, filtering, selection, and non-spatial navigation each require at least 20 samples;
-  nearest-rank p95 must be at or below 100 ms.
-- The engine must reach cooldown, and every post-drain idle animation sample must be zero.
+- QR-002 requires exactly 20 end-to-end one-file refresh samples in five ordered
+  create/change/rename/delete cycles. Each starts at the file mutation and ends only after current
+  Problems diagnostics and the replacement graph are published, including the fixed 250 ms
+  debounce. Each event has a non-empty exact diagnostic contract, coherent non-overlapping epoch
+  timestamps, and a stable production-runtime correlation whose revision equals the graph
+  revision. Nearest-rank p95 of `durationMs` must be at or below 1,000 ms.
+- QR-003 uses the 1,000-node / 5,000-edge fixture. Its single recorded
+  first-interactive-frame sample must be at or below 5,000 ms and must observe positive graph
+  WebGL clear and draw counts. If an engine does not establish that proof within 5,000 ms, the
+  headed harness records the exact timeout envelope shown below. That is a complete measured
+  candidate failure, never a zero-valued passing sample.
+- Search, filtering, selection, and non-spatial navigation each require exactly 20 samples;
+  every operation must assert its resulting UI state and nearest-rank p95 must be at or below
+  100 ms.
+- The engine must reach cooldown, and the single post-drain idle animation sample must be zero.
+- Camera FPS must be positive and equal the observed WebGL-clear count divided by its measurement
+  duration. `cameraDrawCallCount` must be at least the clear count, and total draw calls must cover
+  first-frame plus camera-period draws; a draw-once/blank-clear measurement fails. This aggregate
+  comparison is a conservative proxy for at least one graph draw per observed clear.
+- The schema-v1 security envelope must report zero HTTP(S)/WS requests, zero other-scheme requests,
+  a bounded positive local packaged-resource observation, and a separate bounded opaque
+  `vscode-webview` navigation observation. The browser-level CDP recorder must pause the new OKF
+  target, enable `Network` before resume, collect WebSocket/WebTransport events, remain connected,
+  and complete same-session barriers before snapshot.
 - Peak memory, idle CPU, camera frame rate, GPU, editor, Electron, Chromium, OS, fixture seed, and
   package versions are mandatory evidence fields but do not receive invented cross-machine limits.
 
-## Schema-v2 headed-editor measurement input
+## Schema-v3 headed-editor measurement input
 
-The report accepts one JSON document with this shape. The zero-valued arrays are illustrative and
-do not satisfy the required sample counts:
+The report accepts one JSON document with this abbreviated shape. Ellipses are explanatory and are
+not valid JSON input:
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "measurementKind": "headed-editor",
   "capturedAt": "2026-07-22T12:00:00+09:00",
   "environment": {
@@ -139,7 +206,7 @@ do not satisfy the required sample counts:
     "cpu": "CPU model and logical processor count",
     "memoryGb": 0,
     "gpu": "GPU model and active renderer",
-    "editorName": "VS Code or VSCodium",
+    "editorName": "VS Code",
     "editorVersion": "exact version",
     "editorCommit": "exact commit",
     "electronVersion": "exact version",
@@ -149,23 +216,58 @@ do not satisfy the required sample counts:
       "okf-workbench": "current manifest version",
       "3d-force-graph": "exact current dependency version"
     },
-    "webviewBundleSha256": "64 lowercase hexadecimal characters",
-    "extensionBundleSha256": "64 lowercase hexadecimal characters"
+    "extensionHostBundleSha256": "64 lowercase hexadecimal characters",
+    "webviewJavaScriptBundleSha256": "64 lowercase hexadecimal characters",
+    "webviewCssBundleSha256": "64 lowercase hexadecimal characters",
+    "productionBundleSetSha256": "64 lowercase hexadecimal characters"
+  },
+  "inputIdentity": {
+    "productionRuntimeSnapshotSha256": "64 lowercase hexadecimal characters",
+    "productionBuildInputSnapshotSha256": "64 lowercase hexadecimal characters",
+    "diagnosticsObserverSnapshotSha256": "64 lowercase hexadecimal characters",
+    "qr003HarnessInputSnapshotSha256": "64 lowercase hexadecimal characters",
+    "qr003HarnessDefinitionSha256": "64 lowercase hexadecimal characters",
+    "qr003HarnessBundleSha256": "64 lowercase hexadecimal characters"
   },
   "qr002": {
     "debounceMs": 250,
     "updateSamples": [
       {
         "eventKind": "create",
-        "durationMs": 0,
-        "graphPublicationMs": 0,
-        "diagnosticsPublicationMs": 0,
+        "durationMs": 700,
+        "graphPublicationMs": 700,
+        "diagnosticsPublicationMs": 680,
+        "startedAtEpochMs": 1784685600000,
+        "mutationCompletedAtEpochMs": 1784685600005,
+        "graphObservedAtEpochMs": 1784685600700,
+        "diagnosticsObservedAtEpochMs": 1784685600680,
         "graphRevision": 2,
         "diagnosticsSequence": 1,
-        "diagnosticsCorrelatedRevision": 2,
+        "diagnosticsCorrelation": {
+          "authority": "okf-acceptance-runtime-publication",
+          "revision": 2,
+          "diagnosticsPublished": true,
+          "findingCount": 2,
+          "conceptCount": 1001,
+          "edgeCount": 5001
+        },
         "expectedDiagnostics": [
           {
-            "relativePath": "concepts/qr002-probe-00.md",
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
+            "code": "okf.curation.missing-description"
+          }
+        ],
+        "observedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
             "code": "okf.curation.missing-description"
           }
         ]
@@ -184,98 +286,222 @@ do not satisfy the required sample counts:
     },
     "engines": {
       "d3": {
-        "firstInteractiveFrameMs": [0],
+        "firstInteractiveFrameMs": [400],
+        "firstInteractiveFrameWebglClears": [1],
+        "firstInteractiveFrameWebglDrawCalls": [100],
         "cooldownReached": true,
-        "cooldownMs": [0],
+        "cooldownMs": [2500],
         "idleAnimationFramesAfterCooldown": [0],
         "interactions": {
-          "searchMs": [0],
-          "filterMs": [0],
-          "selectionMs": [0],
-          "navigationMs": [0]
+          "searchMs": ["20 positive samples"],
+          "filterMs": ["20 positive samples"],
+          "selectionMs": ["20 positive samples"],
+          "navigationMs": ["20 positive samples"]
         },
-        "memoryPeakMb": 0,
+        "interactionOutcomes": {
+          "search": ["20 true values"],
+          "filter": ["20 true values"],
+          "selection": ["20 true values"],
+          "navigation": ["20 true values"]
+        },
+        "memoryPeakMb": 256,
         "idleCpuPercent": 0,
-        "cameraFps": 0
+        "cameraDurationMs": 700,
+        "cameraFrameCount": 42,
+        "cameraDrawCallCount": 84,
+        "cameraFps": 60,
+        "totalWebglClearCount": 200,
+        "totalWebglDrawCallCount": 10000
       },
       "ngraph": {
-        "firstInteractiveFrameMs": [0],
-        "cooldownReached": true,
-        "cooldownMs": [0],
-        "idleAnimationFramesAfterCooldown": [0],
-        "interactions": {
-          "searchMs": [0],
-          "filterMs": [0],
-          "selectionMs": [0],
-          "navigationMs": [0]
+        "measurementFailure": {
+          "authority": "headed-vscode-webview-harness",
+          "phase": "first-interactive-frame",
+          "code": "graph-webgl-render-timeout",
+          "timeoutMs": 5000,
+          "observedClearCount": 0,
+          "observedDrawCallCount": 0,
+          "canvasPresent": true,
+          "nodeCount": 1000,
+          "edgeCount": 5000
         },
-        "memoryPeakMb": 0,
+        "memoryPeakMb": 256,
         "idleCpuPercent": 0,
-        "cameraFps": 0
+        "processTreePeakRssMb": 256,
+        "processTreeSampleCount": 10
       }
+    }
+  },
+  "security": {
+    "schemaVersion": 1,
+    "webviewNetwork": {
+      "authority": "headed-vscode-webview-cdp",
+      "captureScope": "Initial Webview resources plus CDP events during ...",
+      "remoteRequestCount": 0,
+      "remoteOrigins": [],
+      "localResourceRequestCount": 2,
+      "localOrigins": ["https://file+.vscode-resource.vscode-cdn.net"],
+      "webviewNavigationRequestCount": 1,
+      "webviewNavigationOrigins": [
+        "vscode-webview://07ah2qk3gn0a6knrq6q3pnd6p9d310f8gqc9g48lfsosvfbe2dc2"
+      ],
+      "otherRequestCount": 0,
+      "otherSchemes": []
     }
   }
 }
 ```
 
-Every QR-002 observation must use one of `create`, `change`, `rename`, or `delete` and all four must
-be represented. Graph revisions and diagnostics sequences must increase strictly.
-`diagnosticsCorrelatedRevision` must equal `graphRevision`; `expectedDiagnostics` may be empty only
-when the current operation is expected to clear all relevant findings. Every QR-003 interaction
-array requires 20 finite, non-negative values. `measurementKind` must be exactly `headed-editor`;
-changing a Playwright attachment label is not a valid substitute.
+QR-002 must contain exactly five serialized create/change/rename/delete cycles. Every sample starts
+at or after the prior sample's final mutation/publication timestamp. Graph revisions and
+diagnostics sequences must increase strictly.
+The diagnostics observer must obtain `diagnosticsCorrelation` from a stable production acceptance
+runtime publication before and after reading Problems; its revision must equal `graphRevision`, and
+actual diagnostics must equal the non-empty event-specific expectation. Every QR-003 interaction
+array requires 20 positive durations and 20 successful outcome assertions. `measurementKind` must
+be exactly `headed-editor`; changing a Playwright attachment label is not a valid substitute.
+
+Each force engine receives a freshly generated deterministic representative graph. An engine that
+times out before the first proven WebGL frame may use only the exact `measurementFailure` object
+above: the authority, phase, code, 5,000 ms timeout, non-negative observed clear/draw deltas,
+canvas presence, and exact fixture dimensions are all mandatory, and extra keys inside that object
+are rejected. The containing failed-engine record must also have the runner's exact monitored
+top-level shape: `measurementFailure`, finite non-negative `memoryPeakMb` and `idleCpuPercent`, the
+equal `processTreePeakRssMb`, and a positive safe-integer `processTreeSampleCount`; success metrics
+or unknown keys cannot be mixed into that record. The evaluator classifies a valid envelope as
+that candidate's measured `fail` and keeps its selection score ineligible. It classifies a
+malformed envelope as `unmeasured`, which makes the comparison and strict gate fail. Thus one
+honestly failed candidate does not prevent the other passing candidate from being selected, while
+missing metrics and fabricated zero-duration timeouts cannot complete the comparison.
+
+The first-frame poll races every requested animation frame against an independent 5,000 ms timer,
+so a Webview that stops delivering animation-frame callbacks still emits the structured timeout
+when its JavaScript event loop remains live. The runner also applies a 150,000 ms outer ceiling to
+each complete Webview evaluation plus process-tree monitor. That ceiling leaves room for the
+intentional 120-second engine-cooldown bound but fails closed if the renderer process is fully
+frozen and neither browser callback can complete.
+
+Schema-v2 evidence is historical-only. The schema-v3 evaluator rejects it fail closed, and the
+headed runner will not reuse its QR-003 samples. The former tracked schema-v3 record also fails the
+current stricter contract and is historical-only.
 
 ## Current-candidate binding
 
 Strict evaluation first compares the evidence to the repository's current build inputs and
 production outputs. A report is non-authoritative when any required value is absent or different:
 
-1. `environment.packageVersions.okf-workbench` must equal the current `package.json` version.
-2. `environment.packageVersions["3d-force-graph"]` must equal the exact current dependency version.
-3. `environment.webviewBundleSha256` must equal SHA-256 of the current
+1. `environment.editorName` and `environment.editorVersion` must identify VS Code at the current
+   release-candidate pin, `1.129.1`. The runner also compares `--version` with the version reported
+   by the selected executable before launch.
+2. `environment.packageVersions.okf-workbench` must equal the current `package.json` version.
+3. `environment.packageVersions["3d-force-graph"]` must equal the exact current dependency version.
+4. `environment.extensionHostBundleSha256` must equal SHA-256 of the current
+   `dist/extension.cjs` bytes.
+5. `environment.webviewJavaScriptBundleSha256` must equal SHA-256 of the current
    `dist/webview/main.js` bytes.
-4. `environment.extensionBundleSha256` must equal SHA-256 over the current
-   `dist/extension.cjs` bytes followed immediately by the current `dist/webview/main.js` bytes.
+6. `environment.webviewCssBundleSha256` must equal SHA-256 of the current
+   `dist/webview/main.css` bytes.
+7. `environment.productionBundleSetSha256` must equal the repository-defined, domain-separated
+   bundle-set SHA-256 over all three files.
+8. `inputIdentity.productionRuntimeSnapshotSha256` must equal the domain-separated snapshot of
+   `package.json`, `assets/icon.png`, and every regular file under `dist/`. Each of the five
+   remaining identities must also equal the evaluator's current, independently recomputed snapshot
+   of the production build inputs, diagnostics observer, QR-003 input/configuration, and exact
+   injected harness bytes. The evaluator's QR-003 builds use esbuild `write: false` and do not
+   rebuild or mutate `dist/`.
 
-Both production files must exist, so run the production build before evaluating separately. The
-headed runner performs that build itself before capture. The Webview-only hash binds renderer
-behavior directly; the combined hash also binds the Extension Host parser, diagnostics, watcher,
-protocol, and Webview path exercised by QR-002. A matching version string without matching bytes is
-not sufficient. `--require-passing` exits with status 2 on missing or mismatched bindings.
+The bundle-set algorithm starts SHA-256 with the UTF-8 domain
+`okf-workbench.performance-production-bundle-set.v1` followed by a NUL byte. In fixed order—
+`dist/extension.cjs`, `dist/webview/main.js`, then `dist/webview/main.css`—it appends a 4-byte
+big-endian UTF-8 label length, an 8-byte big-endian content length, the label bytes, and the raw
+content bytes. Labels and lengths prevent different component boundaries from producing the same
+identity through raw concatenation.
 
-## Capturing or reusing QR-003
+All three production files must exist, so run the production build before evaluating separately.
+The headed runner performs that build itself before capture. Individual hashes make the changed
+surface explicit; the bundle-set hash binds the Extension Host parser, diagnostics, watcher,
+protocol, Webview renderer, layout, and interaction styling exercised by QR-002/QR-003. A matching
+version string without matching bytes is not sufficient. `--require-passing` exits with status 2 on
+missing or mismatched bindings, including a CSS-only change.
 
-A full headed run records `qr003.capturedAt` and
-`qr003.provenance: { "kind": "captured" }`. When only QR-002 needs recapture, the runner can avoid
-an unnecessary engine comparison by accepting `--reuse-qr003`:
+The headed runner uses the live repository only for one non-authoritative esbuild input-discovery
+build. It captures the resulting complete input inventory and exact source bytes, materializes that
+snapshot under the owner-only benchmark root, and runs both authoritative production binding builds
+against that private tree. The private input snapshot is checked before, between, and after those
+builds, and both complete runtime trees must have the same identity. A transient live-repository
+change therefore cannot supply output bytes while a restored source tree supplies the recorded
+identity.
+
+Before any measurement module is imported, a built-in-only bootstrap captures exact bytes for the
+runner, build/report helpers, CDP recorder, package lock, Playwright, `@vscode/test-electron`,
+esbuild, their required runtime dependencies, and authorized installed optional dependencies. It
+rejects symlinks, captures twice, and materializes those bytes under an owner-only private temporary
+root outside the repository. The child imports only from that root and verifies package resolution
+stays there. The staged build script receives the private production-input root for authoritative
+builds; the original repository is retained only for discovery, current-candidate comparison, and
+end-of-run mutation checks. Environment-variable names are compared case-insensitively before
+launch, so `NODE_OPTIONS`, `NODE_PATH`, preload variables, and `ESBUILD_BINARY_PATH` are not
+inherited by the child even when a Windows caller supplies mixed-case names. Standalone report
+evaluation also refuses `ESBUILD_BINARY_PATH` before building the comparison harness.
+
+Native esbuild bytes remain cross-platform-verifiable: both persisted build/harness identities
+contain `performance-toolchain-manifest.json`, whose exact per-platform file hashes and executable
+policy bind Darwin arm64/x64, Linux x64, and Windows x64 packages. The portable persisted snapshots
+retain esbuild's JavaScript and package metadata but carry a hash-bound exclusion for the
+postinstall-created host-native mirror at `node_modules/esbuild/bin/esbuild`. Before any build,
+capture and evaluation require the npm lock integrity plus the manifest's exact inventory and
+hashes for every other portable esbuild file. This rejects an install-time `ESBUILD_BINARY_PATH`
+prefix persisted into `lib/main.js` and any unmanifested downloaded binary. The excluded host
+mirror remains bound by the private execution snapshot, while the current platform package is
+verified against the manifest before use; the private stage restores its authorized executable
+mode. Darwin's installed Playwright `fsevents` optional package is bound the same way. Thus macOS
+evidence can be verified by the Ubuntu release gate without substituting Ubuntu native bytes into
+the macOS measurement identity, while a mutated installed binary fails closed.
+
+The captured production runtime and diagnostics observer are materialized separately under the
+benchmark run directory, and VS Code launches only against those staged copies. QR-003 likewise
+uses its live build only to discover the esbuild input graph. Its captured resolver manifests and
+input bytes are materialized to a separate private tree; two identical authoritative esbuild passes
+run only there using the checked-in `headed-harness-build.json` configuration and
+`headed-harness-entry.mjs` entry. The runner and evaluator share this input-discovery,
+materialization, and build-definition implementation. At the end, original and private executable,
+production, and harness inputs—including the original repository runtime—are rehashed before and
+after strict report generation and again through final publication. Final output is restricted to
+`artifacts/performance/*.json`; symbolic targets or descendants outside that directory are refused.
+The JSON and Markdown are written to owner-private temporary files, read back, and each atomically
+renamed with rollback of its prior file. Pair success is reported only after both final files are
+committed, read back, and followed by another complete input verification. A normal error restores
+the prior pair; a process kill cannot report success and leaves private temporary or backup files
+for explicit recovery. Mutation, nondeterministic output, remote Webview traffic, a publication
+error, or strict-gate failure therefore withholds success. Report Markdown derives its `Generated`
+value from evidence `capturedAt` and excludes report-generator host metadata, so identical evidence
+and candidate bytes produce byte-identical output.
+
+## Capturing QR-003
+
+Every headed run records `qr003.capturedAt` and
+`qr003.provenance: { "kind": "captured" }`. The runner always measures both engines in the current
+headed editor process; it has no QR-003 reuse mode. Review the generated JSON and Markdown in
+`artifacts/performance/`; replace the tracked evidence only after strict evaluation passes and the
+evidence is approved. Do not overwrite the retained tracked files during an exploratory run. For
+the approved VS Code 1.129.1 pair, promote the exact published bytes and re-evaluate the tracked
+JSON:
 
 ```sh
-mise x node@24.18.0 -- node test/benchmarks/headed-editor-evidence.mjs \
-  --vscode-executable /absolute/path/to/VS-Code-executable \
-  --reuse-qr003 docs/evidence/performance/vscode-1.127.0.json \
-  --output artifacts/performance/vscode-1.127.0-v2.json
-
-mise x node@24.18.0 -- npm run benchmark:report -- \
-  --measurements artifacts/performance/vscode-1.127.0-v2.json \
-  --require-passing
+cp artifacts/performance/vscode-1.129.1-final.json docs/evidence/performance/vscode-1.129.1.json
+cp artifacts/performance/vscode-1.129.1-final.md docs/evidence/performance/vscode-1.129.1.md
+cmp artifacts/performance/vscode-1.129.1-final.json docs/evidence/performance/vscode-1.129.1.json
+cmp artifacts/performance/vscode-1.129.1-final.md docs/evidence/performance/vscode-1.129.1.md
+mise x node@24.18.0 -- node scripts/benchmark-report.mjs \
+  --measurements docs/evidence/performance/vscode-1.129.1.json \
+  --require-passing \
+  > artifacts/performance/vscode-1.129.1-release-check.md
+cmp docs/evidence/performance/vscode-1.129.1.md artifacts/performance/vscode-1.129.1-release-check.md
 ```
 
-Reuse does not skip QR-002; the runner always captures the 20 current schema-v2 watcher samples.
-Before copying QR-003 measurements, it requires exact equality for hardware, OS, CPU, memory, GPU,
-editor name/version/commit, Electron, Chromium, fixture seed, package versions, and the combined
-production extension + Webview SHA-256. It preserves the original QR-003 capture time and records:
-
-```json
-{
-  "kind": "reused",
-  "sourceMeasurementSha256": "SHA-256 of the complete source evidence file"
-}
-```
-
-If any reuse field differs, run the full headed comparison instead of editing or copying samples.
-Review the generated JSON and Markdown in `artifacts/performance/`; replace the tracked evidence
-only after strict evaluation passes and the evidence is approved. Do not overwrite the retained
-authoritative files during an exploratory run.
+All six commands must succeed. The two `cmp` checks before evaluation prove promotion did not
+transform either file; the final `cmp` proves the tracked Markdown is the deterministic rendering
+of the tracked JSON and current frozen candidate.
 
 ## Force-engine selection
 
@@ -283,16 +509,16 @@ The adapter exposes `d3` and `ngraph` behind the repository-owned renderer bound
 same 120-tick cooldown to both. Given complete current-candidate-bound headed evidence, the report:
 
 1. evaluates each candidate against the same fixture and thresholds;
-2. rejects incomplete engine measurements rather than treating missing values as zero;
+2. counts an exact headed first-frame timeout envelope as a measured failing candidate, while
+   rejecting a missing or malformed engine measurement as unmeasured;
 3. considers only passing candidates;
 4. selects the candidate with the lower normalized first-frame and worst-interaction score.
 
-If neither engine passes, no release default is selected. In the retained schema-v2 VS Code 1.127.0
-comparison, `d3` passed and was selected, matching the checked-in adapter default. `ngraph` rendered
-its first interactive frame faster but failed the required cooldown signal after 120,000.3 ms and
-was excluded. The comparison completes this gate only for the exact candidate hashes above.
+If neither engine passes, no release default is selected. The checked-in adapter fallback remains
+`d3`, but the former VS Code 1.127.0 comparison no longer qualifies under the strengthened contract.
+A fresh full comparison must select the current release default.
 
-The measured bundle used these renderer defaults:
+The retained historical VS Code 1.127.0 measurement used these renderer defaults:
 
 | Concern | Default used by the measured candidate |
 | --- | --- |
@@ -303,32 +529,40 @@ The measured bundle used these renderer defaults:
 | Camera | Focus distance `80`; transition `600 ms` |
 | Idle behavior | Pause after engine cooldown and after a temporary camera-focus animation; pause while hidden or disposed |
 
-Any change to these defaults invalidates reuse through the combined-bundle hash and requires a new
-headed engine comparison.
+Any change to these defaults requires a new headed engine comparison.
 
 ## Headed run checklist
 
 1. Start from the intended candidate with the pinned Node/npm versions. Let the runner build the
-   production outputs; retain the Webview-only and combined Extension Host + Webview hashes.
-2. Use a headed supported VS Code or VSCodium build with hardware acceleration unchanged. Record
-   editor commit, Electron, Chromium, GPU renderer, OS, hardware, CPU, and memory.
+   production outputs; retain the Extension Host JavaScript, Webview JavaScript, Webview CSS, and
+   domain-separated bundle-set hashes.
+2. Use the pinned VS Code `1.129.1` build with hardware acceleration unchanged. The runner rejects
+   a selected executable whose reported version differs. Record editor commit, Electron, Chromium,
+   GPU renderer, OS, hardware, CPU, and memory.
 3. For QR-002, run five create/change/rename/delete cycles through the real watcher. Observe current
    OKF Problems via the separate test-only diagnostics extension and the corresponding production
-   Webview replacement graph. Retain all 20 structured samples.
-4. For QR-003, either instantiate each engine through `ForceGraphRenderer` with the same
-   representative payload and options, or use `--reuse-qr003` only when the runner accepts every
-   exact environment/package/combined-hash check.
-5. For a fresh QR-003 capture, record first interactive frame, cooldown, post-drain animation
-   callbacks, peak memory, idle CPU, camera frame rate, and 20 samples for every interaction.
-6. Save the raw JSON in a release artifact, run the strict report command, and retain sanitized raw
+   Webview replacement graph. Retain all 20 structured samples, exact actual diagnostics, stable
+   acceptance-runtime correlation, and causal timestamps.
+4. For QR-003, instantiate each engine through `ForceGraphRenderer` with the same representative
+   payload and options in the current headed editor process.
+5. For a fresh QR-003 capture, wait for actual graph WebGL clears and draw calls; assert the UI
+   result of every measured interaction; then record cooldown, post-drain animation, peak memory,
+   idle CPU, and a positive internally consistent camera frame rate whose camera-period draw count
+   is at least its observed clear count. If a candidate cannot prove its first frame within
+   5,000 ms, retain the harness-generated timeout envelope as that candidate's measured failure;
+   do not insert zero samples or abort the comparison before measuring the other candidate.
+6. Arm browser-level CDP before opening the graph, pause the initial OKF Webview target, enable
+   `Network` before resume, and retain the schema-v1 envelope only after live same-session final
+   barriers. It must contain zero remote/other requests, bounded packaged local resources, and the
+   separate internal navigation observation.
+7. Save the raw JSON in a release artifact, run the strict report command, and retain sanitized raw
    evidence and generated Markdown for the immutable release candidate.
-7. Repeat any failing or noisy run before changing a threshold. A threshold change requires an
+8. Repeat any failing or noisy run before changing a threshold. A threshold change requires an
    accepted decision update, not an edited measurement.
 
 ## Scope of the retained evidence
 
-The retained schema-v2 run passes QR-002 and QR-003 for the exact recorded production bundle hashes
-on Mac16,7 / Apple M4 Pro / VS Code 1.127.0. QR-002 recorded 703 ms p95 across 20 correlated samples;
-QR-003 selected `d3` after it passed and `ngraph` failed cooldown. This completes the headed
-performance gate for that candidate, not a general performance or compatibility guarantee.
-VSCodium and OS compatibility lanes remain separate release-matrix evidence.
+No retained run currently completes the strengthened headed gate. The former record reported
+719 ms QR-002 p95 and selected `d3`, but it is retained only for historical comparison. A new
+schema-v3 capture must bind the final production/runtime, diagnostics observer, runner, and harness
+identities and pass all three strict rows before any current-candidate performance claim is made.

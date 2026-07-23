@@ -182,6 +182,93 @@ describe('OKF bundle parser', () => {
     ).toEqual([VALIDATION_CODES.frontmatter]);
   });
 
+  it('applies one-BOM and well-formed Unicode rules identically to text and bytes', () => {
+    const validSource = `\uFEFF${concept('reference', '# Unicode 😀\n', 'title: Unicode 😀\n')}`;
+    const parsedText = parseBundle({
+      rootUri,
+      revision: 1,
+      documents: [document('unicode.md', validSource)],
+    });
+    const parsedBytes = parseBundle({
+      rootUri,
+      revision: 1,
+      documents: [document('unicode.md', new TextEncoder().encode(validSource))],
+    });
+
+    expect(parsedText).toEqual(parsedBytes);
+    expect(parsedText.failures).toEqual([]);
+    expect(parsedText.concepts[0]).toMatchObject({
+      type: 'reference',
+      title: 'Unicode 😀',
+      body: '# Unicode 😀\n',
+    });
+
+    const doubleBomSource = `\uFEFF\uFEFF${concept('reference', '# Rejected\n')}`;
+    const rejectedText = parseBundle({
+      rootUri,
+      revision: 2,
+      documents: [document('double-bom.md', doubleBomSource)],
+    });
+    const rejectedBytes = parseBundle({
+      rootUri,
+      revision: 2,
+      documents: [document('double-bom.md', new TextEncoder().encode(doubleBomSource))],
+    });
+
+    expect(rejectedText).toEqual(rejectedBytes);
+    expect(rejectedText.failures).toMatchObject([
+      {
+        bundlePath: 'double-bom.md',
+        reason: 'decode',
+        message: 'Document text must contain at most one leading byte-order mark.',
+      },
+    ]);
+
+    const unpairedSource = concept('reference', '# Invalid Unicode\n', 'title: "\uD800"\n');
+    const rejectedSurrogate = parseBundle({
+      rootUri,
+      revision: 3,
+      documents: [document('unpaired.md', unpairedSource)],
+    });
+    const replacementBytes = parseBundle({
+      rootUri,
+      revision: 3,
+      documents: [document('unpaired.md', new TextEncoder().encode(unpairedSource))],
+    });
+
+    expect(rejectedSurrogate.failures).toMatchObject([
+      {
+        bundlePath: 'unpaired.md',
+        reason: 'decode',
+        message: 'Already-decoded document text contains an unpaired UTF-16 surrogate.',
+      },
+    ]);
+    expect(rejectedSurrogate.concepts[0]?.source.contentHash).toMatch(/^fnv1a32-utf16:/u);
+    expect(replacementBytes.failures).toEqual([]);
+    expect(replacementBytes.concepts[0]?.title).toBe('�');
+    expect(rejectedSurrogate.concepts[0]?.source.contentHash).not.toBe(
+      replacementBytes.concepts[0]?.source.contentHash,
+    );
+
+    const rejectedLowSurrogate = parseBundle({
+      rootUri,
+      revision: 4,
+      documents: [
+        document(
+          'unpaired-low.md',
+          concept('reference', '# Invalid Unicode\n', 'title: "\uDC00"\n'),
+        ),
+      ],
+    });
+    expect(rejectedLowSurrogate.failures).toMatchObject([
+      {
+        bundlePath: 'unpaired-low.md',
+        reason: 'decode',
+        message: 'Already-decoded document text contains an unpaired UTF-16 surrogate.',
+      },
+    ]);
+  });
+
   it('isolates empty Markdown filename stems while accepting dot-prefixed concept names', () => {
     const bundle = parseBundle({
       rootUri,
@@ -356,6 +443,9 @@ describe('OKF bundle parser', () => {
     expect(concept?.frontmatter.raw.type).toEqual(
       tagged('tag:yaml.org,2002:str', 'producer-extension', 'producer-extension'),
     );
+    expect(concept?.frontmatter.explicitTags).toEqual({
+      type: 'tag:yaml.org,2002:str',
+    });
     expect(concept?.frontmatter.raw.producer).toEqual({
       captured_at: tagged(
         'tag:yaml.org,2002:timestamp',
@@ -395,6 +485,97 @@ describe('OKF bundle parser', () => {
     expect(findings.map(({ code }) => code)).not.toContain(VALIDATION_CODES.frontmatter);
     expect(findings.map(({ code }) => code)).not.toContain(VALIDATION_CODES.conceptType);
     expect(buildGraphPayload({ ...bundle, findings }).statistics.conceptCount).toBe(1);
+  });
+
+  it('tracks explicit tag aliases without trusting structurally similar producer mappings', () => {
+    const aliased = parseBundle({
+      rootUri,
+      revision: 5,
+      documents: [
+        document(
+          'index.md',
+          [
+            '---',
+            'version_source: &supported-version !!str 0.1',
+            'okf_version: *supported-version',
+            '---',
+            '# Root',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'aliased-type.md',
+          [
+            '---',
+            'type_source: &supported-type !!str reference',
+            'type: *supported-type',
+            'title: Aliased type',
+            '---',
+            '# Aliased type',
+            '',
+          ].join('\n'),
+        ),
+      ],
+    });
+
+    expect(aliased.failures).toEqual([]);
+    expect(aliased.reservedDocuments[0]?.okfVersion).toBe('0.1');
+    expect(aliased.reservedDocuments[0]?.frontmatter?.explicitTags).toEqual({
+      version_source: 'tag:yaml.org,2002:str',
+      okf_version: 'tag:yaml.org,2002:str',
+    });
+    expect(aliased.concepts[0]).toMatchObject({ type: 'reference' });
+    expect(aliased.concepts[0]?.frontmatter.explicitTags).toEqual({
+      type_source: 'tag:yaml.org,2002:str',
+      type: 'tag:yaml.org,2002:str',
+    });
+
+    const spoofed = parseBundle({
+      rootUri,
+      revision: 6,
+      documents: [
+        document(
+          'index.md',
+          [
+            '---',
+            'fake_version: &fake-version',
+            '  $okf-workbench:yaml-tag:',
+            '    tag: "tag:yaml.org,2002:str"',
+            '    value: "0.1"',
+            '    source: "0.1"',
+            'okf_version: *fake-version',
+            '---',
+            '# Spoofed root',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'spoofed-type.md',
+          [
+            '---',
+            'fake_type: &fake-type',
+            '  $okf-workbench:yaml-tag:',
+            '    tag: "tag:yaml.org,2002:str"',
+            '    value: "reference"',
+            '    source: "reference"',
+            'type: *fake-type',
+            'title: Spoofed type',
+            '---',
+            '# Spoofed type',
+            '',
+          ].join('\n'),
+        ),
+      ],
+    });
+
+    expect(spoofed.failures).toEqual([]);
+    expect(spoofed.reservedDocuments[0]?.okfVersion).toBeUndefined();
+    expect(spoofed.reservedDocuments[0]?.frontmatter?.explicitTags).toEqual({});
+    expect(spoofed.concepts[0]).toMatchObject({ type: '' });
+    expect(spoofed.concepts[0]?.frontmatter.explicitTags).toEqual({});
+    const findings = validateBundle(spoofed, { now: '2026-07-22T12:00:00Z' });
+    expect(findings.map(({ code }) => code)).toContain(VALIDATION_CODES.unsupportedVersion);
+    expect(findings.map(({ code }) => code)).toContain(VALIDATION_CODES.conceptType);
   });
 
   it('fails closed on custom YAML tags without losing the concept identity', () => {

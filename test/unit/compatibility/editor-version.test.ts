@@ -5,8 +5,13 @@ import {
   electronTestGraphicsArguments,
   electronTestSandboxArguments,
 } from '../../../scripts/compatibility/editor-resolver.mjs';
+import { COMPATIBILITY_PINS } from '../../../scripts/compatibility/pins.mjs';
 
 describe('packaged editor version oracle', () => {
+  it('pins the API-floor and current-stable VS Code lanes', () => {
+    expect(COMPATIBILITY_PINS.vscodeVersions).toEqual(['1.121.0', '1.129.1']);
+  });
+
   it('disables Electron sandboxes only for the isolated Linux editor test harness', () => {
     expect(electronTestSandboxArguments('linux')).toEqual([
       '--no-sandbox',
@@ -47,12 +52,12 @@ describe('packaged editor version oracle', () => {
   it('rejects a VS Code Extension Host that differs from the requested pin', () => {
     const editor = {
       editor: 'vscode',
-      requestedVersion: '1.127.0',
-      expectedExtensionHostVersion: '1.127.0',
+      requestedVersion: '1.129.1',
+      expectedExtensionHostVersion: '1.129.1',
     };
 
-    expect(() => assertExtensionHostVersion(editor, '1.126.0')).toThrow(
-      'Extension Host reported 1.126.0; expected 1.127.0',
+    expect(() => assertExtensionHostVersion(editor, '1.129.0')).toThrow(
+      'Extension Host reported 1.129.0; expected 1.129.1',
     );
   });
 });

@@ -1,10 +1,30 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import * as esbuild from 'esbuild';
 
-const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const repositoryRootOptionIndexes = process.argv
+  .map((argument, index) => (argument === '--repository-root' ? index : -1))
+  .filter((index) => index >= 0);
+if (repositoryRootOptionIndexes.length > 1) {
+  throw new Error('--repository-root may be supplied only once.');
+}
+const repositoryRootOptionIndex = repositoryRootOptionIndexes[0];
+const repositoryRootOption =
+  repositoryRootOptionIndex === undefined ? undefined : process.argv[repositoryRootOptionIndex + 1];
+if (
+  repositoryRootOptionIndex !== undefined &&
+  (repositoryRootOption === undefined ||
+    repositoryRootOption.startsWith('--') ||
+    !isAbsolute(repositoryRootOption))
+) {
+  throw new Error('--repository-root requires one absolute path.');
+}
+const repositoryRoot =
+  repositoryRootOption === undefined
+    ? resolve(dirname(fileURLToPath(import.meta.url)), '..')
+    : resolve(repositoryRootOption);
 const distDirectory = resolve(repositoryRoot, 'dist');
 const artifactDirectory = resolve(repositoryRoot, 'artifacts');
 const production = process.argv.includes('--production');

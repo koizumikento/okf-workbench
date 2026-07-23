@@ -1,4 +1,13 @@
-import type { OperationProblem, OperationResult } from '../model/index.js';
+import {
+  hasUnpairedUtf16Surrogate,
+  OKF_SEMANTIC_LIMITS,
+  utf8ByteLength,
+  type OperationProblem,
+  type OperationResult,
+} from '../model/index.js';
+import { inspectFrontmatterPreparse } from '../parser/frontmatter.js';
+import { extractMarkdownLinks, inspectMarkdownComplexity } from '../parser/markdown.js';
+import { SourceRangeIndex } from '../parser/source-range.js';
 import { normalizeConceptPath } from './path.js';
 import {
   CONCEPT_TEMPLATES,
@@ -118,19 +127,246 @@ function renderFailure(
   return { ok: false, problems: [problem] };
 }
 
-function normalizeOneLine(value: string): string {
+function problemResult<T>(problem: OperationProblem): OperationResult<T> {
+  return { ok: false, problems: [problem] };
+}
+
+function metadataProblem(
+  code: string,
+  message: string,
+  correctiveAction: string,
+): OperationProblem {
+  return { code, message, correctiveAction };
+}
+
+function boundedMetadataProblem(
+  value: string,
+  options: {
+    readonly subject: string;
+    readonly field: string;
+    readonly maxCodeUnits: number;
+    readonly maxBytes?: number;
+  },
+): OperationProblem | undefined {
+  if (value.length > options.maxCodeUnits) {
+    return metadataProblem(
+      `concept-${options.field}-code-unit-limit`,
+      `${options.subject} exceeds the ${String(options.maxCodeUnits)}-code-unit safety limit.`,
+      `Shorten ${options.subject.toLowerCase()} to at most ${String(options.maxCodeUnits)} UTF-16 code units, then retry.`,
+    );
+  }
+  if (
+    options.maxBytes !== undefined &&
+    utf8ByteLength(value, options.maxBytes) > options.maxBytes
+  ) {
+    return metadataProblem(
+      `concept-${options.field}-utf8-limit`,
+      `${options.subject} exceeds the ${String(options.maxBytes)}-byte UTF-8 safety limit.`,
+      `Shorten ${options.subject.toLowerCase()} to at most ${String(options.maxBytes)} UTF-8 bytes, then retry.`,
+    );
+  }
+  if (hasUnpairedUtf16Surrogate(value)) {
+    return metadataProblem(
+      `concept-${options.field}-unicode-scalar`,
+      `${options.subject} contains an unpaired UTF-16 surrogate and cannot be encoded as the submitted Unicode text.`,
+      `Remove or replace the malformed Unicode code unit in ${options.subject.toLowerCase()}, then retry.`,
+    );
+  }
+  return undefined;
+}
+
+function containsGraphControl(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= 0x1f || (code >= 0x7f && code <= 0x9f)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function normalizeConceptTitleInput(value: string): string {
   return value
     .replace(/\r\n?|\n/gu, ' ')
     .replace(/\s+/gu, ' ')
     .trim();
 }
 
-function normalizeDescription(value: string | undefined): string | undefined {
+export function normalizeConceptDescriptionInput(value: string): string;
+export function normalizeConceptDescriptionInput(value: undefined): undefined;
+export function normalizeConceptDescriptionInput(value: string | undefined): string | undefined;
+export function normalizeConceptDescriptionInput(value: string | undefined): string | undefined {
   if (value === undefined) {
     return undefined;
   }
 
   return value.replace(/\r\n?|\r/gu, '\n');
+}
+
+export function conceptTypeInputProblem(value: unknown): OperationProblem | undefined {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return metadataProblem(
+      'empty-concept-type',
+      'A concept type must contain at least one non-whitespace character.',
+      'Enter a built-in or custom OKF concept type.',
+    );
+  }
+  const bounded = boundedMetadataProblem(value, {
+    subject: 'Concept type',
+    field: 'type',
+    maxCodeUnits: OKF_SEMANTIC_LIMITS.maxTypeCodeUnits,
+    maxBytes: OKF_SEMANTIC_LIMITS.maxTypeBytes,
+  });
+  if (bounded !== undefined) {
+    return bounded;
+  }
+  if (containsGraphControl(value)) {
+    return metadataProblem(
+      'unsafe-concept-type-control',
+      'Concept type contains a control character that cannot be used safely by graph filters.',
+      'Remove line breaks and control characters from the concept type, then retry.',
+    );
+  }
+  return undefined;
+}
+
+export function conceptTitleInputProblem(value: unknown): OperationProblem | undefined {
+  if (typeof value !== 'string') {
+    return metadataProblem(
+      'empty-concept-title',
+      'A concept title must be text.',
+      'Enter a concise title for the concept.',
+    );
+  }
+  const normalized = normalizeConceptTitleInput(value);
+  if (normalized.length === 0) {
+    return metadataProblem(
+      'empty-concept-title',
+      'A concept title must contain at least one non-whitespace character.',
+      'Enter a concise title for the concept.',
+    );
+  }
+  return boundedMetadataProblem(normalized, {
+    subject: 'Concept title',
+    field: 'title',
+    maxCodeUnits: OKF_SEMANTIC_LIMITS.maxTitleCodeUnits,
+  });
+}
+
+export function conceptDescriptionInputProblem(value: unknown): OperationProblem | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== 'string') {
+    return metadataProblem(
+      'invalid-concept-description',
+      'Concept description must be text when provided.',
+      'Enter a text description or leave the description empty.',
+    );
+  }
+  const normalized = normalizeConceptDescriptionInput(value);
+  return boundedMetadataProblem(normalized, {
+    subject: 'Concept description',
+    field: 'description',
+    maxCodeUnits: OKF_SEMANTIC_LIMITS.maxDescriptionCodeUnits,
+  });
+}
+
+export function conceptTagsInputProblem(value: unknown): OperationProblem | undefined {
+  if (!Array.isArray(value)) {
+    return metadataProblem(
+      'invalid-concept-tags',
+      'Concept tags must be a list of text values.',
+      'Provide a list of non-empty text tags, or omit tags.',
+    );
+  }
+  if (value.length > OKF_SEMANTIC_LIMITS.maxTagsPerConcept) {
+    return metadataProblem(
+      'concept-tag-count-limit',
+      `Concept metadata contains more than ${String(OKF_SEMANTIC_LIMITS.maxTagsPerConcept)} tags.`,
+      `Reduce the tag list to at most ${String(OKF_SEMANTIC_LIMITS.maxTagsPerConcept)} tags, then retry.`,
+    );
+  }
+  for (const tag of value) {
+    if (typeof tag !== 'string' || tag.trim().length === 0) {
+      return metadataProblem(
+        'empty-concept-tag',
+        'Concept tags cannot be empty or whitespace-only.',
+        'Remove empty tags or replace them with non-empty values.',
+      );
+    }
+    const bounded = boundedMetadataProblem(tag, {
+      subject: 'Concept tag',
+      field: 'tag',
+      maxCodeUnits: OKF_SEMANTIC_LIMITS.maxTagCodeUnits,
+      maxBytes: OKF_SEMANTIC_LIMITS.maxTagBytes,
+    });
+    if (bounded !== undefined) {
+      return bounded;
+    }
+    if (containsGraphControl(tag)) {
+      return metadataProblem(
+        'unsafe-concept-tag-control',
+        'Concept tag contains a control character that cannot be used safely by graph filters.',
+        'Remove line breaks and control characters from concept tags, then retry.',
+      );
+    }
+  }
+  return undefined;
+}
+
+export function conceptTimestampInputProblem(value: unknown): OperationProblem | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return metadataProblem(
+      'empty-concept-timestamp',
+      'An injected timestamp must be non-empty text.',
+      'Provide an ISO 8601 date-time with an explicit offset, or omit the timestamp.',
+    );
+  }
+  const bounded = boundedMetadataProblem(value, {
+    subject: 'Concept timestamp',
+    field: 'timestamp',
+    maxCodeUnits: OKF_SEMANTIC_LIMITS.maxTimestampCodeUnits,
+  });
+  if (bounded !== undefined) {
+    return bounded;
+  }
+  if (containsGraphControl(value)) {
+    return metadataProblem(
+      'unsafe-concept-timestamp-control',
+      'Concept timestamp contains a control character that cannot be retained safely.',
+      'Enter the timestamp on one line without control characters, or omit it.',
+    );
+  }
+  return undefined;
+}
+
+/**
+ * Normalizes the comma-separated command input without allocating an unbounded split array.
+ * Empty comma segments retain the existing command behavior and are omitted.
+ */
+export function parseConceptTagsInput(value: string): OperationResult<readonly string[]> {
+  const tags: string[] = [];
+  let start = 0;
+  for (let cursor = 0; cursor <= value.length; cursor += 1) {
+    if (cursor < value.length && value.charCodeAt(cursor) !== 0x2c) {
+      continue;
+    }
+    const tag = value.slice(start, cursor).trim();
+    start = cursor + 1;
+    if (tag.length === 0) {
+      continue;
+    }
+    tags.push(tag);
+    const problem = conceptTagsInputProblem(tags);
+    if (problem !== undefined) {
+      return problemResult(problem);
+    }
+  }
+  return { ok: true, value: tags, warnings: [] };
 }
 
 function renderBody(
@@ -145,6 +381,58 @@ function renderBody(
 
   lines.push(...BODY_SECTIONS[template]);
   return `${lines.join('\n')}\n`;
+}
+
+function generatedConceptProblem(frontmatter: string, body: string): OperationProblem | undefined {
+  const content = `${frontmatter}${body}`;
+  if (content.length > OKF_SEMANTIC_LIMITS.maxSemanticDocumentCodeUnits) {
+    return metadataProblem(
+      'generated-concept-code-unit-limit',
+      `Generated concept exceeds the ${String(OKF_SEMANTIC_LIMITS.maxSemanticDocumentCodeUnits)}-code-unit document safety limit.`,
+      'Shorten the title, description, or tags, then retry.',
+    );
+  }
+  if (
+    utf8ByteLength(content, OKF_SEMANTIC_LIMITS.maxSemanticDocumentBytes) >
+    OKF_SEMANTIC_LIMITS.maxSemanticDocumentBytes
+  ) {
+    return metadataProblem(
+      'generated-concept-utf8-limit',
+      `Generated concept exceeds the ${String(OKF_SEMANTIC_LIMITS.maxSemanticDocumentBytes)}-byte UTF-8 document safety limit.`,
+      'Shorten the title, description, or tags, then retry.',
+    );
+  }
+
+  const frontmatterInspection = inspectFrontmatterPreparse(content);
+  if (frontmatterInspection.kind !== 'success') {
+    const detail =
+      frontmatterInspection.kind === 'failure'
+        ? frontmatterInspection.message
+        : 'Generated concept is missing YAML frontmatter.';
+    return metadataProblem(
+      'generated-concept-frontmatter-limit',
+      `Generated concept frontmatter is not consumable: ${detail}`,
+      'Shorten or simplify the title, description, or tags, then retry.',
+    );
+  }
+
+  const markdownInspection = inspectMarkdownComplexity(body);
+  if (markdownInspection.failure !== undefined) {
+    return metadataProblem(
+      'generated-concept-markdown-limit',
+      `Generated concept body is not consumable: ${markdownInspection.failure}`,
+      'Shorten or simplify the title or description, then retry.',
+    );
+  }
+  const links = extractMarkdownLinks(body, 0, new SourceRangeIndex(body), markdownInspection);
+  if (!links.ok) {
+    return metadataProblem(
+      'generated-concept-markdown-limit',
+      `Generated concept body is not consumable: ${links.message}`,
+      'Shorten or simplify Markdown link labels and targets, then retry.',
+    );
+  }
+  return undefined;
 }
 
 export function renderConceptTemplate(
@@ -163,41 +451,38 @@ export function renderConceptTemplate(
     return path;
   }
 
-  if (typeof input.type !== 'string' || input.type.trim().length === 0) {
-    return renderFailure(
-      'empty-concept-type',
-      'A concept type must contain at least one non-whitespace character.',
-      'Enter a built-in or custom OKF concept type.',
-    );
+  const typeProblem = conceptTypeInputProblem(input.type);
+  if (typeProblem !== undefined) {
+    return problemResult(typeProblem);
   }
 
-  const title = normalizeOneLine(input.title);
-  if (title.length === 0) {
-    return renderFailure(
-      'empty-concept-title',
-      'A concept title must contain at least one non-whitespace character.',
-      'Enter a concise title for the concept.',
-    );
+  const titleProblem = conceptTitleInputProblem(input.title);
+  if (titleProblem !== undefined) {
+    return problemResult(titleProblem);
+  }
+  const title = normalizeConceptTitleInput(input.title);
+
+  const descriptionProblem = conceptDescriptionInputProblem(input.description);
+  if (descriptionProblem !== undefined) {
+    return problemResult(descriptionProblem);
+  }
+  const normalizedDescription = normalizeConceptDescriptionInput(input.description);
+  const description =
+    normalizedDescription === undefined || normalizedDescription.trim().length === 0
+      ? undefined
+      : normalizedDescription;
+
+  const tags: readonly string[] = input.tags === undefined ? [] : input.tags;
+  const tagsProblem = conceptTagsInputProblem(tags);
+  if (tagsProblem !== undefined) {
+    return problemResult(tagsProblem);
   }
 
-  const tags = input.tags ?? [];
-  if (tags.some((tag) => typeof tag !== 'string' || tag.trim().length === 0)) {
-    return renderFailure(
-      'empty-concept-tag',
-      'Concept tags cannot be empty or whitespace-only.',
-      'Remove empty tags or replace them with non-empty values.',
-    );
+  const timestampProblem = conceptTimestampInputProblem(input.timestamp);
+  if (timestampProblem !== undefined) {
+    return problemResult(timestampProblem);
   }
 
-  if (input.timestamp !== undefined && input.timestamp.trim().length === 0) {
-    return renderFailure(
-      'empty-concept-timestamp',
-      'An injected timestamp cannot be empty.',
-      'Provide an ISO 8601 date-time with an explicit offset, or omit the timestamp.',
-    );
-  }
-
-  const description = normalizeDescription(input.description);
   const frontmatter = renderTemplateFrontmatter({
     type: input.type,
     title,
@@ -205,7 +490,12 @@ export function renderConceptTemplate(
     ...(description === undefined ? {} : { description }),
     ...(input.timestamp === undefined ? {} : { timestamp: input.timestamp }),
   });
-  const content = `${frontmatter}${renderBody(input.template, title, description)}`;
+  const body = renderBody(input.template, title, description);
+  const consumabilityProblem = generatedConceptProblem(frontmatter, body);
+  if (consumabilityProblem !== undefined) {
+    return problemResult(consumabilityProblem);
+  }
+  const content = `${frontmatter}${body}`;
 
   return {
     ok: true,

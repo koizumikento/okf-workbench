@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-07-23T08:35:06.452Z",
+  "registryUrl": "https://open-vsx.org",
+  "namespace": {
+    "access": "restricted",
+    "name": "straydog",
+    "verified": true
+  },
+  "extension": {
+    "exists": false,
+    "id": "straydog.okf-workbench",
+    "targetVersion": "0.1.0",
+    "targetVersionAvailable": true
+  },
+  "freshness": {
+    "requestCacheMode": "no-store",
+    "responses": {
+      "namespace": {
+        "ageSeconds": null,
+        "date": "Thu, 23 Jul 2026 08:35:05 GMT",
+        "effectiveAgeSeconds": 0.823,
+        "validatedAt": "2026-07-23T08:35:05.823Z",
+        "validationSource": "date-header"
+      },
+      "extension": {
+        "ageSeconds": null,
+        "date": "Thu, 23 Jul 2026 08:35:06 GMT",
+        "effectiveAgeSeconds": 0.13,
+        "validatedAt": "2026-07-23T08:35:06.130Z",
+        "validationSource": "date-header"
+      },
+      "version": {
+        "ageSeconds": null,
+        "date": "Thu, 23 Jul 2026 08:35:06 GMT",
+        "effectiveAgeSeconds": 0.452,
+        "validatedAt": "2026-07-23T08:35:06.452Z",
+        "validationSource": "date-header"
+      }
+    }
+  }
+}

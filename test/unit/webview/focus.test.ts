@@ -1,11 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import {
+  detailsFocusKey,
   isListNavigationKey,
   nextResultIndex,
   preservedItemIndex,
 } from '../../../src/webview/state/focus.js';
 
 describe('keyboard result navigation', () => {
+  it('keys details controls by semantic target independently of sibling position', () => {
+    const beforeReorder = ['concepts/beta', 'concepts/gamma'].map((id) =>
+      detailsFocusKey('outgoing', id),
+    );
+    const afterReorder = ['concepts/gamma', 'concepts/beta'].map((id) =>
+      detailsFocusKey('outgoing', id),
+    );
+    const betaKey = beforeReorder[0];
+
+    expect(afterReorder.indexOf(betaKey ?? '')).toBe(1);
+    expect(detailsFocusKey('outgoing', 'concepts/beta', 1)).not.toBe(betaKey);
+    expect(detailsFocusKey('backlink', 'concepts/beta', 0)).not.toBe(betaKey);
+    expect(detailsFocusKey('outgoing', 'concepts:beta', 0)).not.toBe(
+      detailsFocusKey('outgoing', 'concepts', 0),
+    );
+  });
+
   it('wraps arrow navigation and supports Home and End', () => {
     expect(nextResultIndex('ArrowDown', -1, 3)).toBe(0);
     expect(nextResultIndex('ArrowDown', 2, 3)).toBe(0);

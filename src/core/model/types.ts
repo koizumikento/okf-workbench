@@ -37,6 +37,8 @@ export interface NormalizedFrontmatter {
 export interface ParsedFrontmatter {
   /** Complete JSON-safe producer map, including unknown keys. */
   readonly raw: JsonObject;
+  /** Actual explicit YAML tags on top-level fields, including tags reached through aliases. */
+  readonly explicitTags: Readonly<Record<string, string>>;
   /** Exact source text between the YAML delimiters. */
   readonly source: string;
   readonly range: SourceRange;
@@ -120,7 +122,9 @@ export interface ParseFailure {
   readonly kind: 'parse-failure';
   readonly uri: string;
   readonly bundlePath: string;
-  readonly reason: 'decode' | 'frontmatter' | 'markdown' | 'read';
+  readonly reason: 'decode' | 'frontmatter' | 'markdown' | 'read' | 'resource-limit';
+  /** Resource limits on one source are isolatable; bundle limits invalidate every derived view. */
+  readonly scope?: 'document' | 'bundle';
   readonly message: string;
   readonly range?: SourceRange;
 }
@@ -136,6 +140,8 @@ export interface ParsedBundle {
 
 export interface GraphNode {
   readonly id: string;
+  /** Present only when a source-scoped failure left an identity-only partial concept. */
+  readonly sourceFailed?: true;
   readonly type: string;
   readonly title?: string;
   readonly description?: string;
@@ -192,7 +198,13 @@ export type OperationResult<T> =
   | { readonly ok: false; readonly problems: readonly OperationProblem[] };
 
 export type ExpectedContent =
-  { readonly kind: 'absent' } | { readonly kind: 'sha256'; readonly value: string };
+  | { readonly kind: 'absent' }
+  | {
+      readonly kind: 'sha256';
+      readonly value: string;
+      /** Exact provider byte length captured with the hash before preview. */
+      readonly byteLength: number;
+    };
 
 export interface FileChangeProposal {
   readonly targetUri: string;
@@ -208,6 +220,12 @@ export interface FileChangeProposal {
 export interface ChangeSetProposal {
   readonly operation: string;
   /**
+   * Open workspace directory that contains `writeRootUri`. Every path segment
+   * from this safety root through the write root is required to remain a real
+   * directory, so selecting a descendant cannot hide a symlink above it.
+   */
+  readonly workspaceSafetyRootUri: string;
+  /**
    * Logical directory from which every proposal path is resolved and whose
    * existing descendants are checked before the first write. For ordinary
    * bundle edits this is the bundle root; initialization uses the selected
@@ -220,7 +238,14 @@ export interface ChangeSetProposal {
 export interface ApplyFailure {
   readonly targetUri: string;
   readonly code:
-    'collision' | 'content-changed' | 'permission' | 'unsafe-path' | 'write' | 'unknown';
+    | 'collision'
+    | 'content-changed'
+    | 'permission'
+    | 'preview-unavailable'
+    | 'unsafe-path'
+    | 'workspace-folder-unavailable'
+    | 'write'
+    | 'unknown';
   readonly message: string;
   readonly retryable: boolean;
 }

@@ -1,5 +1,7 @@
 export {
   GraphPanelController,
+  type GraphDeliveryFailureHandler,
+  type GraphDeliveryFailureReason,
   type GraphPanelControllerOptions,
   type GraphPanelInboundResult,
   type GraphWebviewPanelPort,

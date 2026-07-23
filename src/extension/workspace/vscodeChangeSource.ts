@@ -1,4 +1,4 @@
-import { workspace, type Uri } from 'vscode';
+import { RelativePattern, workspace, type Uri } from 'vscode';
 
 import { isUriContained } from './pathSafety.js';
 import type {
@@ -15,7 +15,7 @@ import type {
 export function createVscodeMarkdownChangeSource(root: Uri): WorkspaceChangeSource<Uri> {
   return {
     subscribe(listener: (change: WorkspaceChange<Uri>) => void): DisposableLike {
-      const watcher = workspace.createFileSystemWatcher('**/*.md');
+      const watcher = workspace.createFileSystemWatcher(new RelativePattern(root, '**/*.md'));
       const subscriptions = [
         watcher.onDidCreate((uri) => {
           if (isUriContained(root, uri)) {

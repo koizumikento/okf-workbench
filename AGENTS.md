@@ -16,7 +16,7 @@ initialize -> create -> edit -> validate -> explore -> repair
 
 ## Current state
 
-The deterministic core, six MVP command workflows, diagnostics, URI-first workspace runtime, 3D Webview, agent-template generation, and release-candidate harnesses are implemented. Retained schema-v2 headed evidence for the current production bundles passes QR-002 at 703 ms p95 over 20 correlated create/change/rename/delete samples and passes QR-003 with `d3` as the release engine. That result is evidence for the recorded Mac16,7 / Apple M4 Pro / VS Code 1.127.0 environment, not a cross-machine guarantee. The current unlicensed candidate passed the required hosted VS Code and VSCodium lifecycle matrix on Ubuntu, macOS, and Windows. Public distribution remains on hold until the project license, public marketplace resources, security proof gaps, namespace authorization, and explicit protected publication approval are complete. Do not turn a configured matrix, component test, single-machine benchmark, or prepared listing into a broader compatibility, performance, or publication claim.
+The deterministic core, six MVP command workflows, diagnostics, URI-first workspace runtime, 3D Webview, agent-template generation, and release-candidate harnesses are implemented. A genuine schema-v3 headed VS Code 1.129.1 capture passes QR-002 at 832 ms p95 across 20 samples, passes QR-003 with `d3` selected, and records zero remote HTTP(S)/WS or other-scheme Webview requests under the strict current-input contract. The retained VS Code 1.127.0 capture predates that contract and is historical-only. An earlier candidate passed the required hosted VS Code and VSCodium lifecycle matrix on Ubuntu, macOS, and Windows; current source changes require a fresh hosted qualification before they can inherit that claim. The maintainer selected MIT for the project; public distribution remains on hold until third-party notice review, public marketplace resources, security proof gaps, namespace authorization, and explicit protected publication approval are complete. Do not turn a configured matrix, component test, single-machine benchmark, or prepared listing into a broader compatibility, performance, or publication claim.
 
 ## Sources of truth
 
@@ -99,7 +99,7 @@ Diagnostics should include the most precise useful URI and source range. Do not 
 
 ## Coding conventions
 
-These apply once implementation begins:
+These conventions apply to all implementation work:
 
 - Use TypeScript with strict type checking.
 - Follow the single-package npm and esbuild baseline in `docs/implementation-environment.md`; do not add an overlapping package manager, bundler, or UI framework without an accepted decision.

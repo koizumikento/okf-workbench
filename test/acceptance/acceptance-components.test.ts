@@ -10,6 +10,7 @@ import {
 import { parseBundle } from '../../src/core/parser/index.js';
 import { VALIDATION_CODES, validateBundle } from '../../src/core/validation/index.js';
 import { createInitializeBundleCommand } from '../../src/extension/commands/initialize-bundle.js';
+import { SerialProposalWorkflowScheduler } from '../../src/extension/commands/proposal-workflow-scheduler.js';
 import { createNewConceptCommand } from '../../src/extension/commands/new-concept.js';
 import { createRegenerateIndexesCommand } from '../../src/extension/commands/regenerate-indexes.js';
 import { createSetupAgentIntegrationCommand } from '../../src/extension/commands/setup-agent-integration.js';
@@ -29,13 +30,19 @@ import {
   rootIndex,
   valueOf,
 } from './helpers.js';
-import { FakeCommandUi, FakeProposalPreviewer } from '../unit/commands/fakes.js';
+import {
+  captureOpenWorkspaceFolderMembership,
+  FakeCommandUi,
+  FakeProposalPreviewer,
+} from '../unit/commands/fakes.js';
 import { FakeWorkspacePort, stringUriCodec } from '../unit/extension-workspace/fakes.js';
 
 const COMMAND_WORKSPACE_ROOT = 'memfs://workspace';
 const COMMAND_BUNDLE_ROOT = `${COMMAND_WORKSPACE_ROOT}/knowledge`;
 
 function commandHarness(port = new FakeWorkspacePort()) {
+  port.putDirectory(COMMAND_WORKSPACE_ROOT);
+  port.putDirectory(COMMAND_BUNDLE_ROOT);
   const ui = new FakeCommandUi();
   const previewer = new FakeProposalPreviewer();
   return {
@@ -48,7 +55,9 @@ function commandHarness(port = new FakeWorkspacePort()) {
       applicator: new ProposalApplicator(port, stringUriCodec),
       ui,
       previewer,
+      workflowScheduler: new SerialProposalWorkflowScheduler(),
       isWorkspaceTrusted: () => true,
+      captureWorkspaceFolderMembership: captureOpenWorkspaceFolderMembership,
     },
   };
 }
@@ -82,6 +91,7 @@ describe('MVP acceptance scenarios — deterministic component evidence', () => 
       ...shared,
       selectInitializationTarget: async () => ({
         targetRootUri: COMMAND_WORKSPACE_ROOT,
+        workspaceSafetyRootUri: COMMAND_WORKSPACE_ROOT,
         label: 'in-memory workspace',
         suggestedBundleDirectory: 'knowledge',
       }),
@@ -104,7 +114,10 @@ describe('MVP acceptance scenarios — deterministic component evidence', () => 
     ui.confirmations.push(true);
     const createConcept = createNewConceptCommand({
       ...shared,
-      selectBundle: async () => ({ bundleRootUri: COMMAND_BUNDLE_ROOT }),
+      selectBundle: async () => ({
+        bundleRootUri: COMMAND_BUNDLE_ROOT,
+        workspaceSafetyRootUri: COMMAND_WORKSPACE_ROOT,
+      }),
     });
     expect((await createConcept()).kind).toBe('applied');
 
@@ -271,7 +284,10 @@ describe('MVP acceptance scenarios — deterministic component evidence', () => 
     ui.confirmations.push(true);
     const regenerate = createRegenerateIndexesCommand({
       ...shared,
-      selectBundle: async () => ({ bundleRootUri: COMMAND_BUNDLE_ROOT }),
+      selectBundle: async () => ({
+        bundleRootUri: COMMAND_BUNDLE_ROOT,
+        workspaceSafetyRootUri: COMMAND_WORKSPACE_ROOT,
+      }),
     });
     expect((await regenerate()).kind).toBe('applied');
 

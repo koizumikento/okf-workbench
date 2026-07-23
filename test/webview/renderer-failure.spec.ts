@@ -33,6 +33,7 @@ test('renderer construction failure sends failure readiness while preserving acc
           protocolVersion: 1,
           type: 'replaceGraph',
           revision: 9,
+          deliveryId: 1,
           payload: {
             protocolVersion: 1,
             revision: 9,
@@ -77,6 +78,7 @@ test('renderer construction failure sends failure readiness while preserving acc
     protocolVersion: 1,
     type: 'graphRenderFailed',
     revision: 9,
+    deliveryId: 1,
     reason: 'renderer-construction-failed',
   });
   expect(messages).not.toContainEqual(
@@ -101,7 +103,13 @@ test('renderer construction failure sends failure readiness while preserving acc
         return failureMessages?.at(-1);
       }),
     )
-    .toEqual({ protocolVersion: 1, type: 'openSource', revision: 9, nodeId: 'alpha' });
+    .toEqual({
+      protocolVersion: 1,
+      type: 'openSource',
+      revision: 9,
+      deliveryId: 1,
+      nodeId: 'alpha',
+    });
 
   await page.evaluate(() => {
     (
@@ -136,6 +144,7 @@ test('graph-data application failure reports update failure instead of rendered 
           protocolVersion: 1,
           type: 'replaceGraph',
           revision: 11,
+          deliveryId: 2,
           payload: {
             protocolVersion: 1,
             revision: 11,
@@ -163,6 +172,7 @@ test('graph-data application failure reports update failure instead of rendered 
     protocolVersion: 1,
     type: 'graphRenderFailed',
     revision: 11,
+    deliveryId: 2,
     reason: 'renderer-update-failed',
   });
   expect(messages).not.toContainEqual(

@@ -3,9 +3,29 @@ import type {
   CommandUi,
   ConfirmationOptions,
   ProposalPresentation,
+  ProposalPreviewIdentity,
   ProposalPreviewer,
   SelectionItem,
 } from '../../../src/extension/commands/types.js';
+import type { WorkspaceFolderMembershipSession } from '../../../src/extension/workspace/workspaceFolderMembership.js';
+
+/** Default open-folder authorization used by command tests that do not exercise membership changes. */
+export function captureOpenWorkspaceFolderMembership(): WorkspaceFolderMembershipSession {
+  let disposed = false;
+  return {
+    currentProblem: () =>
+      disposed
+        ? {
+            code: 'workspace-folder-unavailable',
+            message: 'The test workspace folder authorization was disposed.',
+          }
+        : undefined,
+    onDidInvalidate: () => ({ dispose() {} }),
+    dispose: () => {
+      disposed = true;
+    },
+  };
+}
 
 export class FakeCommandUi implements CommandUi<string> {
   readonly selections: (string | undefined)[] = [];
@@ -57,18 +77,35 @@ export class FakeCommandUi implements CommandUi<string> {
 }
 
 export class FakeProposalPreviewer implements ProposalPreviewer<string> {
-  readonly shown: { proposal: ChangeSetProposal; presentation: ProposalPresentation }[] = [];
+  readonly shown: {
+    proposal: ChangeSetProposal;
+    presentation: ProposalPresentation;
+    identity: ProposalPreviewIdentity;
+  }[] = [];
   releasedSessions = 0;
   failure: Error | undefined;
+  #run = 0;
 
   async show(proposal: ChangeSetProposal, presentation: ProposalPresentation) {
     if (this.failure !== undefined) {
       throw this.failure;
     }
-    this.shown.push({ proposal, presentation });
+    this.#run += 1;
+    const identity: ProposalPreviewIdentity = {
+      id: `fake-okf-preview-${this.#run}`,
+      label: `Fake OKF Preview #${this.#run}`,
+      targetUri: proposal.writeRootUri,
+    };
+    this.shown.push({ proposal, presentation, identity });
     let released = false;
     return {
-      dispose: () => {
+      identity,
+      assertActive: () => {
+        if (released) {
+          throw new Error(`${identity.label} is no longer active.`);
+        }
+      },
+      dispose: async () => {
         if (!released) {
           released = true;
           this.releasedSessions += 1;

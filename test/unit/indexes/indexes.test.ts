@@ -435,4 +435,20 @@ describe('index planning', () => {
       problems: [{ code: 'duplicate-concept-path' }],
     });
   });
+
+  it.each(['.md', 'nested/.md'])(
+    'refuses a provider concept without a filename stem before rendering indexes: %s',
+    (relativePath) => {
+      expect(
+        planProviderIndexes({
+          mode: 'missing-indexes-only',
+          concepts: [{ relativePath }],
+          existingIndexes: [],
+        }),
+      ).toMatchObject({
+        ok: false,
+        problems: [{ code: 'unsafe-relative-path' }],
+      });
+    },
+  );
 });

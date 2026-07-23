@@ -1,4 +1,11 @@
-import type { OperationProblem, OperationResult } from '../model/index.js';
+import {
+  hasUnpairedUtf16Surrogate,
+  OKF_SEMANTIC_LIMITS,
+  relativePathBoundFailure,
+  type OperationProblem,
+  type OperationResult,
+  type RelativePathBoundFailure,
+} from '../model/index.js';
 
 interface PathOptions {
   readonly kind: 'file' | 'directory';
@@ -33,6 +40,21 @@ function pathFailure(message: string): OperationResult<never> {
 }
 
 const MAX_PERCENT_DECODE_ROUNDS = 16;
+
+function pathResourceFailure(
+  failure: RelativePathBoundFailure,
+  subject: 'path' | 'provider path',
+): OperationResult<never> {
+  const limit =
+    failure === 'code-units'
+      ? `${String(OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits)} UTF-16 code units`
+      : failure === 'utf8-bytes'
+        ? `${String(OKF_SEMANTIC_LIMITS.maxProviderPathBytes)} UTF-8 bytes`
+        : `${String(OKF_SEMANTIC_LIMITS.maxProviderPathSegments)} segments`;
+  return pathFailure(
+    `The ${subject} exceeds the supported relative-path limit of ${limit}. Shorten or flatten it.`,
+  );
+}
 
 function containsControlCharacter(value: string): boolean {
   return [...value].some((character) => {
@@ -77,7 +99,17 @@ function decodePathStable(path: string): OperationResult<string> {
 }
 
 function normalizeRelativePath(input: string, options: PathOptions): OperationResult<string> {
-  if (typeof input !== 'string' || input.trim().length === 0) {
+  if (typeof input !== 'string' || input.length === 0) {
+    return pathFailure('A non-empty relative path is required.');
+  }
+  const rawBoundFailure = relativePathBoundFailure(input, true);
+  if (rawBoundFailure !== undefined) {
+    return pathResourceFailure(rawBoundFailure, 'path');
+  }
+  if (hasUnpairedUtf16Surrogate(input)) {
+    return pathFailure('The path contains an unpaired UTF-16 surrogate.');
+  }
+  if (input.trim().length === 0) {
     return pathFailure('A non-empty relative path is required.');
   }
 
@@ -88,6 +120,10 @@ function normalizeRelativePath(input: string, options: PathOptions): OperationRe
   }
 
   const candidate = decoded.value.replaceAll('\\', '/');
+  const decodedBoundFailure = relativePathBoundFailure(candidate, false);
+  if (decodedBoundFailure !== undefined) {
+    return pathResourceFailure(decodedBoundFailure, 'path');
+  }
   if (options.allowCurrentDirectory && candidate === '.') {
     return { ok: true, value: '.', warnings: [] };
   }
@@ -139,6 +175,13 @@ function preserveProviderRelativePath(
 ): OperationResult<string> {
   if (typeof input !== 'string' || input.length === 0) {
     return pathFailure('A non-empty provider-relative path is required.');
+  }
+  const boundFailure = relativePathBoundFailure(input, false);
+  if (boundFailure !== undefined) {
+    return pathResourceFailure(boundFailure, 'provider path');
+  }
+  if (hasUnpairedUtf16Surrogate(input)) {
+    return pathFailure('The provider path contains an unpaired UTF-16 surrogate.');
   }
   if (containsControlCharacter(input)) {
     return pathFailure(`The provider path ${JSON.stringify(input)} contains a control character.`);
@@ -210,12 +253,29 @@ export function normalizeIndexPath(input: string): OperationResult<string> {
   return result;
 }
 
+/** Validates any generated bundle file path before it reaches a workspace URI codec. */
+export function normalizeTemplateOutputPath(input: string): OperationResult<string> {
+  return normalizeRelativePath(input, { kind: 'file' });
+}
+
 export function preserveProviderConceptPath(input: string): OperationResult<string> {
-  return preserveProviderRelativePath(input, {
+  const result = preserveProviderRelativePath(input, {
     kind: 'file',
     extension: '.md',
     rejectReservedMarkdown: true,
   });
+  if (!result.ok) {
+    return result;
+  }
+
+  const filename = result.value.slice(result.value.lastIndexOf('/') + 1);
+  if (filename === '.md') {
+    return pathFailure(
+      `The provider concept path ${JSON.stringify(input)} must include a filename before the .md extension.`,
+    );
+  }
+
+  return result;
 }
 
 export function preserveProviderIndexPath(input: string): OperationResult<string> {
@@ -253,13 +313,23 @@ export function preserveProviderBundleDirectory(
 }
 
 export function normalizeBundleDirectory(input: string): OperationResult<string> {
-  let candidate = input.replaceAll('\\', '/');
-  while (candidate.startsWith('./')) {
-    candidate = candidate.slice(2);
+  if (typeof input !== 'string') {
+    return pathFailure('A non-empty relative path is required.');
   }
-  while (candidate.endsWith('/') && candidate !== '/') {
-    candidate = candidate.slice(0, -1);
+  const rawBoundFailure = relativePathBoundFailure(input, true);
+  if (rawBoundFailure !== undefined) {
+    return pathResourceFailure(rawBoundFailure, 'path');
   }
+  const slashNormalized = input.replaceAll('\\', '/');
+  let start = 0;
+  while (slashNormalized.startsWith('./', start)) {
+    start += 2;
+  }
+  let end = slashNormalized.length;
+  while (end > start + 1 && slashNormalized.charCodeAt(end - 1) === 0x2f) {
+    end -= 1;
+  }
+  let candidate = slashNormalized.slice(start, end);
 
   if (candidate.length === 0 && input.trim().length > 0) {
     candidate = '.';

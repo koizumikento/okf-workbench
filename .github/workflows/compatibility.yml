@@ -47,6 +47,7 @@ jobs:
           npm run lint
           npm run typecheck
           npm test
+          npm run test:security
           npm run dependency:check
           npm audit --omit=dev --audit-level=high
 
@@ -90,9 +91,6 @@ jobs:
       - name: Run AC-001 through AC-008 component gate
         run: npm run test:acceptance
 
-      - name: Run security boundary gate
-        run: npm run test:security
-
       - name: Install pinned Playwright Chromium
         run: npx --no-install playwright install --with-deps chromium
 
@@ -128,22 +126,22 @@ jobs:
             editor_version: 1.121.0
             os: ubuntu-24.04
             platform: linux
-          - label: VS Code 1.127.0 / Ubuntu 24.04
-            artifact_label: vscode-1.127.0-ubuntu-24.04
+          - label: VS Code 1.129.1 / Ubuntu 24.04
+            artifact_label: vscode-1.129.1-ubuntu-24.04
             editor: vscode
-            editor_version: 1.127.0
+            editor_version: 1.129.1
             os: ubuntu-24.04
             platform: linux
-          - label: VS Code 1.127.0 / macOS 15
-            artifact_label: vscode-1.127.0-macos-15
+          - label: VS Code 1.129.1 / macOS 15
+            artifact_label: vscode-1.129.1-macos-15
             editor: vscode
-            editor_version: 1.127.0
+            editor_version: 1.129.1
             os: macos-15
             platform: darwin
-          - label: VS Code 1.127.0 / Windows 2025
-            artifact_label: vscode-1.127.0-windows-2025
+          - label: VS Code 1.129.1 / Windows 2025
+            artifact_label: vscode-1.129.1-windows-2025
             editor: vscode
-            editor_version: 1.127.0
+            editor_version: 1.129.1
             os: windows-2025
             platform: win32
           - label: VSCodium 1.121.03429 / Ubuntu 24.04
@@ -202,7 +200,7 @@ jobs:
         run: node -e "throw new Error('previous_vsix_url and previous_vsix_sha256 must be supplied together')"
 
       - name: Download candidate VSIX
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: okf-workbench-candidate-vsix
           path: artifacts

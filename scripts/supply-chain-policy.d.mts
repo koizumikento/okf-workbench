@@ -21,6 +21,20 @@ export function licenseNoticeWorkflowFailures(
   workflowSource: string,
 ): readonly string[];
 
+export function securityWorkflowGateFailures(
+  workflowPath: string,
+  workflowSource: string,
+): readonly string[];
+
+export function releaseWorkflowSafetyFailures(
+  workflowPath: string,
+  workflowSource: string,
+): readonly string[];
+
+export function securityPackageScriptFailures(
+  packageManifest: Readonly<Record<string, unknown>>,
+): readonly string[];
+
 export function installScriptPolicyFailures(input: InstallScriptPolicyInput): readonly string[];
 
 export function validateRepositorySupplyChainPolicy(

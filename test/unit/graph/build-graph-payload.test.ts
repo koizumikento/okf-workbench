@@ -3,10 +3,16 @@ import { describe, expect, it } from 'vitest';
 import type {
   Concept,
   ConceptLink,
+  ParseFailure,
   ParsedBundle,
   SourceRange,
 } from '../../../src/core/model/index.js';
-import { buildGraphPayload } from '../../../src/core/graph/index.js';
+import { OKF_SEMANTIC_LIMITS } from '../../../src/core/model/index.js';
+import {
+  buildGraphPayload,
+  graphPayloadJsonByteLength,
+  GraphResourceLimitError,
+} from '../../../src/core/graph/index.js';
 
 const rootUri = 'file:///workspace/knowledge';
 
@@ -59,10 +65,11 @@ function concept(
     source: {
       uri: `${rootUri}/${id}.md`,
       bundlePath: `${id}.md`,
-      contentHash: `hash:${id}`,
+      contentHash: 'sha256:test',
     },
     frontmatter: {
       raw: normalized,
+      explicitTags: {},
       source: `type: ${type}\n`,
       range: range(0, 50),
       fields: { type: range(4, 15) },
@@ -80,13 +87,16 @@ function concept(
   };
 }
 
-function bundle(concepts: readonly Concept[]): ParsedBundle {
+function bundle(
+  concepts: readonly Concept[],
+  failures: readonly ParseFailure[] = [],
+): ParsedBundle {
   return {
     rootUri,
     revision: 42,
     concepts,
     reservedDocuments: [],
-    failures: [],
+    failures,
     findings: [],
   };
 }
@@ -141,6 +151,7 @@ describe('buildGraphPayload', () => {
     ]);
 
     expect(graph.edges).toHaveLength(2);
+    expect(graph.edges.map(({ id }) => id)).toEqual(['edge:0', 'edge:1']);
     expect(
       graph.edges.map(({ source, target, sourceRange }) => [
         source,
@@ -202,6 +213,122 @@ describe('buildGraphPayload', () => {
     });
   });
 
+  it('fails closed on duplicate non-empty concept IDs independent of inventory order', () => {
+    const first = concept('duplicate', { type: 'first' });
+    const second = { ...concept('duplicate', { type: 'second' }), title: 'Second duplicate' };
+
+    for (const concepts of [
+      [first, second],
+      [second, first],
+    ]) {
+      expect(() => buildGraphPayload(bundle(concepts))).toThrow(/duplicate concept ID/u);
+    }
+  });
+
+  it('indexes failed sources by exact URI and path components without delimiter collisions', () => {
+    const healthy = {
+      ...concept('healthy', { type: 'safe' }),
+      source: {
+        uri: 'a',
+        bundlePath: 'b\0c',
+        contentHash: 'sha256:healthy',
+      },
+    };
+    const graph = buildGraphPayload(
+      bundle(
+        [healthy],
+        [
+          {
+            kind: 'parse-failure',
+            uri: 'a\0b',
+            bundlePath: 'c',
+            reason: 'read',
+            message: 'Different source.',
+          },
+        ],
+      ),
+    );
+
+    expect(graph.nodes[0]).toMatchObject({ id: 'healthy', type: 'safe' });
+    expect(graph.nodes[0]).not.toHaveProperty('sourceFailed');
+  });
+
+  it('orders equal-offset relationships by the complete source range tuple', () => {
+    const firstRange: SourceRange = {
+      start: { offset: 10, line: 1, character: 2 },
+      end: { offset: 20, line: 1, character: 12 },
+    };
+    const secondRange: SourceRange = {
+      start: { offset: 10, line: 2, character: 1 },
+      end: { offset: 20, line: 2, character: 11 },
+    };
+    const internalFirst = {
+      ...link('source', 'internal', './target.md', 10, 'target'),
+      range: firstRange,
+    };
+    const internalSecond = {
+      ...link('source', 'internal', './target.md', 10, 'target'),
+      range: secondRange,
+    };
+    const brokenFirst = {
+      ...link('source', 'broken', './missing.md', 10),
+      range: firstRange,
+    };
+    const brokenSecond = {
+      ...link('source', 'broken', './missing.md', 10),
+      range: secondRange,
+    };
+    const forward = buildGraphPayload(
+      bundle([
+        concept('source', {
+          links: [internalSecond, brokenSecond, internalFirst, brokenFirst],
+        }),
+        concept('target'),
+      ]),
+    );
+    const reverse = buildGraphPayload(
+      bundle([
+        concept('target'),
+        concept('source', {
+          links: [brokenFirst, internalFirst, brokenSecond, internalSecond],
+        }),
+      ]),
+    );
+
+    expect(reverse).toEqual(forward);
+    expect(forward.edges.map(({ sourceRange }) => sourceRange.start.line)).toEqual([1, 2]);
+    expect(forward.brokenLinks.map(({ sourceRange }) => sourceRange.start.line)).toEqual([1, 2]);
+  });
+
+  it('rejects an empty unresolved internal target before producing a decoder-invalid graph', () => {
+    const invalid = concept('source', {
+      links: [link('source', 'internal', '', 10)],
+    });
+
+    expect(() => buildGraphPayload(bundle([invalid]))).toThrow(
+      /internal or broken-link target must not be empty/u,
+    );
+  });
+
+  it('does not let an invalid empty concept ID poison the complete graph payload', () => {
+    const graph = buildGraphPayload(bundle([concept(''), concept('valid')]));
+
+    expect(graph.nodes.map(({ id }) => id)).toEqual(['valid']);
+    expect(graph.backlinks).toEqual({ valid: [] });
+    expect(graph.statistics).toMatchObject({ conceptCount: 1, orphanCount: 1 });
+
+    const exactTypes = Array.from({ length: OKF_SEMANTIC_LIMITS.maxUniqueGraphTypes }, (_, index) =>
+      concept(`valid-${String(index)}`, { type: `type-${String(index)}` }),
+    );
+    const withDiscardedSentinel = buildGraphPayload(
+      bundle([...exactTypes, concept('', { type: 'must-not-spend-a-type' })]),
+    );
+    expect(Object.keys(withDiscardedSentinel.statistics.typeCounts)).toHaveLength(
+      OKF_SEMANTIC_LIMITS.maxUniqueGraphTypes,
+    );
+    expect(withDiscardedSentinel.statistics.typeCounts).not.toHaveProperty('must-not-spend-a-type');
+  });
+
   it('does not mark a self-linked concept as an orphan', () => {
     const self = concept('self', {
       links: [link('self', 'internal', './self.md', 10, 'self')],
@@ -211,5 +338,212 @@ describe('buildGraphPayload', () => {
     expect(graph.nodes[0]).toMatchObject({ id: 'self', orphan: false });
     expect(graph.backlinks).toEqual({ self: ['self'] });
     expect(graph.statistics.orphanCount).toBe(0);
+  });
+
+  it('keeps a failed source as an identity-only node without derived curation metadata', () => {
+    const failed = concept('failed', {
+      type: 'must-not-leak',
+      tags: ['must-not-leak'],
+      links: [link('failed', 'broken', './missing.md', 10)],
+    });
+    const valid = concept('valid', { type: 'reference', tags: ['safe'] });
+    const graph = buildGraphPayload(
+      bundle(
+        [failed, valid],
+        [
+          {
+            kind: 'parse-failure',
+            uri: failed.source.uri,
+            bundlePath: failed.source.bundlePath,
+            reason: 'frontmatter',
+            message: 'Invalid YAML.',
+          },
+        ],
+      ),
+    );
+
+    expect(graph.nodes).toEqual([
+      {
+        id: 'failed',
+        sourceFailed: true,
+        type: '',
+        tags: [],
+        orphan: false,
+        brokenLinkCount: 0,
+      },
+      expect.objectContaining({ id: 'valid', type: 'reference', orphan: true }),
+    ]);
+    expect(graph.brokenLinks).toEqual([]);
+    expect(graph.statistics).toMatchObject({
+      conceptCount: 2,
+      orphanCount: 1,
+      brokenLinkCount: 0,
+      typeCounts: { reference: 1 },
+      tagCounts: { safe: 1 },
+    });
+  });
+
+  it('does not spend exact type or tag cardinality on a failed-source sentinel', () => {
+    const valid = Array.from({ length: OKF_SEMANTIC_LIMITS.maxUniqueGraphTypes }, (_, index) =>
+      concept(`valid-${String(index)}`, {
+        type: `type-${String(index)}`,
+        tags: [`tag-${String(index)}`],
+      }),
+    );
+    const failed = concept('failed', {
+      type: 'must-not-spend-a-type',
+      tags: ['must-not-spend-a-tag'],
+      links: [link('failed', 'broken', './must-not-spend-a-link.md', 10)],
+    });
+    const graph = buildGraphPayload(
+      bundle(
+        [...valid, failed],
+        [
+          {
+            kind: 'parse-failure',
+            uri: failed.source.uri,
+            bundlePath: failed.source.bundlePath,
+            reason: 'resource-limit',
+            scope: 'document',
+            message: 'Source was not parsed.',
+          },
+        ],
+      ),
+    );
+
+    expect(Object.keys(graph.statistics.typeCounts)).toHaveLength(
+      OKF_SEMANTIC_LIMITS.maxUniqueGraphTypes,
+    );
+    expect(graph.statistics.typeCounts).not.toHaveProperty('must-not-spend-a-type');
+    expect(graph.statistics.tagCounts).not.toHaveProperty('must-not-spend-a-tag');
+    expect(graph.brokenLinks).toEqual([]);
+  });
+
+  it('uses compact deterministic edge IDs that never embed long concept identities', () => {
+    const prefix = 'a'.repeat(1_000);
+    const source = concept(`${prefix}-source`, {
+      links: [link(`${prefix}-source`, 'internal', './target.md', 4, `${prefix}-target`)],
+    });
+    const target = concept(`${prefix}-target`);
+
+    const graph = buildGraphPayload(bundle([target, source]));
+
+    expect(graph.edges[0]?.id).toBe('edge:0');
+    expect(graph.edges[0]?.id.length).toBeLessThanOrEqual(
+      OKF_SEMANTIC_LIMITS.maxCompactGraphEdgeIdCodeUnits,
+    );
+    expect(graph.edges[0]?.id).not.toContain(prefix);
+  });
+
+  it('counts escaped JSON bytes exactly without materializing a serialized payload', () => {
+    const special = concept('special', {
+      type: 'quote"slash\\line\n',
+      tags: ['雪', '\u0001', '\ud800'],
+    });
+    const graph = buildGraphPayload(bundle([special]));
+
+    expect(graphPayloadJsonByteLength(graph)).toBe(
+      new TextEncoder().encode(JSON.stringify(graph)).byteLength,
+    );
+
+    const sparse = { ...graph, nodes: new Array(2) } as unknown as typeof graph;
+    expect(graphPayloadJsonByteLength(sparse)).toBe(
+      new TextEncoder().encode(JSON.stringify(sparse)).byteLength,
+    );
+  });
+
+  it('fails closed on one-over graph string and cardinality limits', () => {
+    expect(
+      buildGraphPayload(
+        bundle([
+          concept('exact-type', {
+            type: 'x'.repeat(OKF_SEMANTIC_LIMITS.maxTypeCodeUnits),
+          }),
+        ]),
+      ).nodes[0]?.type,
+    ).toHaveLength(OKF_SEMANTIC_LIMITS.maxTypeCodeUnits);
+    expect(() =>
+      buildGraphPayload(
+        bundle([
+          concept('oversized-type', {
+            type: 'x'.repeat(OKF_SEMANTIC_LIMITS.maxTypeCodeUnits + 1),
+          }),
+        ]),
+      ),
+    ).toThrow(GraphResourceLimitError);
+
+    const excessiveTypes = Array.from(
+      { length: OKF_SEMANTIC_LIMITS.maxUniqueGraphTypes + 1 },
+      (_, index) => concept(`type-${String(index)}`, { type: `type-${String(index)}` }),
+    );
+    expect(() => buildGraphPayload(bundle(excessiveTypes))).toThrow(/type cardinality limit/u);
+  });
+
+  it('bounds aggregate producer identities before building lookup keys', () => {
+    const failureUri = `file:///${'u'.repeat(
+      OKF_SEMANTIC_LIMITS.maxSourceUriCodeUnits - 'file:///'.length,
+    )}`;
+    const failureCount =
+      Math.floor(OKF_SEMANTIC_LIMITS.maxGraphIdentityBytes / failureUri.length) + 1;
+    const failures = Array.from({ length: failureCount }, (_, index): ParseFailure => ({
+      kind: 'parse-failure',
+      uri: failureUri,
+      bundlePath: `failure-${String(index)}.md`,
+      reason: 'read',
+      message: 'Unreadable.',
+    }));
+
+    expect(() => buildGraphPayload(bundle([], failures))).toThrow(/aggregate limit/u);
+  });
+
+  it('accepts the exact serialized graph cap and refuses one extra byte before serialization', () => {
+    const concepts = Array.from({ length: 1_100 }, (_, index) =>
+      concept(`payload-${String(index).padStart(4, '0')}`, {
+        type: 'concept',
+      }),
+    ).map((item) => ({ ...item, description: '' }));
+    const baseGraph = buildGraphPayload(bundle(concepts));
+    let remaining =
+      OKF_SEMANTIC_LIMITS.maxGraphPayloadBytes - graphPayloadJsonByteLength(baseGraph);
+    expect(remaining).toBeGreaterThan(0);
+    expect(remaining).toBeLessThan(concepts.length * OKF_SEMANTIC_LIMITS.maxDescriptionCodeUnits);
+    const padded = concepts.map((item) => {
+      const length = Math.min(remaining, OKF_SEMANTIC_LIMITS.maxDescriptionCodeUnits);
+      remaining -= length;
+      return { ...item, description: 'x'.repeat(length) };
+    });
+    expect(remaining).toBe(0);
+
+    const exact = buildGraphPayload(bundle(padded));
+    expect(graphPayloadJsonByteLength(exact)).toBe(OKF_SEMANTIC_LIMITS.maxGraphPayloadBytes);
+
+    const expandableIndex = padded.findIndex(
+      ({ description }) => description.length < OKF_SEMANTIC_LIMITS.maxDescriptionCodeUnits,
+    );
+    expect(expandableIndex).toBeGreaterThanOrEqual(0);
+    const oneOver = padded.map((item, index) =>
+      index === expandableIndex ? { ...item, description: `${item.description}x` } : item,
+    );
+    expect(() => buildGraphPayload(bundle(oneOver))).toThrow(/serialized payload limit/u);
+  });
+
+  it('does not reject a bounded graph because a non-serialized diagnostic message is long', () => {
+    const longId = 'long-id-'.repeat(375);
+    const item = concept(longId);
+    const input = bundle([item]);
+    const graph = buildGraphPayload({
+      ...input,
+      findings: [
+        {
+          code: 'okf.curation.orphan-concept',
+          category: 'curation',
+          severity: 'warning',
+          uri: item.source.uri,
+          message: `OKF curation: ${'detail'.repeat(1_000)}`,
+        },
+      ],
+    });
+
+    expect(graph.nodes[0]?.id).toBe(longId);
   });
 });

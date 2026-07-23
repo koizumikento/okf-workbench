@@ -1,4 +1,5 @@
 import { buildGraphPayload } from '../../core/graph/index.js';
+import { OKF_SEMANTIC_LIMITS } from '../../core/model/index.js';
 import type { GraphPayload, ParseFailure, ParsedBundle } from '../../core/model/index.js';
 import { parseBundle } from '../../core/parser/index.js';
 import { validateBundle } from '../../core/validation/index.js';
@@ -8,7 +9,7 @@ import {
   type DisposableLike,
   type WorkspaceChangeSource,
 } from '../workspace/refreshCoordinator.js';
-import type { WorkspacePort } from '../workspace/types.js';
+import { WorkspaceAccessError, type WorkspacePort } from '../workspace/types.js';
 import type { WorkspaceUriCodec } from '../workspace/uriCodec.js';
 import { loadBundle, type LoadedBundleInput } from './loadBundle.js';
 import type { BundleRuntimeContext, BundleRuntimeSnapshot, NodeSourceLocation } from './types.js';
@@ -46,7 +47,13 @@ export class BundleRuntime<TUri> implements DisposableLike {
     this.#now = options.now ?? (() => new Date());
     this.#coordinator = new RefreshCoordinator({
       refresh: async ({ context, signal }) =>
-        loadBundle(options.port, options.uris, context.rootUri, signal),
+        loadBundle(
+          options.port,
+          options.uris,
+          context.rootUri,
+          context.workspaceSafetyRootUri,
+          signal,
+        ),
       publish: ({ context, result, revision }) => {
         this.#publish(context, result, revision);
       },
@@ -69,11 +76,12 @@ export class BundleRuntime<TUri> implements DisposableLike {
     return this.#coordinator.revision;
   }
 
-  public select(rootUri: TUri): void {
+  public select(rootUri: TUri, workspaceSafetyRootUri: TUri): void {
     this.#assertActive();
     const context: BundleRuntimeContext<TUri> = {
       rootUri,
       rootUriString: this.#uris.serialize(rootUri),
+      workspaceSafetyRootUri,
     };
     this.#clearPublishedState();
     this.#coordinator.switchContext(context, this.#createChangeSource(rootUri));
@@ -103,18 +111,59 @@ export class BundleRuntime<TUri> implements DisposableLike {
   }
 
   #publish(context: BundleRuntimeContext<TUri>, loaded: LoadedBundleInput, revision: number): void {
+    if (loaded.documents.length > OKF_SEMANTIC_LIMITS.maxRuntimeDocuments) {
+      throw semanticLimitError(
+        `the selected bundle contains more than ${String(OKF_SEMANTIC_LIMITS.maxRuntimeDocuments)} readable Markdown documents`,
+      );
+    }
     const parsed = parseBundle({
       rootUri: loaded.rootUri,
       revision,
       documents: loaded.documents,
     });
+    const semanticFailure = parsed.failures.find(
+      (failure) => failure.reason === 'resource-limit' && failure.scope === 'bundle',
+    );
+    if (semanticFailure !== undefined) {
+      throw semanticLimitError(
+        `bundle parsing exceeded a semantic-output limit (${semanticFailure.message})`,
+      );
+    }
+    if (parsed.concepts.length > OKF_SEMANTIC_LIMITS.maxGraphNodes) {
+      throw semanticLimitError(
+        `the selected bundle contains more than ${String(OKF_SEMANTIC_LIMITS.maxGraphNodes)} graph concepts`,
+      );
+    }
+    let linkCount = 0;
+    for (const concept of parsed.concepts) {
+      linkCount += concept.links.length;
+      if (linkCount > OKF_SEMANTIC_LIMITS.maxBundleLinks) {
+        throw semanticLimitError(
+          `the selected bundle contains more than ${String(OKF_SEMANTIC_LIMITS.maxBundleLinks)} Markdown relationships`,
+        );
+      }
+    }
     const withReadFailures: ParsedBundle = {
       ...parsed,
       failures: sortFailures([...parsed.failures, ...loaded.failures]),
     };
     const findings = validateBundle(withReadFailures, { now: this.#now() });
+    if (findings.length > OKF_SEMANTIC_LIMITS.maxFindings) {
+      throw semanticLimitError(
+        `validation produced more than ${String(OKF_SEMANTIC_LIMITS.maxFindings)} findings`,
+      );
+    }
     const bundle: ParsedBundle = { ...withReadFailures, findings };
     const graph = buildGraphPayload(bundle);
+    if (
+      graph.nodes.length > OKF_SEMANTIC_LIMITS.maxGraphNodes ||
+      graph.edges.length > OKF_SEMANTIC_LIMITS.maxGraphEdges ||
+      graph.brokenLinks.length > OKF_SEMANTIC_LIMITS.maxGraphEdges
+    ) {
+      throw semanticLimitError(
+        `the derived graph exceeds the ${String(OKF_SEMANTIC_LIMITS.maxGraphNodes)}-node or ${String(OKF_SEMANTIC_LIMITS.maxGraphEdges)}-relationship payload limit`,
+      );
+    }
     const nodeSources = buildNodeSources(bundle, graph, this.#uris);
     const snapshot: BundleRuntimeSnapshot<TUri> = {
       context,
@@ -141,6 +190,13 @@ export class BundleRuntime<TUri> implements DisposableLike {
       throw new Error('The bundle runtime has been disposed.');
     }
   }
+}
+
+function semanticLimitError(detail: string): WorkspaceAccessError {
+  return new WorkspaceAccessError(
+    'unavailable',
+    `OKF Workbench refused to publish diagnostics or graph state because ${detail}. Reduce or split the knowledge bundle, then retry.`,
+  );
 }
 
 function buildNodeSources<TUri>(

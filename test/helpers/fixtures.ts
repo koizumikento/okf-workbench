@@ -9,7 +9,7 @@ export interface VirtualFixtureFile {
 
 export interface FixtureExpectedFailure {
   readonly path: string;
-  readonly reason: 'decode' | 'frontmatter' | 'markdown' | 'read';
+  readonly reason: 'decode' | 'frontmatter' | 'markdown' | 'read' | 'resource-limit';
 }
 
 export interface FixtureExpectedFinding {
@@ -145,6 +145,7 @@ function decodeExpectedFailure(value: unknown, index: number): FixtureExpectedFa
       'frontmatter',
       'markdown',
       'read',
+      'resource-limit',
     ] as const),
   };
 }

@@ -115,7 +115,7 @@ function createEdge(index: number, nodeCount: number, random: () => number): Gra
   const source = `area-${String(sourceIndex % 20).padStart(2, '0')}/concept-${String(sourceIndex).padStart(5, '0')}`;
   const target = `area-${String(targetIndex % 20).padStart(2, '0')}/concept-${String(targetIndex).padStart(5, '0')}`;
   return {
-    id: `edge-${String(index).padStart(6, '0')}`,
+    id: `edge:${index.toString(36)}`,
     source,
     target,
     sourceRange: rangeForEdge(index),

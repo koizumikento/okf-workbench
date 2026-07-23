@@ -16,12 +16,24 @@ export {
   type AgentsFilePlanInput,
 } from './agents.js';
 export { BUNDLE_PRESET_FILE_PATHS, renderBundlePreset } from './bundles.js';
-export { CONCEPT_TEMPLATE_DEFINITIONS, renderConceptTemplate } from './concepts.js';
+export {
+  conceptDescriptionInputProblem,
+  conceptTagsInputProblem,
+  conceptTimestampInputProblem,
+  conceptTitleInputProblem,
+  conceptTypeInputProblem,
+  CONCEPT_TEMPLATE_DEFINITIONS,
+  normalizeConceptDescriptionInput,
+  normalizeConceptTitleInput,
+  parseConceptTagsInput,
+  renderConceptTemplate,
+} from './concepts.js';
 export {
   encodeMarkdownPathSegment,
   normalizeBundleDirectory,
   normalizeConceptPath,
   normalizeIndexPath,
+  normalizeTemplateOutputPath,
   preserveProviderBundleDirectory,
   preserveProviderConceptPath,
   preserveProviderIndexPath,

@@ -24,7 +24,7 @@ const CAMERA_TRANSITION_MS = 600;
 
 export type ForceEngine = 'd3' | 'ngraph';
 
-/** Evidence-backed release default from the tracked VS Code 1.127.0 headed comparison. */
+/** Checked-in fallback; release qualification requires current schema-v3 headed evidence. */
 export const DEFAULT_FORCE_ENGINE: ForceEngine = 'd3';
 export const FORCE_GRAPH_COOLDOWN_TICKS = 120;
 export const SELECTED_NODE_VALUE = 2.4;

@@ -238,43 +238,52 @@ function addDirectoryAndAncestors(directories: Set<string>, directoryPath: strin
   }
 }
 
-function childDirectory(parent: string, descendant: string): string | undefined {
-  const parentPrefix = parent.length === 0 ? '' : `${parent}/`;
-  if (!descendant.startsWith(parentPrefix) || descendant === parent) {
-    return undefined;
-  }
-
-  const remainder = descendant.slice(parentPrefix.length);
-  return remainder.split('/')[0];
-}
-
-function entriesFor(
-  directoryPath: string,
+function entriesByDirectory(
   concepts: readonly NormalizedConcept[],
   directories: ReadonlySet<string>,
-): readonly IndexEntry[] {
-  const conceptEntries: IndexEntry[] = concepts
-    .filter((concept) => directoryOf(concept.relativePath) === directoryPath)
-    .sort((left, right) => compareText(left.relativePath, right.relativePath))
-    .map((concept) => ({
+): ReadonlyMap<string, readonly IndexEntry[]> {
+  const conceptEntries = new Map<string, NormalizedConcept[]>();
+  for (const concept of concepts) {
+    const directory = directoryOf(concept.relativePath);
+    const current = conceptEntries.get(directory);
+    if (current === undefined) {
+      conceptEntries.set(directory, [concept]);
+    } else {
+      current.push(concept);
+    }
+  }
+
+  const childDirectories = new Map<string, string[]>();
+  for (const directory of directories) {
+    if (directory.length === 0) {
+      continue;
+    }
+    const parent = directoryOf(directory);
+    const name = filenameOf(directory);
+    const current = childDirectories.get(parent);
+    if (current === undefined) {
+      childDirectories.set(parent, [name]);
+    } else {
+      current.push(name);
+    }
+  }
+
+  const indexed = new Map<string, readonly IndexEntry[]>();
+  for (const directory of directories) {
+    const conceptsInDirectory = conceptEntries.get(directory) ?? [];
+    conceptsInDirectory.sort((left, right) => compareText(left.relativePath, right.relativePath));
+    const directConcepts: IndexEntry[] = conceptsInDirectory.map((concept) => ({
       kind: 'concept',
       filename: filenameOf(concept.relativePath),
       ...(concept.title === undefined ? {} : { title: concept.title }),
       ...(concept.description === undefined ? {} : { description: concept.description }),
     }));
-
-  const children = new Set<string>();
-  for (const descendant of directories) {
-    const child = childDirectory(directoryPath, descendant);
-    if (child !== undefined) {
-      children.add(child);
-    }
+    const directDirectories: IndexEntry[] = (childDirectories.get(directory) ?? [])
+      .sort(compareText)
+      .map((name) => ({ kind: 'directory', name }));
+    indexed.set(directory, [...directConcepts, ...directDirectories]);
   }
-
-  const directoryEntries: IndexEntry[] = [...children]
-    .sort(compareText)
-    .map((name) => ({ kind: 'directory', name }));
-  return [...conceptEntries, ...directoryEntries];
+  return indexed;
 }
 
 function normalizeInputs(
@@ -360,13 +369,13 @@ function planWithPaths(
 
   const changes: IndexChange[] = [];
   const directoryPaths = [...normalized.value.directories].sort(compareIndexPath);
+  const indexedEntries = entriesByDirectory(
+    normalized.value.concepts,
+    normalized.value.directories,
+  );
   for (const directoryPath of directoryPaths) {
     const relativePath = indexPathFor(directoryPath);
-    const entries = entriesFor(
-      directoryPath,
-      normalized.value.concepts,
-      normalized.value.directories,
-    );
+    const entries = indexedEntries.get(directoryPath) ?? [];
     const existing = normalized.value.indexes.get(relativePath);
     if (existing === undefined) {
       changes.push({

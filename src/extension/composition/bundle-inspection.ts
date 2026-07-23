@@ -1,10 +1,29 @@
 import { parseBundle } from '../../core/parser/index.js';
-import type { JsonValue, OperationProblem } from '../../core/model/index.js';
+import { OKF_SEMANTIC_LIMITS, type OperationProblem } from '../../core/model/index.js';
 
-import type { WorkspacePort } from '../workspace/types.js';
+import { WorkspaceAccessError, type WorkspacePort } from '../workspace/types.js';
 import type { WorkspaceUriCodec } from '../workspace/uriCodec.js';
+import {
+  captureWorkspaceDirectoryChain,
+  inspectWorkspaceDirectoryChain,
+  verifyWorkspaceDirectoryChain,
+} from '../workspace/directorySafety.js';
+import { BUNDLE_READ_LIMITS, readWorkspaceFileWithinLimit } from '../workspace/readSafety.js';
+import type { WorkspaceStat } from '../workspace/types.js';
 
-const decoder = new TextDecoder('utf-8', { fatal: true });
+// Preserve a leading BOM so the core parser, rather than this adapter, enforces the one-BOM policy.
+const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+const encoder = new TextEncoder();
+
+function safeSerializedUri<TUri>(uri: TUri, uris: WorkspaceUriCodec<TUri>): string | undefined {
+  const serialized = uris.serialize(uri);
+  if (serialized.length > OKF_SEMANTIC_LIMITS.maxSourceUriCodeUnits) {
+    return undefined;
+  }
+  return encoder.encode(serialized).byteLength <= OKF_SEMANTIC_LIMITS.maxSourceUriBytes
+    ? serialized
+    : undefined;
+}
 
 export interface RootIndexInspectionInput {
   readonly rootUri: string;
@@ -45,6 +64,7 @@ export type SelectedBundleRootInspection<TUri> =
   | {
       readonly ok: false;
       readonly reason:
+        | 'invalid-root'
         | 'missing-index'
         | 'unreadable-index'
         | 'missing-version'
@@ -96,17 +116,24 @@ export function inspectBundleRootIndex(input: RootIndexInspectionInput): BundleR
   const rootIndex = parsed.reservedDocuments.find(
     (document) => document.reservedKind === 'index' && document.source.bundlePath === 'index.md',
   );
+  if (rootIndex === undefined) {
+    return { isBundleRoot: false, reason: 'missing-version' };
+  }
   const raw = rootIndex?.frontmatter?.raw;
   if (raw === undefined || !Object.hasOwn(raw, 'okf_version')) {
     return { isBundleRoot: false, reason: 'missing-version' };
   }
-  const declaredVersion = raw.okf_version;
+  const declaredVersion = rootIndex.okfVersion;
   if (declaredVersion === undefined) {
-    return { isBundleRoot: false, reason: 'invalid-version', declared: 'undefined' };
+    return {
+      isBundleRoot: false,
+      reason: 'invalid-version',
+      declared: JSON.stringify(raw.okf_version) ?? 'undefined',
+    };
   }
 
-  const title = raw.title;
-  const label = typeof title === 'string' && title.trim().length > 0 ? title.trim() : undefined;
+  const title = rootIndex.frontmatter?.normalized.title;
+  const label = title !== undefined && title.trim().length > 0 ? title.trim() : undefined;
   const version = inspectOkfVersion(declaredVersion);
   if (version === undefined) {
     return {
@@ -122,10 +149,7 @@ export function inspectBundleRootIndex(input: RootIndexInspectionInput): BundleR
   };
 }
 
-function inspectOkfVersion(value: JsonValue): OkfVersionInspection | undefined {
-  if (typeof value !== 'string') {
-    return undefined;
-  }
+function inspectOkfVersion(value: string): OkfVersionInspection | undefined {
   const match = /^(\d+)\.(\d+)$/u.exec(value);
   if (match === null) {
     return undefined;
@@ -150,16 +174,50 @@ export async function inspectExplicitBundleRoot<TUri>(
   rootUri: TUri,
   port: WorkspacePort<TUri>,
   uris: WorkspaceUriCodec<TUri>,
+  workspaceSafetyRoot: TUri = rootUri,
 ): Promise<ExplicitBundleRootInspection<TUri>> {
+  const rootUriString = safeSerializedUri(rootUri, uris);
+  if (rootUriString === undefined) {
+    return { ok: false, reason: 'invalid-root' };
+  }
+  const directoryChain = await captureWorkspaceDirectoryChain(
+    workspaceSafetyRoot,
+    rootUri,
+    port,
+    uris,
+  );
+  if (!directoryChain.ok) {
+    return { ok: false, reason: 'invalid-root' };
+  }
+  try {
+    const rootStat = await port.stat(rootUri);
+    if ((await verifyWorkspaceDirectoryChain(directoryChain.snapshot, port, uris)) !== undefined) {
+      return { ok: false, reason: 'invalid-root' };
+    }
+    if (rootStat?.type !== 'directory') {
+      return { ok: false, reason: 'invalid-root' };
+    }
+  } catch {
+    return { ok: false, reason: 'invalid-root' };
+  }
+
   let indexUri: TUri;
   try {
     indexUri = uris.joinContained(rootUri, 'index.md');
   } catch {
     return { ok: false, reason: 'invalid-root' };
   }
+  const indexUriString = safeSerializedUri(indexUri, uris);
+  if (indexUriString === undefined) {
+    return { ok: false, reason: 'invalid-root' };
+  }
 
+  let indexStat: WorkspaceStat;
   try {
     const stat = await port.stat(indexUri);
+    if ((await verifyWorkspaceDirectoryChain(directoryChain.snapshot, port, uris)) !== undefined) {
+      return { ok: false, reason: 'invalid-root' };
+    }
     if (stat === undefined) {
       return {
         ok: true,
@@ -174,7 +232,11 @@ export async function inspectExplicitBundleRoot<TUri>(
         decision: { isBundleRoot: false, reason: 'invalid-index' },
       };
     }
+    indexStat = stat;
   } catch {
+    if ((await verifyWorkspaceDirectoryChain(directoryChain.snapshot, port, uris)) !== undefined) {
+      return { ok: false, reason: 'invalid-root' };
+    }
     return {
       ok: true,
       indexUri,
@@ -184,18 +246,38 @@ export async function inspectExplicitBundleRoot<TUri>(
 
   let text: string;
   try {
-    text = decoder.decode(await port.read(indexUri));
+    const changedBeforeRead = await verifyWorkspaceDirectoryChain(
+      directoryChain.snapshot,
+      port,
+      uris,
+    );
+    if (changedBeforeRead !== undefined) {
+      throw new WorkspaceAccessError('unavailable', changedBeforeRead.message);
+    }
+    text = decoder.decode(
+      await readWorkspaceFileWithinLimit(port, indexUri, {
+        maxBytes: BUNDLE_READ_LIMITS.maxDocumentBytes,
+        subject: 'the selected bundle root index.md',
+        reportedStat: indexStat,
+      }),
+    );
   } catch {
+    if ((await verifyWorkspaceDirectoryChain(directoryChain.snapshot, port, uris)) !== undefined) {
+      return { ok: false, reason: 'invalid-root' };
+    }
     return {
       ok: true,
       indexUri,
       decision: { isBundleRoot: false, reason: 'unreadable-index' },
     };
   }
+  if ((await verifyWorkspaceDirectoryChain(directoryChain.snapshot, port, uris)) !== undefined) {
+    return { ok: false, reason: 'invalid-root' };
+  }
 
   const decision = inspectBundleRootIndex({
-    rootUri: uris.serialize(rootUri),
-    indexUri: uris.serialize(indexUri),
+    rootUri: rootUriString,
+    indexUri: indexUriString,
     text,
   });
   return { ok: true, indexUri, decision };
@@ -206,10 +288,11 @@ export async function inspectSelectedBundleRoot<TUri>(
   rootUri: TUri,
   port: WorkspacePort<TUri>,
   uris: WorkspaceUriCodec<TUri>,
+  workspaceSafetyRoot: TUri = rootUri,
 ): Promise<SelectedBundleRootInspection<TUri>> {
-  const inspection = await inspectExplicitBundleRoot(rootUri, port, uris);
+  const inspection = await inspectExplicitBundleRoot(rootUri, port, uris, workspaceSafetyRoot);
   if (!inspection.ok) {
-    return { ok: false, reason: 'invalid-index' };
+    return { ok: false, reason: inspection.reason };
   }
   const { decision } = inspection;
   if (!decision.isBundleRoot) {
@@ -230,8 +313,9 @@ export async function inspectBundleWriteAccess<TUri>(
   rootUri: TUri,
   port: WorkspacePort<TUri>,
   uris: WorkspaceUriCodec<TUri>,
+  workspaceSafetyRoot: TUri = rootUri,
 ): Promise<BundleWriteAccess> {
-  const inspection = await inspectExplicitBundleRoot(rootUri, port, uris);
+  const inspection = await inspectExplicitBundleRoot(rootUri, port, uris, workspaceSafetyRoot);
   if (!inspection.ok) {
     return {
       ok: false,
@@ -292,7 +376,10 @@ export async function inspectBundleWriteAccess<TUri>(
 /** Applies the fail-closed version check to any structurally compatible bundle selection. */
 export async function guardBundleWriteSelection<
   TUri,
-  TSelection extends { readonly bundleRootUri: TUri },
+  TSelection extends {
+    readonly bundleRootUri: TUri;
+    readonly workspaceSafetyRootUri: TUri;
+  },
 >(
   selection: TSelection | undefined,
   port: WorkspacePort<TUri>,
@@ -302,7 +389,28 @@ export async function guardBundleWriteSelection<
   if (selection === undefined) {
     return undefined;
   }
-  const access = await inspectBundleWriteAccess(selection.bundleRootUri, port, uris);
+  const unsafeDirectory = await inspectWorkspaceDirectoryChain(
+    selection.workspaceSafetyRootUri,
+    selection.bundleRootUri,
+    port,
+    uris,
+  );
+  if (unsafeDirectory !== undefined) {
+    await onRefused({
+      code: 'unsafe-workspace-path',
+      message: unsafeDirectory.message,
+      correctiveAction:
+        'No files were written. Select a real directory whose complete path remains inside the open workspace.',
+      uri: uris.serialize(unsafeDirectory.uri),
+    });
+    return undefined;
+  }
+  const access = await inspectBundleWriteAccess(
+    selection.bundleRootUri,
+    port,
+    uris,
+    selection.workspaceSafetyRootUri,
+  );
   if (!access.ok) {
     await onRefused(access.problem);
     return undefined;

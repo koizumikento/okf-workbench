@@ -4,7 +4,7 @@
   "description": "Create, validate, index, and explore Open Knowledge Format bundles locally.",
   "version": "0.1.0",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "publisher": "straydog",
   "icon": "assets/icon.png",
   "type": "module",
@@ -28,14 +28,6 @@
     "okf",
     "open-knowledge-format"
   ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/koizumikento/okf-workbench.git"
-  },
-  "bugs": {
-    "url": "https://github.com/koizumikento/okf-workbench/issues"
-  },
-  "homepage": "https://github.com/koizumikento/okf-workbench#readme",
   "activationEvents": [
     "onCommand:okfWorkbench.initializeBundle",
     "onCommand:okfWorkbench.newConcept",
@@ -165,6 +157,7 @@
     "test:integration": "vscode-test --config .vscode-test.mjs",
     "test:webview": "npm run build && playwright test",
     "test:security:webview": "playwright test --config test/security/playwright.config.ts",
+    "test:security:all": "npm run test:security && npm run build && npm run test:security:webview",
     "test:webview:performance": "playwright test test/webview/performance.spec.ts",
     "benchmark": "vitest bench --run test/benchmarks",
     "benchmark:report": "node scripts/benchmark-report.mjs",
@@ -174,10 +167,14 @@
     "dependency:check": "node scripts/dependency-check.mjs",
     "package": "npm run build && node scripts/package-vsix.mjs artifacts/okf-workbench.vsix",
     "package:check": "node scripts/package-check.mjs artifacts/okf-workbench.vsix",
-    "check": "npm run format && npm run lint && npm run typecheck && npm run test && npm run test:acceptance && npm run test:security && npm run dependency:check && npm run build"
+    "check": "npm run format && npm run lint && npm run typecheck && npm run test && npm run test:acceptance && npm run dependency:check && npm run test:security:all"
   },
   "dependencies": {
     "3d-force-graph": "1.80.0",
+    "micromark": "4.0.2",
+    "micromark-core-commonmark": "2.0.3",
+    "micromark-util-decode-string": "2.0.1",
+    "micromark-util-subtokenize": "2.1.0",
     "remark-parse": "11.0.0",
     "unified": "11.0.5",
     "yaml": "2.9.0"

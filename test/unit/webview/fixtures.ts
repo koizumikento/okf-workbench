@@ -25,9 +25,7 @@ export function graphPayload(overrides: Partial<GraphPayload> = {}): GraphPayloa
     graphNode(),
     graphNode({ id: 'beta', title: 'Beta', type: 'note', tags: ['second'] }),
   ];
-  const edges = overrides.edges ?? [
-    { id: 'alpha:0:beta', source: 'alpha', target: 'beta', sourceRange },
-  ];
+  const edges = overrides.edges ?? [{ id: 'edge:0', source: 'alpha', target: 'beta', sourceRange }];
   return {
     protocolVersion: 1,
     revision: 1,

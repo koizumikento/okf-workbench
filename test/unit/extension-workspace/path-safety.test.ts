@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { OKF_SEMANTIC_LIMITS } from '../../../src/core/model/index.js';
 import {
   isUriContained,
   normalizeContainedRelativePath,
@@ -31,6 +32,13 @@ describe('workspace path safety', () => {
     'concepts%5coutside.md',
     'C%3a/absolute.md',
     '%zz/invalid.md',
+    'safe/\u001fname.md',
+    'safe/\u0080name.md',
+    'safe/%00name.md',
+    'safe/%1fname.md',
+    'safe/%C2%80name.md',
+    'safe/%2500name.md',
+    'safe/%25C2%2580name.md',
   ])('rejects unsafe relative path %s', (input) => {
     expect(() => normalizeContainedRelativePath(input)).toThrow();
   });
@@ -124,5 +132,44 @@ describe('workspace path safety', () => {
       'encoded%2Fsegment/nested',
     ]);
     expect(() => relativeParentPaths('nested/../index.md', 'provider')).toThrow();
+  });
+
+  it('enforces the shared exact write-path length and depth boundaries', () => {
+    const exactAscii = 'a'.repeat(OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits);
+    expect(normalizeContainedRelativePath(exactAscii)).toBe(exactAscii);
+    expect(() => normalizeContainedRelativePath(`a${exactAscii}`)).toThrow(/UTF-16 code units/u);
+
+    const exactUtf8 = '雪'.repeat(OKF_SEMANTIC_LIMITS.maxProviderPathBytes / 4);
+    const adjustedExactUtf8 = `${exactUtf8}${'a'.repeat(
+      OKF_SEMANTIC_LIMITS.maxProviderPathBytes - new TextEncoder().encode(exactUtf8).byteLength,
+    )}`;
+    expect(new TextEncoder().encode(adjustedExactUtf8)).toHaveLength(
+      OKF_SEMANTIC_LIMITS.maxProviderPathBytes,
+    );
+    expect(normalizeContainedRelativePath(adjustedExactUtf8)).toBe(adjustedExactUtf8);
+    expect(() => normalizeContainedRelativePath(`雪${adjustedExactUtf8}`)).toThrow(/UTF-8 bytes/u);
+    expect(preserveProviderRelativePath(adjustedExactUtf8)).toBe(adjustedExactUtf8);
+    expect(() => preserveProviderRelativePath(`雪${adjustedExactUtf8}`)).toThrow(/UTF-8 bytes/u);
+
+    const exactSegments = `${'a/'.repeat(
+      OKF_SEMANTIC_LIMITS.maxProviderPathSegments - 1,
+    )}target.md`;
+    expect(normalizeContainedRelativePath(exactSegments)).toBe(exactSegments);
+    expect(() => normalizeContainedRelativePath(`a/${exactSegments}`)).toThrow(/segments/u);
+    expect(preserveProviderRelativePath(exactSegments)).toBe(exactSegments);
+    expect(() => preserveProviderRelativePath(`a/${exactSegments}`)).toThrow(/segments/u);
+  });
+
+  it('rejects unpaired surrogates through user and provider workspace path APIs', () => {
+    expect(() => normalizeContainedRelativePath('bad\ud800/output.md')).toThrow(
+      /unpaired UTF-16 surrogate/u,
+    );
+    expect(() => preserveProviderRelativePath('bad\ud800/output.md')).toThrow(
+      /unpaired UTF-16 surrogate/u,
+    );
+    expect(() => relativeParentPaths('bad\ud800/output.md')).toThrow(/unpaired UTF-16 surrogate/u);
+    expect(() => relativeParentPaths('bad\ud800/output.md', 'provider')).toThrow(
+      /unpaired UTF-16 surrogate/u,
+    );
   });
 });

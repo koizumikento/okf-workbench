@@ -4,7 +4,10 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
 
+import { validateVsixManifestProjectLicense } from './package-check.mjs';
+
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const projectLicensePath = resolve(repositoryRoot, 'LICENSE');
 const noticesPath = resolve(repositoryRoot, 'THIRD_PARTY_NOTICES.md');
 const argumentsList = process.argv.slice(2);
 const writeNotices = argumentsList.includes('--write-notices');
@@ -23,7 +26,16 @@ const packageLock = JSON.parse(
   await readFile(resolve(repositoryRoot, 'package-lock.json'), 'utf8'),
 );
 
-const exactRuntimeDependencies = new Set(['3d-force-graph', 'remark-parse', 'unified', 'yaml']);
+const exactRuntimeDependencies = new Set([
+  '3d-force-graph',
+  'micromark',
+  'micromark-core-commonmark',
+  'micromark-util-decode-string',
+  'micromark-util-subtokenize',
+  'remark-parse',
+  'unified',
+  'yaml',
+]);
 const allowedLicenses = new Set([
   '0BSD',
   'Apache-2.0',
@@ -411,6 +423,23 @@ async function reviewFirstPartySources() {
 }
 
 function reviewManifest() {
+  if (packageManifest.license !== 'MIT') {
+    recordFailure(
+      `The project manifest license must be exactly MIT; found ${String(packageManifest.license ?? '(missing)')}.`,
+    );
+  }
+  if (packageLock.packages?.['']?.license !== 'MIT') {
+    recordFailure(
+      `The root lockfile license must be exactly MIT; found ${String(packageLock.packages?.['']?.license ?? '(missing)')}.`,
+    );
+  }
+  for (const field of ['repository', 'bugs', 'homepage']) {
+    if (packageManifest[field] !== undefined) {
+      recordFailure(
+        `The public extension manifest must omit private-link field ${field} while the source repository is private.`,
+      );
+    }
+  }
   const runtimeDependencies = Object.keys(packageManifest.dependencies ?? {}).sort();
   const unexpected = runtimeDependencies.filter((name) => !exactRuntimeDependencies.has(name));
   const missing = [...exactRuntimeDependencies].filter(
@@ -471,6 +500,9 @@ function parseZip(archive) {
     const name = archive
       .subarray(centralOffset + 46, centralOffset + 46 + fileNameLength)
       .toString('utf8');
+    if (entries.has(name)) {
+      throw new Error(`Duplicate VSIX entry is not allowed: ${name}`);
+    }
     entries.set(name, { compression, compressedSize, localOffset, uncompressedSize });
     centralOffset += 46 + fileNameLength + extraLength + commentLength;
   }
@@ -503,20 +535,61 @@ function parseZip(archive) {
 }
 
 async function reviewVsix(path, expectedNotices) {
-  const archive = await readFile(resolve(repositoryRoot, path));
+  const [archive, expectedProjectLicense] = await Promise.all([
+    readFile(resolve(repositoryRoot, path)),
+    readFile(projectLicensePath),
+  ]);
   const { entries, readEntry } = parseZip(archive);
   const packagedManifestContent = readEntry('extension/package.json');
   if (packagedManifestContent === undefined) {
     recordFailure('The VSIX does not contain extension/package.json.');
   } else {
     const packagedManifest = JSON.parse(packagedManifestContent.toString('utf8'));
-    const projectLicenseClassification = classifyLicense(packagedManifest.license);
-    if (projectLicenseClassification !== 'allowed') {
+    if (packagedManifest.license !== 'MIT') {
       recordFailure(
-        `The packaged project license is ${projectLicenseClassification}: ${String(packagedManifest.license ?? '(missing)')}.`,
+        `The packaged project license must be exactly MIT; found ${String(packagedManifest.license ?? '(missing)')}.`,
       );
     }
+    for (const field of ['repository', 'bugs', 'homepage']) {
+      if (packagedManifest[field] !== undefined) {
+        recordFailure(`The packaged manifest contains private-link field ${field}.`);
+      }
+    }
   }
+
+  const vsixManifestContent = readEntry('extension.vsixmanifest')?.toString('utf8');
+  if (vsixManifestContent === undefined) {
+    recordFailure('The VSIX does not contain extension.vsixmanifest.');
+  } else {
+    try {
+      validateVsixManifestProjectLicense(vsixManifestContent);
+    } catch (error) {
+      recordFailure(error instanceof Error ? error.message : String(error));
+    }
+    const contentLicenseAssets = [
+      ...vsixManifestContent.matchAll(
+        /<Asset\b[^>]*\bType="Microsoft\.VisualStudio\.Services\.Content\.License"[^>]*\/>/gu,
+      ),
+    ];
+    if (
+      contentLicenseAssets.length !== 1 ||
+      !/\bPath="extension\/LICENSE\.txt"/u.test(contentLicenseAssets[0][0]) ||
+      !/\bAddressable="true"/u.test(contentLicenseAssets[0][0])
+    ) {
+      recordFailure(
+        'extension.vsixmanifest must contain exactly one canonical addressable project-license asset.',
+      );
+    }
+    if (
+      /Microsoft\.VisualStudio\.Services\.Links\.(?:Source|Support|Learn|GitHub|Getstarted)/u.test(
+        vsixManifestContent,
+      ) ||
+      /github\.com\/koizumikento\/okf-workbench/iu.test(vsixManifestContent)
+    ) {
+      recordFailure('extension.vsixmanifest contains private repository marketplace metadata.');
+    }
+  }
+
   const noticesEntry = [...entries.keys()].find(
     (name) => name.toLowerCase() === 'extension/third_party_notices.md',
   );
@@ -526,17 +599,33 @@ async function reviewVsix(path, expectedNotices) {
     recordFailure('The packaged THIRD_PARTY_NOTICES.md does not match the production graph.');
   }
 
-  const licenseEntries = [...entries.keys()].filter((name) =>
+  for (const packagedDocument of ['extension/readme.md', 'extension/changelog.md']) {
+    const content = readEntry(packagedDocument)?.toString('utf8');
+    if (content === undefined) {
+      recordFailure(`The packaged reader-facing document is missing: ${packagedDocument}.`);
+    } else if (
+      /github\.com\/koizumikento\/okf-workbench/iu.test(content) ||
+      /\]\((?:\.\/)?docs\//iu.test(content)
+    ) {
+      recordFailure(
+        `${packagedDocument} contains a private repository or excluded documentation link.`,
+      );
+    }
+  }
+
+  const projectLicenseEntries = [...entries.keys()].filter((name) =>
     /^extension\/licen[cs]e(?:\.[^/]+)?$/iu.test(name),
   );
-  if (licenseEntries.length !== 1) {
+  if (projectLicenseEntries.length !== 1 || projectLicenseEntries[0] !== 'extension/LICENSE.txt') {
     recordFailure(
-      `The VSIX must contain exactly one root project license; found ${licenseEntries.length}.`,
+      `The VSIX must contain only the VSCE-canonical project license extension/LICENSE.txt; found ${projectLicenseEntries.join(', ') || 'none'}.`,
     );
   } else {
-    const license = normalizeText(readEntry(licenseEntries[0]).toString('utf8'));
-    if (license.length === 0) {
-      recordFailure(`The packaged project license ${licenseEntries[0]} is empty.`);
+    const packagedProjectLicense = readEntry('extension/LICENSE.txt');
+    if (!packagedProjectLicense.equals(expectedProjectLicense)) {
+      recordFailure(
+        'The packaged project license extension/LICENSE.txt does not exactly match the repository LICENSE.',
+      );
     }
   }
 

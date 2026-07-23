@@ -33,6 +33,24 @@ export const stringUriCodec: WorkspaceUriCodec<string> = {
   serialize(uri) {
     return uri;
   },
+  containedPathSegments(root, descendant) {
+    const normalizedRoot = root.replace(/\/$/u, '');
+    const normalizedDescendant = descendant.replace(/\/$/u, '');
+    if (normalizedDescendant === normalizedRoot) {
+      return [normalizedRoot];
+    }
+    if (!normalizedDescendant.startsWith(`${normalizedRoot}/`)) {
+      throw new Error('Test URI is outside its workspace safety root.');
+    }
+    const segments = normalizedDescendant.slice(normalizedRoot.length + 1).split('/');
+    if (segments.some((segment) => segment.length === 0)) {
+      throw new Error('Test URI contains an empty path segment.');
+    }
+    return [
+      normalizedRoot,
+      ...segments.map((_, index) => `${normalizedRoot}/${segments.slice(0, index + 1).join('/')}`),
+    ];
+  },
   joinContained(root, relativePath) {
     return `${root.replace(/\/$/u, '')}/${normalizeContainedRelativePath(relativePath)}`;
   },
@@ -48,6 +66,7 @@ export class FakeWorkspacePort implements WorkspacePort<string> {
   readonly files = new Map<string, Uint8Array>();
   readonly entryTypes = new Map<string, WorkspaceStat['type']>();
   readonly writes: string[] = [];
+  readonly reads: string[] = [];
   readonly readFailures = new Map<string, Error>();
   readonly traversalFailures = new Map<string, Error>();
   traversalEventCount = 0;
@@ -75,6 +94,7 @@ export class FakeWorkspacePort implements WorkspacePort<string> {
   }
 
   async read(uri: string): Promise<Uint8Array> {
+    this.reads.push(uri);
     const configuredFailure = this.readFailures.get(uri);
     if (configuredFailure !== undefined) {
       throw configuredFailure;
@@ -91,6 +111,17 @@ export class FakeWorkspacePort implements WorkspacePort<string> {
     options: WorkspaceTraversalOptions = {},
   ): AsyncIterable<WorkspaceTraversalEvent<string>> {
     const prefix = `${root.replace(/\/$/u, '')}/`;
+    const explicitRootType = this.entryTypes.get(root);
+    if (explicitRootType !== undefined && explicitRootType !== 'directory') {
+      this.traversalEventCount += 1;
+      yield {
+        kind: 'failure',
+        uri: root,
+        relativePath: '',
+        message: 'Test traversal root is not a real directory.',
+      };
+      return;
+    }
     const maxDepth = options.maxDepth ?? Number.POSITIVE_INFINITY;
     const excluded = new Set(
       (options.excludeDirectoryNames ?? []).map((name) => name.toLocaleLowerCase('en-US')),
@@ -100,6 +131,7 @@ export class FakeWorkspacePort implements WorkspacePort<string> {
     const failures = [...this.traversalFailures.entries()]
       .filter(([uri]) => uri === root || uri.startsWith(prefix))
       .sort(([left], [right]) => left.localeCompare(right));
+    const failedRoots = failures.map(([uri]) => uri.replace(/\/$/u, ''));
 
     for (const [uri, error] of failures) {
       const relativePath = uri === root ? '' : uri.slice(prefix.length);
@@ -114,7 +146,40 @@ export class FakeWorkspacePort implements WorkspacePort<string> {
       yield { kind: 'failure', uri, relativePath, message: error.message };
     }
 
-    const failedRoots = failures.map(([uri]) => uri.replace(/\/$/u, ''));
+    if (maxDepth !== Number.POSITIVE_INFINITY) {
+      const boundaryDepth = Math.max(1, maxDepth);
+      const depthLimitedDirectories = new Set<string>();
+      for (const uri of this.files.keys()) {
+        if (!uri.startsWith(prefix)) {
+          continue;
+        }
+        const relativePath = uri.slice(prefix.length);
+        const directories = relativePath.split('/').slice(0, -1);
+        const boundary = directories.slice(0, boundaryDepth);
+        if (
+          directories.length < boundaryDepth ||
+          boundary.some((segment) => excluded.has(segment.toLocaleLowerCase('en-US'))) ||
+          failedRoots.some((failedRoot) => uri === failedRoot || uri.startsWith(`${failedRoot}/`))
+        ) {
+          continue;
+        }
+        depthLimitedDirectories.add(boundary.join('/'));
+      }
+      for (const relativePath of [...depthLimitedDirectories].sort((left, right) =>
+        left.localeCompare(right),
+      )) {
+        const uri = `${root.replace(/\/$/u, '')}/${relativePath}`;
+        this.traversalEventCount += 1;
+        yield {
+          kind: 'failure',
+          uri,
+          relativePath,
+          reason: 'safety-limit',
+          message: `Test traversal reached the maximum depth of ${String(maxDepth)} path segments.`,
+        };
+      }
+    }
+
     for (const uri of [...this.files.keys()].sort((left, right) => left.localeCompare(right))) {
       if (!uri.startsWith(prefix)) {
         continue;
@@ -124,7 +189,7 @@ export class FakeWorkspacePort implements WorkspacePort<string> {
       const filename = segments.at(-1) ?? '';
       const directories = segments.slice(0, -1);
       if (
-        segments.length > maxDepth ||
+        (directories.length > 0 && directories.length >= maxDepth) ||
         directories.some((segment) => excluded.has(segment.toLocaleLowerCase('en-US'))) ||
         (includedFiles !== undefined && !includedFiles.has(filename)) ||
         failedRoots.some((failedRoot) => uri === failedRoot || uri.startsWith(`${failedRoot}/`))
@@ -158,13 +223,19 @@ export class FakeWorkspacePort implements WorkspacePort<string> {
       return { type: configuredType, size: 0, ctime: 0, mtime: 0 };
     }
     const content = this.files.get(uri);
-    return content === undefined
-      ? undefined
-      : { type: 'file', size: content.byteLength, ctime: 0, mtime: 0 };
+    if (content !== undefined) {
+      return { type: 'file', size: content.byteLength, ctime: 0, mtime: 0 };
+    }
+    const prefix = `${uri.replace(/\/$/u, '')}/`;
+    const hasChild =
+      [...this.files.keys()].some((candidate) => candidate.startsWith(prefix)) ||
+      [...this.entryTypes.keys()].some((candidate) => candidate.startsWith(prefix));
+    return hasChild ? { type: 'directory', size: 0, ctime: 0, mtime: 0 } : undefined;
   }
 
   async write(uri: string, content: Uint8Array, options: WorkspaceWriteOptions): Promise<void> {
     this.beforeWrite?.(uri);
+    options.assertAuthorized?.();
     const configuredFailure = this.failWrites.get(uri);
     if (configuredFailure !== undefined) {
       throw configuredFailure;
@@ -182,7 +253,11 @@ export class FakeWorkspacePort implements WorkspacePort<string> {
       }
       return;
     }
-    if (current === undefined || !matchesSha256(current, expected.value)) {
+    if (
+      current === undefined ||
+      current.byteLength !== expected.byteLength ||
+      !matchesSha256(current, expected.value)
+    ) {
       throw new WorkspaceAccessError('content-mismatch', 'Test target content changed.');
     }
   }

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
+import { OKF_SEMANTIC_LIMITS } from '../../../src/core/model/index.js';
 import {
   normalizeBundleDirectory,
   normalizeConceptPath,
   normalizeIndexPath,
+  normalizeTemplateOutputPath,
   preserveProviderBundleDirectory,
   preserveProviderConceptPath,
   preserveProviderIndexPath,
@@ -126,6 +128,16 @@ describe('template output path safety', () => {
     expect(preserveProviderConceptPath(input)).toEqual({ ok: true, value: input, warnings: [] });
   });
 
+  it.each(['.md', 'nested/.md'])(
+    'rejects a provider concept path without a non-empty filename stem: %s',
+    (input) => {
+      expect(preserveProviderConceptPath(input)).toMatchObject({
+        ok: false,
+        problems: [{ code: 'unsafe-relative-path' }],
+      });
+    },
+  );
+
   it('keeps user-input decoding separate from provider identity preservation', () => {
     expect(normalizeConceptPath('encoded%2Fsegment.md')).toEqual({
       ok: true,
@@ -191,5 +203,80 @@ describe('template output path safety', () => {
     expect(preserveProviderIndexPath('encoded%2Fsegment/not-index.md')).toMatchObject({
       ok: false,
     });
+  });
+
+  it('accepts exact relative-path code-unit and UTF-8 boundaries and rejects +1', () => {
+    const exactAscii = `${'a'.repeat(OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits - 3)}.md`;
+    expect(exactAscii).toHaveLength(OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits);
+    expect(normalizeConceptPath(exactAscii)).toMatchObject({ ok: true, value: exactAscii });
+    expect(normalizeConceptPath(`a${exactAscii}`)).toMatchObject({
+      ok: false,
+      problems: [{ message: expect.stringContaining('UTF-16 code units') }],
+    });
+
+    const exactUtf8 = `${'雪'.repeat((OKF_SEMANTIC_LIMITS.maxProviderPathBytes - 4) / 3)}a.md`;
+    expect(new TextEncoder().encode(exactUtf8)).toHaveLength(
+      OKF_SEMANTIC_LIMITS.maxProviderPathBytes,
+    );
+    expect(normalizeConceptPath(exactUtf8)).toMatchObject({ ok: true, value: exactUtf8 });
+    expect(normalizeConceptPath(`雪${exactUtf8}`)).toMatchObject({
+      ok: false,
+      problems: [{ message: expect.stringContaining('UTF-8 bytes') }],
+    });
+    expect(preserveProviderConceptPath(exactUtf8)).toMatchObject({
+      ok: true,
+      value: exactUtf8,
+    });
+    expect(preserveProviderConceptPath(`雪${exactUtf8}`)).toMatchObject({
+      ok: false,
+      problems: [{ message: expect.stringContaining('UTF-8 bytes') }],
+    });
+  });
+
+  it('accepts exactly 64 path segments and rejects a decoded or literal 65th segment', () => {
+    const exact = `${'a/'.repeat(OKF_SEMANTIC_LIMITS.maxProviderPathSegments - 1)}a.md`;
+    expect(exact.split('/')).toHaveLength(OKF_SEMANTIC_LIMITS.maxProviderPathSegments);
+    expect(normalizeTemplateOutputPath(exact)).toMatchObject({ ok: true, value: exact });
+    expect(normalizeTemplateOutputPath(`a/${exact}`)).toMatchObject({
+      ok: false,
+      problems: [{ message: expect.stringContaining('segments') }],
+    });
+    const encoded = `${'%2F'.repeat(OKF_SEMANTIC_LIMITS.maxProviderPathSegments)}a.md`;
+    expect(normalizeTemplateOutputPath(encoded)).toMatchObject({
+      ok: false,
+      problems: [{ message: expect.stringContaining('segments') }],
+    });
+  });
+
+  it('applies the same exact bounds to provider path identities before splitting', () => {
+    const exact = `${'p/'.repeat(OKF_SEMANTIC_LIMITS.maxProviderPathSegments - 1)}index.md`;
+    expect(preserveProviderIndexPath(exact)).toMatchObject({ ok: true, value: exact });
+    expect(preserveProviderIndexPath(`p/${exact}`)).toMatchObject({
+      ok: false,
+      problems: [{ message: expect.stringContaining('segments') }],
+    });
+    expect(
+      preserveProviderBundleDirectory('x'.repeat(OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits + 1)),
+    ).toMatchObject({
+      ok: false,
+      problems: [{ message: expect.stringContaining('UTF-16 code units') }],
+    });
+  });
+
+  it('rejects unpaired surrogates through every generated and provider path API', () => {
+    for (const result of [
+      normalizeConceptPath('bad\ud800.md'),
+      normalizeIndexPath('bad\ud800/index.md'),
+      normalizeTemplateOutputPath('bad\ud800/output.txt'),
+      normalizeBundleDirectory('bad\ud800'),
+      preserveProviderConceptPath('bad\ud800.md'),
+      preserveProviderIndexPath('bad\ud800/index.md'),
+      preserveProviderBundleDirectory('bad\ud800'),
+    ]) {
+      expect(result).toMatchObject({
+        ok: false,
+        problems: [{ message: expect.stringContaining('unpaired UTF-16 surrogate') }],
+      });
+    }
   });
 });

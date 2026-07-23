@@ -5,11 +5,9 @@ All notable changes to OKF Workbench are documented in this file.
 The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and intends to use
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) after the first public release.
 
-## [0.1.0] - Unreleased
+## 0.1.0 - Unreleased
 
-Release-candidate implementation. This entry does not mean that `0.1.0` has been published.
-Replace `Unreleased` with the publication date only after the release checklist and explicit
-maintainer approval are complete.
+Initial release.
 
 ### Added
 
@@ -39,21 +37,8 @@ maintainer approval are complete.
 - Workspace bodies and source URIs remain on the extension-host side of the privileged boundary.
 - Authoring operations require workspace trust and refuse unsafe paths or silent overwrites.
 
-### Release gates
+### Distribution
 
-- The project license still requires maintainer selection and approval.
-- The current-candidate schema-v2 headed run passes QR-002 at 703 ms p95 over 20 correlated
-  create/change/rename/delete samples and passes QR-003 with `d3` as the release engine on the
-  recorded Mac16,7 / Apple M4 Pro / VS Code 1.127.0 environment. This closes the performance gate
-  for the exact measured production bundles, not for other machines or candidates.
-- The current unlicensed candidate passed the required hosted compatibility matrix: clean install,
-  activation, untrusted-workspace refusal, upgrade with preserved settings and workspace data,
-  uninstall, and guarded no-egress checks across the required VS Code and VSCodium lanes on
-  Ubuntu, macOS, and Windows. Exact candidate receipts are retained in the repository evidence;
-  any package-content change requires candidate-specific lifecycle reruns.
-- The Open VSX namespace name is confirmed as `straydog`, making the intended identifier
-  `straydog.okf-workbench`. Publication still requires namespace authorization and Publisher
-  Agreement verification, the remaining release gates, and explicit exact-digest maintainer
-  approval.
-
-[0.1.0]: https://github.com/koizumikento/okf-workbench/releases/tag/v0.1.0
+- OKF Workbench is licensed under the MIT License.
+- Bundled third-party license texts and notices are included with the extension.
+- The extension identifier is `straydog.okf-workbench`.

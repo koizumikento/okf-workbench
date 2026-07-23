@@ -17,7 +17,11 @@ export async function packageVsix(outputPath, repositoryRoot = process.cwd()) {
     // package bytes remain independent of the runner's clock, time zone, and
     // filesystem mode defaults.
     process.env.SOURCE_DATE_EPOCH = VSIX_SOURCE_DATE_EPOCH;
-    await createVSIX({ cwd: repositoryRoot, packagePath: destination });
+    await createVSIX({
+      allowMissingRepository: true,
+      cwd: repositoryRoot,
+      packagePath: destination,
+    });
     await normalizeVsixFile(destination);
   } finally {
     if (originalSourceDateEpoch === undefined) delete process.env.SOURCE_DATE_EPOCH;

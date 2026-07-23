@@ -26,6 +26,7 @@ describe('performance harness overhead (not headed-editor QR evidence)', () => {
         protocolVersion: 1,
         type: 'replaceGraph',
         revision: representative.revision,
+        deliveryId: 1,
         payload: representative,
       },
       0,

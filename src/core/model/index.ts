@@ -33,3 +33,10 @@ export type {
   SourcePosition,
   SourceRange,
 } from './types.js';
+export { OKF_SEMANTIC_LIMITS } from './resource-limits.js';
+export {
+  hasUnpairedUtf16Surrogate,
+  relativePathBoundFailure,
+  utf8ByteLength,
+  type RelativePathBoundFailure,
+} from './text-bounds.js';

@@ -32,10 +32,14 @@ export class VscodeCommandUi implements CommandUi<vscode.Uri> {
   }
 
   async confirm(options: ConfirmationOptions): Promise<boolean> {
+    const cancelLabel = 'Cancel';
+    const identity = options.previewIdentity;
+    const detail = options.detail.replace(/\s+/gu, ' ').trim();
     const selected = await vscode.window.showWarningMessage(
-      `${options.title} Review the opened read-only preview tabs, then choose ${options.confirmLabel}.`,
+      `${identity.label}: ${options.title}. Target: ${identity.targetUri}. ${detail} Review the tabs with this exact preview identity, then choose ${options.confirmLabel} or ${cancelLabel}.`,
       { modal: false },
       options.confirmLabel,
+      cancelLabel,
     );
     return selected === options.confirmLabel;
   }

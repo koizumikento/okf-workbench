@@ -1,6 +1,19 @@
+import { execFile } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
+
 import { describe, expect, test } from 'vitest';
 
-import { REQUIRED_VSIX_ENTRIES, validateVsixArchive } from '../../../scripts/package-check.mjs';
+import {
+  CANONICAL_PROJECT_LICENSE_TEXT,
+  PROJECT_LICENSE_ENTRY,
+  REQUIRED_VSIX_ENTRIES,
+  validateProjectLicense,
+  validateVsixArchive,
+} from '../../../scripts/package-check.mjs';
 
 const LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
 const CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
@@ -10,6 +23,29 @@ interface ZipEntry {
   readonly content: string;
   readonly name: string;
 }
+
+const PROJECT_LICENSE = CANONICAL_PROJECT_LICENSE_TEXT;
+const execFileAsync = promisify(execFile);
+const repositoryRoot = fileURLToPath(new URL('../../../', import.meta.url));
+const securityCheckPath = fileURLToPath(
+  new URL('../../../scripts/security-check.mjs', import.meta.url),
+);
+const PUNCTUATION_DRIFT = PROJECT_LICENSE.replace(
+  'CLAIM, DAMAGES OR OTHER',
+  'CLAIM, DAMAGES, OR OTHER',
+)
+  .replace('TORT OR OTHERWISE', 'TORT, OR OTHERWISE')
+  .replace('OUT OF OR IN CONNECTION', 'OUT OF, OR IN CONNECTION');
+const VSIX_MANIFEST = `<?xml version="1.0" encoding="utf-8"?>
+<PackageManifest>
+  <Metadata>
+    <License>extension/LICENSE.txt</License>
+  </Metadata>
+  <Assets>
+    <Asset Type="Microsoft.VisualStudio.Services.Content.License" Path="extension/LICENSE.txt" Addressable="true" />
+  </Assets>
+</PackageManifest>
+`;
 
 function crc32(content: Uint8Array): number {
   let crc = 0xffffffff;
@@ -96,11 +132,14 @@ function contentFor(name: string): string {
       name: 'okf-workbench',
       publisher: 'straydog',
       version: '0.1.0',
+      license: 'MIT',
       icon: 'assets/icon.png',
       main: './dist/extension.cjs',
       engines: { vscode: '^1.121.0' },
     })}\n`;
   }
+  if (name === 'extension.vsixmanifest') return VSIX_MANIFEST;
+  if (name === PROJECT_LICENSE_ENTRY) return PROJECT_LICENSE;
   if (name.endsWith('.js') || name.endsWith('.cjs')) return 'export {};\n';
   if (name.endsWith('.css')) return ':root {}\n';
   return `${name}\n`;
@@ -110,11 +149,237 @@ function packageEntries(): readonly ZipEntry[] {
   return REQUIRED_VSIX_ENTRIES.map((name) => ({ name, content: contentFor(name) }));
 }
 
+describe('canonical project license source gate', () => {
+  test('accepts the exact repository LICENSE', async () => {
+    const projectLicense = await readFile(new URL('../../../LICENSE', import.meta.url));
+
+    expect(() => validateProjectLicense(projectLicense)).not.toThrow();
+  });
+
+  test.each([
+    ['punctuation drift', PUNCTUATION_DRIFT],
+    [
+      'copyright drift',
+      PROJECT_LICENSE.replace(
+        'Copyright (c) 2026 straydog contributors',
+        'Copyright (c) 2026 unknown contributors',
+      ),
+    ],
+    ['non-MIT replacement', 'canonical MIT project license\n'],
+  ])('rejects %s', (_name, projectLicense) => {
+    expect(() => validateProjectLicense(Buffer.from(projectLicense))).toThrow(
+      'The repository LICENSE must exactly match the canonical MIT License text and accepted copyright notice.',
+    );
+  });
+});
+
 describe('VSIX package closed-set validation', () => {
   test('accepts the complete reviewed package file set', () => {
-    const result = validateVsixArchive(createStoredZip(packageEntries()));
+    const result = validateVsixArchive(
+      createStoredZip(packageEntries()),
+      Buffer.from(PROJECT_LICENSE),
+    );
 
     expect(result).toEqual({ entryCount: REQUIRED_VSIX_ENTRIES.length });
+  });
+
+  test('rejects matching packaged and repository bytes when the source license is not canonical', () => {
+    const entries = packageEntries().map((entry) =>
+      entry.name === PROJECT_LICENSE_ENTRY ? { ...entry, content: PUNCTUATION_DRIFT } : entry,
+    );
+
+    expect(() =>
+      validateVsixArchive(createStoredZip(entries), Buffer.from(PUNCTUATION_DRIFT)),
+    ).toThrow(
+      'The repository LICENSE must exactly match the canonical MIT License text and accepted copyright notice.',
+    );
+  });
+
+  test('rejects a missing canonical project license', () => {
+    const entries = packageEntries().filter(({ name }) => name !== PROJECT_LICENSE_ENTRY);
+
+    expect(() =>
+      validateVsixArchive(createStoredZip(entries), Buffer.from(PROJECT_LICENSE)),
+    ).toThrow(`Required packaged file is missing: ${PROJECT_LICENSE_ENTRY}`);
+  });
+
+  test.each(['extension/LICENSE', 'extension/LICENSE.md', 'extension/LICENCE'])(
+    'rejects alternate project license entry %s',
+    (name) => {
+      expect(() =>
+        validateVsixArchive(
+          createStoredZip([...packageEntries(), { name, content: PROJECT_LICENSE }]),
+          Buffer.from(PROJECT_LICENSE),
+        ),
+      ).toThrow(`Unexpected files entered the VSIX: ${name}`);
+    },
+  );
+
+  test('rejects a packaged project license that differs from the repository license', () => {
+    const entries = packageEntries().map((entry) =>
+      entry.name === PROJECT_LICENSE_ENTRY
+        ? { ...entry, content: 'different license text\n' }
+        : entry,
+    );
+
+    expect(() =>
+      validateVsixArchive(createStoredZip(entries), Buffer.from(PROJECT_LICENSE)),
+    ).toThrow('extension/LICENSE.txt does not exactly match the canonical repository LICENSE.');
+  });
+
+  test.each([undefined, 'UNLICENSED', 'MIT-0'])(
+    'rejects packaged manifest license %s instead of exact MIT',
+    (license) => {
+      const entries = packageEntries().map((entry) => {
+        if (entry.name !== 'extension/package.json') return entry;
+        const manifest = JSON.parse(entry.content) as Record<string, unknown>;
+        if (license === undefined) delete manifest.license;
+        else manifest.license = license;
+        return { ...entry, content: `${JSON.stringify(manifest)}\n` };
+      });
+
+      expect(() =>
+        validateVsixArchive(createStoredZip(entries), Buffer.from(PROJECT_LICENSE)),
+      ).toThrow(
+        'The packaged manifest does not preserve the accepted identity, MIT license, private-link exclusions, icon, entry point, and API floor.',
+      );
+    },
+  );
+
+  test.each([
+    ['repository', { type: 'git', url: 'https://github.com/koizumikento/okf-workbench.git' }],
+    ['bugs', { url: 'https://github.com/koizumikento/okf-workbench/issues' }],
+    ['homepage', 'https://github.com/koizumikento/okf-workbench#readme'],
+  ])('rejects packaged private-link manifest field %s', (field, value) => {
+    const entries = packageEntries().map((entry) => {
+      if (entry.name !== 'extension/package.json') return entry;
+      const manifest = JSON.parse(entry.content) as Record<string, unknown>;
+      manifest[field] = value;
+      return { ...entry, content: `${JSON.stringify(manifest)}\n` };
+    });
+
+    expect(() =>
+      validateVsixArchive(createStoredZip(entries), Buffer.from(PROJECT_LICENSE)),
+    ).toThrow(
+      'The packaged manifest does not preserve the accepted identity, MIT license, private-link exclusions, icon, entry point, and API floor.',
+    );
+  });
+
+  test.each([
+    ['extension/readme.md', '[Internal docs](docs/index.md)'],
+    [
+      'extension/changelog.md',
+      '[release](https://github.com/koizumikento/okf-workbench/releases/tag/v0.1.0)',
+    ],
+  ])('rejects a private or excluded link in %s', (document, content) => {
+    const entries = packageEntries().map((entry) =>
+      entry.name === document ? { ...entry, content } : entry,
+    );
+
+    expect(() =>
+      validateVsixArchive(createStoredZip(entries), Buffer.from(PROJECT_LICENSE)),
+    ).toThrow(`${document} contains a private repository or excluded documentation link.`);
+  });
+
+  test.each([
+    [
+      'alternate license declaration',
+      VSIX_MANIFEST.replace(
+        '<License>extension/LICENSE.txt</License>',
+        '<License>extension/LICENSE</License>',
+      ),
+      'extension.vsixmanifest must contain exactly one canonical project-license declaration.',
+    ],
+    [
+      'missing license asset',
+      VSIX_MANIFEST.replace(
+        '<Asset Type="Microsoft.VisualStudio.Services.Content.License" Path="extension/LICENSE.txt" Addressable="true" />',
+        '',
+      ),
+      'extension.vsixmanifest must contain exactly one canonical addressable project-license asset.',
+    ],
+    [
+      'alternate license asset path',
+      VSIX_MANIFEST.replace('Path="extension/LICENSE.txt"', 'Path="extension/LICENSE.md"'),
+      'extension.vsixmanifest must contain exactly one canonical addressable project-license asset.',
+    ],
+    [
+      'duplicate license declaration',
+      VSIX_MANIFEST.replace('</Metadata>', '<License>extension/LICENSE.txt</License></Metadata>'),
+      'extension.vsixmanifest must contain exactly one canonical project-license declaration.',
+    ],
+    [
+      'canonical and alternate license declarations',
+      VSIX_MANIFEST.replace('</Metadata>', '<License>extension/LICENSE.md</License></Metadata>'),
+      'extension.vsixmanifest must contain exactly one canonical project-license declaration.',
+    ],
+    [
+      'canonical and namespace-prefixed alternate license declarations',
+      VSIX_MANIFEST.replace(
+        '</Metadata>',
+        '<vsx:License>extension/LICENSE.md</vsx:License></Metadata>',
+      ),
+      'extension.vsixmanifest must contain exactly one canonical project-license declaration.',
+    ],
+    [
+      'private marketplace link',
+      VSIX_MANIFEST.replace(
+        '</Metadata>',
+        '<Property Id="Microsoft.VisualStudio.Services.Links.Support" Value="https://github.com/koizumikento/okf-workbench/issues" /></Metadata>',
+      ),
+      'extension.vsixmanifest contains private repository marketplace metadata.',
+    ],
+  ])('rejects VSIX manifest mutation: %s', (_name, content, message) => {
+    const entries = packageEntries().map((entry) =>
+      entry.name === 'extension.vsixmanifest' ? { ...entry, content } : entry,
+    );
+
+    expect(() =>
+      validateVsixArchive(createStoredZip(entries), Buffer.from(PROJECT_LICENSE)),
+    ).toThrow(message);
+  });
+
+  test('makes the packaged security gate reject canonical and alternate license declarations together', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'okf-workbench-license-gate-'));
+    const vsixPath = join(directory, 'canonical-plus-alternate.vsix');
+    const entries = packageEntries().map((entry) =>
+      entry.name === 'extension.vsixmanifest'
+        ? {
+            ...entry,
+            content: VSIX_MANIFEST.replace(
+              '</Metadata>',
+              '<License>extension/LICENSE.md</License></Metadata>',
+            ),
+          }
+        : entry,
+    );
+    await writeFile(vsixPath, createStoredZip(entries));
+
+    try {
+      await expect(
+        execFileAsync(process.execPath, [securityCheckPath, '--vsix', vsixPath], {
+          cwd: repositoryRoot,
+        }),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining(
+          'extension.vsixmanifest must contain exactly one canonical project-license declaration.',
+        ),
+      });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  test('rejects a duplicate canonical project license entry', () => {
+    expect(() =>
+      validateVsixArchive(
+        createStoredZip([
+          ...packageEntries(),
+          { name: PROJECT_LICENSE_ENTRY, content: PROJECT_LICENSE },
+        ]),
+        Buffer.from(PROJECT_LICENSE),
+      ),
+    ).toThrow(`Duplicate VSIX entry is not allowed: ${PROJECT_LICENSE_ENTRY}`);
   });
 
   test('rejects an injected file outside the reviewed package file set', () => {
@@ -126,7 +391,7 @@ describe('VSIX package closed-set validation', () => {
       },
     ]);
 
-    expect(() => validateVsixArchive(archive)).toThrow(
+    expect(() => validateVsixArchive(archive, Buffer.from(PROJECT_LICENSE))).toThrow(
       'Unexpected files entered the VSIX: extension/internal-release-notes.txt',
     );
   });

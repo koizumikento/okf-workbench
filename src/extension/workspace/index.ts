@@ -12,6 +12,17 @@ export {
 } from './bundleContext.js';
 export { matchesSha256, normalizeSha256, sha256Content } from './contentHash.js';
 export {
+  captureWorkspaceDirectoryChain,
+  captureWorkspaceOptionalResourceParentChain,
+  captureWorkspaceResourceParentChain,
+  inspectWorkspaceDirectoryChain,
+  verifyWorkspaceDirectoryChain,
+  type WorkspaceDirectoryChainCapture,
+  type WorkspaceDirectoryChainFailure,
+  type WorkspaceDirectoryChainSnapshot,
+  type WorkspaceOptionalResourceParentCapture,
+} from './directorySafety.js';
+export {
   isUriContained,
   normalizeContainedRelativePath,
   preserveProviderRelativePath,
@@ -19,7 +30,11 @@ export {
   UnsafeWorkspacePathError,
   type UriIdentity,
 } from './pathSafety.js';
-export { ProposalApplicator, type ProposalPreflightReport } from './proposalApplicator.js';
+export {
+  ProposalApplicator,
+  type GuardedProposalApplyResult,
+  type ProposalPreflightReport,
+} from './proposalApplicator.js';
 export {
   RefreshCoordinator,
   WORKSPACE_REFRESH_DEBOUNCE_MILLISECONDS,
@@ -34,16 +49,27 @@ export {
 } from './refreshCoordinator.js';
 export {
   WorkspaceAccessError,
+  WorkspaceWriteAuthorizationError,
+  sameWorkspaceReadIdentity,
   type WorkspaceAccessErrorCode,
   type WorkspaceEntry,
   type WorkspaceEntryType,
   type WorkspaceEnumerationOptions,
   type WorkspacePort,
+  type WorkspaceReadIdentity,
+  type WorkspaceReadOptions,
   type WorkspaceStat,
   type WorkspaceTraversalEvent,
   type WorkspaceTraversalOptions,
+  type WorkspaceWriteReadBoundary,
   type WorkspaceWriteOptions,
 } from './types.js';
 export { vscodeUriCodec, type WorkspaceUriCodec } from './uriCodec.js';
 export { createVscodeMarkdownChangeSource } from './vscodeChangeSource.js';
 export { VscodeWorkspacePort } from './vscodeWorkspacePort.js';
+export {
+  WorkspaceFolderMembershipTracker,
+  type WorkspaceFolderChange,
+  type WorkspaceFolderMembershipDisposable,
+  type WorkspaceFolderMembershipSession,
+} from './workspaceFolderMembership.js';

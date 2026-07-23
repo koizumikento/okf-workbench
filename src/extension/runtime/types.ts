@@ -3,6 +3,8 @@ import type { Finding, GraphPayload, ParsedBundle, SourceRange } from '../../cor
 export interface BundleRuntimeContext<TUri> {
   readonly rootUri: TUri;
   readonly rootUriString: string;
+  /** Open workspace folder whose complete descendant chain bounds every bundle read. */
+  readonly workspaceSafetyRootUri: TUri;
 }
 
 /** Privileged source data. This object must never cross the Webview message boundary. */

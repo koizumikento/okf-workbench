@@ -1,5 +1,16 @@
 export type ListNavigationKey = 'ArrowDown' | 'ArrowUp' | 'End' | 'Home';
 
+export type DetailsFocusGroup = 'backlink' | 'outgoing' | 'source';
+
+/**
+ * Identify a details control by its semantic destination rather than its current list position.
+ * The occurrence keeps duplicate links distinct without letting unrelated sibling reordering
+ * change the key. JSON encoding avoids collisions for concept IDs containing punctuation.
+ */
+export function detailsFocusKey(group: DetailsFocusGroup, nodeId: string, occurrence = 0): string {
+  return JSON.stringify([group, nodeId, occurrence]);
+}
+
 export function isListNavigationKey(key: string): key is ListNavigationKey {
   return key === 'ArrowDown' || key === 'ArrowUp' || key === 'Home' || key === 'End';
 }

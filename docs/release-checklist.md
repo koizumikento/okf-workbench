@@ -12,40 +12,52 @@ not a substitute for its named manual or hosted check.
 
 ## Release blockers
 
-- [ ] The maintainer has selected the project license, added the matching root license file,
-      updated the manifest license identifier, and approved public distribution.
+- [x] The maintainer selected MIT for the project on 2026-07-23, added the matching root
+      `LICENSE`, updated the manifest and lockfile identifier, and approved distributing the
+      project's own code under those terms.
 - [ ] The generated third-party notices and combined distribution obligations have received the
       required human review.
 - [ ] All confirmed findings and proof gaps in
       [security and privacy evidence](security-privacy-evidence.md) are fixed, accepted by the
       named authority, or closed with retained evidence; no release-blocking item remains.
-- [x] A complete schema-v2 headed-editor measurement passes QR-002 and QR-003, compares or safely
-      reuses the `d3` and `ngraph` measurements, matches the current manifest, exact graph
-      dependency, Webview SHA-256, and combined Extension Host + Webview SHA-256, and records the
-      reviewed release default in [performance evidence](performance-evidence.md).
+- [ ] A fresh full schema-v3 headed-editor measurement passes QR-002, QR-003, and the strict CDP
+      Webview-network observation; compares `d3` and `ngraph`; matches the current manifest,
+      production/runtime, diagnostics-observer, runner, and harness identities; obtains genuine
+      same-revision diagnostics correlation; proves graph WebGL clears/draws and interaction
+      outcomes; and records the reviewed release default in
+      [performance evidence](performance-evidence.md). The retained older capture predates this
+      strengthened contract and is historical-only.
 - [x] The exact `581830`-byte candidate from commit
       `524eca3f36e1a1b3da935495d3fbbd0eb0d03f56`, SHA-256
       `65c137822052aa7f90ef08cc1300020fec4adcd7cbcec6aec88ae98fae64dad0`, passed clean,
       untrusted, upgrade, and uninstall lifecycles in all three local macOS arm64 editor lanes;
-      this is preserved predecessor evidence rather than the hosted-qualified candidate.
-- [x] The exact `582231`-byte candidate from commit
+      this is preserved local predecessor evidence, not evidence for either the historical hosted
+      candidate or the current candidate.
+- [x] Historical evidence: the exact `582231`-byte candidate from commit
       `aa90832aab64dac1bccf9c9092fabc004991f7b1`, SHA-256
       `cc8c994cd35cfe2017945c38d0019f330cb33f628a94bf6508b2930c5c57c866`, passed the
-      [hosted Compatibility run](https://github.com/koizumikento/okf-workbench/actions/runs/29900868002).
-- [x] Every required editor/OS lane has a successful retained artifact from the
-      [compatibility matrix](compatibility-matrix.md), including actual VSCodium runs.
-- [x] The final workflow-level package gate compared all three retained OS artifacts and passed
+      [hosted Compatibility run](https://github.com/koizumikento/okf-workbench/actions/runs/29900868002)
+      with VS Code `1.127.0` as its then-current lane. This does not qualify the current candidate.
+- [ ] The current exact candidate has successful retained artifacts from every lane in the
+      [compatibility matrix](compatibility-matrix.md): VS Code `1.121.0` on Ubuntu, VS Code
+      `1.129.1` on Ubuntu/macOS/Windows, and VSCodium `1.121.03429` on Ubuntu/macOS/Windows.
+- [x] Historical evidence: the workflow-level package gate compared all three retained OS artifacts and passed
       in [Package smoke run 29901183164](https://github.com/koizumikento/okf-workbench/actions/runs/29901183164)
       for the exact recorded digest and byte size.
+- [ ] The current exact candidate passes the cross-platform package-byte identity gate on Ubuntu,
+      macOS, and Windows and the resulting digest and byte size match its compatibility run.
 - [ ] Packaged-editor evidence plus manual inspection closes the remaining user-scenario gaps in
-      [acceptance evidence](acceptance-evidence.md); the hosted lifecycle matrix is complete, but
-      it does not exercise every interactive command UI.
-- [ ] The current registry state of the `straydog` namespace is rechecked, the publishing identity
-      is an authorized member with the required access, and that identity has signed the current
-      Open VSX Publisher Agreement.
-- [ ] Marketplace-facing repository, support, privacy, license, and notice resources are readable
-      without access to the private development repository, or the maintainer has approved and
-      validated durable public replacements.
+      [acceptance evidence](acceptance-evidence.md); current-candidate hosted lifecycle evidence is
+      still pending and the historical matrix did not exercise every interactive command UI.
+- [x] The public Open VSX registry reports namespace `straydog` as verified and restricted, and
+      `straydog.okf-workbench@0.1.0` as available; the retained check is
+      [Open VSX registry evidence](evidence/open-vsx-registry.json), and the candidate workflow
+      repeats it without a token.
+- [ ] The authenticated publishing identity has current `straydog` authorization, a valid PAT,
+      and a signed current Open VSX Publisher Agreement.
+- [ ] The listing provides a durable public end-user support and security-contact route. The
+      project license is packaged, while private-only repository, issue, homepage, privacy, and
+      notice URLs are deliberately omitted rather than advertised.
 - [ ] The maintainer has explicitly approved publication of the exact candidate SHA-256.
 - [ ] The GitHub `open-vsx` Environment is protected and independently reviewed as described
       below; its environment-scoped `OVSX_PAT` is not duplicated as a repository or organization
@@ -55,34 +67,47 @@ not a substitute for its named manual or hosted check.
 
 - [x] `package.json` has `publisher: "straydog"`, `name: "okf-workbench"`, and `version: "0.1.0"`.
 - [x] The root `name`, `version`, `license`, and dependency metadata represented in
-      `package-lock.json` match `package.json`. The current matching value is `UNLICENSED`; this
-      consistency check does not close the separate project-license blocker.
+      `package-lock.json` match `package.json`. The current matching license value is `MIT`.
 - [x] The extension identifier is consistently `straydog.okf-workbench` in package checks,
       integration tests, workflows, evidence documents, and release notes.
-- [ ] `CHANGELOG.md` contains exactly one `0.1.0` entry and `Unreleased` has been replaced with the
-      actual release date immediately before publication.
-- [ ] The release tag and GitHub release are planned as `v0.1.0`; the tag points to the tested
-      commit and is not moved after publication.
-- [ ] `README.md`, `docs/open-vsx-listing.md`, repository, issue, homepage, privacy, support,
-      license, and third-party-notice links resolve from the packaged artifact.
+- [ ] `CHANGELOG.md` contains exactly one `0.1.0` entry and `Unreleased` is replaced with the
+      intended publication date before the immutable candidate is built. If that date changes,
+      rebuild, requalify, and reapprove the new bytes.
+- [x] The public manifest omits `repository`, `bugs`, and `homepage` while the source repository is
+      private; the packaged README and changelog contain no private-repository,
+      excluded-documentation, or speculative release-tag links.
+- [ ] A durable public support and security-contact route is selected and validated without
+      requiring access to the private source repository.
+- [x] The packaged README states privacy behavior, MIT licensing, and bundled third-party notices
+      inline; the VSIX carries the corresponding license and notice files.
 - [x] The 128×128-or-larger PNG icon is referenced by the manifest and present in the VSIX.
 
 ## Build the immutable candidate
 
-1. Start from the intended clean commit and record its full revision.
+1. Freeze every packaged reader-facing file first: manifest, MIT license, generated third-party
+   notices, README, changelog (including intended publication date), icon, approved public contact
+   route, and runtime bundles. Start from that intended clean commit and record its full revision.
 2. Use Node.js `24.18.0` and npm `11.16.0`.
 3. Install from the committed lockfile and run all local release gates:
 
+   The retained `vscode-1.127.0` JSON and Markdown are versioned historical archives and
+   intentionally fail the strict command. The canonical current-candidate paths are
+   `docs/evidence/performance/vscode-1.129.1.json` and `.md`; create them only from a fresh genuine
+   current-run headed capture of the frozen candidate before treating this step as passable.
+
    ```sh
    mise x node@24.18.0 -- npm ci
+   mise x node@24.18.0 -- npx --no-install playwright install chromium
    mise x node@24.18.0 -- npm run check
-   mise x node@24.18.0 -- npm run test:acceptance
-   mise x node@24.18.0 -- npm run test:security
-   mise x node@24.18.0 -- npm run test:integration
+   mise x node@24.18.0 -- env VSCODE_TEST_VERSION=1.121.0 npm run test:integration
+   mise x node@24.18.0 -- env VSCODE_TEST_VERSION=1.129.1 npm run test:integration
    mise x node@24.18.0 -- npm run test:webview
-   mise x node@24.18.0 -- npm run test:security:webview
    mise x node@24.18.0 -- npm run package
-   mise x node@24.18.0 -- npm run benchmark:report -- --measurements docs/evidence/performance/vscode-1.127.0.json --require-passing
+   mise x node@24.18.0 -- node scripts/benchmark-report.mjs \
+     --measurements docs/evidence/performance/vscode-1.129.1.json \
+     --require-passing \
+     > artifacts/performance/vscode-1.129.1-release-check.md
+   cmp docs/evidence/performance/vscode-1.129.1.md artifacts/performance/vscode-1.129.1-release-check.md
    mise x node@24.18.0 -- npm run package:check
    mise x node@24.18.0 -- node scripts/security-check.mjs --check-notices
    mise x node@24.18.0 -- node scripts/security-check.mjs --vsix artifacts/okf-workbench.vsix
@@ -91,12 +116,25 @@ not a substitute for its named manual or hosted check.
 
 4. Record `shasum -a 256 artifacts/okf-workbench.vsix`, byte size, revision, build environment,
    exact package versions, and all command outputs in the release record.
+   `package:check` and the packaged security gate must both confirm that `extension/LICENSE.txt` is
+   the sole project-license entry, exactly matches the root `LICENSE`, and is paired with packaged
+   manifest value `MIT`; `extension.vsixmanifest` must reference that exact path in its license
+   declaration and addressable content-license asset and contain no private marketplace links.
 5. Run the manual `Compatibility` workflow for that revision and retain every per-lane JSON
    artifact. Supply a genuinely older VSIX and digest when upgrade evidence is required.
 6. Complete the headed GPU/network checks on the same immutable candidate and attach the raw
    evidence without adding workspace content or secrets to the repository.
 7. Install the final VSIX by digest and manually inspect every user-visible command, listing page,
-   icon, changelog, privacy statement, and support link.
+   icon, changelog, inline privacy statement, and approved public contact route.
+8. After hosted qualification, a later evidence-record commit may change only receipt fields in
+   `docs/acceptance-evidence.md`, `docs/compatibility-matrix.md`,
+   `docs/release-checklist.md`, and `docs/security-privacy-evidence.md`. Review the complete
+   intervening diff and reject changes to source, dependencies, manifests, locks, build/package
+   scripts, workflows, gates, benchmark measurements, or any packaged file. Rebuild twice at that
+   default-branch revision and require the same normalized VSIX digest and byte size. Record both
+   the artifact-content revision and the later evidence/publication-workflow revision; link
+   Compatibility and Package smoke to the artifact by digest rather than pretending the commit IDs
+   are identical.
 
 If any source, dependency, manifest, notice, icon, README, changelog, or packaged file changes,
 discard the previous digest and repeat the relevant gates. Never publish a locally rebuilt
@@ -117,6 +155,10 @@ integration gates, then runs
 revision, runner, and toolchain. The publish job downloads those same bytes and never checks out,
 builds, or packages source.
 
+The root `package.json` setting `"private": true` prevents accidental publication to the npm
+registry only. GitHub repository visibility, the MIT license, and Open VSX publication of the
+packaged VSIX are separate controls.
+
 Before the workflow can be trusted, a repository administrator must configure a GitHub Environment
 named exactly `open-vsx` with all of the following hosted controls:
 
@@ -136,8 +178,11 @@ named exactly `open-vsx` with all of the following hosted controls:
 4. Require the Environment reviewer to open the completed candidate job summary and compare its
    extension ID, version, full commit, SHA-256, and retained approval record before approving the
    publish job. Reject the deployment if any value or prerequisite in this checklist is incomplete.
-5. Retain the workflow URL, environment approval identity/time, release evidence JSON, checksum,
-   and immutable VSIX with the release record. Revoke or rotate the token after publication.
+5. Retain the workflow URL, environment approval identity/time, immutable candidate, checksum,
+   candidate evidence, and the required pre-publication evidence artifact. The workflow also
+   attempts a best-effort publication-step receipt after the irreversible command; that receipt is
+   not a substitute for the public post-publication checks below. Revoke or rotate the token after
+   publication.
 
 Dispatch the workflow only from its reviewed current default-branch revision. Supply that same
 lowercase 40-character source/workflow commit, the exact version, lowercase 64-character normalized
@@ -150,29 +195,59 @@ PUBLISH straydog.okf-workbench@<version> SHA256:<digest> COMMIT:<40-character-co
 The candidate job requires `github.ref`, `github.workflow_ref`, `github.workflow_sha`, the dispatch
 revision, and the requested candidate commit to identify the same current default-branch workflow
 revision. It then validates manifest and lockfile identity, typed approval, and rebuilt digest
-before the protected publish job becomes eligible. The publish job revalidates the downloaded
-checksum and approval, installs the locked `ovsx` `1.0.2` CLI without lifecycle scripts, obtains
-`OVSX_PAT` only for the two registry command steps, runs `ovsx verify-pat straydog`, and publishes
-the downloaded VSIX path. A checksum mismatch requires a new approval; editing the approval in
-logs or rebuilding in the publish job is not an allowed recovery.
+before the protected publish job becomes eligible. It also queries the public Open VSX API without
+a credential and with cache bypass, fails unless `straydog` is verified and restricted and the
+exact target version is available, and retains that JSON inside the release evidence. Every
+response must carry a strictly parsed HTTP `Date`; `Age` must be at most 30 seconds when present,
+and otherwise `Date` must be no more than the inclusive 30-second window old and must not be in the
+future. The retained record names the validation source, effective age, and validation time for
+all three responses. After the
+Environment approval wait, the publish job repeats the same no-token check immediately before PAT
+authorization. It revalidates the downloaded checksum and approval, installs the locked `ovsx`
+`1.0.2` CLI without lifecycle scripts, obtains `OVSX_PAT` only for the PAT-verification and
+publication steps, and runs `ovsx verify-pat straydog`. After that succeeds, it creates token-free
+evidence containing the immediate registry response, authorization result, exact approval binding,
+revision, VSIX digest and byte size, toolchain, runner, and workflow identity. Uploading that
+complete evidence is a required fail-closed barrier before `ovsx publish` can run. The workflow
+then attempts an always-run, best-effort publication-step receipt; receipt creation or upload
+cannot turn an otherwise successful irreversible publication into a red workflow that invites an
+invalid rerun. The receipt records only the command outcome, not registry availability. A checksum
+mismatch requires a new approval; editing the approval in logs or rebuilding in the publish job is
+not an allowed recovery. A runner loss, cancellation, or timeout after the publish command starts
+has an ambiguous external outcome: inspect the public registry and reconcile the retained
+pre-publication evidence before taking any action, and never blindly rerun the same immutable
+version.
 
-**Current proof gap:** a read-only GitHub API check on 2026-07-22 reported zero Environments and
-`404 Not Found` for `open-vsx`; the repository secret-name list was empty. The API response did not
-establish whether the current plan supports required reviewers for this private repository. Thus
-the hosted `open-vsx` Environment, required reviewers, deployment restrictions, plan eligibility,
-and environment-scoped `OVSX_PAT` have not been configured or observed. No protected-environment
-approval, namespace authorization command, or publication has been run. The maintainer has
-confirmed that a namespace named `straydog` exists; that report does not establish that the
-publishing identity is an authorized member or has signed the current Publisher Agreement. This
-remains release-blocking and does not close security evidence gap `PG-04`. Configuring the
-Environment or secret and approving a deployment are maintainer/administrator actions, not part
-of repository implementation.
+The `<40-character-commit>` in the approval phrase is the current
+evidence/publication-workflow revision, not necessarily the earlier artifact-content revision. A
+difference is allowed only under the receipt-only rule in step 8 above, and only when a
+deterministic rebuild at the publication-workflow revision reproduces the exact approved digest
+and byte size.
+
+**Current proof gap:** a read-only GitHub API check on 2026-07-23 reported zero Environments and
+`404 Not Found` for `open-vsx`. The repository-level secret-name list contained
+`OPEN_VSX_TOKEN` and `STRAY_TOOLS_TOKEN`, but neither establishes the required protected
+Environment or its environment-scoped `OVSX_PAT`; secret values were not accessed. The API
+response did not establish whether the current plan supports required reviewers for this private
+repository. Thus the hosted `open-vsx` Environment, required reviewers, deployment restrictions,
+plan eligibility, and environment-scoped `OVSX_PAT` have not been configured or observed. No
+protected-environment approval, authenticated namespace authorization command, or publication
+has been run. The value and purpose of the repository-level `OPEN_VSX_TOKEN` were not inspected:
+before publication its owner must confirm whether it is a credential and, if so, revoke or remove
+it from repository scope and provision a new narrowly scoped Environment credential; a misleading
+name must instead be documented without exposing its value. A public Open VSX API check at
+`2026-07-23T08:35:06.452Z` established that `straydog` exists, is verified and restricted, and that
+`straydog.okf-workbench@0.1.0` is available. Public metadata still does not prove the current PAT,
+exact namespace role, or current profile Agreement status. This remains release-blocking and does
+not close security evidence gap `PG-04`. Configuring the Environment or secret and approving a
+deployment are maintainer/administrator actions, not part of repository implementation.
 
 The release owner records this statement before running a publishing command:
 
 ```text
 I approve Open VSX publication of straydog.okf-workbench version 0.1.0,
-VSIX SHA-256 <digest>, built from commit <revision>.
+VSIX SHA-256 <digest>, reproduced by publication-workflow commit <revision>.
+Artifact-content commit: <artifact-content-revision>.
 Approver: <identity>
 Approved at: <timestamp with zone>
 ```
@@ -189,7 +264,8 @@ The official process and current account requirements are documented in
 ## Post-publication verification
 
 - [ ] Open `https://open-vsx.org/extension/straydog/okf-workbench` and confirm publisher, verified
-      state, version, icon, README, changelog, license, privacy, support, repository, and categories.
+      state, version, icon, README, changelog, license, inline privacy text, public contact route,
+      deliberate source-link omissions, and categories.
 - [ ] Confirm the registry reports `straydog.okf-workbench` version `0.1.0` and the publishing
       identity expected by the approval record.
 - [ ] Download the published version with `ovsx get`, inspect its metadata and contents, and record
@@ -211,8 +287,8 @@ command. Do not run `vsce unpublish`: that manages the Microsoft Marketplace, no
 
 For a defective but non-malicious release:
 
-1. Stop promotion and announce the affected version and safe workaround through the GitHub release
-   and issue tracker.
+1. Stop promotion and announce the affected version and safe workaround through the approved
+   public support and release channels.
 2. Preserve the published artifact, digest, logs, evidence, and incident timeline.
 3. Fix forward with a higher SemVer version, repeat this entire checklist, and publish only after a
    new explicit approval. A registry version is immutable; never reuse `0.1.0` for different bytes.
@@ -242,20 +318,25 @@ not an automated fallback in this repository.
 | --- | --- |
 | Version | `0.1.0` |
 | Extension ID | `straydog.okf-workbench` |
-| Hosted-qualified artifact-content revision | `aa90832aab64dac1bccf9c9092fabc004991f7b1` |
-| Hosted-qualified VSIX SHA-256 | `cc8c994cd35cfe2017945c38d0019f330cb33f628a94bf6508b2930c5c57c866` |
-| Hosted-qualified VSIX byte size | `582231` bytes |
+| Current candidate artifact-content revision | Pending |
+| Current evidence/publication-workflow revision | Pending — may differ only by the four reviewed receipt documents listed above, with no build/runtime/toolchain/workflow/gate input change, and only when two rebuilds reproduce the exact candidate digest and byte size. |
+| Current candidate VSIX SHA-256 | `d7be6180cd788b2ab5d9c7fc436de9eb2df97d967b16ccbc2578f48851f0b666` — final local candidate; hosted byte-identity qualification pending. |
+| Current candidate VSIX byte size | `613637` bytes — final local candidate; hosted byte-identity qualification pending. |
 | Node / npm | `24.18.0` / `11.16.0` |
-| Hosted CI | [Pass — run 29900857588](https://github.com/koizumikento/okf-workbench/actions/runs/29900857588); all four quality/package, hostile-content Webview, and pinned VS Code integration jobs succeeded. |
-| Hosted compatibility | [Pass — run 29900868002](https://github.com/koizumikento/okf-workbench/actions/runs/29900868002); all nine candidate, acceptance/Webview, and seven required VS Code/VSCodium lifecycle jobs succeeded. |
-| Hosted package smoke | [Pass — run 29900868155](https://github.com/koizumikento/okf-workbench/actions/runs/29900868155); macOS, Ubuntu, and Windows independently produced the exact recorded `582231`-byte digest. |
-| Cross-platform package gate revision | `6505a7f7b017a44a851ab6edaaba28f6b6a72105`; workflow, checker, test, and documentation only, so the qualified VSIX content and digest are unchanged. |
-| Final workflow-gate CI | [Pass — run 29901152549](https://github.com/koizumikento/okf-workbench/actions/runs/29901152549); all four jobs succeeded at the cross-platform package gate revision. |
-| Final aggregate package gate | [Pass — run 29901183164](https://github.com/koizumikento/okf-workbench/actions/runs/29901183164); all three OS jobs and the aggregate byte-identity job succeeded for SHA-256 `cc8c994cd35cfe2017945c38d0019f330cb33f628a94bf6508b2930c5c57c866`, `582231` bytes, and three artifacts. |
+| Current hosted CI | Pending — must include VS Code `1.121.0` and `1.129.1` integration jobs for the exact current source revision. |
+| Current hosted compatibility | Pending — must include all seven current VS Code/VSCodium lifecycle lanes for the exact current VSIX. |
+| Current hosted package smoke | Pending — must reproduce the exact current VSIX digest and byte size on macOS, Ubuntu, and Windows. |
+| Historical hosted-qualified artifact | Commit `aa90832aab64dac1bccf9c9092fabc004991f7b1`; SHA-256 `cc8c994cd35cfe2017945c38d0019f330cb33f628a94bf6508b2930c5c57c866`; `582231` bytes. |
+| Historical hosted CI | [Pass — run 29900857588](https://github.com/koizumikento/okf-workbench/actions/runs/29900857588); all four jobs for that historical candidate succeeded. |
+| Historical hosted compatibility | [Pass — run 29900868002](https://github.com/koizumikento/okf-workbench/actions/runs/29900868002); all seven then-required lifecycle lanes, including VS Code `1.127.0`, succeeded for that historical candidate. |
+| Historical hosted package smoke | [Pass — run 29900868155](https://github.com/koizumikento/okf-workbench/actions/runs/29900868155); macOS, Ubuntu, and Windows independently produced the historical `582231`-byte digest. |
+| Historical cross-platform package gate revision | `6505a7f7b017a44a851ab6edaaba28f6b6a72105`; workflow, checker, test, and documentation only, so the historical qualified VSIX content and digest were unchanged. |
+| Historical workflow-gate CI | [Pass — run 29901152549](https://github.com/koizumikento/okf-workbench/actions/runs/29901152549); all four jobs succeeded at that historical cross-platform package gate revision. |
+| Historical aggregate package gate | [Pass — run 29901183164](https://github.com/koizumikento/okf-workbench/actions/runs/29901183164); all three OS jobs and the aggregate byte-identity job succeeded for the historical SHA-256 `cc8c994cd35cfe2017945c38d0019f330cb33f628a94bf6508b2930c5c57c866`, `582231` bytes, and three artifacts. |
 | Preserved local predecessor evidence | Pass — commit `524eca3f36e1a1b3da935495d3fbbd0eb0d03f56`, `581830` bytes, SHA-256 `65c137822052aa7f90ef08cc1300020fec4adcd7cbcec6aec88ae98fae64dad0`; VS Code `1.121.0`, VS Code `1.127.0`, and VSCodium `1.121.03429` on macOS arm64. |
-| Headed performance evidence | Pass — QR-002 703 ms p95 / 20 samples; QR-003 `d3`; Webview `853502f50117c6b565b8a9befdb474e1cbaf39bf78b8b7eb6aa3d52f92266d7b`; combined `93c75712626c20bee2b77ad74810267733c6457da85ad89c595772ac6e6d92ad` |
+| Headed performance evidence | Pass — genuine headed VS Code `1.129.1` schema-v3 capture at `2026-07-23T09:59:23.073Z`; QR-002 `832 ms` p95 across 20 samples, QR-003 selected `d3`, and strict CDP counts were remote `0`, packaged local `2`, internal Webview `2`, other `0`. Raw evidence SHA-256: `0fd512512c0ff3d8fecbecd1c50d87bc6a727f2dad68fca3403ed8b400f7d3f5`. |
 | Security/license approver | Pending |
-| Namespace/publishing identity | Namespace name `straydog` confirmed by the maintainer; publishing-identity authorization, membership, and Publisher Agreement evidence pending. |
+| Namespace/publishing identity | Public API pass at `2026-07-23T08:35:06.452Z`: `straydog` verified/restricted and `straydog.okf-workbench@0.1.0` available; authenticated PAT/role and Publisher Agreement evidence pending. |
 | Publication approver and timestamp | Pending |
 | Open VSX listing URL | Pending |
 | Downloaded artifact SHA-256 | Pending |

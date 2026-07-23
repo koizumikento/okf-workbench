@@ -23,11 +23,18 @@ export {
 } from './proposals.js';
 export {
   problemsMessage,
+  proposalWorkflowBusyProblem,
   refuseUntrustedWorkspace,
+  runProposalCommand,
+  runPublicProposalCommand,
   runProposalWorkflow,
   untrustedWorkspaceProblem,
   type RunProposalOptions,
 } from './run-proposal.js';
+export {
+  ProposalWorkflowBusyError,
+  SerialProposalWorkflowScheduler,
+} from './proposal-workflow-scheduler.js';
 export type {
   AgentIntegrationTarget,
   CommandOutcome,
@@ -35,9 +42,12 @@ export type {
   ConfirmationOptions,
   InitializationTarget,
   ProposalPresentation,
+  ProposalPreviewIdentity,
   ProposalPreviewer,
   ProposalPreviewSession,
   ProposalWorkflowDependencies,
+  ProposalWorkflowLease,
+  ProposalWorkflowScheduler,
   SelectedBundle,
   SelectAgentIntegrationTarget,
   SelectBundle,

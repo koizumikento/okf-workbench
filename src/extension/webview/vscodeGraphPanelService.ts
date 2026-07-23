@@ -14,7 +14,7 @@ import type { GraphPayload } from '../../core/model/index.js';
 import type { GraphRenderFailureReason } from '../../shared/protocol/index.js';
 import type { NodeSourceLocation } from '../runtime/index.js';
 import type { DisposableLike } from '../workspace/index.js';
-import { GraphPanelController } from './graphPanelController.js';
+import { GraphPanelController, type GraphDeliveryFailureHandler } from './graphPanelController.js';
 
 const GRAPH_VIEW_TYPE = 'okfWorkbench.graph';
 
@@ -43,12 +43,13 @@ export class VscodeGraphPanelService implements DisposableLike {
   public open(
     graph: GraphPayload,
     nodeSources: ReadonlyMap<string, NodeSourceLocation<Uri>>,
+    onDeliveryFailure?: GraphDeliveryFailureHandler,
   ): void {
     if (this.#disposed) {
       throw new Error('The graph panel service has been disposed.');
     }
     if (this.#current !== undefined && !this.#current.disposed) {
-      this.#current.replaceGraph(graph, nodeSources);
+      this.#current.replaceGraph(graph, nodeSources, onDeliveryFailure);
       this.#current.reveal();
       return;
     }
@@ -91,7 +92,7 @@ export class VscodeGraphPanelService implements DisposableLike {
         : { onGraphRenderFailed: this.#options.onGraphRenderFailed }),
     });
     this.#current = controller;
-    controller.replaceGraph(graph, nodeSources);
+    controller.replaceGraph(graph, nodeSources, onDeliveryFailure);
   }
 
   public replaceCurrent(

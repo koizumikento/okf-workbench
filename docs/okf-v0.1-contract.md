@@ -8,6 +8,9 @@ The canonical authority is the [Open Knowledge Format v0.1 specification at `ee6
 
 An OKF bundle is a directory tree of UTF-8 Markdown files.
 
+- Workbench accepts no BOM or one leading UTF-8 BOM. It rejects multiple leading BOMs and rejects
+  already-decoded text containing an unpaired UTF-16 surrogate, so text and byte inputs follow one
+  decoding policy.
 - Every non-reserved `.md` file whose basename has a non-empty stem is a concept.
 - A concept ID is its bundle-relative path without `.md`; a provider-reported file named exactly
   `.md` cannot supply an ID and is retained as a file-scoped parse failure. Other dot-prefixed names,
@@ -40,6 +43,11 @@ Workbench implications:
   octet array, and sets use an ordered member array; `ParsedFrontmatter.source` remains the exact
   full-source authority. This prevents `Date`, `Buffer`, `Set`, or `Map` instances from crossing a
   core or Webview boundary without discarding producer intent.
+- The reserved `$okf-workbench:yaml-tag` shape is a Workbench serialization detail, never
+  authoritative producer syntax. `ParsedFrontmatter.explicitTags` records provenance obtained from
+  the parsed YAML AST; only a real explicit tag on the field node, or an alias that resolves to that
+  tagged node, grants explicit-tag semantics. A producer mapping or sequence that merely resembles
+  the reserved shape remains ordinary data and cannot spoof this provenance.
 - Ordinary string metadata, including an explicit-zone `timestamp`, keeps its existing string
   semantics. Supported scalar tags may supply normalized known fields, while their raw tagged
   representation remains available for lossless inventory and supported source-preserving writes.
@@ -91,6 +99,11 @@ The Problems panel must make this distinction visible through severity and wordi
 ## Versioning
 
 - The initial implementation targets OKF `0.1` only.
+- A standard YAML string tag such as `okf_version: !!str 0.1` has the same compatibility semantics
+  as the plain string `"0.1"`; its tagged raw representation remains preserved for inventory. An
+  alias to a real `!!str` scalar has the same semantics because the parser retains the resolved AST
+  provenance. A mapping, sequence, reserved-shape lookalike, or value with any explicit tag other
+  than `!!str` is not a semantic-string version declaration and is rejected by compatibility gates.
 - Unknown future minor versions should trigger an informational compatibility notice and best-effort reading.
 - Unsupported major, malformed, and non-string version declarations remain selectable for validation and graph inspection, but existing-bundle write commands fail closed with a clear warning before planning or applying any file change.
 - Automatic discovery still requires a parseable semantic-string `okf_version` declaration. Explicit Explorer or directory-picker selection may override discovery when the root index is missing, unreadable, versionless, or malformed so validation can publish the underlying conformance findings.

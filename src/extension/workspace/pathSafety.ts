@@ -1,3 +1,10 @@
+import {
+  hasUnpairedUtf16Surrogate,
+  OKF_SEMANTIC_LIMITS,
+  relativePathBoundFailure,
+  type RelativePathBoundFailure,
+} from '../../core/model/index.js';
+
 export interface UriIdentity {
   readonly scheme: string;
   readonly authority: string;
@@ -13,9 +20,32 @@ export class UnsafeWorkspacePathError extends Error {
   }
 }
 
+function pathLimitMessage(failure: RelativePathBoundFailure): string {
+  if (failure === 'code-units') {
+    return `The path exceeds ${String(OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits)} UTF-16 code units.`;
+  }
+  if (failure === 'utf8-bytes') {
+    return `The path exceeds ${String(OKF_SEMANTIC_LIMITS.maxProviderPathBytes)} UTF-8 bytes.`;
+  }
+  return `The path exceeds ${String(OKF_SEMANTIC_LIMITS.maxProviderPathSegments)} segments.`;
+}
+
+function assertBoundedRelativePath(input: string, backslashIsSeparator: boolean): void {
+  const failure = relativePathBoundFailure(input, backslashIsSeparator);
+  if (failure !== undefined) {
+    throw new UnsafeWorkspacePathError(pathLimitMessage(failure));
+  }
+  if (hasUnpairedUtf16Surrogate(input)) {
+    throw new UnsafeWorkspacePathError('The path contains an unpaired UTF-16 surrogate.');
+  }
+}
+
 function decodeStable(value: string): string {
   let decoded = value;
   for (let index = 0; index < 16; index += 1) {
+    if (hasControlCharacter(decoded)) {
+      throw new UnsafeWorkspacePathError('The path contains a control character.');
+    }
     let next: string;
     try {
       next = decodeURIComponent(decoded);
@@ -48,6 +78,7 @@ export function preserveProviderRelativePath(input: string): string {
   if (input.length === 0) {
     throw new UnsafeWorkspacePathError('The provider path must not be empty.');
   }
+  assertBoundedRelativePath(input, false);
   if (hasControlCharacter(input)) {
     throw new UnsafeWorkspacePathError('The provider path contains a control character.');
   }
@@ -76,11 +107,13 @@ export function normalizeContainedRelativePath(input: string): string {
   if (input.length === 0) {
     throw new UnsafeWorkspacePathError('The path must not be empty.');
   }
+  assertBoundedRelativePath(input, true);
   if (input.includes('\0')) {
     throw new UnsafeWorkspacePathError('The path must not contain a null byte.');
   }
 
   const posix = input.replaceAll('\\', '/');
+  assertBoundedRelativePath(posix, false);
   if (posix.startsWith('/') || /^[a-zA-Z]:\//u.test(posix)) {
     throw new UnsafeWorkspacePathError('The path must be relative to the bundle root.');
   }

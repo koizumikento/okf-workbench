@@ -553,7 +553,7 @@ Security suites have one explicit owner in every aggregate workflow so a passing
 | Pull-request CI | `quality-and-package` | `webview-browser` after `test:webview` builds | Both jobs are required by the workflow |
 | Compatibility | `candidate` before packaging | `acceptance` after its current Webview build | Node boundary pass precedes candidate upload; the browser lane gates the workflow |
 | Package smoke | Every `package-smoke` matrix lane | `security-boundaries` after its production build | Node host/path/junction boundaries run on Ubuntu, macOS, and Windows; the Chromium boundary passes before any OS package lane |
-| Open VSX release | `build-candidate` | `build-candidate` after its current Webview build | Both pass before the candidate is retained |
+| Open VSX release | `build-candidate` | Covered by required main-branch CI before tagging | The release reruns the deterministic Node boundary before retaining the candidate |
 
 The repository supply-chain policy parses these workflows and fails on a missing, misplaced,
 duplicate, conditional, or failure-tolerating security command. The default Vitest config includes
@@ -563,31 +563,21 @@ as a substitute for the dedicated configs under `test/security`.
 Package with `@vscode/vsce` `3.9.x`. Validate and publish an already built VSIX with `ovsx`
 `1.0.x`. The root `package.json` keeps `"private": true` as an npm-registry publish guard; it does
 not make the GitHub repository private and does not prevent an MIT-licensed VSIX from being
-submitted to Open VSX. Publication uses `OVSX_PAT` only in a protected, manually approved release
-environment. Pull requests and ordinary branch builds never have publishing credentials or
-publish capability.
+submitted to Open VSX.
 
-Before a candidate is retained, the release workflow performs a credential-free, fail-closed
-public-registry preflight. It requires namespace `straydog` to have the exact public identity,
-verified state, and restricted access, and requires the exact target extension version to return
-not found. Each response must carry a strictly parsed HTTP `Date`; a present `Age` must be no more
-than 30 seconds, while an absent `Age` makes `Date` authoritative and requires an inclusive
-zero-to-30-second effective age with no future time. The timestamped JSON retains the raw headers,
-validation source, effective age, and per-response validation time with the release evidence. This proves
-public namespace and version state only; authenticated `ovsx verify-pat`, the current Publisher
-Agreement, and Environment approval remain separate controls. `ovsx verify-pat` is the automated
-PAT and namespace-permission gate. Agreement review is an out-of-band profile prerequisite, and
-the Open VSX publish endpoint also rejects an unsigned publisher. The protected Environment is the
-hosted human-approval gate. After that approval wait, the publish job repeats the no-store public
-registry preflight, verifies the PAT, builds a token-free record bound to the exact approval,
-revision, VSIX digest and bytes, registry response, and namespace authorization, and durably uploads
-that complete pre-publication evidence. The upload is a required fail-closed barrier before
-`ovsx publish`; a later best-effort receipt records only the publish-step outcome and is not
-post-publication registry verification.
+Per [ADR 0006](decisions/0006-publish-open-vsx-from-version-tags.md), a pushed `v*` tag is the
+release authorization. The workflow accepts only a tag whose commit is contained in `main`, whose
+name matches `v<package.json version>`, and whose changelog entry has a publication date. It reruns
+the deterministic source, dependency, Node security, audit, package, reproducibility, and packaged
+security checks, retains one VSIX and checksum, creates the matching GitHub Release, and then
+publishes those retained bytes without rebuilding them.
 
-The same repository policy fails if the protected Environment or two-step secret isolation is
-removed, the pre-publication evidence is created or retained after publication, its upload becomes
-non-blocking, or the always-run best-effort attempt receipt is omitted or made release-blocking.
+The repository secret `OPEN_VSX_TOKEN` is exposed only to `ovsx verify-pat straydog` and the
+subsequent `ovsx publish` step. Missing or invalid authorization fails closed. Pull requests,
+ordinary branch builds, the candidate build job, and the GitHub Release job do not receive the
+credential. The locked `ovsx` `1.0.2` command uses duplicate-safe retry behavior, while Open VSX
+still treats a published version as immutable; changed bytes require a higher SemVer version and a
+new tag.
 
 The hosted repository enforces GitHub Actions SHA pinning in addition to repository-owned workflow
 checks. Every `uses:` reference remains a reviewed full commit SHA. Artifact downloads use the
@@ -595,7 +585,10 @@ Node 24-based `actions/download-artifact` v8 line, and the aggregate package gat
 Linux x64, Windows x64, and macOS arm64 artifact labels and one regular VSIX per label before
 comparing byte size and SHA-256.
 
-The ordinary pull-request CI and the protected Open VSX candidate job invoke that same repository-owned license and notice command after `npm ci`. License classification, production-graph traversal, and notice rendering therefore have one implementation and one allowlist; the release workflow adds packaged-VSIX checks but does not redefine the source gate.
+The ordinary pull-request CI and the tagged Open VSX candidate job invoke that same
+repository-owned license and notice command after `npm ci`. License classification,
+production-graph traversal, and notice rendering therefore have one implementation and one
+allowlist; the release workflow adds packaged-VSIX checks but does not redefine the source gate.
 
 The repository-owned package wrapper sets a fixed `SOURCE_DATE_EPOCH`, which makes pinned `vsce` sort ZIP entries lexicographically, and then normalizes every local-header and central-directory DOS timestamp to `1980-01-01 00:00:00` and every central-directory entry to the reviewed regular-file mode `0644`. This removes asynchronous file-discovery ordering, clock-dependent bytes, and the `0644` versus `0666` external-attribute difference emitted from Unix and Windows filesystems while preserving entry contents, CRCs, compression, extra fields, and comments. The normalizer fails closed for ZIP64, split archives, and timestamp-bearing ZIP extra fields. CI invokes that same wrapper a second time against the unchanged build and requires byte equality with the candidate before retaining it. Repository text is checked out with LF endings on every runner through `.gitattributes`; identical tracked inputs and pinned tool versions remain part of the cross-platform byte-identity contract. The package-smoke workflow then downloads the retained Ubuntu, macOS, and Windows VSIX files into one comparison job and fails unless all three byte sizes and SHA-256 digests are identical.
 

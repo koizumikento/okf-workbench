@@ -4,7 +4,7 @@
 - Target identifier: `straydog.okf-workbench`
 - Registry: Open VSX
 - Current disposition: **Hold**
-- Publication authority: explicit approval from the maintainer for one recorded VSIX digest
+- Publication authority: a matching `v*` tag pushed for a reviewed commit contained in `main`
 
 This checklist prepares a release candidate; it does not authorize publication. Mark a gate only
 from retained evidence. A configured workflow, passing component test, or absent observation is
@@ -62,10 +62,11 @@ not a substitute for its named manual or hosted check.
 - [x] The listing provides durable public repository, issue, homepage, privacy, support, security,
       license, and notice routes. GitHub private vulnerability reporting is enabled, and the
       project license, security policy, and generated third-party notices are packaged.
-- [ ] The maintainer has explicitly approved publication of the exact candidate SHA-256.
-- [ ] The GitHub `open-vsx` Environment is protected and independently reviewed as described
-      below; its environment-scoped `OVSX_PAT` is not duplicated as a repository or organization
-      secret.
+- [x] The repository secret name `OPEN_VSX_TOKEN` exists and is referenced only by the
+      authorization and publication steps. Its value remains unreadable through GitHub APIs and
+      is validated at release time with `ovsx verify-pat straydog`.
+- [ ] The maintainer has reviewed the final `main` commit and is ready to authorize publication by
+      pushing its matching version tag.
 
 ## Version, changelog, and links
 
@@ -131,15 +132,9 @@ not a substitute for its named manual or hosted check.
    evidence without adding workspace content or secrets to the repository.
 7. Install the final VSIX by digest and manually inspect every user-visible command, listing page,
    icon, changelog, inline privacy statement, and approved public contact route.
-8. After hosted qualification, a later evidence-record commit may change only receipt fields in
-   `docs/acceptance-evidence.md`, `docs/compatibility-matrix.md`,
-   `docs/release-checklist.md`, and `docs/security-privacy-evidence.md`. Review the complete
-   intervening diff and reject changes to source, dependencies, manifests, locks, build/package
-   scripts, workflows, gates, benchmark measurements, or any packaged file. Rebuild twice at that
-   default-branch revision and require the same normalized VSIX digest and byte size. Record both
-   the artifact-content revision and the later evidence/publication-workflow revision; link
-   Compatibility and Package smoke to the artifact by digest rather than pretending the commit IDs
-   are identical.
+8. Apply any final evidence or release-record edits before tagging, review the complete diff, and
+   rerun the affected checks. The tagged `main` commit is the release revision; do not move or reuse
+   the tag after publication.
 
 If any source, dependency, manifest, notice, icon, README, changelog, or packaged file changes,
 discard the previous digest and repeat the relevant gates. Never publish a locally rebuilt
@@ -147,121 +142,52 @@ artifact under an already approved digest.
 
 ## Approval and publication
 
-### Protected workflow boundary
+### Version-tag workflow boundary
 
-The `Open VSX release` workflow in `.github/workflows/open-vsx-release.yml` is the only automated
-publication path. It has only a `workflow_dispatch` trigger; pull requests, pushes, reusable
-workflow calls, and the ordinary package workflows cannot invoke its publish job or receive its
-credential. The candidate job has no Environment or publishing secret. It checks out one exact
-40-character commit on the default branch, installs the exact Node/npm/lockfile toolchain, runs the
-source, dependency, current-candidate performance, package, security, and minimum-editor
-integration gates, then runs
-`npm run package` exactly once. It records and retains the resulting VSIX, SHA-256, byte size,
-revision, runner, and toolchain. The publish job downloads those same bytes and never checks out,
-builds, or packages source.
+Per [ADR 0006](decisions/0006-publish-open-vsx-from-version-tags.md), the `Open VSX release`
+workflow is the only automated publication path. It runs only when a `v*` tag is pushed. The tag is
+the maintainer's release authorization; pull requests, ordinary branch pushes, and reusable
+workflow calls cannot invoke publication.
 
-The root `package.json` setting `"private": true` prevents accidental publication to the npm
-registry only. GitHub repository visibility, the MIT license, and Open VSX publication of the
-packaged VSIX are separate controls.
+Before pushing the tag:
 
-Before the workflow can be trusted, a repository administrator must configure a GitHub Environment
-named exactly `open-vsx` with all of the following hosted controls:
+1. complete every unchecked release blocker above;
+2. update `CHANGELOG.md` from `Unreleased` to the intended publication date;
+3. merge the reviewed release commit into protected `main`;
+4. confirm the tag will be exactly `v<package.json version>`; and
+5. confirm `OPEN_VSX_TOKEN` is the intended narrowly scoped credential, its owner remains a
+   `straydog` namespace member, and the Open VSX Publisher Agreement is current.
 
-1. Add required reviewers who are authorized to release `straydog.okf-workbench`. Prevent
-   self-review and administrator bypass where the repository plan supports those controls.
-   [GitHub's environment rules documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)
-   describes the available protection rules. The repository is public, so the earlier
-   private-repository plan limitation no longer applies; the Environment and its independent
-   reviewer still must be configured and verified. The typed workflow input does not replace that
-   review.
-2. Restrict deployments to the protected release branch or tag policy. Protect the default branch
-   with required review and required release checks, and give workflow changes explicit ownership.
-3. Store the Open VSX token only as the Environment secret `OVSX_PAT`. Do not create a repository
-   or organization secret with that name. Use a new, narrowly scoped credential and verify its
-   owner, `straydog` membership, Publisher Agreement status, expiry, and revocation plan out of
-   band.
-4. Require the Environment reviewer to open the completed candidate job summary and compare its
-   extension ID, version, full commit, SHA-256, and retained approval record before approving the
-   publish job. Reject the deployment if any value or prerequisite in this checklist is incomplete.
-5. Retain the workflow URL, environment approval identity/time, immutable candidate, checksum,
-   candidate evidence, and the required pre-publication evidence artifact. The workflow also
-   attempts a best-effort publication-step receipt after the irreversible command; that receipt is
-   not a substitute for the public post-publication checks below. Revoke or rotate the token after
-   publication.
+Push the tag only after those checks:
 
-Dispatch the workflow only from its reviewed current default-branch revision. Supply that same
-lowercase 40-character source/workflow commit, the exact version, lowercase 64-character normalized
-VSIX SHA-256, and this single-line approval value with no substitutions or extra whitespace:
-
-```text
-PUBLISH straydog.okf-workbench@<version> SHA256:<digest> COMMIT:<40-character-commit>
+```sh
+git tag -s v0.1.0 -m "OKF Workbench 0.1.0"
+git push origin v0.1.0
 ```
 
-The candidate job requires `github.ref`, `github.workflow_ref`, `github.workflow_sha`, the dispatch
-revision, and the requested candidate commit to identify the same current default-branch workflow
-revision. It then validates manifest and lockfile identity, typed approval, and rebuilt digest
-before the protected publish job becomes eligible. It also queries the public Open VSX API without
-a credential and with cache bypass, fails unless `straydog` is verified and restricted and the
-exact target version is available, and retains that JSON inside the release evidence. Every
-response must carry a strictly parsed HTTP `Date`; `Age` must be at most 30 seconds when present,
-and otherwise `Date` must be no more than the inclusive 30-second window old and must not be in the
-future. The retained record names the validation source, effective age, and validation time for
-all three responses. After the
-Environment approval wait, the publish job repeats the same no-token check immediately before PAT
-authorization. It revalidates the downloaded checksum and approval, installs the locked `ovsx`
-`1.0.2` CLI without lifecycle scripts, obtains `OVSX_PAT` only for the PAT-verification and
-publication steps, and runs `ovsx verify-pat straydog`. After that succeeds, it creates token-free
-evidence containing the immediate registry response, authorization result, exact approval binding,
-revision, VSIX digest and byte size, toolchain, runner, and workflow identity. Uploading that
-complete evidence is a required fail-closed barrier before `ovsx publish` can run. The workflow
-then attempts an always-run, best-effort publication-step receipt; receipt creation or upload
-cannot turn an otherwise successful irreversible publication into a red workflow that invites an
-invalid rerun. The receipt records only the command outcome, not registry availability. A checksum
-mismatch requires a new approval; editing the approval in logs or rebuilding in the publish job is
-not an allowed recovery. A runner loss, cancellation, or timeout after the publish command starts
-has an ambiguous external outcome: inspect the public registry and reconcile the retained
-pre-publication evidence before taking any action, and never blindly rerun the same immutable
-version.
+The workflow rejects a tag whose commit is not contained in `main`, whose version does not match
+the manifest, or whose changelog entry is still `Unreleased`. It installs the exact lockfile,
+reruns the deterministic source, dependency, Node security, audit, package, reproducibility, and
+packaged security gates, and retains one VSIX plus its checksum. A separate job creates or updates
+the matching GitHub Release from those bytes.
 
-The `<40-character-commit>` in the approval phrase is the current
-evidence/publication-workflow revision, not necessarily the earlier artifact-content revision. A
-difference is allowed only under the receipt-only rule in step 8 above, and only when a
-deterministic rebuild at the publication-workflow revision reproduces the exact approved digest
-and byte size.
+The final job downloads the same candidate, verifies its checksum, installs the locked `ovsx`
+`1.0.2` CLI without lifecycle scripts, and exposes `OPEN_VSX_TOKEN` only to
+`ovsx verify-pat straydog` and `ovsx publish`. Missing or invalid authorization fails the workflow.
+The publish command uses duplicate-safe retry behavior, but a registry version remains immutable;
+changed bytes require a higher SemVer version and a new tag.
 
-**Current proof gap:** a read-only GitHub API check on 2026-07-23 reported zero Environments and
-`404 Not Found` for `open-vsx`. The repository-level secret-name list contained
-`OPEN_VSX_TOKEN` and `STRAY_TOOLS_TOKEN`, but neither establishes the required protected
-Environment or its environment-scoped `OVSX_PAT`; secret values were not accessed. Making the
-repository public removed the earlier private-plan eligibility uncertainty, but the hosted
-`open-vsx` Environment, required reviewers, deployment restrictions, and environment-scoped
-`OVSX_PAT` still have not been configured or observed. No
-protected-environment approval, authenticated namespace authorization command, or publication
-has been run. The value and purpose of the repository-level `OPEN_VSX_TOKEN` were not inspected:
-before publication its owner must confirm whether it is a credential and, if so, revoke or remove
-it from repository scope and provision a new narrowly scoped Environment credential; a misleading
-name must instead be documented without exposing its value. A public Open VSX API check at
-`2026-07-23T08:35:06.452Z` established that `straydog` exists, is verified and restricted, and that
-`straydog.okf-workbench@0.1.0` is available. Public metadata still does not prove the current PAT,
-exact namespace role, or current profile Agreement status. This remains release-blocking and does
-not close security evidence gap `PG-04`. Configuring the Environment or secret and approving a
-deployment are maintainer/administrator actions, not part of repository implementation.
+Do not print the token, pass it as a command argument, save it in shell history, or commit it. Do
+not run `ovsx publish` against a mutable local path as a fallback. If a runner is lost after the
+publish command starts, inspect Open VSX before retrying because the external outcome may already
+have succeeded.
 
-The release owner records this statement before running a publishing command:
-
-```text
-I approve Open VSX publication of straydog.okf-workbench version 0.1.0,
-VSIX SHA-256 <digest>, reproduced by publication-workflow commit <revision>.
-Artifact-content commit: <artifact-content-revision>.
-Approver: <identity>
-Approved at: <timestamp with zone>
-```
-
-Use a newly generated or narrowly scoped token, store it only in the protected `open-vsx`
-Environment, and expose it as `OVSX_PAT` for the shortest practical period. Do not print it, pass it
-as a command argument, save it in shell history, or commit it. Normal publication is performed only
-by the protected workflow. Do not run `ovsx publish` against a mutable local path as a fallback; a
-failed or rejected workflow requires a new immutable candidate and approval, not a manual bypass.
+**Current proof gap:** the repository-level secret name `OPEN_VSX_TOKEN` exists, and the same
+`straydog` publishing pattern has succeeded in the `shosei` repository. GitHub does not reveal
+secret values, so OKF Workbench's credential and current namespace authorization remain unproven
+until the tagged workflow runs `ovsx verify-pat straydog`. The current Publisher Agreement state
+also remains an out-of-band maintainer check. No OKF Workbench release tag, GitHub Release, or Open
+VSX publication has been created.
 
 The official process and current account requirements are documented in
 [Publishing Extensions](https://github.com/eclipse-openvsx/openvsx/wiki/Publishing-Extensions).
@@ -280,8 +206,8 @@ The official process and current account requirements are documented in
       the minimal offline workflow without using a development or preinstalled VSIX.
 - [ ] Confirm generated workspace files remain after uninstall and that uninstall leaves no
       extension-owned background process.
-- [ ] Publish the signed Git tag and GitHub release notes for the exact tested revision, attaching
-      the approved VSIX and checksums if repository policy allows.
+- [ ] Confirm the signed Git tag and generated GitHub Release identify the tested revision and
+      contain the retained VSIX and checksum.
 - [ ] Revoke the one-time token, or record the owner, scope, storage, and rotation date for a
       retained release credential.
 
@@ -324,7 +250,7 @@ not an automated fallback in this repository.
 | Version | `0.1.0` |
 | Extension ID | `straydog.okf-workbench` |
 | Current candidate artifact-content revision | `e0c1f8895f3dc3391be3de47f1a517f82ae62f3c` |
-| Current evidence/publication-workflow revision | `a5b2b75b7216d644f0d8d0f739db3a989bba7ca0` — the later changes from the artifact-content revision affected tests only; the hosted rebuilds reproduced the exact candidate bytes. |
+| Current hosted-evidence revision | `a5b2b75b7216d644f0d8d0f739db3a989bba7ca0` — the later changes from the artifact-content revision affected tests only; the hosted rebuilds reproduced the exact candidate bytes. |
 | Current candidate VSIX SHA-256 | `d7be6180cd788b2ab5d9c7fc436de9eb2df97d967b16ccbc2578f48851f0b666` — local, CI, Compatibility, and all three Package smoke artifacts were byte-for-byte identical. |
 | Current candidate VSIX byte size | `613637` bytes across the local candidate and all five downloaded hosted VSIX files. |
 | Node / npm | `24.18.0` / `11.16.0` |
@@ -342,7 +268,7 @@ not an automated fallback in this repository.
 | Headed performance evidence | Pass — genuine headed VS Code `1.129.1` schema-v3 capture at `2026-07-23T09:59:23.073Z`; QR-002 `832 ms` p95 across 20 samples, QR-003 selected `d3`, and strict CDP counts were remote `0`, packaged local `2`, internal Webview `2`, other `0`. Raw evidence SHA-256: `0fd512512c0ff3d8fecbecd1c50d87bc6a727f2dad68fca3403ed8b400f7d3f5`. |
 | Security/license approver | Pending |
 | Namespace/publishing identity | Public API pass at `2026-07-23T08:35:06.452Z`: `straydog` verified/restricted and `straydog.okf-workbench@0.1.0` available; authenticated PAT/role and Publisher Agreement evidence pending. |
-| Publication approver and timestamp | Pending |
+| Version-tag authorization | Pending — no release tag has been pushed. |
 | Open VSX listing URL | Pending |
 | Downloaded artifact SHA-256 | Pending |
 | Post-publish VSCodium verification | Pending |

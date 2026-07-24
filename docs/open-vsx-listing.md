@@ -1,6 +1,6 @@
 # Open VSX listing draft
 
-- Status: **Hold — all release-checklist gates and exact-digest maintainer approval are required**
+- Status: **Hold — all release-checklist gates must pass before the maintainer pushes `v0.1.0`**
 - Target version: `0.1.0`
 - Unique identifier: `straydog.okf-workbench`
 - Namespace: `straydog` — the public registry API reported `verified: true` and
@@ -8,8 +8,8 @@
   authorization, PAT, and Publisher Agreement status still must be checked immediately before
   release
 - Name availability: `straydog.okf-workbench@0.1.0` was unoccupied in the public registry check
-  retained at [Open VSX registry evidence](evidence/open-vsx-registry.json); the protected release
-  workflow repeats this fail-closed check before retaining a candidate
+  retained at [Open VSX registry evidence](evidence/open-vsx-registry.json); the tagged release
+  workflow validates the current credential and namespace authorization before publication
 
 ## Listing metadata
 
@@ -103,12 +103,10 @@ using a credential. This does not prove the current PAT or exact namespace role;
 workflow checks those with `ovsx verify-pat`. Publisher Agreement status is a separate out-of-band
 profile prerequisite, and Open VSX also enforces it at the publish endpoint.
 
-Do not place a token on a command line or in a repository file. After all checklist gates pass and
-the maintainer explicitly approves the exact commit, version, and digest, dispatch the reviewed
-`Open VSX release` workflow from that same default-branch revision with the four inputs documented
-in the [release checklist](release-checklist.md). Only its protected `open-vsx` Environment may
-provide `OVSX_PAT`; the workflow verifies `straydog` authorization, durably uploads complete
-token-free pre-publication evidence bound to the approval, revision, and rehash-verified VSIX, and
-only then publishes those retained bytes without rebuilding them. A local `ovsx publish` command
-is not an approved fallback. Publication is an external state change and is not part of building
-this release candidate.
+Do not place a token on a command line or in a repository file. After all checklist gates pass, the
+maintainer authorizes release by pushing the matching signed `v*` tag for the reviewed `main`
+commit, as documented in the [release checklist](release-checklist.md). The workflow packages once,
+retains the VSIX and checksum, creates the GitHub Release, then exposes `OPEN_VSX_TOKEN` only to
+`ovsx verify-pat straydog` and the duplicate-safe publish command. A local `ovsx publish` command is
+not an approved fallback. Publication is an external state change and is not part of building this
+release candidate.

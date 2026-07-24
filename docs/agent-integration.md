@@ -32,6 +32,10 @@ empty path, control characters, absolute paths, non-POSIX separators, and empty,
 segments. Plain string inputs to the template API continue through the stricter user-input path
 normalizer, including stable percent decoding and URI-like path rejection.
 
+When the selected OKF bundle is also the workspace root, the generated root `AGENTS.md` remains
+repository control metadata and is excluded from OKF concept parsing, validation, indexing, and the
+graph. A nested `AGENTS.md` elsewhere in the bundle remains an ordinary concept candidate.
+
 ### Agent Skill
 
 The default project-local path is:
@@ -39,6 +43,10 @@ The default project-local path is:
 ```text
 .agents/skills/maintain-okf-knowledge/SKILL.md
 ```
+
+Every `.agents/` subtree is excluded from OKF bundle traversal. This prevents a generated Skill
+from becoming a concept or conformance finding when the selected bundle occupies the workspace
+root, and avoids charging excluded Skill content against OKF document limits.
 
 The generated frontmatter is compatible with the Agent Skills specification:
 

@@ -28,6 +28,12 @@ Initial release.
 - Local-only Webview assets, restrictive CSP, strict message decoding, dependency inventory, and
   third-party notices.
 
+### Fixed
+
+- Root-level `AGENTS.md` and `.agents/` agent-integration metadata are excluded from OKF concept
+  discovery, preventing generated instructions from creating conformance errors in root-level
+  bundles.
+
 ### Security and privacy
 
 - No built-in AI provider, account, authentication flow, telemetry, content upload, or runtime

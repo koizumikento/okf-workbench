@@ -14,6 +14,7 @@ import { SerialProposalWorkflowScheduler } from '../../src/extension/commands/pr
 import { createNewConceptCommand } from '../../src/extension/commands/new-concept.js';
 import { createRegenerateIndexesCommand } from '../../src/extension/commands/regenerate-indexes.js';
 import { createSetupAgentIntegrationCommand } from '../../src/extension/commands/setup-agent-integration.js';
+import { loadBundle } from '../../src/extension/runtime/loadBundle.js';
 import { ProposalApplicator } from '../../src/extension/workspace/proposalApplicator.js';
 import {
   createInitialPresentationState,
@@ -464,6 +465,41 @@ describe('MVP acceptance scenarios — deterministic component evidence', () => 
     expect(
       port.text(`${COMMAND_WORKSPACE_ROOT}/.agents/skills/maintain-okf-knowledge/SKILL.md`),
     ).toBe(skillText);
+
+    port.putText(
+      `${COMMAND_WORKSPACE_ROOT}/index.md`,
+      '---\nokf_version: "0.1"\n---\n# Root bundle\n',
+    );
+    port.putText(
+      `${COMMAND_WORKSPACE_ROOT}/root-concept.md`,
+      conceptDocument({
+        type: 'concept',
+        title: 'Root concept',
+        description: 'Confirms agent controls stay outside the bundle inventory.',
+      }),
+    );
+    const loadedRoot = await loadBundle(
+      port,
+      stringUriCodec,
+      COMMAND_WORKSPACE_ROOT,
+      COMMAND_WORKSPACE_ROOT,
+    );
+    const parsedRoot = parseBundle({
+      rootUri: loadedRoot.rootUri,
+      revision: 1,
+      documents: loadedRoot.documents,
+    });
+
+    expect(loadedRoot.documents.map(({ bundlePath }) => bundlePath)).toEqual([
+      'index.md',
+      'root-concept.md',
+    ]);
+    expect(parsedRoot.concepts.map(({ id }) => id)).toEqual(['root-concept']);
+    expect(
+      validateBundle(parsedRoot, { now: ACCEPTANCE_NOW }).filter(
+        ({ category }) => category === 'conformance',
+      ),
+    ).toEqual([]);
   });
 
   it('[AC-008] runs representative acceptance components with the fetch boundary disabled', () => {

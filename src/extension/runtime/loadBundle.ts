@@ -73,6 +73,14 @@ type ReadResult<TUri> =
     };
 
 const utf8Encoder = new TextEncoder();
+const AGENT_INTEGRATION_EXCLUDED_DIRECTORY_NAMES = ['.agents'] as const;
+
+function isBundleMarkdownPath(relativePath: string): boolean {
+  // Agent integration outputs are repository control files, not OKF concepts.
+  // The root AGENTS.md can overlap a root-level bundle, while generated Skills
+  // always live beneath the project-local .agents directory.
+  return relativePath.endsWith('.md') && relativePath !== 'AGENTS.md';
+}
 
 async function assertSafeBundleDirectoryChain<TUri>(
   port: WorkspacePort<TUri>,
@@ -148,6 +156,7 @@ export async function loadBundle<TUri>(
   const entries: BoundedWorkspaceEntry<TUri>[] = [];
   const traversalFailures: ParseFailure[] = [];
   for await (const event of port.traverse(root, {
+    excludeDirectoryNames: AGENT_INTEGRATION_EXCLUDED_DIRECTORY_NAMES,
     includeDirectories: false,
     maxDepth: BUNDLE_READ_LIMITS.maxTraversalDepth,
   })) {
@@ -198,7 +207,7 @@ export async function loadBundle<TUri>(
         'OKF Workbench refused a provider entry whose URI does not match its bundle-relative path.',
       );
     }
-    if (entry.type === 'file' && entry.relativePath.endsWith('.md')) {
+    if (entry.type === 'file' && isBundleMarkdownPath(entry.relativePath)) {
       if (entries.length >= BUNDLE_READ_LIMITS.maxMarkdownDocuments) {
         throw readSafetyError(
           `OKF Workbench refused to load the selected bundle because it contains more than ${String(BUNDLE_READ_LIMITS.maxMarkdownDocuments)} Markdown documents, exceeding the document-count safety limit.`,

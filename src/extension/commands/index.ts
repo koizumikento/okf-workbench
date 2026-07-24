@@ -42,6 +42,7 @@ export type {
   ConfirmationOptions,
   InitializationTarget,
   ProposalPresentation,
+  ProposalDecisionController,
   ProposalPreviewIdentity,
   ProposalPreviewer,
   ProposalPreviewSession,
@@ -56,3 +57,8 @@ export type {
   TextInputOptions,
 } from './types.js';
 export { VscodeCommandUi } from './vscode-command-ui.js';
+export {
+  PENDING_PROPOSAL_CONTEXT,
+  REVIEW_PENDING_CHANGES_COMMAND,
+  VscodeProposalDecisionController,
+} from './vscode-proposal-decision-controller.js';

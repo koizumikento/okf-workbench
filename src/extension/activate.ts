@@ -15,9 +15,11 @@ import {
   createRegenerateIndexesCommand,
   createSetupAgentIntegrationCommand,
   problemsMessage,
+  REVIEW_PENDING_CHANGES_COMMAND,
   runPublicProposalCommand,
   SerialProposalWorkflowScheduler,
   VscodeCommandUi,
+  VscodeProposalDecisionController,
   type CommandOutcome,
   type InitializationTarget,
   type ProposalWorkflowLease,
@@ -140,6 +142,9 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
   const output = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME, { log: true });
   const ui = new VscodeCommandUi();
   const previewer = new VscodeProposalPreviewer();
+  const proposalDecisionController = new VscodeProposalDecisionController({
+    onLog: (message) => output.info(message),
+  });
   const workflowScheduler = new SerialProposalWorkflowScheduler();
   const readCommandGate = new FailFastReadCommandGate();
   const port = new VscodeWorkspacePort();
@@ -625,6 +630,7 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
     applicator,
     ui,
     previewer,
+    proposalDecisionController,
     workflowScheduler,
     isWorkspaceTrusted: () => vscode.workspace.isTrusted,
     captureWorkspaceFolderMembership: (workspaceSafetyRootUri: vscode.Uri) =>
@@ -799,7 +805,14 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
     }
   };
 
-  context.subscriptions.push(output, previewer, graphPanels, runtime, workspaceFolderMembership);
+  context.subscriptions.push(
+    output,
+    previewer,
+    proposalDecisionController,
+    graphPanels,
+    runtime,
+    workspaceFolderMembership,
+  );
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders((event) => {
       workspaceFolderMembership.handleWorkspaceFoldersChanged({
@@ -834,6 +847,11 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
       ),
     );
   }
+  context.subscriptions.push(
+    vscode.commands.registerCommand(REVIEW_PENDING_CHANGES_COMMAND, () =>
+      proposalDecisionController.reviewPending(),
+    ),
+  );
 
   if (acceptanceSignals !== undefined) {
     context.subscriptions.push({
@@ -841,7 +859,9 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
     });
   }
 
-  output.info(`extension.activate commands=${OKF_COMMANDS.length}`);
+  output.info(
+    `extension.activate commands=${String(OKF_COMMANDS.length + 1)} core_commands=${String(OKF_COMMANDS.length)}`,
+  );
   return acceptanceSignals?.api;
 }
 

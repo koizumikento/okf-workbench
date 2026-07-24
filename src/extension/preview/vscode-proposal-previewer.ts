@@ -156,6 +156,7 @@ interface ActivePreviewSession {
   readonly identity: ProposalPreviewIdentity;
   readonly provider: PreviewDocumentProvider;
   readonly assertActive: () => void;
+  readonly reveal: () => Promise<void>;
   readonly dispose: () => Promise<void>;
 }
 
@@ -413,6 +414,7 @@ export class VscodeProposalPreviewer implements ProposalPreviewer<vscode.Uri>, v
     let registrationDisposed = false;
     let tabListener: vscode.Disposable | undefined;
     let tabGroupListener: vscode.Disposable | undefined;
+    let summaryDocument: vscode.TextDocument | undefined;
     const requiredTabsPresent = (): boolean => {
       const openTabs = new Set(vscode.window.tabGroups.all.flatMap((group) => group.tabs));
       return requiredTabs.every(
@@ -502,6 +504,19 @@ export class VscodeProposalPreviewer implements ProposalPreviewer<vscode.Uri>, v
       identity,
       provider,
       assertActive,
+      reveal: async () => {
+        assertActive();
+        if (summaryDocument === undefined) {
+          throw new Error(`The ${identity.label} summary is not available.`);
+        }
+        await vscode.window.showTextDocument(summaryDocument, {
+          viewColumn: vscode.ViewColumn.Beside,
+          preserveFocus: false,
+          preview: false,
+        });
+        rebindAfterHostGroupModelChange();
+        assertActive();
+      },
       dispose: () => {
         releaseStarted = true;
         disposeTabListeners();
@@ -548,7 +563,7 @@ export class VscodeProposalPreviewer implements ProposalPreviewer<vscode.Uri>, v
 
       const summary = previewUri(scheme, identity, 0, 'summary');
       addDocument(summary, prepared.summary);
-      const summaryDocument = await vscode.workspace.openTextDocument(summary);
+      summaryDocument = await vscode.workspace.openTextDocument(summary);
       assertActive();
       await vscode.window.showTextDocument(summaryDocument, {
         viewColumn: vscode.ViewColumn.Beside,
@@ -579,7 +594,7 @@ export class VscodeProposalPreviewer implements ProposalPreviewer<vscode.Uri>, v
         });
       }
       assertActive();
-      return { identity, assertActive, dispose: session.dispose };
+      return { identity, assertActive, reveal: session.reveal, dispose: session.dispose };
     } catch (error) {
       await session.dispose();
       throw error;

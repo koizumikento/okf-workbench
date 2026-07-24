@@ -2,6 +2,13 @@ import * as vscode from 'vscode';
 
 import type { CommandUi, ConfirmationOptions, SelectionItem, TextInputOptions } from './types.js';
 
+export function proposalConfirmationMessage(options: ConfirmationOptions): string {
+  const cancelLabel = 'Cancel';
+  const identity = options.previewIdentity;
+  const detail = options.detail.replace(/\s+/gu, ' ').trim();
+  return `${identity.label}: ${options.title}. Target: ${identity.targetUri}. ${detail} Review the tabs with this exact preview identity, then choose ${options.confirmLabel} or ${cancelLabel}.`;
+}
+
 export class VscodeCommandUi implements CommandUi<vscode.Uri> {
   async select<TValue extends string>(
     title: string,
@@ -33,10 +40,8 @@ export class VscodeCommandUi implements CommandUi<vscode.Uri> {
 
   async confirm(options: ConfirmationOptions): Promise<boolean> {
     const cancelLabel = 'Cancel';
-    const identity = options.previewIdentity;
-    const detail = options.detail.replace(/\s+/gu, ' ').trim();
     const selected = await vscode.window.showWarningMessage(
-      `${identity.label}: ${options.title}. Target: ${identity.targetUri}. ${detail} Review the tabs with this exact preview identity, then choose ${options.confirmLabel} or ${cancelLabel}.`,
+      proposalConfirmationMessage(options),
       { modal: false },
       options.confirmLabel,
       cancelLabel,

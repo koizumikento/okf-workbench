@@ -83,6 +83,7 @@ export class FakeProposalPreviewer implements ProposalPreviewer<string> {
     identity: ProposalPreviewIdentity;
   }[] = [];
   releasedSessions = 0;
+  revealedSessions = 0;
   failure: Error | undefined;
   #run = 0;
 
@@ -104,6 +105,12 @@ export class FakeProposalPreviewer implements ProposalPreviewer<string> {
         if (released) {
           throw new Error(`${identity.label} is no longer active.`);
         }
+      },
+      reveal: async () => {
+        if (released) {
+          throw new Error(`${identity.label} is no longer active.`);
+        }
+        this.revealedSessions += 1;
       },
       dispose: async () => {
         if (!released) {

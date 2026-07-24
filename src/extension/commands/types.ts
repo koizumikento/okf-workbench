@@ -61,8 +61,17 @@ export interface ProposalPreviewSession {
   readonly identity: ProposalPreviewIdentity;
   /** Fails synchronously when this exact preview is no longer available for a decision. */
   assertActive(): void;
+  /** Brings this exact run's summary back to the foreground without recreating its proposal. */
+  reveal(): Promise<void>;
   /** Closes this run's preview tabs and releases its provider-held bytes and registration. */
   dispose(): Promise<void>;
+}
+
+/** Owns one recoverable, one-shot Apply/Cancel decision for a previewed proposal. */
+export interface ProposalDecisionController {
+  request(options: ConfirmationOptions, previewSession: ProposalPreviewSession): Promise<boolean>;
+  /** Presents recovery actions when another write command reaches the fail-fast gate. */
+  showBusyRecovery(message: string): Promise<void>;
 }
 
 export interface ProposalPreviewer<TUri> {
@@ -96,6 +105,8 @@ export interface ProposalWorkflowDependencies<TUri> {
   readonly applicator: ProposalApplicator<TUri>;
   readonly ui: CommandUi<TUri>;
   readonly previewer: ProposalPreviewer<TUri>;
+  /** Host recovery surface for modeless preview confirmation; tests may use CommandUi fallback. */
+  readonly proposalDecisionController?: ProposalDecisionController;
   /** Fail-fast gate covering each complete write command, including selection and planning. */
   readonly workflowScheduler: ProposalWorkflowScheduler;
   readonly isWorkspaceTrusted: () => boolean;

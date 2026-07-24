@@ -575,6 +575,36 @@ describe('VS Code proposal confirmation', () => {
 });
 
 describe('VS Code proposal preview storage', () => {
+  it('reveals the exact active summary without changing proposal identity', async () => {
+    const previewer = new VscodeProposalPreviewer(() => 'recoverable-summary');
+    const session = await previewer.show(
+      workflowProposal(['concept.md']),
+      { title: 'Recoverable preview', summary: ['Review every proposed file'] },
+      new PreviewWorkflowPort(),
+      workflowUris,
+    );
+    const identityBeforeReveal = session.identity;
+
+    await session.reveal();
+
+    expect(session.identity).toBe(identityBeforeReveal);
+    expect(vscode.window.showTextDocument).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        uri: expect.objectContaining({
+          scheme: expect.stringContaining('okf-workbench-preview'),
+        }),
+      }),
+      {
+        viewColumn: vscode.ViewColumn.Beside,
+        preserveFocus: false,
+        preview: false,
+      },
+    );
+    expect(() => session.assertActive()).not.toThrow();
+    await session.dispose();
+    previewer.dispose();
+  });
+
   it('opens a complete preview at the exact change-count limit', async () => {
     const previewer = new VscodeProposalPreviewer(() => 'count-limit');
     const paths = Array.from(

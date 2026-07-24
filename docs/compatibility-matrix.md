@@ -1,7 +1,7 @@
 # Compatibility matrix
 
-- Status: current VS Code `1.129.1` matrix configured; exact-candidate hosted qualification pending
-- Matrix refreshed: 2026-07-23
+- Status: current exact candidate passed the full hosted matrix
+- Matrix qualified: 2026-07-24
 - Extension identifier expected by the gate: `straydog.okf-workbench`
 
 ## What this matrix proves
@@ -22,10 +22,21 @@ counted as upgrade evidence.
 ## Current release-candidate qualification
 
 The current workflow requires VS Code `1.121.0` on Ubuntu, VS Code `1.129.1` on Ubuntu, macOS,
-and Windows, and VSCodium `1.121.03429` on Ubuntu, macOS, and Windows. No retained hosted run yet
-qualifies the current source and exact VSIX bytes on that refreshed matrix. The current candidate
-must not inherit the results below; a fresh `Compatibility` run and cross-platform package-byte
-identity run are required.
+and Windows, and VSCodium `1.121.03429` on Ubuntu, macOS, and Windows.
+[Compatibility run 30058922150](https://github.com/koizumikento/okf-workbench/actions/runs/30058922150)
+passed the candidate, acceptance/Webview, and all seven lifecycle jobs at evidence revision
+`a5b2b75b7216d644f0d8d0f739db3a989bba7ca0`. Every `lifecycle.json` reports `status: passed`,
+repository revision `a5b2b75b7216d644f0d8d0f739db3a989bba7ca0`, extension
+`straydog.okf-workbench@0.1.0`, and candidate SHA-256
+`d7be6180cd788b2ab5d9c7fc436de9eb2df97d967b16ccbc2578f48851f0b666`.
+
+[Package smoke run 30058925030](https://github.com/koizumikento/okf-workbench/actions/runs/30058925030)
+passed macOS, Ubuntu, Windows, the browser security boundary, and the aggregate cross-platform
+byte-identity job. Its three VSIX files, the Compatibility candidate, the CI artifact from
+[run 30058782170](https://github.com/koizumikento/okf-workbench/actions/runs/30058782170), and the
+local candidate were byte-for-byte identical: `613637` bytes with the SHA-256 above. The
+artifact-content revision is `e0c1f8895f3dc3391be3de47f1a517f82ae62f3c`; the later commits
+through `a5b2b75b7216d644f0d8d0f739db3a989bba7ca0` changed tests only.
 
 ## Preserved historical hosted qualification
 
@@ -102,9 +113,9 @@ a published migration source.
 
 | Editor | Exact version | Ubuntu 24.04 | macOS 15 | Windows 2025 | Acquisition |
 | --- | --- | --- | --- | --- | --- |
-| VS Code | `1.121.0` | Pending current candidate | N/A | N/A | Pinned editor test download |
-| VS Code | `1.129.1` | Pending current candidate | Pending current candidate | Pending current candidate | Pinned editor test download |
-| VSCodium | `1.121.03429` | Pending current candidate | Pending current candidate | Pending current candidate | Official archive with pinned SHA-256 |
+| VS Code | `1.121.0` | Passed | N/A | N/A | Pinned editor test download |
+| VS Code | `1.129.1` | Passed | Passed | Passed | Pinned editor test download |
+| VSCodium | `1.121.03429` | Passed | Passed | Passed | Official archive with pinned SHA-256 |
 
 The API-floor lane runs on the primary Ubuntu CI environment. Cross-platform
 release smoke uses the current VS Code build and the compatible VSCodium build,

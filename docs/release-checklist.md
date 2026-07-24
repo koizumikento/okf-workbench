@@ -20,7 +20,7 @@ not a substitute for its named manual or hosted check.
 - [ ] All confirmed findings and proof gaps in
       [security and privacy evidence](security-privacy-evidence.md) are fixed, accepted by the
       named authority, or closed with retained evidence; no release-blocking item remains.
-- [ ] A fresh full schema-v3 headed-editor measurement passes QR-002, QR-003, and the strict CDP
+- [x] A fresh full schema-v3 headed-editor measurement passes QR-002, QR-003, and the strict CDP
       Webview-network observation; compares `d3` and `ngraph`; matches the current manifest,
       production/runtime, diagnostics-observer, runner, and harness identities; obtains genuine
       same-revision diagnostics correlation; proves graph WebGL clears/draws and interaction
@@ -38,17 +38,21 @@ not a substitute for its named manual or hosted check.
       `cc8c994cd35cfe2017945c38d0019f330cb33f628a94bf6508b2930c5c57c866`, passed the
       [hosted Compatibility run](https://github.com/koizumikento/okf-workbench/actions/runs/29900868002)
       with VS Code `1.127.0` as its then-current lane. This does not qualify the current candidate.
-- [ ] The current exact candidate has successful retained artifacts from every lane in the
+- [x] The current exact candidate has successful retained artifacts from every lane in the
       [compatibility matrix](compatibility-matrix.md): VS Code `1.121.0` on Ubuntu, VS Code
-      `1.129.1` on Ubuntu/macOS/Windows, and VSCodium `1.121.03429` on Ubuntu/macOS/Windows.
+      `1.129.1` on Ubuntu/macOS/Windows, and VSCodium `1.121.03429` on Ubuntu/macOS/Windows,
+      retained by
+      [Compatibility run 30058922150](https://github.com/koizumikento/okf-workbench/actions/runs/30058922150).
 - [x] Historical evidence: the workflow-level package gate compared all three retained OS artifacts and passed
       in [Package smoke run 29901183164](https://github.com/koizumikento/okf-workbench/actions/runs/29901183164)
       for the exact recorded digest and byte size.
-- [ ] The current exact candidate passes the cross-platform package-byte identity gate on Ubuntu,
-      macOS, and Windows and the resulting digest and byte size match its compatibility run.
+- [x] The current exact candidate passes the cross-platform package-byte identity gate on Ubuntu,
+      macOS, and Windows in
+      [Package smoke run 30058925030](https://github.com/koizumikento/okf-workbench/actions/runs/30058925030);
+      the digest and byte size match CI and Compatibility.
 - [ ] Packaged-editor evidence plus manual inspection closes the remaining user-scenario gaps in
       [acceptance evidence](acceptance-evidence.md); current-candidate hosted lifecycle evidence is
-      still pending and the historical matrix did not exercise every interactive command UI.
+      retained, but the workflow does not exercise every interactive command UI.
 - [x] The public Open VSX registry reports namespace `straydog` as verified and restricted, and
       `straydog.okf-workbench@0.1.0` as available; the retained check is
       [Open VSX registry evidence](evidence/open-vsx-registry.json), and the candidate workflow
@@ -318,14 +322,14 @@ not an automated fallback in this repository.
 | --- | --- |
 | Version | `0.1.0` |
 | Extension ID | `straydog.okf-workbench` |
-| Current candidate artifact-content revision | Pending |
-| Current evidence/publication-workflow revision | Pending — may differ only by the four reviewed receipt documents listed above, with no build/runtime/toolchain/workflow/gate input change, and only when two rebuilds reproduce the exact candidate digest and byte size. |
-| Current candidate VSIX SHA-256 | `d7be6180cd788b2ab5d9c7fc436de9eb2df97d967b16ccbc2578f48851f0b666` — final local candidate; hosted byte-identity qualification pending. |
-| Current candidate VSIX byte size | `613637` bytes — final local candidate; hosted byte-identity qualification pending. |
+| Current candidate artifact-content revision | `e0c1f8895f3dc3391be3de47f1a517f82ae62f3c` |
+| Current evidence/publication-workflow revision | `a5b2b75b7216d644f0d8d0f739db3a989bba7ca0` — the later changes from the artifact-content revision affected tests only; the hosted rebuilds reproduced the exact candidate bytes. |
+| Current candidate VSIX SHA-256 | `d7be6180cd788b2ab5d9c7fc436de9eb2df97d967b16ccbc2578f48851f0b666` — local, CI, Compatibility, and all three Package smoke artifacts were byte-for-byte identical. |
+| Current candidate VSIX byte size | `613637` bytes across the local candidate and all five downloaded hosted VSIX files. |
 | Node / npm | `24.18.0` / `11.16.0` |
-| Current hosted CI | Pending — must include VS Code `1.121.0` and `1.129.1` integration jobs for the exact current source revision. |
-| Current hosted compatibility | Pending — must include all seven current VS Code/VSCodium lifecycle lanes for the exact current VSIX. |
-| Current hosted package smoke | Pending — must reproduce the exact current VSIX digest and byte size on macOS, Ubuntu, and Windows. |
+| Current hosted CI | [Pass — run 30058782170](https://github.com/koizumikento/okf-workbench/actions/runs/30058782170); quality/package, hostile-content Webview, and VS Code `1.121.0`/`1.129.1` integration jobs succeeded at `a5b2b75b7216d644f0d8d0f739db3a989bba7ca0`. |
+| Current hosted compatibility | [Pass — run 30058922150](https://github.com/koizumikento/okf-workbench/actions/runs/30058922150); candidate, acceptance/Webview, and all seven current VS Code/VSCodium lifecycle jobs succeeded. Every lifecycle receipt binds the evidence revision, extension identity/version, and current candidate digest. |
+| Current hosted package smoke | [Pass — run 30058925030](https://github.com/koizumikento/okf-workbench/actions/runs/30058925030); macOS, Ubuntu, Windows, browser security, and aggregate byte-identity jobs succeeded. |
 | Historical hosted-qualified artifact | Commit `aa90832aab64dac1bccf9c9092fabc004991f7b1`; SHA-256 `cc8c994cd35cfe2017945c38d0019f330cb33f628a94bf6508b2930c5c57c866`; `582231` bytes. |
 | Historical hosted CI | [Pass — run 29900857588](https://github.com/koizumikento/okf-workbench/actions/runs/29900857588); all four jobs for that historical candidate succeeded. |
 | Historical hosted compatibility | [Pass — run 29900868002](https://github.com/koizumikento/okf-workbench/actions/runs/29900868002); all seven then-required lifecycle lanes, including VS Code `1.127.0`, succeeded for that historical candidate. |

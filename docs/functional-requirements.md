@@ -113,6 +113,7 @@ Markdown files are the source of truth. Diagnostics, indexes, and the graph are 
 | FR-059 | Graph node coordinates and drag operations MUST remain presentation state only. | Dragging a node causes no Markdown or frontmatter write. |
 | FR-060 | The graph MUST provide a searchable, keyboard-accessible, non-spatial node navigation path. | A keyboard-only user can locate a concept, inspect its details, and open its source without manipulating the 3D canvas. |
 | FR-061 | Broken links MAY use placeholder presentation objects but MUST NOT be turned into valid concepts or semantic relationships. | Placeholder rendering does not alter graph-model concept counts or validation results. |
+| FR-062 | The graph MUST provide bounded mouse, trackpad, toolbar, and keyboard camera navigation without capturing scroll outside the graph interaction surface. | Users can rotate, pan, zoom, fit, focus, and reset the camera; macOS trackpad pinch zoom and two-finger pan remain distinct where Chromium exposes sufficient gesture metadata; toolbar and keyboard fallbacks remain available; and the render loop returns to idle after interaction. |
 
 ### 7. Agent integration templates
 
@@ -185,7 +186,7 @@ may present candidate-specific or partially evidenced results as generally achie
 | AC-002 | Permissive custom metadata | Load a concept with a custom type and unknown fields, perform a supported write operation, and reload it. The type remains valid and unknown fields are unchanged. |
 | AC-003 | Diagnose and repair | Open a bundle with invalid frontmatter and a broken link, navigate from each Problem to source, repair and save. Findings clear after debounce without reloading. |
 | AC-004 | Safe index regeneration | Regenerate indexes containing user-authored text and one valid managed region. The preview is accurate, only the managed region changes, and a second run has no diff. |
-| AC-005 | Explore and navigate | Open the 3D graph, search and filter concepts, inspect backlinks, locate an orphan, and open source. The Markdown remains unchanged. |
+| AC-005 | Explore and navigate | Open the 3D graph; rotate, pan, zoom, fit, focus, and reset the camera; search and filter concepts; inspect backlinks; locate an orphan; and open source. The Markdown remains unchanged. |
 | AC-006 | Live graph update | With the graph open, create, edit, rename, and delete concepts. The graph and details view converge to current workspace state without extension-host reload. |
 | AC-007 | Safe agent setup | Add both integration outputs to a repository with an existing unrelated `AGENTS.md`. Preview and apply; unrelated content remains unchanged and a second run is idempotent. Repeat with the bundle at the workspace root; neither generated output becomes a concept or diagnostic. |
 | AC-008 | Offline operation | Complete AC-001, AC-003, AC-004, AC-005, and AC-007 with network access disabled. No account, API key, or remote request is required. |

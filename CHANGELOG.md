@@ -19,7 +19,8 @@ Initial release.
 - Safe managed-region generation for directory indexes and `AGENTS.md`, plus a portable Agent
   Skill template.
 - Read-only `3d-force-graph` Webview with search, filters, details, backlinks, source navigation,
-  stable type colors, and an accessible non-spatial node list.
+  stable type colors, an accessible non-spatial node list, mouse/trackpad camera navigation, visible
+  camera controls, keyboard shortcuts, and interaction help.
 - URI-first workspace access, session-scoped bundle selection, debounced refresh, diagnostics,
   and stale-revision rejection.
 - Reproducible unit, acceptance-component, Webview, security, benchmark, package, and compatibility

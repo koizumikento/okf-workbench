@@ -362,7 +362,15 @@ connect-src 'none';
 
 Only packaged resources are exposed through narrow `localResourceRoots`. The graph does not need network access. Message receivers validate the protocol version, message type, graph revision, per-post delivery ID, IDs, payload shape, reference/backlink/statistics consistency, and the shared resource limits before any privileged action. The graph boundary permits at most 2,000 nodes, 10,000 retained relationships, 128 tags per concept, 20,000 tag assignments, 512 unique types, 4,096 unique tags, and 16 MiB of exact escaped JSON. Its size gate counts UTF-8 and JSON escapes in one pass without first allocating the serialized payload. Every replacement post receives a new delivery ID, including a repost of the same revision after Webview context recreation. The Webview accepts only a greater delivery ID for an already displayed revision, so a delayed or replayed replacement cannot roll the UI back. Render success, render failure, and source-navigation messages echo that ID, so a queued message from the destroyed context cannot complete or act on the replacement context's delivery.
 
-The graph renderer adapter owns the render loop, resize observer, subscriptions, WebGL resources, and disposal. Hiding, reopening, switching bundles, or closing the panel must not leave an active simulation or stale listener.
+The graph renderer adapter owns the render loop, resize observer, subscriptions, WebGL resources,
+camera controller, and disposal. OrbitControls supplies drag rotation and modified/secondary-drag
+panning. The camera controller disables OrbitControls wheel zoom so it can distinguish identifiable
+Chromium pinch input from short pixel-delta trackpad swipes, retain mouse-wheel zoom, and constrain
+camera distance. It captures a non-passive wheel listener only on the graph surface; ordinary
+Webview scrolling outside that surface remains untouched. Toolbar and keyboard commands use the
+same controller as node/search focus. Camera movement temporarily resumes rendering and restores
+the idle stop after a bounded transition or gesture window. Hiding, reopening, switching bundles,
+or closing the panel must not leave an active simulation, camera timer, or stale listener.
 
 ## State and async model
 
@@ -457,7 +465,7 @@ retaining individual entries, and discovery uses `stat.size` to avoid avoidable 
 | Webview state unit tests | Vitest `4.1.x`, Node environment | Pure search, filtering, focus, presentation, color, and message-decoding state without claiming browser DOM behavior |
 | Security boundaries | Dedicated Vitest and Playwright configs | Host/path/protocol boundaries plus hostile-content DOM execution and browser egress interception |
 | Extension integration | `@vscode/test-cli` `0.0.x` and `@vscode/test-electron` `3.0.x` with Mocha | Commands, workspace FS, diagnostics, watchers, URI behavior, source navigation, and the registered non-`file:` read boundary |
-| Webview browser harness | Playwright `1.61.x` on Chromium | Real DOM, WebGL smoke, CSP-compatible bundle loading, keyboard interaction |
+| Webview browser harness | Playwright `1.61.x` on Chromium | Real DOM, WebGL smoke, CSP-compatible bundle loading, keyboard interaction, camera toolbar behavior, and wheel/pinch event boundaries |
 | Release smoke | Packaged VSIX in VS Code and VSCodium | Installation, activation, packaged resources, upgrade, uninstall |
 | Performance | Headed VS Code `1.129.1` release benchmark harness | QR-002 and QR-003 evidence on recorded hardware; VSCodium performance may be investigated separately but cannot satisfy the current strict release record |
 

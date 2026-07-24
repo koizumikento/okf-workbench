@@ -4,7 +4,7 @@ import { graphPayload } from './fixtures.js';
 
 const forceGraphMock = vi.hoisted(() => {
   const calls = new Map<string, unknown[][]>();
-  const callbacks = new Map<string, () => void>();
+  const callbacks = new Map<string, (...arguments_: unknown[]) => void>();
   const target = {};
   const chain = new Proxy(target, {
     get: (_target, property) => {
@@ -13,8 +13,8 @@ const forceGraphMock = vi.hoisted(() => {
         const methodCalls = calls.get(property) ?? [];
         methodCalls.push(arguments_);
         calls.set(property, methodCalls);
-        if (property === 'onEngineStop' && typeof arguments_[0] === 'function') {
-          callbacks.set(property, arguments_[0] as () => void);
+        if (property.startsWith('on') && typeof arguments_[0] === 'function') {
+          callbacks.set(property, arguments_[0] as (...callbackArguments: unknown[]) => void);
         }
         return chain;
       };
@@ -56,6 +56,8 @@ function createContainer(): HTMLElement {
     clientWidth: 800,
     clientHeight: 600,
     hidden: false,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
     replaceChildren: vi.fn(),
   } as unknown as HTMLElement;
 }
@@ -118,6 +120,19 @@ describe('ForceGraphRenderer lifecycle', () => {
       SELECTED_NODE_VALUE,
     );
     expect(valueAccessor?.({ id: 'beta', orphan: false, brokenLinkCount: 0 })).toBe(1);
+    renderer.dispose();
+  });
+
+  it('selects on click and requests camera focus only on the second click', () => {
+    const onSelect = vi.fn();
+    const renderer = new ForceGraphRenderer(createContainer(), { onSelect });
+    const onNodeClick = forceGraphMock.callbacks.get('onNodeClick');
+
+    onNodeClick?.({ id: 'alpha' }, { detail: 1 });
+    onNodeClick?.({ id: 'alpha' }, { detail: 2 });
+
+    expect(onSelect).toHaveBeenNthCalledWith(1, 'alpha', false);
+    expect(onSelect).toHaveBeenNthCalledWith(2, 'alpha', true);
     renderer.dispose();
   });
 

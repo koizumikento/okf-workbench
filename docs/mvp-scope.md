@@ -100,6 +100,9 @@ Requirements:
 - Filter by type and tag.
 - Highlight broken links and orphan concepts.
 - Show metadata, outgoing links, and backlinks for the selected node.
+- Navigate the camera with mouse and trackpad rotation, pan, and zoom gestures.
+- Provide visible zoom, fit, selected-node focus, reset, and interaction-help controls with
+  keyboard equivalents.
 - Open source Markdown from a node action.
 - Refresh incrementally after create, change, delete, and rename events.
 

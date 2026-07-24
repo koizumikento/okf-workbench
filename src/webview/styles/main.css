@@ -210,10 +210,82 @@ input:focus-visible {
   flex: 1;
   min-height: 28rem;
   overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.okf-graph-host:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder, #007fd4);
+  outline-offset: -2px;
 }
 
 .okf-graph-host canvas {
   display: block;
+}
+
+.okf-graph-toolbar {
+  position: absolute;
+  inset: 2.55rem 0.75rem auto auto;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  justify-content: flex-end;
+  max-width: calc(100% - 1.5rem);
+  padding: 0.3rem;
+  border: 1px solid var(--vscode-panel-border, #3c3c3c);
+  border-radius: 4px;
+  background: color-mix(
+    in srgb,
+    var(--vscode-editorWidget-background, var(--vscode-editor-background, #1e1e1e)) 92%,
+    transparent
+  );
+  box-shadow: 0 2px 8px color-mix(in srgb, #000000 35%, transparent);
+}
+
+.okf-camera-button {
+  min-width: 2rem;
+  min-height: 1.85rem;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 2px;
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground, #cccccc));
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  cursor: pointer;
+}
+
+.okf-camera-button:hover:not(:disabled) {
+  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
+
+.okf-camera-button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.okf-navigation-help {
+  position: absolute;
+  inset: 5.35rem 0.75rem auto auto;
+  z-index: 4;
+  width: min(25rem, calc(100% - 1.5rem));
+  padding: 0.75rem;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, #3c3c3c));
+  border-radius: 4px;
+  background: var(--vscode-editorWidget-background, #252526);
+  box-shadow: 0 4px 16px color-mix(in srgb, #000000 45%, transparent);
+}
+
+.okf-navigation-help__title {
+  margin-block: 0 0.5rem;
+  font-size: 1rem;
+}
+
+.okf-navigation-help__list {
+  margin: 0;
+  padding-inline-start: 1.25rem;
+}
+
+.okf-navigation-help__list li + li {
+  margin-block-start: 0.35rem;
 }
 
 .okf-graph-empty,

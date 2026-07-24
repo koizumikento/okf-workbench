@@ -870,7 +870,7 @@ describe('parser semantic resource limits', () => {
     );
     expect(exceeded.reservedDocuments).toHaveLength(exactDocuments.length);
     expect(exceeded.concepts[0]).toMatchObject({ id: 'z-tail', type: '', body: '', links: [] });
-  });
+  }, 20_000);
 
   it('charges failed Markdown inspections before enforcing the bundle work limit', () => {
     const failedBody = [

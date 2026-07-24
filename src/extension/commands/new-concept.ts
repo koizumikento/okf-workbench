@@ -7,6 +7,7 @@ import {
   normalizeConceptDescriptionInput,
   normalizeConceptPath,
   parseConceptTagsInput,
+  renderConceptTemplate,
   type ConceptTemplate,
 } from '../../core/templates/index.js';
 import { bundleFilesToProposal } from './proposals.js';
@@ -194,6 +195,15 @@ export function createNewConceptCommand<TUri>(
           ...(optionalDescription === undefined ? {} : { description: optionalDescription }),
           ...(optionalTags.length === 0 ? {} : { tags: optionalTags }),
         };
+        // Keep adapter-facing validation structured for previews and input errors. Production
+        // bytes still come exclusively from the Rust/Wasm core below.
+        const preflight = renderConceptTemplate(renderInput);
+        if (!preflight.ok) {
+          await dependencies.ui.showError(
+            problemsMessage('The concept could not be rendered.', preflight.problems),
+          );
+          return { kind: 'refused', problems: preflight.problems };
+        }
         let rendered;
         try {
           if (dependencies.core === undefined) {

@@ -1,8 +1,14 @@
-# Support
+---
+layout: default
+title: Support
+description: How to report OKF Workbench bugs, compatibility problems, and security vulnerabilities.
+permalink: /support/
+---
 
 OKF Workbench is a release-candidate project without a support SLA. Before reporting a problem,
-check the [MVP scope](mvp-scope.md), [compatibility matrix](compatibility-matrix.md), and [known
-release evidence](acceptance-evidence.md).
+check the [MVP scope](https://github.com/koizumikento/okf-workbench/blob/main/docs/mvp-scope.md),
+[compatibility matrix](https://github.com/koizumikento/okf-workbench/blob/main/docs/compatibility-matrix.md),
+and [known release evidence](https://github.com/koizumikento/okf-workbench/blob/main/docs/acceptance-evidence.md).
 
 ## Bugs and feature requests
 
@@ -23,11 +29,9 @@ logs without reviewing and redacting them first. A minimal synthetic reproductio
 
 ## Security vulnerabilities
 
-Do not disclose an unpatched vulnerability or sensitive reproduction in a public issue. Use
-GitHub's private vulnerability reporting entry on the repository **Security** tab if it is
-available. If no private reporting entry is available, contact the repository owner through
-GitHub to request a private channel without including exploit details or secrets in the initial
-message.
+Do not disclose an unpatched vulnerability or sensitive reproduction in a public issue. Follow the
+[Security policy]({{ '/security/' | relative_url }}) and use GitHub's private vulnerability
+reporting entry on the repository **Security** tab.
 
 Issues in the public Open VSX registry itself should follow the
 [Open VSX security policy](https://researcher-recognition.open-vsx.org/open-vsx-security-policy/),
@@ -36,9 +40,10 @@ not this repository's general issue tracker.
 ## Compatibility reports
 
 The package manifest declares VS Code API floor `^1.121.0`, but support claims require retained
-evidence from the exact [compatibility matrix](compatibility-matrix.md). When reporting a
-compatibility problem, include the editor-reported Electron, Chromium, and Node versions when
-available. Do not infer support from a package-only build or a configured CI lane.
+evidence from the exact [compatibility matrix](https://github.com/koizumikento/okf-workbench/blob/main/docs/compatibility-matrix.md).
+When reporting a compatibility problem, include the editor-reported Electron, Chromium, and Node
+versions when available. Do not infer support from a package-only build or a configured CI lane.
+
 
 ## Troubleshooting
 

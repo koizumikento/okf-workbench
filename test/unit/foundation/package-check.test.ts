@@ -40,6 +40,11 @@ const VSIX_MANIFEST = `<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest>
   <Metadata>
     <License>extension/LICENSE.txt</License>
+    <Property Id="Microsoft.VisualStudio.Services.Links.Source" Value="https://github.com/koizumikento/okf-workbench.git" />
+    <Property Id="Microsoft.VisualStudio.Services.Links.Getstarted" Value="https://github.com/koizumikento/okf-workbench.git" />
+    <Property Id="Microsoft.VisualStudio.Services.Links.GitHub" Value="https://github.com/koizumikento/okf-workbench.git" />
+    <Property Id="Microsoft.VisualStudio.Services.Links.Support" Value="https://github.com/koizumikento/okf-workbench/issues" />
+    <Property Id="Microsoft.VisualStudio.Services.Links.Learn" Value="https://koizumikento.github.io/okf-workbench/" />
   </Metadata>
   <Assets>
     <Asset Type="Microsoft.VisualStudio.Services.Content.License" Path="extension/LICENSE.txt" Addressable="true" />
@@ -133,6 +138,14 @@ function contentFor(name: string): string {
       publisher: 'straydog',
       version: '0.1.0',
       license: 'MIT',
+      homepage: 'https://koizumikento.github.io/okf-workbench/',
+      repository: {
+        type: 'git',
+        url: 'https://github.com/koizumikento/okf-workbench.git',
+      },
+      bugs: {
+        url: 'https://github.com/koizumikento/okf-workbench/issues',
+      },
       icon: 'assets/icon.png',
       main: './dist/extension.cjs',
       engines: { vscode: '^1.121.0' },
@@ -241,16 +254,16 @@ describe('VSIX package closed-set validation', () => {
       expect(() =>
         validateVsixArchive(createStoredZip(entries), Buffer.from(PROJECT_LICENSE)),
       ).toThrow(
-        'The packaged manifest does not preserve the accepted identity, MIT license, private-link exclusions, icon, entry point, and API floor.',
+        'The packaged manifest does not preserve the accepted identity, MIT license, icon, entry point, and API floor.',
       );
     },
   );
 
   test.each([
-    ['repository', { type: 'git', url: 'https://github.com/koizumikento/okf-workbench.git' }],
-    ['bugs', { url: 'https://github.com/koizumikento/okf-workbench/issues' }],
+    ['repository', { type: 'git', url: 'https://example.com/alternate.git' }],
+    ['bugs', { url: 'https://example.com/issues' }],
     ['homepage', 'https://github.com/koizumikento/okf-workbench#readme'],
-  ])('rejects packaged private-link manifest field %s', (field, value) => {
+  ])('rejects alternate packaged public-resource field %s', (field, value) => {
     const entries = packageEntries().map((entry) => {
       if (entry.name !== 'extension/package.json') return entry;
       const manifest = JSON.parse(entry.content) as Record<string, unknown>;
@@ -261,7 +274,7 @@ describe('VSIX package closed-set validation', () => {
     expect(() =>
       validateVsixArchive(createStoredZip(entries), Buffer.from(PROJECT_LICENSE)),
     ).toThrow(
-      'The packaged manifest does not preserve the accepted identity, MIT license, private-link exclusions, icon, entry point, and API floor.',
+      'The extension manifest does not preserve the approved public homepage, repository, and issue-tracker URLs.',
     );
   });
 
@@ -278,7 +291,7 @@ describe('VSIX package closed-set validation', () => {
 
     expect(() =>
       validateVsixArchive(createStoredZip(entries), Buffer.from(PROJECT_LICENSE)),
-    ).toThrow(`${document} contains a private repository or excluded documentation link.`);
+    ).toThrow(`${document} contains an excluded documentation or unpublished release link.`);
   });
 
   test.each([
@@ -322,12 +335,12 @@ describe('VSIX package closed-set validation', () => {
       'extension.vsixmanifest must contain exactly one canonical project-license declaration.',
     ],
     [
-      'private marketplace link',
+      'alternate marketplace link',
       VSIX_MANIFEST.replace(
-        '</Metadata>',
-        '<Property Id="Microsoft.VisualStudio.Services.Links.Support" Value="https://github.com/koizumikento/okf-workbench/issues" /></Metadata>',
+        'Value="https://github.com/koizumikento/okf-workbench/issues"',
+        'Value="https://example.com/issues"',
       ),
-      'extension.vsixmanifest contains private repository marketplace metadata.',
+      'extension.vsixmanifest does not preserve the approved public marketplace resource links.',
     ],
   ])('rejects VSIX manifest mutation: %s', (_name, content, message) => {
     const entries = packageEntries().map((entry) =>

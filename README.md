@@ -78,3 +78,13 @@ license as `LICENSE.txt` and the bundled production-dependency inventory and lic
 `THIRD_PARTY_NOTICES.md`.
 
 The extension identifier is `straydog.okf-workbench`.
+
+## Project resources
+
+- [Project site](https://koizumikento.github.io/okf-workbench/)
+- [Source code](https://github.com/koizumikento/okf-workbench)
+- [Issue tracker](https://github.com/koizumikento/okf-workbench/issues)
+- [Privacy statement](https://koizumikento.github.io/okf-workbench/privacy/)
+- [Support](https://koizumikento.github.io/okf-workbench/support/)
+- [Security policy](https://koizumikento.github.io/okf-workbench/security/)
+- [Third-party notices](https://koizumikento.github.io/okf-workbench/notices/)

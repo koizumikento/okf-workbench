@@ -4,7 +4,11 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
 
-import { validateVsixManifestProjectLicense } from './package-check.mjs';
+import {
+  validatePublicManifestResources,
+  validateVsixManifestMarketplaceLinks,
+  validateVsixManifestProjectLicense,
+} from './package-check.mjs';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const projectLicensePath = resolve(repositoryRoot, 'LICENSE');
@@ -433,12 +437,10 @@ function reviewManifest() {
       `The root lockfile license must be exactly MIT; found ${String(packageLock.packages?.['']?.license ?? '(missing)')}.`,
     );
   }
-  for (const field of ['repository', 'bugs', 'homepage']) {
-    if (packageManifest[field] !== undefined) {
-      recordFailure(
-        `The public extension manifest must omit private-link field ${field} while the source repository is private.`,
-      );
-    }
+  try {
+    validatePublicManifestResources(packageManifest);
+  } catch (error) {
+    recordFailure(error instanceof Error ? error.message : String(error));
   }
   const runtimeDependencies = Object.keys(packageManifest.dependencies ?? {}).sort();
   const unexpected = runtimeDependencies.filter((name) => !exactRuntimeDependencies.has(name));
@@ -550,10 +552,10 @@ async function reviewVsix(path, expectedNotices) {
         `The packaged project license must be exactly MIT; found ${String(packagedManifest.license ?? '(missing)')}.`,
       );
     }
-    for (const field of ['repository', 'bugs', 'homepage']) {
-      if (packagedManifest[field] !== undefined) {
-        recordFailure(`The packaged manifest contains private-link field ${field}.`);
-      }
+    try {
+      validatePublicManifestResources(packagedManifest);
+    } catch (error) {
+      recordFailure(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -563,6 +565,7 @@ async function reviewVsix(path, expectedNotices) {
   } else {
     try {
       validateVsixManifestProjectLicense(vsixManifestContent);
+      validateVsixManifestMarketplaceLinks(vsixManifestContent);
     } catch (error) {
       recordFailure(error instanceof Error ? error.message : String(error));
     }
@@ -580,14 +583,6 @@ async function reviewVsix(path, expectedNotices) {
         'extension.vsixmanifest must contain exactly one canonical addressable project-license asset.',
       );
     }
-    if (
-      /Microsoft\.VisualStudio\.Services\.Links\.(?:Source|Support|Learn|GitHub|Getstarted)/u.test(
-        vsixManifestContent,
-      ) ||
-      /github\.com\/koizumikento\/okf-workbench/iu.test(vsixManifestContent)
-    ) {
-      recordFailure('extension.vsixmanifest contains private repository marketplace metadata.');
-    }
   }
 
   const noticesEntry = [...entries.keys()].find(
@@ -604,11 +599,11 @@ async function reviewVsix(path, expectedNotices) {
     if (content === undefined) {
       recordFailure(`The packaged reader-facing document is missing: ${packagedDocument}.`);
     } else if (
-      /github\.com\/koizumikento\/okf-workbench/iu.test(content) ||
-      /\]\((?:\.\/)?docs\//iu.test(content)
+      /\]\((?:\.\/)?docs\//iu.test(content) ||
+      /github\.com\/koizumikento\/okf-workbench\/releases\/tag\/v0\.1\.0/iu.test(content)
     ) {
       recordFailure(
-        `${packagedDocument} contains a private repository or excluded documentation link.`,
+        `${packagedDocument} contains an excluded documentation or unpublished release link.`,
       );
     }
   }

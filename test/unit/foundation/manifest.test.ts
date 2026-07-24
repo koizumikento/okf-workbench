@@ -6,6 +6,7 @@ import {
   EXPECTED_COMMAND_CATALOG,
   EXPECTED_WRITE_COMMAND_IDS,
 } from '../../../scripts/compatibility/driver/command-catalog.cjs';
+import { PUBLIC_MANIFEST_RESOURCES } from '../../../scripts/package-check.mjs';
 import { OKF_COMMANDS } from '../../../src/extension/commands/ids.js';
 
 const expectedCommands = EXPECTED_COMMAND_CATALOG.map(({ id, title }) => [id, title] as const);
@@ -67,11 +68,13 @@ describe('extension manifest', () => {
     expect(manifest.icon).toBe('assets/icon.png');
   });
 
-  test('does not publish links that require access to the private source repository', async () => {
+  test('publishes the approved public project resources', async () => {
     const manifest = await readManifest();
-    expect(manifest.repository).toBeUndefined();
-    expect(manifest.bugs).toBeUndefined();
-    expect(manifest.homepage).toBeUndefined();
+    expect({
+      homepage: manifest.homepage,
+      repository: manifest.repository,
+      bugs: manifest.bugs,
+    }).toEqual(PUBLIC_MANIFEST_RESOURCES);
   });
 
   test('contributes exactly six stable, workspace-gated commands', async () => {

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="{{ site.lang | default: 'en' }}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="{{ page.description | default: site.description | strip_html | normalize_whitespace | escape }}"
+    />
+    <meta name="color-scheme" content="dark light" />
+    <title>
+      {% if page.title %}{{ page.title | escape }} · {% endif %}{{ site.title | escape }}
+    </title>
+    <link rel="canonical" href="{{ site.url }}{{ site.baseurl }}{{ page.url }}" />
+    <link rel="stylesheet" href="{{ '/assets/site.css' | relative_url }}" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <header class="site-header">
+      <div class="shell header-inner">
+        <a class="brand" href="{{ '/' | relative_url }}" aria-label="OKF Workbench home">
+          <span class="brand-mark" aria-hidden="true">OKF</span>
+          <span>Workbench</span>
+        </a>
+        <nav aria-label="Primary navigation">
+          <a href="{{ '/privacy/' | relative_url }}">Privacy</a>
+          <a href="{{ '/support/' | relative_url }}">Support</a>
+          <a href="{{ '/security/' | relative_url }}">Security</a>
+          <a href="https://github.com/koizumikento/okf-workbench">Source</a>
+        </nav>
+      </div>
+    </header>
+
+    {% if page.hero %}
+      <section class="hero">
+        <div class="shell hero-inner">
+          <p class="eyebrow">{{ page.eyebrow | default: 'Local-first knowledge tooling' }}</p>
+          <h1>{{ page.title | escape }}</h1>
+          <p class="hero-summary">{{ page.summary | default: site.description | escape }}</p>
+          <div class="hero-actions">
+            <a class="button primary" href="https://github.com/koizumikento/okf-workbench">
+              View source
+            </a>
+            <a class="button secondary" href="{{ '/privacy/' | relative_url }}">
+              Read the privacy statement
+            </a>
+          </div>
+        </div>
+      </section>
+    {% endif %}
+
+    <main id="main-content" class="shell content{% if page.hero %} content-home{% endif %}">
+      {{ content }}
+    </main>
+
+    <footer class="site-footer">
+      <div class="shell footer-grid">
+        <div>
+          <p class="footer-title">OKF Workbench</p>
+          <p>Local-first tools for Open Knowledge Format bundles.</p>
+        </div>
+        <div>
+          <p class="footer-title">Project</p>
+          <a href="https://github.com/koizumikento/okf-workbench">Source code</a>
+          <a href="https://github.com/koizumikento/okf-workbench/issues">Issue tracker</a>
+          <a href="{{ '/license/' | relative_url }}">MIT License</a>
+        </div>
+        <div>
+          <p class="footer-title">Trust</p>
+          <a href="{{ '/privacy/' | relative_url }}">Privacy</a>
+          <a href="{{ '/security/' | relative_url }}">Security</a>
+          <a href="{{ '/notices/' | relative_url }}">Third-party notices</a>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

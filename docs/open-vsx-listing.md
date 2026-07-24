@@ -20,19 +20,18 @@
 | Categories | Other; Visualization |
 | Keywords | `knowledge`; `markdown`; `okf`; `open-knowledge-format` |
 | Icon | `assets/icon.png` |
-| Repository | Omitted while the source repository is private |
-| Issues / support | Omitted; a durable public contact route remains a release blocker |
-| Homepage | Omitted while the source repository is private |
-| Privacy | Stated inline in the packaged README and listing copy |
+| Repository | `https://github.com/koizumikento/okf-workbench.git` |
+| Issues / support | `https://github.com/koizumikento/okf-workbench/issues` |
+| Homepage | `https://koizumikento.github.io/okf-workbench/` |
+| Privacy | `https://koizumikento.github.io/okf-workbench/privacy/` and the packaged README |
 | License | MIT; VSCE packages the canonical root `LICENSE` as `extension/LICENSE.txt` |
-| Third-party notices | Packaged as `extension/THIRD_PARTY_NOTICES.md`; no private URL is advertised |
+| Third-party notices | Packaged as `extension/THIRD_PARTY_NOTICES.md` and linked from the public project site |
 
-The manifest, README, changelog, icon, license identifier, candidate version, and deliberate URL
-omissions must match this table before the package is approved. The source repository remains
-private, so `repository`, `bugs`, and `homepage` are omitted from the public manifest rather than
-advertising inaccessible resources. The packaged README and changelog contain no private-repository,
-excluded-documentation, or speculative release-tag links. A durable public support and
-security-contact route must still be selected before publication; no placeholder URL is acceptable.
+The manifest, README, changelog, icon, license identifier, candidate version, and exact public URLs
+must match this table before the package is approved. The public source repository provides the
+issue tracker and security-advisory route, while GitHub Pages provides durable privacy, support,
+security, license, and notice pages. The packaged README and changelog contain no excluded
+documentation or speculative release-tag links.
 
 ## Suggested listing copy
 
@@ -82,11 +81,13 @@ remain pending for the exact release candidate.
 - The fresh candidate contains exactly one project-license entry, `extension/LICENSE.txt`, whose
   bytes match the canonical root `LICENSE`; its packaged JSON manifest declares exactly `MIT`, and
   `extension.vsixmanifest` points both license metadata entries to that same canonical path.
-- The packaged manifest omits `repository`, `bugs`, and `homepage`; the README and changelog contain
-  no links to private source resources, excluded documentation, or an uncreated release tag.
+- The packaged manifest contains the exact approved public `repository`, `bugs`, and `homepage`
+  values; the generated VSIX manifest contains only their corresponding marketplace resource
+  links.
+- The README and changelog contain no excluded documentation or uncreated release-tag link.
 - The README states privacy behavior, project licensing, and bundled-notice availability inline.
-- The package contains no local development artifact, secret, source map, or unapproved license
-  claim.
+- The package contains the public `SECURITY.md` but no local development artifact, secret, source
+  map, or unapproved license claim.
 
 ## Publication boundary
 

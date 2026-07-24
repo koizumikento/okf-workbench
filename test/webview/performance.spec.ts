@@ -280,7 +280,7 @@ function getBenchmarkBundle(): Promise<string> {
           },
           createApp(root) {
             const renderer = {
-              replaceGraph() {}, selectNode() {}, focusNode() {}, zoomIn() {}, zoomOut() {},
+              replaceGraph() {}, setFolderGrouping() {}, selectNode() {}, focusNode() {}, zoomIn() {}, zoomOut() {},
               fitGraph() {}, resetCamera() {}, resize() {}, pause() {}, setVisible() {}, dispose() {}
             };
             return new WorkbenchApp(root, { postMessage() {} }, () => renderer);

@@ -19,8 +19,9 @@ initialize -> create -> edit -> validate -> explore -> repair
 - Reports OKF conformance errors separately from curation warnings in the Problems panel.
 - Regenerates managed `index.md` regions without replacing unrelated content.
 - Builds a read-only, searchable 3D graph of concepts and directed internal Markdown links.
-- Shows details, backlinks, broken-link warnings, orphan state, type and tag filters, and an
-  accessible non-spatial node list.
+- Shows details, backlinks, broken-link warnings, orphan state, type, tag, and folder-subtree
+  filters, clickable folder breadcrumbs, and an accessible non-spatial node list.
+- Can group the 3D layout by the bundle's folder hierarchy without adding semantic nodes or links.
 - Supports mouse and trackpad rotation, panning, and zoom, plus visible fit, focus, reset, help,
   and keyboard camera controls.
 - Opens source Markdown from graph nodes and refreshes the selected bundle after workspace

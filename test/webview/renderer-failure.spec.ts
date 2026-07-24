@@ -92,6 +92,7 @@ test('renderer construction failure sends failure readiness while preserving acc
   await expect(alpha).toBeFocused();
   await page.keyboard.press('Enter');
   await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: 'Open source Markdown' })).toBeFocused();
   await page.keyboard.press('Enter');
   await expect
@@ -203,6 +204,7 @@ function getFailureHarnessBundle(): Promise<string> {
                 }
                 return {
                   replaceGraph() { throw new Error('sensitive update detail'); },
+                  setFolderGrouping() {},
                   selectNode() {}, focusNode() {}, zoomIn() {}, zoomOut() {}, fitGraph() {},
                   resetCamera() {}, resize() {}, pause() {}, setVisible() {}, dispose() {}
                 };

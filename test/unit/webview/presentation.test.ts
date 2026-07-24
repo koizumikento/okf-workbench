@@ -37,12 +37,12 @@ describe('Webview presentation reducer', () => {
   it('composes search, type, and tag filters without mutating the graph', () => {
     const graph = graphPayload({
       nodes: [
-        graphNode({ id: 'alpha', title: 'Alpha', type: 'note', tags: ['red'] }),
-        graphNode({ id: 'beta', title: 'Beta', type: 'note', tags: ['blue'] }),
-        graphNode({ id: 'gamma', title: 'Gamma', type: 'decision', tags: ['red'] }),
+        graphNode({ id: 'team/alpha', title: 'Alpha', type: 'note', tags: ['red'] }),
+        graphNode({ id: 'team/beta', title: 'Beta', type: 'note', tags: ['blue'] }),
+        graphNode({ id: 'other/gamma', title: 'Gamma', type: 'decision', tags: ['red'] }),
       ],
       edges: [],
-      backlinks: { alpha: [], beta: [], gamma: [] },
+      backlinks: { 'team/alpha': [], 'team/beta': [], 'other/gamma': [] },
       statistics: {
         conceptCount: 3,
         edgeCount: 0,
@@ -59,12 +59,41 @@ describe('Webview presentation reducer', () => {
     state = presentationReducer(state, { type: 'setSearch', query: 'a' });
     state = presentationReducer(state, { type: 'toggleType', value: 'note' });
     state = presentationReducer(state, { type: 'toggleTag', value: 'red' });
+    state = presentationReducer(state, { type: 'selectFolder', folderPath: 'team' });
 
-    expect(visibleNodes(state).map((node) => node.id)).toEqual(['alpha']);
+    expect(visibleNodes(state).map((node) => node.id)).toEqual(['team/alpha']);
     expect(graph.nodes).toHaveLength(3);
 
     state = presentationReducer(state, { type: 'clearFilters' });
-    expect(visibleNodes(state).map((node) => node.id)).toEqual(['alpha', 'beta', 'gamma']);
+    expect(state.selectedFolderPath).toBeUndefined();
+    expect(visibleNodes(state).map((node) => node.id)).toEqual([
+      'team/alpha',
+      'team/beta',
+      'other/gamma',
+    ]);
+  });
+
+  it('clears a folder filter that disappears on graph replacement', () => {
+    let state = presentationReducer(createInitialPresentationState(), {
+      type: 'replaceGraph',
+      graph: graphPayload({
+        nodes: [graphNode({ id: 'area/alpha' })],
+        edges: [],
+        backlinks: { 'area/alpha': [] },
+      }),
+    });
+    state = presentationReducer(state, { type: 'selectFolder', folderPath: 'area' });
+    state = presentationReducer(state, {
+      type: 'replaceGraph',
+      graph: graphPayload({
+        revision: 2,
+        nodes: [graphNode({ id: 'other/beta' })],
+        edges: [],
+        backlinks: { 'other/beta': [] },
+      }),
+    });
+
+    expect(state.selectedFolderPath).toBeUndefined();
   });
 
   it('rejects selection of a node outside the current graph', () => {

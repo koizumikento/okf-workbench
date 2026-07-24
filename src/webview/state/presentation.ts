@@ -1,5 +1,6 @@
 import type { GraphNode, GraphPayload } from '../../core/model/types.js';
 import type { WebviewStatus } from '../../shared/protocol/index.js';
+import { folderExists, isNodeInFolder } from './folders.js';
 import { matchesSearch } from './search.js';
 
 export interface PresentationState {
@@ -10,6 +11,8 @@ export interface PresentationState {
   readonly searchQuery: string;
   readonly selectedTypes: ReadonlySet<string>;
   readonly selectedTags: ReadonlySet<string>;
+  readonly selectedFolderPath: string | undefined;
+  readonly groupByFolder: boolean;
   readonly selectedNodeId: string | undefined;
   readonly focusedNodeId: string | undefined;
 }
@@ -25,6 +28,8 @@ export type PresentationAction =
   | { readonly type: 'setSearch'; readonly query: string }
   | { readonly type: 'toggleType'; readonly value: string }
   | { readonly type: 'toggleTag'; readonly value: string }
+  | { readonly type: 'selectFolder'; readonly folderPath: string | undefined }
+  | { readonly type: 'setFolderGrouping'; readonly enabled: boolean }
   | { readonly type: 'clearFilters' }
   | { readonly type: 'selectNode'; readonly nodeId: string | undefined }
   | { readonly type: 'focusNode'; readonly nodeId: string | undefined };
@@ -38,6 +43,8 @@ export function createInitialPresentationState(): PresentationState {
     searchQuery: '',
     selectedTypes: new Set(),
     selectedTags: new Set(),
+    selectedFolderPath: undefined,
+    groupByFolder: false,
     selectedNodeId: undefined,
     focusedNodeId: undefined,
   };
@@ -78,6 +85,11 @@ export function presentationReducer(
         focusedNodeId: nodeExists(action.graph, state.focusedNodeId)
           ? state.focusedNodeId
           : undefined,
+        selectedFolderPath:
+          state.selectedFolderPath === undefined ||
+          folderExists(action.graph.nodes, state.selectedFolderPath)
+            ? state.selectedFolderPath
+            : undefined,
       };
     }
     case 'setStatus':
@@ -94,8 +106,20 @@ export function presentationReducer(
       return { ...state, selectedTypes: toggled(state.selectedTypes, action.value) };
     case 'toggleTag':
       return { ...state, selectedTags: toggled(state.selectedTags, action.value) };
+    case 'selectFolder':
+      return action.folderPath === undefined ||
+        (state.graph !== undefined && folderExists(state.graph.nodes, action.folderPath))
+        ? { ...state, selectedFolderPath: action.folderPath }
+        : state;
+    case 'setFolderGrouping':
+      return { ...state, groupByFolder: action.enabled };
     case 'clearFilters':
-      return { ...state, selectedTypes: new Set(), selectedTags: new Set() };
+      return {
+        ...state,
+        selectedTypes: new Set(),
+        selectedTags: new Set(),
+        selectedFolderPath: undefined,
+      };
     case 'selectNode':
       return nodeExists(state.graph, action.nodeId) || action.nodeId === undefined
         ? { ...state, selectedNodeId: action.nodeId }
@@ -118,6 +142,10 @@ export function visibleNodes(state: PresentationState): readonly GraphNode[] {
     .filter(
       (node) =>
         state.selectedTags.size === 0 || node.tags.some((tag) => state.selectedTags.has(tag)),
+    )
+    .filter(
+      (node) =>
+        state.selectedFolderPath === undefined || isNodeInFolder(node.id, state.selectedFolderPath),
     )
     .slice()
     .sort((left, right) => {

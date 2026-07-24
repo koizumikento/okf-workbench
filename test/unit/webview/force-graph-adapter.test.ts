@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { graphPayload } from './fixtures.js';
+import { graphNode, graphPayload } from './fixtures.js';
 
 const forceGraphMock = vi.hoisted(() => {
   const calls = new Map<string, unknown[][]>();
@@ -91,6 +91,78 @@ describe('ForceGraphRenderer lifecycle', () => {
     );
 
     expect(forceGraphMock.calls.get('forceEngine')).toEqual([['ngraph']]);
+    renderer.dispose();
+  });
+
+  it('adds and removes a presentation-only folder cluster force for the d3 engine', () => {
+    const renderer = new ForceGraphRenderer(createContainer(), { onSelect: vi.fn() });
+    renderer.setFolderGrouping(true);
+
+    const forceCall = forceGraphMock.calls.get('d3Force')?.[0];
+    expect(forceCall?.[0]).toBe('okf-folder-cluster');
+    const force = forceCall?.[1] as
+      | (((alpha: number) => void) & {
+          initialize(nodes: Array<Record<string, unknown>>): void;
+        })
+      | undefined;
+    const nodes = [
+      {
+        id: 'area/alpha',
+        folderPath: 'area',
+        topLevelFolderPath: 'area',
+        x: 0,
+        y: 0,
+        z: 0,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+      },
+      {
+        id: 'other/beta',
+        folderPath: 'other',
+        topLevelFolderPath: 'other',
+        x: 0,
+        y: 0,
+        z: 0,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+      },
+    ];
+    force?.initialize(nodes);
+    force?.(1);
+
+    expect(Math.abs(Number(nodes[0]?.vx)) + Math.abs(Number(nodes[0]?.vy))).toBeGreaterThan(0);
+    expect(countCalls('d3ReheatSimulation')).toBe(1);
+
+    renderer.setFolderGrouping(false);
+    expect(forceGraphMock.calls.get('d3Force')?.at(-1)).toEqual(['okf-folder-cluster', null]);
+    renderer.dispose();
+  });
+
+  it('uses deterministic initial folder positions for the ngraph benchmark without d3 APIs', () => {
+    const renderer = new ForceGraphRenderer(
+      createContainer(),
+      { onSelect: vi.fn() },
+      { forceEngine: 'ngraph' },
+    );
+    renderer.setFolderGrouping(true);
+    renderer.replaceGraph(
+      graphPayload({
+        nodes: [graphNode({ id: 'area/alpha' }), graphNode({ id: 'other/beta' })],
+        edges: [],
+      }),
+      new Set(['area/alpha', 'other/beta']),
+    );
+
+    const graphData = forceGraphMock.calls.get('graphData')?.[0]?.[0] as
+      | { readonly nodes: Array<{ readonly x?: number; readonly y?: number; readonly z?: number }> }
+      | undefined;
+    expect(graphData?.nodes.every((node) => [node.x, node.y, node.z].every(Number.isFinite))).toBe(
+      true,
+    );
+    expect(countCalls('d3Force')).toBe(0);
+    expect(countCalls('d3ReheatSimulation')).toBe(0);
     renderer.dispose();
   });
 

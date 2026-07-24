@@ -9,6 +9,17 @@ export {
 } from './focus.js';
 export { displayConceptType, MISSING_TYPE_LABEL } from './labels.js';
 export {
+  buildFolderHierarchy,
+  folderBreadcrumb,
+  folderExists,
+  folderPathForNode,
+  isNodeInFolder,
+  ROOT_FOLDER_LABEL,
+  ROOT_FOLDER_PATH,
+  topLevelFolderPath,
+  type FolderEntry,
+} from './folders.js';
+export {
   availableTags,
   availableTypes,
   createInitialPresentationState,

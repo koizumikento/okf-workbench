@@ -124,6 +124,28 @@ input:focus-visible {
   font-size: 0.95rem;
 }
 
+.okf-folder-breadcrumb {
+  margin-block: -0.25rem 0.75rem;
+}
+
+.okf-folder-breadcrumb__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  align-items: center;
+}
+
+.okf-folder-breadcrumb__item {
+  display: inline-flex;
+  gap: 0.2rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.okf-folder-breadcrumb__separator {
+  color: var(--vscode-descriptionForeground, #a0a0a0);
+}
+
 .okf-label {
   display: block;
   margin-block-end: 0.35rem;
@@ -144,6 +166,68 @@ input:focus-visible {
   margin: 0 0 0.75rem;
   padding: 0;
   border: 0;
+}
+
+.okf-folder-section {
+  margin-block-end: 0.65rem;
+}
+
+.okf-folder-summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.okf-folder-tree-container {
+  max-height: 14rem;
+  overflow: auto;
+}
+
+.okf-folder-tree,
+.okf-folder-tree__children,
+.okf-folder-breadcrumb__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.okf-folder-tree__children {
+  padding-inline-start: 0.8rem;
+  border-inline-start: 1px solid var(--vscode-tree-indentGuidesStroke, #585858);
+}
+
+.okf-folder-button {
+  width: 100%;
+  padding: 0.25rem 0.35rem;
+  overflow: hidden;
+  border: 0;
+  border-radius: 2px;
+  color: var(--vscode-foreground, #cccccc);
+  background: transparent;
+  cursor: pointer;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.okf-folder-button:hover {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+.okf-folder-button[aria-pressed='true'] {
+  color: var(--vscode-list-activeSelectionForeground, #ffffff);
+  background: var(--vscode-list-activeSelectionBackground, #04395e);
+}
+
+.okf-folder-button--all {
+  margin-block-end: 0.2rem;
+  font-weight: 600;
+}
+
+.okf-grouping-toggle {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  margin-block-end: 0.75rem;
 }
 
 .okf-filter-list {

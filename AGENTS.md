@@ -16,7 +16,23 @@ initialize -> create -> edit -> validate -> explore -> repair
 
 ## Current state
 
-The deterministic core, six MVP command workflows, diagnostics, URI-first workspace runtime, 3D Webview, agent-template generation, and release-candidate harnesses are implemented. A genuine schema-v3 headed VS Code 1.129.1 capture passes QR-002 at 832 ms p95 across 20 samples, passes QR-003 with `d3` selected, and records zero remote HTTP(S)/WS or other-scheme Webview requests under the strict current-input contract. The retained VS Code 1.127.0 capture predates that contract and is historical-only. An earlier candidate passed the required hosted VS Code and VSCodium lifecycle matrix on Ubuntu, macOS, and Windows; current packaged public-resource changes require a fresh hosted qualification before they can inherit that claim. The repository, issue tracker, security-advisory route, and GitHub Pages trust pages are public, and the hosted branch/scanning baseline is configured. The maintainer selected MIT for the project. A matching `v*` tag on a reviewed `main` commit is the accepted release authorization and starts the GitHub Release/Open VSX workflow using `OPEN_VSX_TOKEN`; no release tag has been created yet. Open VSX distribution remains on hold until third-party notice review, remaining manual security/acceptance proof gaps, current namespace authorization, and Publisher Agreement readiness are complete. Do not turn a configured matrix, component test, single-machine benchmark, or prepared listing into a broader compatibility, performance, or publication claim.
+The deterministic Rust core, capability-free Wasm Extension Host adapter, native CLI, six MVP
+extension command workflows, diagnostics, URI-first workspace runtime, 3D Webview, agent-template
+generation, and release-candidate harnesses are implemented. A genuine schema-v3 headed VS Code
+1.129.1 capture passes QR-002 at 832 ms p95 across 20 samples, passes QR-003 with `d3` selected,
+and records zero remote HTTP(S)/WS or other-scheme Webview requests under the strict current-input
+contract. The retained VS Code 1.127.0 capture predates that contract and is historical-only. An
+earlier candidate passed the required hosted VS Code and VSCodium lifecycle matrix on Ubuntu,
+macOS, and Windows; the Rust/Wasm migration and current packaged-resource changes require a fresh
+hosted qualification before they can inherit that claim. The repository, issue tracker,
+security-advisory route, and GitHub Pages trust pages are public, and the hosted branch/scanning
+baseline is configured. The maintainer selected MIT for the project. A matching `v*` tag on a
+reviewed `main` commit is the accepted release authorization and starts the GitHub Release/Open VSX
+workflow using `OPEN_VSX_TOKEN`; no release tag has been created yet. Open VSX distribution remains
+on hold until third-party notice review, remaining manual security/acceptance proof gaps, current
+namespace authorization, and Publisher Agreement readiness are complete. Do not turn a configured
+matrix, component test, single-machine benchmark, or prepared listing into a broader compatibility,
+performance, or publication claim.
 
 ## Sources of truth
 
@@ -52,6 +68,9 @@ Keep the deterministic OKF core independent of VS Code APIs:
 - `core/graph`: serializable nodes, edges, backlinks, and statistics.
 - `core/indexes`: index synthesis and safe managed-region merging.
 - `core/templates`: bundle, concept, and agent template rendering.
+- `crates/okf-core`: production deterministic semantics shared by Wasm and CLI.
+- `crates/okf-wasm`: capability-free, versioned Extension Host ABI.
+- `crates/okf-cli`: native filesystem and terminal adapter.
 - `extension`: commands, diagnostics, workspace access, and Webview lifecycle.
 - `webview`: 3D presentation and interaction only.
 
@@ -101,14 +120,21 @@ Diagnostics should include the most precise useful URI and source range. Do not 
 
 These conventions apply to all implementation work:
 
-- Use TypeScript with strict type checking.
-- Follow the single-package npm and esbuild baseline in `docs/implementation-environment.md`; do not add an overlapping package manager, bundler, or UI framework without an accepted decision.
+- Use TypeScript with strict type checking for the Extension Host and Webview. Use stable Rust with
+  `cargo fmt`, `cargo clippy`, and `cargo test` for the shared core, Wasm adapter, and CLI.
+- Follow the npm/esbuild plus Cargo baseline in `docs/implementation-environment.md`; do not add an
+  overlapping package manager, bundler, UI framework, or Rust workspace tool without an accepted
+  decision.
 - Keep public core types explicit and serializable.
 - Avoid `any`; narrow `unknown` at parsing and message boundaries.
 - Prefer small pure functions in the core.
 - Represent expected parse and validation failures as data, not uncaught exceptions.
 - Keep user-facing messages actionable and avoid exposing raw stack traces.
 - Add dependencies only when their license and bundling behavior are understood.
+- Keep `okf-core` free of filesystem, network, editor, terminal, and Webview APIs. Put those
+  capabilities in the TypeScript Extension Host or native CLI adapter.
+- Keep the Wasm ABI versioned and JSON-serializable. Never add WASI or load the Wasm module in the
+  Webview.
 - Do not introduce a framework solely for a small utility that can be implemented clearly in the repository.
 
 Follow repository formatters and linters after they are established. Do not invent command names in documentation before adding the corresponding package script.

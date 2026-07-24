@@ -14,6 +14,10 @@ initialize bundle
 -> open and repair source
 ```
 
+The editor extension and native `okf` CLI share the deterministic Rust OKF core. The extension
+loads it as capability-free `wasm32-unknown-unknown` inside the Extension Host; the CLI links it
+natively and owns only local-filesystem and terminal interaction.
+
 ## Commands
 
 ### `OKF: Initialize Bundle`
@@ -133,6 +137,19 @@ notification is hidden:
   proposal.
 - Offer Review or Cancel when another write command is refused as busy.
 - Ignore late results from superseded confirmation attempts and write nothing after cancellation.
+
+### Native `okf` CLI
+
+Provides `init`, `new`, `validate`, `index`, `graph`, `agent`, and `version` for local automation.
+
+Requirements:
+
+- Use the same parser, validator, graph, index, template, and agent generation crate as the
+  extension.
+- Keep validation and graph commands read-only.
+- Require `--apply` for non-interactive writes; keep `--check` strictly non-mutating.
+- Refuse path escapes, symbolic-link traversal, collisions, and malformed managed regions.
+- Emit versioned JSON for machine-readable validation and graph output.
 
 ## Acceptance criteria
 

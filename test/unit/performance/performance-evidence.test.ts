@@ -67,7 +67,7 @@ beforeAll(async () => {
       0o755,
     );
   }
-});
+}, 60_000);
 
 afterAll(() => rmSync(temporaryDirectory, { recursive: true, force: true }));
 
@@ -179,6 +179,15 @@ describe('production performance bundle identity', () => {
       'node_modules/esbuild/bin/esbuild',
     );
     expect(productionEntries).toContain('scripts/performance-toolchain-manifest.json');
+    expect(productionEntries).toEqual(
+      expect.arrayContaining([
+        'Cargo.toml',
+        'Cargo.lock',
+        'rust-toolchain.toml',
+        'crates/okf-core/src/lib.rs',
+        'crates/okf-wasm/src/lib.rs',
+      ]),
+    );
     expect(
       Object.keys(currentEsbuildPlatform.files).every((relativePath) =>
         executionEntries.includes(`${currentEsbuildPlatform.packagePath}/${relativePath}`),

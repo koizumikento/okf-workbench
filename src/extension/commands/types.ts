@@ -1,5 +1,6 @@
 import type { ApplyReport, ChangeSetProposal, OperationProblem } from '../../core/model/index.js';
 import type { BundleDirectoryInput } from '../../core/templates/index.js';
+import type { OkfCore } from '../../core/wasm/index.js';
 import type { ProposalApplicator } from '../workspace/proposalApplicator.js';
 import type { WorkspacePort } from '../workspace/types.js';
 import type { WorkspaceUriCodec } from '../workspace/uriCodec.js';
@@ -100,6 +101,8 @@ export interface ProposalWorkflowScheduler {
 }
 
 export interface ProposalWorkflowDependencies<TUri> {
+  /** Production always supplies the packaged Wasm core; omission is reserved for migration tests. */
+  readonly core?: OkfCore;
   readonly port: WorkspacePort<TUri>;
   readonly uris: WorkspaceUriCodec<TUri>;
   readonly applicator: ProposalApplicator<TUri>;

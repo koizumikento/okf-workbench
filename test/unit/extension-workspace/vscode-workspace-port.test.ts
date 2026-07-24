@@ -220,6 +220,7 @@ import { Uri } from 'vscode';
 
 import { planProviderIndexes } from '../../../src/core/indexes/index.js';
 import { collectWorkspaceIndexSource } from '../../../src/extension/commands/regenerate-indexes.js';
+import { typescriptOkfCore } from '../../../src/core/wasm/index.js';
 import { providerIndexChangesToProposal } from '../../../src/extension/commands/proposals.js';
 import { loadBundle } from '../../../src/extension/runtime/loadBundle.js';
 import { BundleContextService } from '../../../src/extension/workspace/bundleContext.js';
@@ -622,7 +623,13 @@ describe('VscodeWorkspacePort guarded writes', () => {
     }
 
     const port = new VscodeWorkspacePort();
-    const source = await collectWorkspaceIndexSource(bundleRoot, bundleRoot, port, vscodeUriCodec);
+    const source = await collectWorkspaceIndexSource(
+      bundleRoot,
+      bundleRoot,
+      port,
+      vscodeUriCodec,
+      typescriptOkfCore,
+    );
     expect(source.ok).toBe(true);
     if (!source.ok) {
       return;

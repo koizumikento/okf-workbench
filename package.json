@@ -184,9 +184,14 @@
     "build:dev": "node scripts/build.mjs",
     "watch": "node scripts/build.mjs --watch",
     "dependency:check": "node scripts/dependency-check.mjs",
+    "rust:format": "cargo fmt --all -- --check",
+    "rust:lint": "cargo clippy --workspace --all-targets -- -D warnings",
+    "rust:test": "cargo test --workspace",
+    "rust:notices:write": "node scripts/rust-notices.mjs --write",
+    "rust:notices:check": "node scripts/rust-notices.mjs",
     "package": "npm run build && node scripts/package-vsix.mjs artifacts/okf-workbench.vsix",
     "package:check": "node scripts/package-check.mjs artifacts/okf-workbench.vsix",
-    "check": "npm run format && npm run lint && npm run typecheck && npm run test && npm run test:acceptance && npm run dependency:check && npm run test:security:all"
+    "check": "npm run format && npm run lint && npm run typecheck && npm run rust:format && npm run rust:lint && npm run rust:test && npm run rust:notices:check && npm run test && npm run test:acceptance && npm run dependency:check && npm run test:security:all"
   },
   "dependencies": {
     "3d-force-graph": "1.80.0",

@@ -24,9 +24,13 @@ import type {
   FileChangeProposal,
   Finding,
 } from '../../src/core/model/index.js';
+import { typescriptOkfCore } from '../../src/core/wasm/index.js';
 import { providerIndexChangesToProposal } from '../../src/extension/commands/proposals.js';
 import type { RuntimeDiagnosticsSink } from '../../src/extension/diagnostics/publisher.js';
-import { BundleRuntime } from '../../src/extension/runtime/bundleRuntime.js';
+import {
+  BundleRuntime as ProductionBundleRuntime,
+  type BundleRuntimeOptions,
+} from '../../src/extension/runtime/bundleRuntime.js';
 import type { BundleRuntimeSnapshot } from '../../src/extension/runtime/types.js';
 import { BundleContextService } from '../../src/extension/workspace/bundleContext.js';
 import { sha256Content } from '../../src/extension/workspace/contentHash.js';
@@ -53,6 +57,12 @@ import {
 } from '../../src/extension/workspace/types.js';
 import type { WorkspaceUriCodec } from '../../src/extension/workspace/uriCodec.js';
 import type { WorkspaceChange } from '../../src/extension/workspace/refreshCoordinator.js';
+
+class BundleRuntime<TUri> extends ProductionBundleRuntime<TUri> {
+  public constructor(options: Omit<BundleRuntimeOptions<TUri>, 'core'>) {
+    super({ ...options, core: typescriptOkfCore });
+  }
+}
 
 const temporaryRoots: string[] = [];
 

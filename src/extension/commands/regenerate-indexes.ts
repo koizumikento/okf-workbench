@@ -2,12 +2,16 @@ import { TextDecoder } from 'node:util';
 
 import type { OperationProblem, OperationResult } from '../../core/model/index.js';
 import {
+  INDEX_END_MARKER,
+  INDEX_START_MARKER,
+  mergeManagedRegion,
   planProviderIndexes,
   type ExistingIndexInput,
   type IndexConceptInput,
   type IndexGenerationMode,
 } from '../../core/indexes/index.js';
-import { parseBundle } from '../../core/parser/index.js';
+import type { ParseBundleInput } from '../../core/parser/index.js';
+import type { OkfCore } from '../../core/wasm/index.js';
 import { loadBundle } from '../runtime/loadBundle.js';
 import { MAX_PROPOSAL_PREVIEW_CHANGES } from '../preview/proposal-preview-budget.js';
 import type { WorkspacePort } from '../workspace/types.js';
@@ -44,6 +48,7 @@ const MODE_ITEMS: readonly SelectionItem<IndexGenerationMode>[] = [
 ];
 
 export interface WorkspaceIndexSource {
+  readonly input?: ParseBundleInput;
   readonly concepts: readonly IndexConceptInput[];
   readonly existingIndexes: readonly (ExistingIndexInput & {
     readonly contentHash: string;
@@ -61,6 +66,7 @@ export async function collectWorkspaceIndexSource<TUri>(
   workspaceSafetyRootUri: TUri,
   port: WorkspacePort<TUri>,
   uris: WorkspaceUriCodec<TUri>,
+  core?: OkfCore,
 ): Promise<OperationResult<WorkspaceIndexSource>> {
   let loaded;
   try {
@@ -133,11 +139,24 @@ export async function collectWorkspaceIndexSource<TUri>(
     }
   }
 
-  const parsed = parseBundle({
+  const input: ParseBundleInput = {
     rootUri: uris.serialize(bundleRootUri),
     revision: 0,
     documents,
-  });
+  };
+  if (core === undefined) {
+    return {
+      ok: false,
+      problems: [
+        problem(
+          'index-core-unavailable',
+          'The production Wasm core was not supplied for index planning.',
+          'Reload the Extension Host, then run index generation again.',
+        ),
+      ],
+    };
+  }
+  const parsed = core.inspect(input, '2026-01-01T00:00:00Z').bundle;
   if (parsed.failures.length > 0) {
     return {
       ok: false,
@@ -154,6 +173,7 @@ export async function collectWorkspaceIndexSource<TUri>(
   return {
     ok: true,
     value: {
+      input,
       concepts: parsed.concepts.map((concept) => ({
         relativePath: concept.source.bundlePath,
         ...(concept.title === undefined ? {} : { title: concept.title }),
@@ -163,6 +183,14 @@ export async function collectWorkspaceIndexSource<TUri>(
     },
     warnings: [],
   };
+}
+
+function managedRegion(text: string): string | undefined {
+  const start = text.indexOf(INDEX_START_MARKER);
+  const endStart = text.indexOf(INDEX_END_MARKER, start + INDEX_START_MARKER.length);
+  if (start < 0 || endStart < 0) return undefined;
+  const end = endStart + INDEX_END_MARKER.length;
+  return `${text.slice(start, end)}\n`;
 }
 
 export interface RegenerateIndexesCommandDependencies<
@@ -207,6 +235,7 @@ export function createRegenerateIndexesCommand<TUri>(
               selection.workspaceSafetyRootUri,
               dependencies.port,
               dependencies.uris,
+              dependencies.core,
             )
           : dependencies.collectIndexSource(
               selection.bundleRootUri,
@@ -230,11 +259,46 @@ export function createRegenerateIndexesCommand<TUri>(
           );
           return { kind: 'refused', problems: plan.problems };
         }
-        if (plan.value.changes.length > MAX_PROPOSAL_PREVIEW_CHANGES) {
+        let changes = plan.value.changes;
+        if (dependencies.core !== undefined && source.value.input !== undefined) {
+          try {
+            const rendered = dependencies.core.renderIndexes(
+              source.value.input,
+              mode === 'update-all' ? 'all' : 'missing',
+            );
+            const byPath = new Map(rendered.map((file) => [file.relativePath, file]));
+            changes = changes.map((change) => {
+              const region = managedRegion(byPath.get(change.relativePath)?.content ?? '');
+              if (region === undefined) return change;
+              const merged = mergeManagedRegion({
+                existingText: change.proposedText,
+                renderedRegion: region,
+                markers: {
+                  start: INDEX_START_MARKER,
+                  end: INDEX_END_MARKER,
+                  name: 'index',
+                },
+                appendWhenMissing: false,
+              });
+              if (!merged.ok) {
+                throw new Error(
+                  merged.problems[0]?.message ?? 'Index managed-region merge failed.',
+                );
+              }
+              return { ...change, proposedText: merged.value };
+            });
+          } catch (error: unknown) {
+            await dependencies.ui.showError(
+              `Indexes could not be rendered by the deterministic core. ${error instanceof Error ? error.message : 'The core rejected the request.'}`,
+            );
+            return { kind: 'failed' };
+          }
+        }
+        if (changes.length > MAX_PROPOSAL_PREVIEW_CHANGES) {
           const problems = [
             problem(
               'preview-limit',
-              `Index regeneration would change ${String(plan.value.changes.length)} files, exceeding the complete-preview limit of ${String(MAX_PROPOSAL_PREVIEW_CHANGES)}.`,
+              `Index regeneration would change ${String(changes.length)} files, exceeding the complete-preview limit of ${String(MAX_PROPOSAL_PREVIEW_CHANGES)}.`,
               'Narrow the bundle or regenerate indexes in smaller subtrees so every proposed file can be previewed before applying.',
             ),
           ];
@@ -246,7 +310,7 @@ export function createRegenerateIndexesCommand<TUri>(
 
         const proposal = providerIndexChangesToProposal(
           selection.bundleRootUri,
-          plan.value.changes,
+          changes,
           dependencies.uris,
           {
             workspaceSafetyRoot: selection.workspaceSafetyRootUri,

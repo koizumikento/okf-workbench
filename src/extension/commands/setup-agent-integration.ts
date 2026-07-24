@@ -1,13 +1,18 @@
 import { TextDecoder } from 'node:util';
 
 import {
+  AGENTS_END_MARKER,
+  AGENTS_START_MARKER,
   AGENT_SKILL_PATH,
   normalizeBundleDirectory,
-  planAgentIntegration,
   preserveProviderBundleDirectory,
+  type AgentIntegrationPlan,
   type AgentIntegrationSelection,
   type BundleDirectoryInput,
 } from '../../core/templates/index.js';
+import { mergeManagedRegion } from '../../core/indexes/index.js';
+import type { OperationResult } from '../../core/model/index.js';
+import type { OkfCore } from '../../core/wasm/index.js';
 import { sha256Content } from '../workspace/contentHash.js';
 import {
   captureWorkspaceOptionalResourceParentChain,
@@ -59,6 +64,87 @@ const SELECTION_ITEMS: readonly SelectionItem<AgentIntegrationSelection>[] = [
 
 function displayBundlePath(bundlePath: BundleDirectoryInput): string {
   return typeof bundlePath === 'string' ? bundlePath : bundlePath.relativePath;
+}
+
+function planAgentIntegrationWithCore(
+  core: OkfCore,
+  input: {
+    readonly selection: AgentIntegrationSelection;
+    readonly bundlePath: BundleDirectoryInput;
+    readonly existingAgentsText?: string;
+    readonly existingSkillText?: string;
+  },
+): OperationResult<AgentIntegrationPlan> {
+  const target =
+    input.selection === 'agents-md'
+      ? 'agents'
+      : input.selection === 'agent-skill'
+        ? 'skill'
+        : 'both';
+  const files = core.renderAgent(target, input.bundlePath);
+  const agents = files.find((file) => file.relativePath === 'AGENTS.md');
+  const skill = files.find((file) => file.relativePath === AGENT_SKILL_PATH);
+  let agentsFile: AgentIntegrationPlan['agentsFile'];
+  if (agents !== undefined) {
+    if (input.existingAgentsText === undefined) {
+      agentsFile = {
+        relativePath: 'AGENTS.md',
+        status: 'create',
+        proposedText: agents.content,
+      };
+    } else {
+      const merged = mergeManagedRegion({
+        existingText: input.existingAgentsText,
+        renderedRegion: agents.content,
+        markers: {
+          start: AGENTS_START_MARKER,
+          end: AGENTS_END_MARKER,
+          name: 'AGENTS.md',
+        },
+        appendWhenMissing: true,
+      });
+      if (!merged.ok) return merged;
+      agentsFile = {
+        relativePath: 'AGENTS.md',
+        status: merged.value === input.existingAgentsText ? 'unchanged' : 'update',
+        proposedText: merged.value,
+        previousText: input.existingAgentsText,
+      };
+    }
+  }
+  let agentSkill: AgentIntegrationPlan['agentSkill'];
+  if (skill !== undefined) {
+    agentSkill =
+      input.existingSkillText === undefined
+        ? {
+            relativePath: AGENT_SKILL_PATH,
+            status: 'create',
+            proposedText: skill.content,
+          }
+        : input.existingSkillText === skill.content
+          ? {
+              relativePath: AGENT_SKILL_PATH,
+              status: 'unchanged',
+              proposedText: skill.content,
+              previousText: input.existingSkillText,
+            }
+          : {
+              relativePath: AGENT_SKILL_PATH,
+              status: 'replacement-required',
+              proposedText: skill.content,
+              previousText: input.existingSkillText,
+            };
+  }
+  return {
+    ok: true,
+    value: {
+      selection: input.selection,
+      ...(agentsFile === undefined ? {} : { agentsFile }),
+      ...(agentSkill === undefined ? {} : { agentSkill }),
+      readyToApply: agentSkill?.status !== 'replacement-required',
+    },
+    warnings: [],
+  };
 }
 
 export interface SetupAgentIntegrationCommandDependencies<
@@ -207,7 +293,13 @@ export function createSetupAgentIntegrationCommand<TUri>(
             byteLength: existingSkill.contentByteLength,
           });
         }
-        const initialPlan = planAgentIntegration(planInput);
+        if (dependencies.core === undefined) {
+          await dependencies.ui.showError(
+            'Agent integration could not be generated because the production Wasm core was not supplied.',
+          );
+          return { kind: 'failed' };
+        }
+        const initialPlan = planAgentIntegrationWithCore(dependencies.core, planInput);
         if (!initialPlan.ok) {
           await dependencies.ui.showError(
             problemsMessage('Agent integration could not be merged safely.', initialPlan.problems),

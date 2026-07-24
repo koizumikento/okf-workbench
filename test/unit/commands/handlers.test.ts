@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { OKF_SEMANTIC_LIMITS } from '../../../src/core/model/index.js';
+import { typescriptOkfCore } from '../../../src/core/wasm/index.js';
 import { createInitializeBundleCommand } from '../../../src/extension/commands/initialize-bundle.js';
 import { createNewConceptCommand } from '../../../src/extension/commands/new-concept.js';
 import { SerialProposalWorkflowScheduler } from '../../../src/extension/commands/proposal-workflow-scheduler.js';
@@ -69,6 +70,7 @@ function harness(port = new FakeWorkspacePort()) {
     ui,
     previewer,
     shared: {
+      core: typescriptOkfCore,
       port,
       uris: stringUriCodec,
       applicator: new ProposalApplicator(port, stringUriCodec),

@@ -27,6 +27,8 @@ initialize -> create -> edit -> validate -> explore -> repair
 - Opens source Markdown from graph nodes and refreshes the selected bundle after workspace
   changes.
 - Generates a managed `AGENTS.md` section and a project-local Agent Skill after preview.
+- Includes an offline native `okf` CLI backed by the same Rust core used by the extension through
+  a capability-free Wasm adapter.
 
 ## Commands
 
@@ -49,6 +51,20 @@ exact summary and choose Apply or Cancel.
 The extension targets VS Code-compatible desktop editors with API floor `^1.121.0`. Compatibility
 is specific to the editor version, operating system, and exact extension package; the manifest
 floor is not a universal compatibility guarantee.
+
+## Command-line interface
+
+Build the native CLI with the pinned Rust toolchain:
+
+```sh
+cargo build --locked --release --bin okf
+./target/release/okf --help
+```
+
+The CLI provides `init`, `new`, `validate`, `index`, `graph`, `agent`, and `version`. Read commands
+never write. Write commands first report a complete plan; non-interactive writes require
+`--apply`, and `--check` reports whether changes are needed without modifying the workspace.
+`validate --format json` and `graph --format json` emit a versioned JSON envelope for automation.
 
 ## Safety and file ownership
 
@@ -81,7 +97,7 @@ generates local instruction files; it does not install, invoke, or configure an 
 
 OKF Workbench is licensed under the MIT License. The packaged VSIX includes the complete project
 license as `LICENSE.txt` and the bundled production-dependency inventory and license texts as
-`THIRD_PARTY_NOTICES.md`.
+`THIRD_PARTY_NOTICES.md` and `RUST_THIRD_PARTY_NOTICES.md`.
 
 The extension identifier is `straydog.okf-workbench`.
 

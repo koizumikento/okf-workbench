@@ -12,18 +12,23 @@ Exact dependency versions are committed in `package.json` and `package-lock.json
 
 ## Application shape
 
-OKF Workbench will be one desktop VS Code-compatible extension package with two runtime surfaces:
+OKF Workbench has a platform-neutral desktop extension package plus a separately built native CLI:
 
 ```text
 VS Code / VSCodium desktop
 ├── Node extension host
 │   ├── commands and diagnostics
 │   ├── URI-first workspace adapter
-│   └── deterministic OKF core
+│   └── capability-free OKF core Wasm
 └── isolated editor Webview
     ├── graph adapter
     ├── details and non-spatial navigation
     └── 3d-force-graph / WebGL
+
+Native executable
+└── okf CLI
+    ├── local filesystem and terminal adapter
+    └── statically linked deterministic OKF core
 ```
 
 The architecture is a layered modular monolith with ports at the workspace and Webview boundaries. There is no server, database, authentication system, cloud service, queue, background worker, or browser-extension entry point in the MVP.
@@ -43,6 +48,8 @@ The shipped trust boundaries are:
 | VS Code API floor | `engines.vscode: ^1.121.0` | Covers the current VSCodium stable line while remaining compatible with newer VS Code releases |
 | Development and CI Node | Node.js `24.18.0` LTS | Supported LTS, pinned for reproducible tooling |
 | Package manager | npm `11.16.0` | Bundled with the pinned Node release; one tool and one lockfile |
+| Rust toolchain | Rust `1.92.0`, edition 2024 | Pinned by `rust-toolchain.toml`; owns the shared core, Wasm, and CLI |
+| Wasm target | `wasm32-unknown-unknown` | Portable, capability-free Extension Host artifact without WASI |
 | Extension-host output target | Node.js 22 / CommonJS | Matches the Node type baseline used by VS Code 1.121 and avoids requiring newer extension-host syntax |
 | Webview output target | ES2022 browser module | Conservative target for the Electron/Chromium Webview matrix |
 | Type checker | TypeScript `6.0.3` | Mature stable line; TypeScript 7 adoption is deferred until extension tooling compatibility is verified |
@@ -70,7 +77,8 @@ hardware.
 
 ## Repository and package management
 
-Use one npm package at the repository root. Do not introduce npm workspaces, a monorepo orchestrator, pnpm, Yarn, Bun, Nix, or a container requirement for the initial extension.
+Use one npm package and one Cargo workspace at the repository root. Do not introduce npm
+workspaces, a monorepo orchestrator, pnpm, Yarn, Bun, Nix, or a container requirement.
 
 The Phase 0 scaffold includes:
 
@@ -78,6 +86,8 @@ The Phase 0 scaffold includes:
 - `packageManager: "npm@11.16.0"` in `package.json`.
 - `.npmrc` with exact dependency saving and engine enforcement.
 - A committed `package-lock.json` generated with the pinned npm version.
+- `rust-toolchain.toml` pinned to Rust `1.92.0` with `rustfmt`, `clippy`, and
+  `wasm32-unknown-unknown`, plus a committed `Cargo.lock`.
 - `engines.node` for development tooling and `engines.vscode` for installation compatibility.
 - Dependabot or an equivalent reviewed dependency-update workflow.
 
@@ -101,7 +111,8 @@ src/
 │   ├── validation/
 │   ├── graph/
 │   ├── indexes/
-│   └── templates/
+│   ├── templates/
+│   └── wasm/
 ├── extension/
 │   ├── activate.ts
 │   ├── commands/
@@ -126,14 +137,20 @@ test/
 ├── extension/
 ├── webview/
 └── benchmarks/
+crates/
+├── okf-core/
+├── okf-wasm/
+└── okf-cli/
 ```
 
 Dependency direction is inward:
 
 ```text
 webview -> shared protocol
-extension -> shared protocol + core
-core -> no VS Code or Webview dependency
+extension -> shared protocol + Wasm adapter
+okf-wasm -> okf-core
+okf-cli -> okf-core
+okf-core -> no filesystem, network, terminal, VS Code, or Webview dependency
 ```
 
 The shared protocol contains serializable data and runtime decoders only. It must not become a general dumping ground for behavior shared by unrelated modules.
@@ -162,7 +179,12 @@ Source files use ESM import/export syntax. The root package may be ESM for build
 
 ## Build and bundle pipeline
 
-Use the pinned `esbuild` `0.28.x` line through the repository-owned build script and two explicit build targets.
+Use the pinned `esbuild` `0.28.x` line and Cargo through the repository-owned build script. A
+production build first runs `cargo build --locked --release --target wasm32-unknown-unknown
+-p okf-wasm`, copies the exact module to `dist/okf_core.wasm`, and then emits the two TypeScript
+targets below. Missing Rust, a missing target, or a failed Wasm build fails the production build.
+The only placeholder path requires an explicit test-only command flag and environment variable
+and is not accepted by package validation.
 
 ### Extension-host bundle
 
@@ -181,6 +203,24 @@ Use the pinned `esbuild` `0.28.x` line through the repository-owned build script
 - Format: ESM.
 - Target: ES2022.
 - No CDN, runtime package fetch, dynamic remote import, or remote font.
+
+### Native CLI
+
+- Package: `okf-cli`; binary name: `okf`.
+- Local build: `cargo build --locked --release --bin okf`.
+- Commands: `init`, `new`, `validate`, `index`, `graph`, `agent`, and `version`.
+- Read-only commands never mutate storage. `--check` is non-mutating; non-interactive writes
+  require `--apply`.
+- Native binaries are OS/architecture-specific release artifacts and are not included in the
+  platform-neutral VSIX.
+
+### Shared core ABI
+
+- ABI version: `1`, with versioned JSON request/response envelopes.
+- Raw exports: linear memory, allocation, deallocation, ABI version, and one dispatcher.
+- The module must have zero imports and no WASI surface.
+- The TypeScript adapter bounds pointers and lengths and validates UTF-8, JSON, envelope version,
+  operation identity, and result shape before use.
 
 Development builds include source maps without embedded source content. Release builds are minified and omit source maps from the VSIX unless a later debugging decision explicitly includes them.
 
@@ -471,6 +511,8 @@ retaining individual entries, and discovery uses `stat.size` to avoid avoidable 
 | Layer | Tool baseline | What it proves |
 | --- | --- | --- |
 | Core unit and fixture tests | Vitest `4.1.x`, Node environment | Parsing, preservation, resolution, validation, indexes, templates, graph model |
+| Rust core and CLI | `cargo test --workspace` | Native semantics, deterministic generation, CLI no-write/apply/collision behavior |
+| Wasm parity | Vitest plus locked release Wasm build | ABI/import boundary and canonical Rust/TypeScript fixture and byte parity |
 | Webview state unit tests | Vitest `4.1.x`, Node environment | Pure search, type/tag/folder filtering, folder hierarchy, focus, presentation, color, custom-force, and message-decoding state without claiming browser DOM behavior |
 | Security boundaries | Dedicated Vitest and Playwright configs | Host/path/protocol boundaries plus hostile-content DOM execution and browser egress interception |
 | Extension integration | `@vscode/test-cli` `0.0.x` and `@vscode/test-electron` `3.0.x` with Mocha | Commands, workspace FS, diagnostics, watchers, URI behavior, source navigation, and the registered non-`file:` read boundary |
@@ -552,13 +594,17 @@ GitHub Actions is the initial CI platform.
 Required pull-request gates:
 
 - Clean `npm ci` using Node 24.18.0.
-- Format, lint, and strict type checks.
+- Pinned Rust `1.92.0` with the `wasm32-unknown-unknown` target.
+- TypeScript format, lint, and strict type checks plus `cargo fmt`, `cargo clippy`, and
+  `cargo test --workspace`.
 - Core and Webview unit tests.
 - Dedicated Node boundary tests and the dedicated Chromium hostile-content/no-egress test.
 - Extension integration tests on a pinned minimum VS Code and the current stable VS Code.
 - Production build and VSIX package inspection.
 - Production dependency license classification and deterministic `THIRD_PARTY_NOTICES.md`
   freshness through `node scripts/security-check.mjs --check-notices` after the clean install.
+- Locked Cargo-graph license classification and deterministic `RUST_THIRD_PARTY_NOTICES.md`
+  freshness through `node scripts/rust-notices.mjs`.
 
 Ubuntu 24.04 is the primary CI environment. Release smoke also runs on current supported GitHub-hosted Windows and macOS images, with exact runner images recorded by each workflow run. VSCodium validation installs the pinned VSCodium release rather than assuming `@vscode/test-electron` represents it.
 
@@ -602,12 +648,12 @@ Node 24-based `actions/download-artifact` v8 line, and the aggregate package gat
 Linux x64, Windows x64, and macOS arm64 artifact labels and one regular VSIX per label before
 comparing byte size and SHA-256.
 
-The ordinary pull-request CI and the tagged Open VSX candidate job invoke that same
-repository-owned license and notice command after `npm ci`. License classification,
-production-graph traversal, and notice rendering therefore have one implementation and one
-allowlist; the release workflow adds packaged-VSIX checks but does not redefine the source gate.
+The ordinary pull-request CI and tagged candidate job run the repository-owned npm and Cargo
+notice commands. Package and security checks require both exact notice files in the VSIX. The
+Cargo notice generator traverses only dependencies reachable from `okf-wasm`; native CLI
+distribution must run the same policy against its release graph before binaries are published.
 
-The repository-owned package wrapper sets a fixed `SOURCE_DATE_EPOCH`, which makes pinned `vsce` sort ZIP entries lexicographically, and then normalizes every local-header and central-directory DOS timestamp to `1980-01-01 00:00:00` and every central-directory entry to the reviewed regular-file mode `0644`. This removes asynchronous file-discovery ordering, clock-dependent bytes, and the `0644` versus `0666` external-attribute difference emitted from Unix and Windows filesystems while preserving entry contents, CRCs, compression, extra fields, and comments. The normalizer fails closed for ZIP64, split archives, and timestamp-bearing ZIP extra fields. CI invokes that same wrapper a second time against the unchanged build and requires byte equality with the candidate before retaining it. Repository text is checked out with LF endings on every runner through `.gitattributes`; identical tracked inputs and pinned tool versions remain part of the cross-platform byte-identity contract. The package-smoke workflow then downloads the retained Ubuntu, macOS, and Windows VSIX files into one comparison job and fails unless all three byte sizes and SHA-256 digests are identical.
+The repository-owned package wrapper sets a fixed `SOURCE_DATE_EPOCH`, which makes pinned `vsce` sort ZIP entries lexicographically, and then normalizes every local-header and central-directory DOS timestamp to `1980-01-01 00:00:00` and every central-directory entry to the reviewed regular-file mode `0644`. This removes asynchronous file-discovery ordering, clock-dependent bytes, and the `0644` versus `0666` external-attribute difference emitted from Unix and Windows filesystems while preserving entry contents, CRCs, compression, extra fields, and comments. The normalizer fails closed for ZIP64, split archives, and timestamp-bearing ZIP extra fields. CI invokes that same wrapper a second time against the unchanged build and requires byte equality with the candidate before retaining it. Repository text is checked out with LF endings on every runner through `.gitattributes`; identical tracked inputs and pinned tool versions remain part of the cross-platform byte-identity contract. Because Rust's `wasm32-unknown-unknown` codegen is not byte-identical across host operating systems, package-smoke first builds and retains one capability-free canonical Wasm module on Ubuntu, then supplies that exact run-scoped artifact to the Ubuntu, macOS, and Windows package jobs through a CI-only fixed path. Each runner still builds and tests the native Rust workspace and Extension sources locally. The final comparison job fails unless all three VSIX byte sizes and SHA-256 digests are identical.
 
 References:
 

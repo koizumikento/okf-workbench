@@ -13,12 +13,13 @@
 ```text
 src/
 ├── core/
-│   ├── model/
-│   ├── parser/
-│   ├── validation/
-│   ├── graph/
-│   ├── indexes/
-│   └── templates/
+│   ├── model/         # serializable host types and migration oracle
+│   ├── parser/        # migration oracle and host-side safety preflight
+│   ├── validation/    # migration oracle
+│   ├── graph/         # migration oracle
+│   ├── indexes/       # guarded managed-region merge
+│   ├── templates/     # migration oracle
+│   └── wasm/          # production Extension Host ABI adapter
 ├── extension/
 │   ├── commands/
 │   ├── diagnostics/
@@ -36,9 +37,17 @@ test/
 ├── fixtures/
 ├── unit/
 └── integration/
+crates/
+├── okf-core/          # capability-free deterministic semantics
+├── okf-wasm/          # raw wasm32-unknown-unknown ABI
+└── okf-cli/           # native filesystem/terminal adapter
 ```
 
-The accepted runtime, build, test, and packaging baseline is documented in [Implementation environment](implementation-environment.md) and [ADR 0004](decisions/0004-use-npm-typescript-esbuild-toolchain.md). The repository is one npm package with separate esbuild outputs for the Node extension host and browser Webview. Phase 0 implements these boundaries as a minimal extension and Webview shell; feature modules are added only with their owning behavior.
+The accepted runtime, build, test, and packaging baseline is documented in
+[Implementation environment](implementation-environment.md), [ADR 0004](decisions/0004-use-npm-typescript-esbuild-toolchain.md),
+and [ADR 0007](decisions/0007-adopt-rust-wasm-shared-core-and-cli.md). npm/esbuild own the
+extension and Webview package; Cargo owns the deterministic core, portable Wasm artifact, and
+native CLI.
 
 ## Implementation baseline
 
@@ -50,10 +59,38 @@ The accepted runtime, build, test, and packaging baseline is documented in [Impl
   headed run is a superseded historical record and does not qualify the current performance
   contract.
 - Node.js 24 LTS and npm for development and CI.
+- Rust `1.92.0`, Cargo, and the `wasm32-unknown-unknown` target.
 - TypeScript 6 with strict checking.
 - Node 22/CommonJS extension bundle and ES2022/ESM Webview bundle produced by esbuild.
 - Plain TypeScript and DOM UI with no React or state-management framework.
 - Vitest, VS Code Test CLI, Playwright Webview harness, and packaged-editor smoke tests at distinct layers.
+
+## Shared core ports and adapters
+
+```text
+VS Code workspace APIs                    local filesystem + terminal
+          |                                         |
+TypeScript Extension Host                      okf-cli
+          |                                         |
+versioned JSON / raw Wasm ABI              native Rust calls
+          |                                         |
+          +--------------- okf-core ----------------+
+                 parser / validator / graph /
+                 indexes / templates / agents
+```
+
+`okf-core` accepts bytes and serializable operation inputs and returns serializable results. It
+does not import filesystem, terminal, editor, Webview, or network capabilities. `okf-wasm`
+exports memory allocation/deallocation, ABI metadata, and one request dispatcher; it has no WASI
+or other imports. The Extension Host validates the ABI version, memory bounds, UTF-8, envelope,
+and operation result before publication. It loads the packaged module once during activation and
+does not silently switch to the TypeScript migration oracle after a missing module, version
+mismatch, trap, or malformed response.
+
+The Extension Host continues to own URI-first reads, Workspace Trust, previews, guarded writes,
+diagnostics, watchers, and the Webview lifecycle. The native CLI owns local path resolution,
+interactive confirmation, atomic local writes, and stdout/stderr. The Webview receives only the
+bounded presentation payload and never instantiates Wasm.
 
 ## Core model
 
@@ -114,8 +151,9 @@ and source-repair navigation do not change merely because one file is temporaril
 
 ```text
 workspace URIs
--> Markdown/YAML parser
--> normalized bundle model
+-> TypeScript capability adapter
+-> Rust core through the versioned Wasm ABI
+-> normalized serializable bundle model
 -> validator + graph builder + index generator
 -> extension messages
 -> Webview graph and details panel

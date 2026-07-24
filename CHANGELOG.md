@@ -18,6 +18,8 @@ Initial release.
   metadata, timestamps, and duplicate resources.
 - Safe managed-region generation for directory indexes and `AGENTS.md`, plus a portable Agent
   Skill template.
+- A Rust `okf-core` shared by the extension through a capability-free Wasm ABI and by an offline
+  native `okf` CLI with init, create, validate, index, graph, and agent commands.
 - Read-only `3d-force-graph` Webview with search, filters, details, backlinks, source navigation,
   stable type colors, an accessible non-spatial node list, mouse/trackpad camera navigation, visible
   camera controls, keyboard shortcuts, and interaction help.
@@ -52,4 +54,5 @@ Initial release.
 
 - OKF Workbench is licensed under the MIT License.
 - Bundled third-party license texts and notices are included with the extension.
+- Rust/Wasm dependency notices are generated from the locked Cargo graph and packaged separately.
 - The extension identifier is `straydog.okf-workbench`.

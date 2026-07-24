@@ -21,6 +21,10 @@ const {
 
 const defaultCompletionTimeoutMs = 20_000;
 const guardedQuiescenceMs = 500;
+const recoveryCommand = Object.freeze({
+  id: 'okfWorkbench.reviewPendingChanges',
+  title: 'Review Pending Changes',
+});
 
 function completionTimeout() {
   const raw = process.env.OKF_ACCEPTANCE_COMPLETION_TIMEOUT_MS;
@@ -84,7 +88,7 @@ function assertInstalledCommands(extension, catalog, registeredCommands) {
   );
   assert.deepEqual(
     contributed.map((command) => ({ id: command.command, title: command.title })),
-    catalog.map(({ id, title }) => ({ id, title })),
+    [...catalog.map(({ id, title }) => ({ id, title })), recoveryCommand],
     'The installed manifest command IDs or titles drifted from the acceptance catalog.',
   );
 
@@ -93,7 +97,7 @@ function assertInstalledCommands(extension, catalog, registeredCommands) {
     .sort();
   assert.deepEqual(
     registeredOkfCommands,
-    [...EXPECTED_COMMAND_IDS].sort(),
+    [...EXPECTED_COMMAND_IDS, recoveryCommand.id].sort(),
     'The packaged extension did not register exactly the stable command IDs.',
   );
 }

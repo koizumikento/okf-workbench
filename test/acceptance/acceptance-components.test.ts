@@ -9,6 +9,7 @@ import {
 } from '../../src/core/templates/index.js';
 import { parseBundle } from '../../src/core/parser/index.js';
 import { VALIDATION_CODES, validateBundle } from '../../src/core/validation/index.js';
+import { typescriptOkfCore } from '../../src/core/wasm/index.js';
 import { createInitializeBundleCommand } from '../../src/extension/commands/initialize-bundle.js';
 import { SerialProposalWorkflowScheduler } from '../../src/extension/commands/proposal-workflow-scheduler.js';
 import { createNewConceptCommand } from '../../src/extension/commands/new-concept.js';
@@ -51,6 +52,7 @@ function commandHarness(port = new FakeWorkspacePort()) {
     ui,
     previewer,
     shared: {
+      core: typescriptOkfCore,
       port,
       uris: stringUriCodec,
       applicator: new ProposalApplicator(port, stringUriCodec),

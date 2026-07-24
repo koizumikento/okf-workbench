@@ -5,6 +5,7 @@ node_modules/
 out/
 playwright-report/
 test-results/
+target/
 *.vsix
 *.log
 .DS_Store

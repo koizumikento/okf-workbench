@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { OKF_SEMANTIC_LIMITS } from '../../../src/core/model/index.js';
 import { parseBundle } from '../../../src/core/parser/index.js';
+import { typescriptOkfCore } from '../../../src/core/wasm/index.js';
 import { createNewConceptCommand } from '../../../src/extension/commands/new-concept.js';
 import { SerialProposalWorkflowScheduler } from '../../../src/extension/commands/proposal-workflow-scheduler.js';
 import { ProposalApplicator } from '../../../src/extension/workspace/proposalApplicator.js';
@@ -22,6 +23,7 @@ function harness() {
   const ui = new FakeCommandUi();
   const previewer = new FakeProposalPreviewer();
   const command = createNewConceptCommand({
+    core: typescriptOkfCore,
     port,
     uris: stringUriCodec,
     applicator: new ProposalApplicator(port, stringUriCodec),

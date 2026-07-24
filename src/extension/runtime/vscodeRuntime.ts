@@ -1,5 +1,7 @@
 import { languages, type Uri } from 'vscode';
 
+import { loadPackagedWasmOkfCore } from '../../core/wasm/index.js';
+import type { OkfCore } from '../../core/wasm/index.js';
 import { createVscodeDiagnosticsPublisher } from '../diagnostics/index.js';
 import {
   createVscodeMarkdownChangeSource,
@@ -14,6 +16,7 @@ export interface VscodeBundleRuntimeOptions {
   readonly onClear?: () => void;
   readonly onError?: (error: unknown, context: BundleRuntimeContext<Uri>) => void;
   readonly now?: () => Date | string;
+  readonly core?: OkfCore;
 }
 
 export function createVscodeBundleRuntime(
@@ -25,6 +28,7 @@ export function createVscodeBundleRuntime(
     uris: vscodeUriCodec,
     diagnostics: createVscodeDiagnosticsPublisher(collection),
     createChangeSource: createVscodeMarkdownChangeSource,
+    core: options.core ?? loadPackagedWasmOkfCore(),
     ...(options.onPublish === undefined ? {} : { onPublish: options.onPublish }),
     ...(options.onClear === undefined ? {} : { onClear: options.onClear }),
     ...(options.onError === undefined ? {} : { onError: options.onError }),

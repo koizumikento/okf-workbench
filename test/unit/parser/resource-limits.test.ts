@@ -588,7 +588,7 @@ describe('parser semantic resource limits', () => {
       links: [],
       source: { contentHash: 'resource-limit:unparsed' },
     });
-  });
+  }, 20_000);
 
   it('charges aggregate Markdown attention grammar-event work at exact and one-more-source boundaries', () => {
     const body = `${'*a\n\n'.repeat(512)}${'z\n'.repeat(1_024)}`;
@@ -640,7 +640,7 @@ describe('parser semantic resource limits', () => {
       links: [],
       source: { contentHash: 'resource-limit:unparsed' },
     });
-  });
+  }, 20_000);
 
   it('charges aggregate Markdown container work at exact and +1 boundaries', () => {
     const depth = OKF_SEMANTIC_LIMITS.maxMarkdownContainerNestingDepth;

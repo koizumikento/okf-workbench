@@ -1,0 +1,14 @@
+[package]
+name = "okf-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Capability-free raw Wasm adapter for okf-core"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+okf-core = { path = "../okf-core" }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { SerialProposalWorkflowScheduler } from '../../../src/extension/commands/proposal-workflow-scheduler.js';
+import { typescriptOkfCore } from '../../../src/core/wasm/index.js';
 import { createRegenerateIndexesCommand } from '../../../src/extension/commands/regenerate-indexes.js';
 import { MAX_PROPOSAL_PREVIEW_CHANGES } from '../../../src/extension/preview/proposal-preview-budget.js';
 import { ProposalApplicator } from '../../../src/extension/workspace/proposalApplicator.js';
@@ -23,6 +24,7 @@ function createCommand(directoryCount: number) {
   ui.selections.push('missing-indexes-only');
 
   const command = createRegenerateIndexesCommand({
+    core: typescriptOkfCore,
     port,
     uris: stringUriCodec,
     applicator: new ProposalApplicator(port, stringUriCodec),

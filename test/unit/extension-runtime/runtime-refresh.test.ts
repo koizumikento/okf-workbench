@@ -1,8 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { OKF_SEMANTIC_LIMITS, type Finding } from '../../../src/core/model/index.js';
+import { typescriptOkfCore } from '../../../src/core/wasm/index.js';
 import type { RuntimeDiagnosticsSink } from '../../../src/extension/diagnostics/publisher.js';
-import { BundleRuntime } from '../../../src/extension/runtime/bundleRuntime.js';
+import {
+  BundleRuntime as ProductionBundleRuntime,
+  type BundleRuntimeOptions,
+} from '../../../src/extension/runtime/bundleRuntime.js';
 import type { BundleRuntimeSnapshot } from '../../../src/extension/runtime/types.js';
 import { BUNDLE_READ_LIMITS } from '../../../src/extension/workspace/readSafety.js';
 import {
@@ -12,6 +16,12 @@ import {
 } from '../extension-workspace/fakes.js';
 
 const root = 'memfs://workspace/bundle';
+
+class BundleRuntime<TUri> extends ProductionBundleRuntime<TUri> {
+  public constructor(options: Omit<BundleRuntimeOptions<TUri>, 'core'>) {
+    super({ ...options, core: typescriptOkfCore });
+  }
+}
 
 class FakeDiagnostics implements RuntimeDiagnosticsSink {
   public clearCount = 0;

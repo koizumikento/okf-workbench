@@ -13,6 +13,7 @@ import {
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const projectLicensePath = resolve(repositoryRoot, 'LICENSE');
 const noticesPath = resolve(repositoryRoot, 'THIRD_PARTY_NOTICES.md');
+const rustNoticesPath = resolve(repositoryRoot, 'RUST_THIRD_PARTY_NOTICES.md');
 const argumentsList = process.argv.slice(2);
 const writeNotices = argumentsList.includes('--write-notices');
 const checkNotices = argumentsList.includes('--check-notices') || !writeNotices;
@@ -537,9 +538,10 @@ function parseZip(archive) {
 }
 
 async function reviewVsix(path, expectedNotices) {
-  const [archive, expectedProjectLicense] = await Promise.all([
+  const [archive, expectedProjectLicense, expectedRustNotices] = await Promise.all([
     readFile(resolve(repositoryRoot, path)),
     readFile(projectLicensePath),
+    readFile(rustNoticesPath, 'utf8'),
   ]);
   const { entries, readEntry } = parseZip(archive);
   const packagedManifestContent = readEntry('extension/package.json');
@@ -592,6 +594,17 @@ async function reviewVsix(path, expectedNotices) {
     recordFailure('The VSIX does not contain extension/THIRD_PARTY_NOTICES.md.');
   } else if (readEntry(noticesEntry).toString('utf8') !== expectedNotices) {
     recordFailure('The packaged THIRD_PARTY_NOTICES.md does not match the production graph.');
+  }
+
+  const rustNoticesEntry = [...entries.keys()].find(
+    (name) => name.toLowerCase() === 'extension/rust_third_party_notices.md',
+  );
+  if (rustNoticesEntry === undefined) {
+    recordFailure('The VSIX does not contain extension/RUST_THIRD_PARTY_NOTICES.md.');
+  } else if (readEntry(rustNoticesEntry).toString('utf8') !== expectedRustNotices) {
+    recordFailure(
+      'The packaged RUST_THIRD_PARTY_NOTICES.md does not match the reviewed Cargo graph.',
+    );
   }
 
   for (const packagedDocument of ['extension/readme.md', 'extension/changelog.md']) {

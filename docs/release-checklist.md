@@ -16,7 +16,8 @@ not a substitute for its named manual or hosted check.
       `LICENSE`, updated the manifest and lockfile identifier, and approved distributing the
       project's own code under those terms.
 - [ ] The generated third-party notices and combined distribution obligations have received the
-      required human review.
+      required human review, including the separate locked Rust/Wasm inventory in
+      `RUST_THIRD_PARTY_NOTICES.md`.
 - [ ] All confirmed findings and proof gaps in
       [security and privacy evidence](security-privacy-evidence.md) are fixed, accepted by the
       named authority, or closed with retained evidence; no release-blocking item remains.
@@ -67,6 +68,9 @@ not a substitute for its named manual or hosted check.
       is validated at release time with `ovsx verify-pat straydog`.
 - [ ] The maintainer has reviewed the final `main` commit and is ready to authorize publication by
       pushing its matching version tag.
+- [ ] The Rust/Wasm core migration has fresh current-candidate CI, compatibility, package-smoke,
+      headed Webview performance/network, and packaged-editor evidence; predecessor candidate
+      results do not qualify the new Wasm bytes.
 
 ## Version, changelog, and links
 
@@ -93,7 +97,8 @@ not a substitute for its named manual or hosted check.
 1. Freeze every packaged reader-facing file first: manifest, MIT license, generated third-party
    notices, README, changelog (including intended publication date), icon, approved public contact
    route, and runtime bundles. Start from that intended clean commit and record its full revision.
-2. Use Node.js `24.18.0` and npm `11.16.0`.
+2. Use Node.js `24.18.0`, npm `11.16.0`, Rust `1.92.0`, and the pinned
+   `wasm32-unknown-unknown` target.
 3. Install from the committed lockfile and run all local release gates:
 
    The retained `vscode-1.127.0` JSON and Markdown are versioned historical archives and
@@ -116,6 +121,7 @@ not a substitute for its named manual or hosted check.
    cmp docs/evidence/performance/vscode-1.129.1.md artifacts/performance/vscode-1.129.1-release-check.md
    mise x node@24.18.0 -- npm run package:check
    mise x node@24.18.0 -- node scripts/security-check.mjs --check-notices
+   mise x node@24.18.0 -- npm run rust:notices:check
    mise x node@24.18.0 -- node scripts/security-check.mjs --vsix artifacts/okf-workbench.vsix
    mise x node@24.18.0 -- npm audit --omit=dev --audit-level=high
    ```
@@ -124,8 +130,9 @@ not a substitute for its named manual or hosted check.
    exact package versions, and all command outputs in the release record.
    `package:check` and the packaged security gate must both confirm that `extension/LICENSE.txt` is
    the sole project-license entry, exactly matches the root `LICENSE`, and is paired with packaged
-   manifest value `MIT`; `extension.vsixmanifest` must reference that exact path in its license
-   declaration and addressable content-license asset and contain no private marketplace links.
+   manifest value `MIT`; both npm and Rust/Wasm notice files must exactly match their reviewed
+   locked graphs; `extension.vsixmanifest` must reference that exact path in its license declaration
+   and addressable content-license asset and contain no private marketplace links.
 5. Run the manual `Compatibility` workflow for that revision and retain every per-lane JSON
    artifact. Supply a genuinely older VSIX and digest when upgrade evidence is required.
 6. Complete the headed GPU/network checks on the same immutable candidate and attach the raw
@@ -166,10 +173,12 @@ git push origin v0.1.0
 ```
 
 The workflow rejects a tag whose commit is not contained in `main`, whose version does not match
-the manifest, or whose changelog entry is still `Unreleased`. It installs the exact lockfile,
+the manifest, or whose changelog entry is still `Unreleased`. It installs the exact lockfiles,
 reruns the deterministic source, dependency, Node security, audit, package, reproducibility, and
-packaged security gates, and retains one VSIX plus its checksum. A separate job creates or updates
-the matching GitHub Release from those bytes.
+packaged security gates, and retains one VSIX plus its checksum. Native jobs test and build the
+`okf` CLI on macOS arm64, Linux x86-64, and Windows x86-64, then package each binary with the MIT
+license, Rust third-party notices, and a SHA-256 checksum. A separate job creates or updates the
+matching GitHub Release from those retained bytes.
 
 The final job downloads the same candidate, verifies its checksum, installs the locked `ovsx`
 `1.0.2` CLI without lifecycle scripts, and exposes `OPEN_VSX_TOKEN` only to
@@ -207,7 +216,8 @@ The official process and current account requirements are documented in
 - [ ] Confirm generated workspace files remain after uninstall and that uninstall leaves no
       extension-owned background process.
 - [ ] Confirm the signed Git tag and generated GitHub Release identify the tested revision and
-      contain the retained VSIX and checksum.
+      contain the retained VSIX, all three native CLI archives, their licenses and notices, and
+      every corresponding checksum.
 - [ ] Revoke the one-time token, or record the owner, scope, storage, and rotation date for a
       retained release credential.
 

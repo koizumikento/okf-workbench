@@ -1,11 +1,43 @@
 import { readFile } from 'node:fs/promises';
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
-test('loads the locally bundled accessible Webview shell', async ({ page }) => {
+async function loadShell(page: Page): Promise<void> {
   await page.setContent('<main class="okf-workbench" data-okf-workbench-root></main>');
+  await page.evaluate(() => {
+    const webviewGlobal = globalThis as typeof globalThis & {
+      __okfMessages?: unknown[];
+      acquireVsCodeApi?: () => { postMessage(message: unknown): void };
+    };
+    webviewGlobal.__okfMessages = [];
+    webviewGlobal.acquireVsCodeApi = () => ({
+      postMessage(message) {
+        webviewGlobal.__okfMessages?.push(message);
+      },
+    });
+  });
   await page.addStyleTag({ path: 'dist/webview/main.css' });
   await page.addScriptTag({ path: 'dist/webview/main.js', type: 'module' });
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const messages = (
+          globalThis as typeof globalThis & { readonly __okfMessages?: readonly unknown[] }
+        ).__okfMessages;
+        return messages?.some(
+          (message) =>
+            typeof message === 'object' &&
+            message !== null &&
+            'type' in message &&
+            message.type === 'ready',
+        );
+      }),
+    )
+    .toBe(true);
+}
+
+test('loads the locally bundled accessible Webview shell', async ({ page }) => {
+  await loadShell(page);
 
   await expect(page.getByRole('heading', { name: 'OKF 3D Graph' })).toBeVisible();
   await expect(page.getByRole('status')).toHaveText('Starting graph view…');
@@ -16,9 +48,7 @@ test('loads the locally bundled accessible Webview shell', async ({ page }) => {
 });
 
 test('presents resource and timestamp metadata as inert text', async ({ page }) => {
-  await page.setContent('<main class="okf-workbench" data-okf-workbench-root></main>');
-  await page.addStyleTag({ path: 'dist/webview/main.css' });
-  await page.addScriptTag({ path: 'dist/webview/main.js', type: 'module' });
+  await loadShell(page);
 
   const resource = '<img src=x onerror="globalThis.__metadataExecuted=true">';
   const timestamp = '<script>globalThis.__metadataExecuted=true</script>';
@@ -86,9 +116,7 @@ test('presents resource and timestamp metadata as inert text', async ({ page }) 
 test('presents a failed source as repairable identity instead of invented metadata', async ({
   page,
 }) => {
-  await page.setContent('<main class="okf-workbench" data-okf-workbench-root></main>');
-  await page.addStyleTag({ path: 'dist/webview/main.css' });
-  await page.addScriptTag({ path: 'dist/webview/main.js', type: 'module' });
+  await loadShell(page);
 
   await page.evaluate(() => {
     window.dispatchEvent(

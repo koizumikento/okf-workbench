@@ -130,7 +130,10 @@ workspace URIs
    retained failure records. Provider traversal also stops at 10,000 directories or 100,000
    entries per root. Any access or safety-limit truncation prevents automatic/current-candidate
    selection and routes the user to explicit directory selection.
-2. Stream Markdown through the URI-first workspace port. Provider-reported relative path segments
+2. Stream Markdown through the URI-first workspace port. Exclude every `.agents/` subtree during
+   traversal and omit a root `AGENTS.md` from the document inventory because both are project-local
+   agent integration controls rather than OKF concepts; a nested `AGENTS.md` outside `.agents/`
+   remains eligible. Provider-reported relative path segments
    retain their verbatim identity; they never re-enter the percent-decoding path used to validate
    user-entered write targets. An unreadable document or child subtree becomes a path- and
    URI-scoped conformance finding while readable siblings continue through parsing, validation, and

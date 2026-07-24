@@ -156,6 +156,33 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 }
 
 describe('loadBundle', () => {
+  it('excludes project-local agent integration files from a root-level bundle', async () => {
+    const port = new FakeWorkspacePort();
+    port.putDirectory(root);
+    port.putText(`${root}/index.md`, '# Bundle\n');
+    port.putText(`${root}/alpha.md`, '# Alpha\n');
+    port.putText(`${root}/AGENTS.md`, '# Repository instructions\n');
+    port.putText(
+      `${root}/.agents/skills/maintain-okf-knowledge/SKILL.md`,
+      '---\nname: maintain-okf-knowledge\n---\n',
+    );
+    port.putText(`${root}/docs/AGENTS.md`, '# Nested concept remains eligible\n');
+    port.traversalFailures.set(
+      `${root}/.agents/unreadable`,
+      new Error('Excluded agent metadata must not become a bundle failure.'),
+    );
+
+    const loaded = await loadBundle(port, stringUriCodec, root, root);
+
+    expect(loaded.documents.map(({ bundlePath }) => bundlePath)).toEqual([
+      'alpha.md',
+      'docs/AGENTS.md',
+      'index.md',
+    ]);
+    expect(loaded.failures).toEqual([]);
+    expect(port.reads).toEqual([`${root}/alpha.md`, `${root}/docs/AGENTS.md`, `${root}/index.md`]);
+  });
+
   it('revalidates every workspace ancestor before traversal and refuses an ancestor swap', async () => {
     const workspaceRoot = 'memfs://workspace';
     const ancestor = `${workspaceRoot}/container`;

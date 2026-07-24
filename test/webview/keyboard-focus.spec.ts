@@ -81,6 +81,10 @@ test('keeps filter and selected-result focus during keyboard-only interaction', 
   await page.keyboard.press('Tab');
   await expect(search).toBeFocused();
   await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
   await expect(decisionFilter).toBeFocused();
 
   await page.keyboard.press('Space');
@@ -180,6 +184,7 @@ test('restores semantic or nearest focus across graph replacement and opens sour
   await page.keyboard.press('Tab');
   await expect(page.locator('button[data-node-id="beta"]')).toBeFocused();
   await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
   const openSource = page.getByRole('button', { name: 'Open source Markdown' });
   await expect(openSource).toBeFocused();
   await page.keyboard.press('Enter');
@@ -205,6 +210,10 @@ test('restores semantic or nearest focus across graph replacement and opens sour
 test('preserves a focused filter by value and falls back within its group after refresh', async ({
   page,
 }) => {
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
   await page.keyboard.press('Tab');
   await page.keyboard.press('Tab');
   const decisionFilter = page.getByLabel('decision', { exact: true });

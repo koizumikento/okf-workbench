@@ -371,6 +371,10 @@ Webview scrolling outside that surface remains untouched. Toolbar and keyboard c
 same controller as node/search focus. Camera movement temporarily resumes rendering and restores
 the idle stop after a bounded transition or gesture window. Hiding, reopening, switching bundles,
 or closing the panel must not leave an active simulation, camera timer, or stale listener.
+The adapter also owns the optional folder-cluster force. Toggling it reheats the `d3` simulation
+only for the existing bounded cooldown window; filtering or graph replacement reinitializes the
+force against private render nodes. No folder anchor is serialized, published as a graph node, or
+counted in graph statistics.
 
 ## State and async model
 
@@ -385,7 +389,7 @@ The extension host owns:
 The Webview owns presentation-only state:
 
 - Camera and node coordinates.
-- Search and filters.
+- Search, type/tag filters, selected folder subtree, and the folder-grouping toggle.
 - Selected node and visible details.
 - Focus state for non-spatial navigation.
 
@@ -462,10 +466,10 @@ retaining individual entries, and discovery uses `stat.size` to avoid avoidable 
 | Layer | Tool baseline | What it proves |
 | --- | --- | --- |
 | Core unit and fixture tests | Vitest `4.1.x`, Node environment | Parsing, preservation, resolution, validation, indexes, templates, graph model |
-| Webview state unit tests | Vitest `4.1.x`, Node environment | Pure search, filtering, focus, presentation, color, and message-decoding state without claiming browser DOM behavior |
+| Webview state unit tests | Vitest `4.1.x`, Node environment | Pure search, type/tag/folder filtering, folder hierarchy, focus, presentation, color, custom-force, and message-decoding state without claiming browser DOM behavior |
 | Security boundaries | Dedicated Vitest and Playwright configs | Host/path/protocol boundaries plus hostile-content DOM execution and browser egress interception |
 | Extension integration | `@vscode/test-cli` `0.0.x` and `@vscode/test-electron` `3.0.x` with Mocha | Commands, workspace FS, diagnostics, watchers, URI behavior, source navigation, and the registered non-`file:` read boundary |
-| Webview browser harness | Playwright `1.61.x` on Chromium | Real DOM, WebGL smoke, CSP-compatible bundle loading, keyboard interaction, camera toolbar behavior, and wheel/pinch event boundaries |
+| Webview browser harness | Playwright `1.61.x` on Chromium | Real DOM, WebGL smoke, CSP-compatible bundle loading, folder tree/filter/breadcrumb interaction, keyboard interaction, camera toolbar behavior, and wheel/pinch event boundaries |
 | Release smoke | Packaged VSIX in VS Code and VSCodium | Installation, activation, packaged resources, upgrade, uninstall |
 | Performance | Headed VS Code `1.129.1` release benchmark harness | QR-002 and QR-003 evidence on recorded hardware; VSCodium performance may be investigated separately but cannot satisfy the current strict release record |
 

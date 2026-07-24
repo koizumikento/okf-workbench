@@ -1,6 +1,7 @@
 import ForceGraph3D, { type ForceGraph3DInstance } from '3d-force-graph';
 import type { GraphPayload } from '../../core/model/types.js';
-import { colorForType } from '../state/colors.js';
+import { colorForType, fnv1a } from '../state/colors.js';
+import { folderPathForNode, topLevelFolderPath } from '../state/folders.js';
 import type { GraphRenderer, GraphRendererCallbacks } from './adapter.js';
 import { GraphCameraController, type CameraCoordinates } from './camera-controller.js';
 
@@ -9,9 +10,14 @@ interface ForceNode {
   readonly type: string;
   readonly orphan: boolean;
   readonly brokenLinkCount: number;
+  readonly folderPath: string;
+  readonly topLevelFolderPath: string;
   x?: number;
   y?: number;
   z?: number;
+  vx?: number;
+  vy?: number;
+  vz?: number;
 }
 
 interface ForceLink {
@@ -22,6 +28,8 @@ interface ForceLink {
 
 const CAMERA_DISTANCE = 80;
 const CAMERA_TRANSITION_MS = 600;
+const FOLDER_CLUSTER_FORCE = 'okf-folder-cluster';
+const FOLDER_CLUSTER_STRENGTH = 0.14;
 
 export type ForceEngine = 'd3' | 'ngraph';
 
@@ -35,6 +43,17 @@ export interface ForceGraphRendererOptions {
   readonly onEngineStop?: () => void;
 }
 
+interface FolderClusterForce {
+  (alpha: number): void;
+  initialize(nodes: ForceNode[]): void;
+}
+
+interface Coordinates {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+}
+
 export class ForceGraphRenderer implements GraphRenderer {
   readonly #container: HTMLElement;
   readonly #graph: ForceGraph3DInstance<ForceNode, ForceLink>;
@@ -42,7 +61,9 @@ export class ForceGraphRenderer implements GraphRenderer {
   readonly #onEngineStop: (() => void) | undefined;
   readonly #cameraController: GraphCameraController;
   readonly #selectedColor: string;
+  readonly #forceEngine: ForceEngine;
   #nodes = new Map<string, ForceNode>();
+  #groupByFolder = false;
   #selectedNodeId: string | undefined;
   #cameraPauseTimer: ReturnType<typeof globalThis.setTimeout> | undefined;
   #idlePauseTimer: ReturnType<typeof globalThis.setTimeout> | undefined;
@@ -57,6 +78,7 @@ export class ForceGraphRenderer implements GraphRenderer {
   ) {
     this.#container = container;
     this.#onEngineStop = options.onEngineStop;
+    this.#forceEngine = options.forceEngine ?? DEFAULT_FORCE_ENGINE;
     const backgroundColor = resolveBackgroundColor(container);
     this.#selectedColor = selectedColorForBackground(backgroundColor);
     const graph = new ForceGraph3D(container, {
@@ -83,7 +105,7 @@ export class ForceGraphRenderer implements GraphRenderer {
       .linkOpacity(0.38)
       .linkDirectionalArrowLength(3.5)
       .linkDirectionalArrowRelPos(1)
-      .forceEngine(options.forceEngine ?? DEFAULT_FORCE_ENGINE)
+      .forceEngine(this.#forceEngine)
       .cooldownTicks(FORCE_GRAPH_COOLDOWN_TICKS)
       .onEngineStop(() => this.#handleEngineStop())
       .enableNavigationControls(true)
@@ -125,12 +147,27 @@ export class ForceGraphRenderer implements GraphRenderer {
 
     const nodes: ForceNode[] = payload.nodes
       .filter((node) => visibleNodeIds.has(node.id))
-      .map((node) => ({
-        id: node.id,
-        type: node.type,
-        orphan: node.orphan,
-        brokenLinkCount: node.brokenLinkCount,
-      }));
+      .map((node) => {
+        const folderPath = folderPathForNode(node.id);
+        const forceNode: ForceNode = {
+          id: node.id,
+          type: node.type,
+          orphan: node.orphan,
+          brokenLinkCount: node.brokenLinkCount,
+          folderPath,
+          topLevelFolderPath: topLevelFolderPath(node.id),
+        };
+        if (this.#groupByFolder && this.#forceEngine === 'ngraph') {
+          const target = deterministicFolderTarget(
+            forceNode.topLevelFolderPath,
+            forceNode.folderPath,
+          );
+          forceNode.x = target.x;
+          forceNode.y = target.y;
+          forceNode.z = target.z;
+        }
+        return forceNode;
+      });
     const links: ForceLink[] = payload.edges
       .filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target))
       .map((edge) => ({ id: edge.id, source: edge.source, target: edge.target }));
@@ -151,6 +188,17 @@ export class ForceGraphRenderer implements GraphRenderer {
     } else {
       this.#graph.pauseAnimation();
     }
+  }
+
+  public setFolderGrouping(enabled: boolean): void {
+    if (this.#disposed || this.#groupByFolder === enabled) return;
+    this.#groupByFolder = enabled;
+    if (this.#forceEngine !== 'd3') return;
+    this.#graph.d3Force(FOLDER_CLUSTER_FORCE, enabled ? createFolderClusterForce() : null);
+    this.#engineActive = true;
+    this.#clearIdlePauseTimer();
+    this.#graph.d3ReheatSimulation();
+    if (this.#visible) this.#graph.resumeAnimation();
   }
 
   public selectNode(nodeId: string | undefined): void {
@@ -287,6 +335,84 @@ export class ForceGraphRenderer implements GraphRenderer {
     globalThis.clearTimeout(this.#idlePauseTimer);
     this.#idlePauseTimer = undefined;
   }
+}
+
+export function createFolderClusterForce(strength = FOLDER_CLUSTER_STRENGTH): FolderClusterForce {
+  let nodes: ForceNode[] = [];
+  let targets = new Map<string, Coordinates>();
+
+  const force = ((alpha: number): void => {
+    const pull = strength * alpha;
+    for (const node of nodes) {
+      const target = targets.get(node.id);
+      if (target === undefined) continue;
+      node.vx = finiteCoordinate(node.vx) + (target.x - finiteCoordinate(node.x)) * pull;
+      node.vy = finiteCoordinate(node.vy) + (target.y - finiteCoordinate(node.y)) * pull;
+      node.vz = finiteCoordinate(node.vz) + (target.z - finiteCoordinate(node.z)) * pull;
+    }
+  }) as FolderClusterForce;
+
+  force.initialize = (nextNodes: ForceNode[]): void => {
+    nodes = nextNodes;
+    const groups = [...new Set(nodes.map((node) => node.topLevelFolderPath))].sort();
+    const groupCenters = new Map(
+      groups.map((group, index) => [group, groupCenter(index, groups.length)]),
+    );
+    targets = new Map(
+      nodes.map((node) => {
+        const center = groupCenters.get(node.topLevelFolderPath) ?? { x: 0, y: 0, z: 0 };
+        const nestedOffset = nestedFolderOffset(node.folderPath);
+        return [
+          node.id,
+          {
+            x: center.x + nestedOffset.x,
+            y: center.y + nestedOffset.y,
+            z: center.z + nestedOffset.z,
+          },
+        ];
+      }),
+    );
+  };
+
+  return force;
+}
+
+function deterministicFolderTarget(topLevelPath: string, folderPath: string): Coordinates {
+  const seed = fnv1a(topLevelPath);
+  const center = groupCenter(seed % 32, 32);
+  const nestedOffset = nestedFolderOffset(folderPath);
+  return {
+    x: center.x + nestedOffset.x,
+    y: center.y + nestedOffset.y,
+    z: center.z + nestedOffset.z,
+  };
+}
+
+function groupCenter(index: number, count: number): Coordinates {
+  if (count <= 1) return { x: 0, y: 0, z: 0 };
+  const radius = 90 + Math.min(count, 12) * 7;
+  const y = 1 - (index / Math.max(1, count - 1)) * 2;
+  const radial = Math.sqrt(Math.max(0, 1 - y * y));
+  const angle = index * Math.PI * (3 - Math.sqrt(5));
+  return {
+    x: Math.cos(angle) * radial * radius,
+    y: y * radius,
+    z: Math.sin(angle) * radial * radius,
+  };
+}
+
+function nestedFolderOffset(folderPath: string): Coordinates {
+  if (folderPath === '') return { x: 0, y: 0, z: 0 };
+  const hash = fnv1a(folderPath);
+  const depth = folderPath.split('/').length;
+  const magnitude = Math.min(28, 8 + depth * 5);
+  const angle = ((hash % 360) * Math.PI) / 180;
+  const elevation = ((((hash >>> 9) % 180) - 90) * Math.PI) / 180;
+  return {
+    x: Math.cos(angle) * Math.cos(elevation) * magnitude,
+    y: Math.sin(elevation) * magnitude,
+    z: Math.sin(angle) * Math.cos(elevation) * magnitude,
+  };
 }
 
 function readControlsTarget(controls: object): CameraCoordinates {

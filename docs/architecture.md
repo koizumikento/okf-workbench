@@ -296,7 +296,17 @@ counter computes the exact serialization size without creating the JSON string a
 over 16 MiB. The extension-to-Webview decoder mirrors the same string, count, cardinality,
 reference, backlink, statistics, and byte limits.
 
-The renderer is the standalone `3d-force-graph` package behind a repository-owned adapter, as recorded in [ADR 0003](decisions/0003-use-3d-force-graph.md). A repository-owned camera controller inside that adapter coordinates OrbitControls, toolbar commands, keyboard commands, search focus, and node focus. It classifies Chromium wheel input conservatively, owns the only custom wheel listener, prevents default scrolling only on the graph surface, and keeps library-specific control objects inside the adapter. It is locally bundled, exposes an accessible non-spatial navigation surface, resumes rendering only for bounded camera interaction windows, stops its animation loop after cooldown, and uses `d3` as the checked-in runtime fallback. The former schema-v3 headed comparison selected `d3`, but the strengthened evidence contract invalidated that selection for release qualification. A fresh full same-Electron comparison must observe real WebGL clears/draws, verify every interaction outcome, and produce a positive coherent camera rate with camera-period graph draws covering every observed clear before selecting the current release engine. Dependency licensing and packaged notices are reviewed separately from the project-license gate. Any renderer or candidate-bundle change invalidates an evidence binding and requires a new evaluation.
+The renderer is the standalone `3d-force-graph` package behind a repository-owned adapter, as recorded in [ADR 0003](decisions/0003-use-3d-force-graph.md). A repository-owned camera controller inside that adapter coordinates OrbitControls, toolbar commands, keyboard commands, search focus, and node focus. It classifies Chromium wheel input conservatively, owns the only custom wheel listener, prevents default scrolling only on the graph surface, and keeps library-specific control objects inside the adapter. It is locally bundled, exposes an accessible non-spatial navigation surface, resumes rendering only for bounded camera interaction windows, stops its animation loop after cooldown, and uses `d3` as the checked-in runtime fallback.
+
+Folder hierarchy is derived inside the Webview from the canonical POSIX `GraphNode.id`; it is not
+added to the extension/Webview protocol or core semantic model. Folder selection is another
+presentation filter, while breadcrumbs provide the same action from selected-concept details. The
+renderer adapter may attach folder-path fields to its private render nodes and install one named
+custom `d3` force for deterministic top-level clusters and weaker nested offsets. It never creates
+folder nodes or edges, changes type colors, or mutates the received graph payload. The internal
+`ngraph` benchmark candidate receives deterministic initial positions instead of a `d3` API call.
+
+The former schema-v3 headed comparison selected `d3`, but the strengthened evidence contract invalidated that selection for release qualification. A fresh full same-Electron comparison must observe real WebGL clears/draws, verify every interaction outcome, and produce a positive coherent camera rate with camera-period graph draws covering every observed clear before selecting the current release engine. Dependency licensing and packaged notices are reviewed separately from the project-license gate. Any renderer or candidate-bundle change invalidates an evidence binding and requires a new evaluation.
 
 ## Performance targets
 

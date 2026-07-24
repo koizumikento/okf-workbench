@@ -97,7 +97,11 @@ Requirements:
 - Treat link edges as untyped relationships.
 - Color nodes by `type`, with a stable fallback for unknown values.
 - Search by concept ID, title, and tags.
-- Filter by type and tag.
+- Filter by type, tag, and a folder subtree derived from canonical concept paths.
+- Show a collapsible folder tree with recursive concept counts and a clickable folder breadcrumb
+  for the selected concept. Root-level concepts appear under `Bundle root`.
+- Optionally group the 3D layout by folder without creating folder concepts, semantic edges, or
+  source changes.
 - Highlight broken links and orphan concepts.
 - Show metadata, outgoing links, and backlinks for the selected node.
 - Navigate the camera with mouse and trackpad rotation, pan, and zoom gestures.

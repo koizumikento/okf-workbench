@@ -202,6 +202,7 @@ function getCameraHarnessBundle(): Promise<string> {
         function createRenderer(calls) {
           return {
             replaceGraph() { calls.push('replaceGraph'); },
+            setFolderGrouping(enabled) { calls.push('setFolderGrouping:' + enabled); },
             selectNode(nodeId) { calls.push(nodeId === undefined ? 'selectNode:clear' : 'selectNode:' + nodeId); },
             focusNode(nodeId) { calls.push('focusNode:' + nodeId); },
             zoomIn() { calls.push('zoomIn'); },

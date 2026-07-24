@@ -12,6 +12,7 @@ import { createForceGraphRenderer } from './graph/force-graph-adapter.js';
 import {
   availableTags,
   availableTypes,
+  buildFolderHierarchy,
   createInitialPresentationState,
   displayConceptType,
   isListNavigationKey,
@@ -31,6 +32,8 @@ interface AppElements {
   readonly status: HTMLParagraphElement;
   readonly statistics: HTMLParagraphElement;
   readonly search: HTMLInputElement;
+  readonly folderTree: HTMLDivElement;
+  readonly groupByFolder: HTMLInputElement;
   readonly typeFilters: HTMLDivElement;
   readonly tagFilters: HTMLDivElement;
   readonly clearFilters: HTMLButtonElement;
@@ -54,7 +57,11 @@ interface AppElements {
 type FilterGroup = 'tag' | 'type';
 
 type FocusAnchor =
-  | { readonly kind: 'control'; readonly value: 'clearFilters' | 'search' }
+  | {
+      readonly kind: 'control';
+      readonly value: 'clearFilters' | 'groupByFolder' | 'search';
+    }
+  | { readonly kind: 'folder'; readonly value: string; readonly index: number }
   | { readonly kind: 'result'; readonly value: string; readonly index: number }
   | {
       readonly kind: 'filter';
@@ -66,6 +73,7 @@ type FocusAnchor =
 
 class UnavailableGraphRenderer implements GraphRenderer {
   public replaceGraph(): void {}
+  public setFolderGrouping(): void {}
   public selectNode(): void {}
   public focusNode(): void {}
   public zoomIn(): void {}
@@ -211,10 +219,18 @@ export class WorkbenchApp {
       const focusAnchor = this.#captureFocusAnchor();
       this.#state = presentationReducer(this.#state, { type: 'clearFilters' });
       this.#updateFilterControls();
+      this.#renderFolders();
       this.#renderResults();
       this.#renderGraphEmpty();
       this.#syncGraphDataAndReportFailure();
       this.#restoreFocusAnchor(focusAnchor);
+    });
+    this.#elements.groupByFolder.addEventListener('change', () => {
+      this.#state = presentationReducer(this.#state, {
+        type: 'setFolderGrouping',
+        enabled: this.#elements.groupByFolder.checked,
+      });
+      this.#syncGraphDataAndReportFailure();
     });
     this.#elements.results.addEventListener('keydown', (event) => {
       if (!isListNavigationKey(event.key)) return;
@@ -312,6 +328,7 @@ export class WorkbenchApp {
     this.#renderStatus();
     this.#renderStatistics();
     this.#renderFilters();
+    this.#renderFolders();
     this.#renderResults();
     this.#renderGraphEmpty();
     this.#renderDetails();
@@ -372,7 +389,80 @@ export class WorkbenchApp {
       },
     );
     this.#elements.clearFilters.disabled =
-      this.#state.selectedTypes.size === 0 && this.#state.selectedTags.size === 0;
+      this.#state.selectedTypes.size === 0 &&
+      this.#state.selectedTags.size === 0 &&
+      this.#state.selectedFolderPath === undefined;
+    this.#elements.groupByFolder.checked = this.#state.groupByFolder;
+  }
+
+  #renderFolders(): void {
+    const graph = this.#state.graph;
+    if (graph === undefined) {
+      this.#elements.folderTree.replaceChildren(
+        createElement('p', 'okf-muted', 'No bundle loaded'),
+      );
+      return;
+    }
+
+    const hierarchy = buildFolderHierarchy(graph.nodes);
+    const allFolders = createElement(
+      'button',
+      'okf-folder-button okf-folder-button--all',
+      `All folders (${hierarchy.descendantConceptCount})`,
+    );
+    allFolders.type = 'button';
+    allFolders.dataset.folderAll = 'true';
+    allFolders.setAttribute('aria-pressed', String(this.#state.selectedFolderPath === undefined));
+    allFolders.addEventListener('click', () => this.#selectFolder(undefined));
+
+    const tree = createElement('ul', 'okf-folder-tree');
+    tree.setAttribute('role', 'tree');
+    tree.append(this.#createFolderTreeItem(hierarchy));
+    this.#elements.folderTree.replaceChildren(allFolders, tree);
+  }
+
+  #createFolderTreeItem(folder: ReturnType<typeof buildFolderHierarchy>): HTMLLIElement {
+    const item = createElement('li', 'okf-folder-tree__item');
+    item.setAttribute('role', 'treeitem');
+    item.setAttribute('aria-level', String(folder.depth + 1));
+    item.setAttribute('aria-selected', String(this.#state.selectedFolderPath === folder.path));
+    if (folder.children.length > 0) item.setAttribute('aria-expanded', 'true');
+
+    const count =
+      folder.path === ''
+        ? `${folder.directConceptCount} direct`
+        : String(folder.descendantConceptCount);
+    const button = createElement('button', 'okf-folder-button', `${folder.label} (${count})`);
+    button.type = 'button';
+    button.dataset.folderPath = folder.path;
+    button.setAttribute('aria-pressed', String(this.#state.selectedFolderPath === folder.path));
+    button.title =
+      folder.path === '' ? 'Show concepts at the bundle root' : `Show ${folder.path} subtree`;
+    button.addEventListener('click', () => this.#selectFolder(folder.path));
+    item.append(button);
+
+    if (folder.children.length > 0) {
+      const children = createElement('ul', 'okf-folder-tree__children');
+      children.setAttribute('role', 'group');
+      children.append(...folder.children.map((child) => this.#createFolderTreeItem(child)));
+      item.append(children);
+    }
+    return item;
+  }
+
+  #selectFolder(folderPath: string | undefined): void {
+    const focusAnchor = this.#captureFocusAnchor();
+    this.#state = presentationReducer(this.#state, { type: 'selectFolder', folderPath });
+    this.#updateFilterControls();
+    this.#renderFolders();
+    this.#renderResults();
+    this.#renderGraphEmpty();
+    this.#renderDetails();
+    this.#syncGraphDataAndReportFailure();
+    if (visibleNodes(this.#state).length > 0) {
+      this.#runRendererAction((renderer) => renderer.fitGraph());
+    }
+    this.#restoreFocusAnchor(focusAnchor);
   }
 
   #renderResults(): void {
@@ -454,6 +544,7 @@ export class WorkbenchApp {
     renderDetails(this.#elements.details, this.#state, {
       onNavigate: (nodeId) => this.#revealAndSelectNode(nodeId),
       onOpenSource: (nodeId) => this.#openSource(nodeId),
+      onSelectFolder: (folderPath) => this.#selectFolder(folderPath),
     });
   }
 
@@ -464,6 +555,7 @@ export class WorkbenchApp {
       return this.#rendererFailureReason ?? 'renderer-construction-failed';
     }
     try {
+      this.#renderer.setFolderGrouping(this.#state.groupByFolder);
       this.#renderer.replaceGraph(graph, new Set(visibleNodes(this.#state).map((node) => node.id)));
       this.#renderer.selectNode(this.#state.selectedNodeId);
       return undefined;
@@ -613,7 +705,10 @@ export class WorkbenchApp {
       input.checked = this.#state.selectedTags.has(input.dataset.filterValue ?? '');
     }
     this.#elements.clearFilters.disabled =
-      this.#state.selectedTypes.size === 0 && this.#state.selectedTags.size === 0;
+      this.#state.selectedTypes.size === 0 &&
+      this.#state.selectedTags.size === 0 &&
+      this.#state.selectedFolderPath === undefined;
+    this.#elements.groupByFolder.checked = this.#state.groupByFolder;
   }
 
   #filterInputs(group: FilterGroup): HTMLInputElement[] {
@@ -628,6 +723,19 @@ export class WorkbenchApp {
     if (active === this.#elements.search) return { kind: 'control', value: 'search' };
     if (active === this.#elements.clearFilters) {
       return { kind: 'control', value: 'clearFilters' };
+    }
+    if (active === this.#elements.groupByFolder) {
+      return { kind: 'control', value: 'groupByFolder' };
+    }
+
+    const folderButtons = this.#folderButtons();
+    const folderIndex = folderButtons.findIndex((button) => button === active);
+    if (folderIndex >= 0) {
+      const value =
+        folderButtons[folderIndex]?.dataset.folderAll === 'true'
+          ? '*'
+          : folderButtons[folderIndex]?.dataset.folderPath;
+      if (value !== undefined) return { kind: 'folder', value, index: folderIndex };
     }
 
     const resultButtons = this.#resultButtons();
@@ -661,8 +769,22 @@ export class WorkbenchApp {
 
     if (anchor.kind === 'control') {
       const control =
-        anchor.value === 'search' ? this.#elements.search : this.#elements.clearFilters;
+        anchor.value === 'search'
+          ? this.#elements.search
+          : anchor.value === 'groupByFolder'
+            ? this.#elements.groupByFolder
+            : this.#elements.clearFilters;
       if (this.#focusElement(control)) return;
+    } else if (anchor.kind === 'folder') {
+      const buttons = this.#folderButtons();
+      const index = preservedItemIndex(
+        anchor.value,
+        anchor.index,
+        buttons.map((button) =>
+          button.dataset.folderAll === 'true' ? '*' : (button.dataset.folderPath ?? ''),
+        ),
+      );
+      if (index !== undefined && this.#focusElement(buttons[index])) return;
     } else if (anchor.kind === 'result') {
       const buttons = this.#resultButtons();
       const index = preservedItemIndex(
@@ -703,6 +825,14 @@ export class WorkbenchApp {
   #focusResult(nodeId: string): boolean {
     const button = this.#resultButtons().find((candidate) => candidate.dataset.nodeId === nodeId);
     return this.#focusElement(button);
+  }
+
+  #folderButtons(): HTMLButtonElement[] {
+    return Array.from(
+      this.#elements.folderTree.querySelectorAll<HTMLButtonElement>(
+        'button[data-folder-all], button[data-folder-path]',
+      ),
+    );
   }
 
   #focusElement(element: HTMLElement | undefined): boolean {
@@ -781,6 +911,21 @@ function createShell(root: HTMLElement): AppElements {
   search.placeholder = 'ID, title, or tag';
   search.autocomplete = 'off';
 
+  const folderSection = createElement('details', 'okf-folder-section');
+  folderSection.open = true;
+  folderSection.append(createElement('summary', 'okf-label okf-folder-summary', 'Folders'));
+  const folderTree = createElement('div', 'okf-folder-tree-container');
+  folderSection.append(folderTree);
+
+  const groupByFolderLabel = createElement('label', 'okf-grouping-toggle');
+  const groupByFolder = createElement('input');
+  groupByFolder.type = 'checkbox';
+  groupByFolder.id = 'okf-group-by-folder';
+  groupByFolderLabel.append(
+    groupByFolder,
+    createElement('span', undefined, 'Group 3D graph by folder'),
+  );
+
   const typeFieldset = createElement('fieldset', 'okf-fieldset');
   typeFieldset.append(createElement('legend', 'okf-label', 'Types'));
   const typeFilters = createElement('div', 'okf-filter-list');
@@ -791,7 +936,15 @@ function createShell(root: HTMLElement): AppElements {
   tagFieldset.append(tagFilters);
   const clearFilters = createElement('button', 'okf-secondary-button', 'Clear filters');
   clearFilters.type = 'button';
-  controls.append(searchLabel, search, typeFieldset, tagFieldset, clearFilters);
+  controls.append(
+    searchLabel,
+    search,
+    folderSection,
+    groupByFolderLabel,
+    typeFieldset,
+    tagFieldset,
+    clearFilters,
+  );
 
   const graphSection = createElement('section', 'okf-graph-panel');
   graphSection.setAttribute('aria-labelledby', 'okf-graph-title');
@@ -867,6 +1020,8 @@ function createShell(root: HTMLElement): AppElements {
     status,
     statistics,
     search,
+    folderTree,
+    groupByFolder,
     typeFilters,
     tagFilters,
     clearFilters,

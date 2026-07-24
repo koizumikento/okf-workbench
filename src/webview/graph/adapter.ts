@@ -8,6 +8,7 @@ export interface GraphRendererCallbacks {
 /** Repository-owned boundary. No renderer-library types may escape this interface. */
 export interface GraphRenderer {
   replaceGraph(payload: GraphPayload, visibleNodeIds: ReadonlySet<string>): void;
+  setFolderGrouping(enabled: boolean): void;
   selectNode(nodeId: string | undefined): void;
   focusNode(nodeId: string): void;
   zoomIn(): void;

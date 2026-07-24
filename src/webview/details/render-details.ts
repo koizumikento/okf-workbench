@@ -1,12 +1,14 @@
 import type { GraphNode } from '../../core/model/types.js';
-import { displayConceptType } from '../state/labels.js';
+import { folderBreadcrumb } from '../state/folders.js';
 import { detailsFocusKey, type DetailsFocusGroup } from '../state/focus.js';
+import { displayConceptType } from '../state/labels.js';
 import type { PresentationState } from '../state/presentation.js';
 import { appendTextDefinition, createElement } from '../dom/elements.js';
 
 export interface DetailsCallbacks {
   readonly onNavigate: (nodeId: string) => void;
   readonly onOpenSource: (nodeId: string) => void;
+  readonly onSelectFolder: (folderPath: string) => void;
 }
 
 function nodeLabel(node: GraphNode | undefined, fallbackId: string): string {
@@ -45,6 +47,34 @@ function appendNodeLinks(
   container.append(list);
 }
 
+function createFolderBreadcrumb(
+  node: GraphNode,
+  selectedFolderPath: string | undefined,
+  onSelectFolder: (folderPath: string) => void,
+): HTMLElement {
+  const navigation = createElement('nav', 'okf-folder-breadcrumb');
+  navigation.setAttribute('aria-label', 'Concept folder');
+  const list = createElement('ol', 'okf-folder-breadcrumb__list');
+  const folders = folderBreadcrumb(node.id);
+  for (const [index, folder] of folders.entries()) {
+    const item = createElement('li', 'okf-folder-breadcrumb__item');
+    const button = createElement('button', 'okf-text-button', folder.label);
+    button.type = 'button';
+    button.dataset.focusKey = `folder:${folder.path}`;
+    button.setAttribute('aria-pressed', String(selectedFolderPath === folder.path));
+    button.title =
+      folder.path === '' ? 'Show concepts at the bundle root' : `Show ${folder.path} subtree`;
+    button.addEventListener('click', () => onSelectFolder(folder.path));
+    item.append(button);
+    if (index < folders.length - 1) {
+      item.append(createElement('span', 'okf-folder-breadcrumb__separator', '/'));
+    }
+    list.append(item);
+  }
+  navigation.append(list);
+  return navigation;
+}
+
 export function renderDetails(
   container: HTMLElement,
   state: PresentationState,
@@ -63,6 +93,11 @@ export function renderDetails(
   }
 
   const title = createElement('h3', 'okf-details__title', node.title ?? node.id);
+  const breadcrumb = createFolderBreadcrumb(
+    node,
+    state.selectedFolderPath,
+    callbacks.onSelectFolder,
+  );
   const metadata = createElement('dl', 'okf-metadata');
   appendTextDefinition(metadata, 'ID', node.id);
   if (node.sourceFailed === true) {
@@ -77,7 +112,7 @@ export function renderDetails(
     sourceButton.dataset.focusKey = detailsFocusKey('source', node.id);
     sourceButton.addEventListener('click', () => callbacks.onOpenSource(node.id));
     const content = createElement('div', 'okf-details__content');
-    content.append(title, metadata, repair, sourceButton);
+    content.append(title, breadcrumb, metadata, repair, sourceButton);
     container.replaceChildren(heading, content);
     return;
   }
@@ -97,7 +132,7 @@ export function renderDetails(
   sourceButton.addEventListener('click', () => callbacks.onOpenSource(node.id));
 
   const content = createElement('div', 'okf-details__content');
-  content.append(title, metadata, sourceButton);
+  content.append(title, breadcrumb, metadata, sourceButton);
 
   const nodesById = new Map(graph.nodes.map((candidate) => [candidate.id, candidate]));
   const outgoingIds = graph.edges

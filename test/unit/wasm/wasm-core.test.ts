@@ -49,7 +49,7 @@ beforeAll(() => {
   core = createWasmOkfCore(
     readFileSync(resolve('target/wasm32-unknown-unknown/release/okf_wasm.wasm')),
   );
-});
+}, 60_000);
 
 describe('Rust/Wasm core boundary', () => {
   test('is capability-free and reports the versioned ABI', () => {

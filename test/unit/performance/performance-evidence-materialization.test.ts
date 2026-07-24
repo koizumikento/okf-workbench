@@ -32,6 +32,11 @@ describe('immutable performance build materialization', () => {
     writeProductionFixture(sourceRoot, 'transient-B');
     await preparePrivatePerformanceMaterializationRoot(sourceRoot, materializationRoot);
     await materializeInputSnapshot(inputSnapshot, materializationRoot);
+    const {
+      OKF_ALLOW_CANONICAL_WASM: _allowCanonicalWasm,
+      OKF_CANONICAL_WASM_PATH: _canonicalWasmPath,
+      ...isolatedEnvironment
+    } = process.env;
     execFileSync(
       process.execPath,
       [
@@ -43,7 +48,7 @@ describe('immutable performance build materialization', () => {
       ],
       {
         cwd: materializationRoot,
-        env: { ...process.env, OKF_TEST_CORE_PLACEHOLDER: '1' },
+        env: { ...isolatedEnvironment, OKF_TEST_CORE_PLACEHOLDER: '1' },
         stdio: 'pipe',
       },
     );

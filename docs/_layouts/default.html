@@ -50,6 +50,12 @@
     {% endif %}
 
     <main id="main-content" class="shell content{% if page.hero %} content-home{% endif %}">
+      {% unless page.hero %}
+        <header class="page-heading">
+          <p class="eyebrow">OKF Workbench</p>
+          <h1>{{ page.title | escape }}</h1>
+        </header>
+      {% endunless %}
       {{ content }}
     </main>
 

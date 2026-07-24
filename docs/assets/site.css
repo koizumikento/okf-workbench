@@ -213,6 +213,17 @@ h3 {
   margin-top: 0;
 }
 
+.page-heading {
+  margin-bottom: 2.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.page-heading h1 {
+  margin: 0;
+  font-size: clamp(2.25rem, 6vw, 4rem);
+}
+
 .lede {
   max-width: 48rem;
   color: var(--muted);

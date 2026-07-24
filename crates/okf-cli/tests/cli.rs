@@ -1,5 +1,9 @@
 use serde_json::Value;
-use std::{fs, path::Path, process::Command};
+use std::{
+    fs,
+    path::Path,
+    process::{Command, Stdio},
+};
 use tempfile::tempdir;
 
 fn okf() -> Command {
@@ -120,6 +124,77 @@ fn graph_is_semantic_json_not_a_terminal_renderer() {
     let body = json_stdout(&output);
     assert_eq!(body["command"], "graph");
     assert_eq!(body["result"]["protocolVersion"], 1);
+}
+
+#[test]
+fn version_and_new_use_the_stable_json_envelope() {
+    let version = okf().arg("version").output().unwrap();
+    assert!(version.status.success(), "{version:?}");
+    let version_body = json_stdout(&version);
+    assert_eq!(version_body["schemaVersion"], 1);
+    assert_eq!(version_body["command"], "version");
+    assert_eq!(version_body["result"]["abiVersion"], 1);
+
+    let directory = tempdir().unwrap();
+    initialize(directory.path());
+    let created = okf()
+        .args([
+            "new",
+            directory.path().to_str().unwrap(),
+            "--title",
+            "CLI contract",
+            "--path",
+            "nested/contract.md",
+            "--check",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(created.status.code(), Some(1), "{created:?}");
+    let created_body = json_stdout(&created);
+    assert_eq!(created_body["schemaVersion"], 1);
+    assert_eq!(created_body["command"], "new");
+    assert_eq!(created_body["result"]["applied"], false);
+    assert!(!directory.path().join("nested/contract.md").exists());
+}
+
+#[test]
+fn index_refuses_partial_parse_results_without_writing() {
+    let directory = tempdir().unwrap();
+    initialize(directory.path());
+    let invalid = directory.path().join("area/broken.md");
+    fs::create_dir_all(invalid.parent().unwrap()).unwrap();
+    fs::write(&invalid, "---\ntype: [unterminated\n").unwrap();
+
+    let output = okf()
+        .args(["index", directory.path().to_str().unwrap(), "--apply"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("incomplete bundle"));
+    assert!(!directory.path().join("area/index.md").exists());
+    assert_eq!(
+        fs::read_to_string(&invalid).unwrap(),
+        "---\ntype: [unterminated\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn closed_stdout_is_a_clean_pipeline_termination() {
+    let directory = tempdir().unwrap();
+    initialize(directory.path());
+    let mut child = okf()
+        .args([
+            "graph",
+            directory.path().to_str().unwrap(),
+            "--format",
+            "json",
+        ])
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    drop(child.stdout.take());
+    assert!(child.wait().unwrap().success());
 }
 
 #[test]

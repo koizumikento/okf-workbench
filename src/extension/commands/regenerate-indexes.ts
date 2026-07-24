@@ -10,7 +10,6 @@ import {
   type IndexConceptInput,
   type IndexGenerationMode,
 } from '../../core/indexes/index.js';
-import { parseBundle } from '../../core/parser/index.js';
 import type { ParseBundleInput } from '../../core/parser/index.js';
 import type { OkfCore } from '../../core/wasm/index.js';
 import { loadBundle } from '../runtime/loadBundle.js';
@@ -145,8 +144,19 @@ export async function collectWorkspaceIndexSource<TUri>(
     revision: 0,
     documents,
   };
-  const parsed =
-    core === undefined ? parseBundle(input) : core.inspect(input, '2026-01-01T00:00:00Z').bundle;
+  if (core === undefined) {
+    return {
+      ok: false,
+      problems: [
+        problem(
+          'index-core-unavailable',
+          'The production Wasm core was not supplied for index planning.',
+          'Reload the Extension Host, then run index generation again.',
+        ),
+      ],
+    };
+  }
+  const parsed = core.inspect(input, '2026-01-01T00:00:00Z').bundle;
   if (parsed.failures.length > 0) {
     return {
       ok: false,

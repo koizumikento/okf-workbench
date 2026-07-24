@@ -1,5 +1,6 @@
 use crate::{Finding, LinkClassification, ParseFailureReason, ParsedBundle};
 use chrono::{DateTime, FixedOffset};
+use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
@@ -54,7 +55,7 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
             "error",
             &bundle.root_uri,
             "OKF conformance: the selected bundle root is missing index.md.",
-            "Create index.md with an OKF version declaration.",
+            "Run OKF: Regenerate Indexes to synthesize the missing root index, or create index.md with an OKF version declaration.",
         ));
     }
 
@@ -70,7 +71,7 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
             continue;
         };
         let range = frontmatter_field_range(frontmatter, "okf_version");
-        match declared_value.as_str() {
+        match reserved.okf_version.as_deref() {
             Some("0.1") => {}
             Some(declared) if future_minor_version(declared) => findings.push(Finding {
                 code: "okf.compatibility.future-minor-version".to_owned(),
@@ -172,10 +173,10 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
                     &concept.source.uri,
                     &link.range,
                     format!(
-                        "OKF curation: link target {:?} cannot be normalized safely.",
+                        "OKF curation: link target {:?} cannot be decoded or normalized safely.",
                         link.raw_target
                     ),
-                    "Use a valid Markdown URL.",
+                    "Use a valid Markdown URL with each path segment percent-encoded at most once.",
                 )),
                 _ => {}
             }
@@ -262,18 +263,29 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
         .filter(|(_, owners)| owners.len() > 1)
     {
         for (index, owner) in owners.iter().enumerate() {
-            let peers = owners
+            let peer_ids = owners
                 .iter()
                 .enumerate()
                 .filter(|(peer_index, _)| *peer_index != index)
-                .map(|(_, peer)| peer.id.as_str())
-                .collect::<Vec<_>>()
-                .join(", ");
+                .map(|(_, peer)| bounded_diagnostic_text(&peer.id))
+                .take(8)
+                .collect::<Vec<_>>();
+            let omitted = owners.len() - 1 - peer_ids.len();
+            let peers = format!(
+                "{}{}",
+                peer_ids.join(", "),
+                if omitted > 0 {
+                    format!(", and {omitted} more")
+                } else {
+                    String::new()
+                }
+            );
             findings.push(curation(
                 "okf.curation.duplicate-resource",
                 &owner.source.uri,
                 &format!(
-                    "OKF curation: resource {resource:?} is also declared by {peers}."
+                    "OKF curation: resource {:?} is also declared by {peers}.",
+                    bounded_diagnostic_text(resource)
                 ),
                 "Confirm whether these concepts intentionally describe the same exact resource identifier.",
                 Some(concept_field_range(owner, "resource")),
@@ -281,10 +293,13 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
         }
     }
 
+    for reserved in &bundle.reserved_documents {
+        validate_reserved_document(reserved, &mut findings);
+    }
+
     findings.sort_by(|left, right| {
-        category_rank(&left.category)
-            .cmp(&category_rank(&right.category))
-            .then_with(|| left.uri.cmp(&right.uri))
+        left.uri
+            .cmp(&right.uri)
             .then_with(|| {
                 left.range
                     .as_ref()
@@ -298,14 +313,238 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
                             .unwrap_or(usize::MAX),
                     )
             })
-            .then_with(|| finding_rank(&left.code).cmp(&finding_rank(&right.code)))
+            .then_with(|| {
+                left.range
+                    .as_ref()
+                    .map(|range| range.end.offset)
+                    .unwrap_or(usize::MAX)
+                    .cmp(
+                        &right
+                            .range
+                            .as_ref()
+                            .map(|range| range.end.offset)
+                            .unwrap_or(usize::MAX),
+                    )
+            })
+            .then_with(|| category_rank(&left.category).cmp(&category_rank(&right.category)))
             .then_with(|| left.code.cmp(&right.code))
             .then_with(|| left.message.cmp(&right.message))
     });
     findings.dedup_by(|left, right| {
-        left.code == right.code && left.uri == right.uri && left.message == right.message
+        left.uri == right.uri
+            && left.range == right.range
+            && left.category == right.category
+            && left.severity == right.severity
+            && left.code == right.code
+            && left.message == right.message
+            && left.corrective_action == right.corrective_action
     });
     findings
+}
+
+fn bounded_diagnostic_text(value: &str) -> String {
+    const LIMIT: usize = 160;
+    let units = value.encode_utf16().count();
+    if units <= LIMIT {
+        return value.to_owned();
+    }
+    let mut retained = String::new();
+    let mut retained_units = 0usize;
+    for character in value.chars() {
+        let units = character.len_utf16();
+        if retained_units + units >= LIMIT {
+            break;
+        }
+        retained.push(character);
+        retained_units += units;
+    }
+    retained.push('…');
+    retained
+}
+
+fn validate_reserved_document(reserved: &crate::ReservedDocument, findings: &mut Vec<Finding>) {
+    let is_root_index = reserved.source.bundle_path.replace('\\', "/") == "index.md";
+    if let Some(frontmatter) = &reserved.frontmatter
+        && !(reserved.reserved_kind == "index" && is_root_index)
+    {
+        findings.push(Finding {
+            code: "okf.conformance.reserved-frontmatter".to_owned(),
+            category: "conformance".to_owned(),
+            severity: "error".to_owned(),
+            uri: reserved.source.uri.clone(),
+            message: format!(
+                "OKF conformance: {}.md may not contain YAML frontmatter at this location.",
+                reserved.reserved_kind
+            ),
+            corrective_action: Some(
+                "Remove the frontmatter. Only the bundle-root index.md may declare `okf_version`."
+                    .to_owned(),
+            ),
+            range: Some(frontmatter.range.clone()),
+        });
+    }
+
+    let headings = markdown_headings(&reserved.body);
+    if reserved.reserved_kind == "index" {
+        if headings.is_empty() {
+            findings.push(Finding {
+                code: "okf.conformance.index-structure".to_owned(),
+                category: "conformance".to_owned(),
+                severity: "error".to_owned(),
+                uri: reserved.source.uri.clone(),
+                message:
+                    "OKF conformance: index.md must contain at least one Markdown section heading."
+                        .to_owned(),
+                corrective_action: Some(
+                    "Add a heading and list the directory's concepts or subdirectories beneath it."
+                        .to_owned(),
+                ),
+                range: Some(reserved.body_range.clone()),
+            });
+        }
+    } else {
+        let date_headings = headings
+            .iter()
+            .filter(|heading| heading.level == HeadingLevel::H2)
+            .collect::<Vec<_>>();
+        let invalid = date_headings
+            .iter()
+            .find(|heading| !is_iso_date(&heading.text));
+        if date_headings.is_empty() || invalid.is_some() {
+            let (message, range) = if let Some(heading) = invalid {
+                (
+                    format!(
+                        "OKF conformance: log.md date heading {:?} is not YYYY-MM-DD.",
+                        heading.text
+                    ),
+                    translate_body_range(&reserved.body_range.start, &heading.range),
+                )
+            } else {
+                (
+                    "OKF conformance: log.md must group entries under `## YYYY-MM-DD` date headings."
+                        .to_owned(),
+                    reserved.body_range.clone(),
+                )
+            };
+            findings.push(Finding {
+                code: "okf.conformance.log-structure".to_owned(),
+                category: "conformance".to_owned(),
+                severity: "error".to_owned(),
+                uri: reserved.source.uri.clone(),
+                message,
+                corrective_action: Some(
+                    "Use ISO 8601 date headings such as `## 2026-07-22`.".to_owned(),
+                ),
+                range: Some(range),
+            });
+        }
+    }
+}
+
+struct MarkdownHeading {
+    level: HeadingLevel,
+    text: String,
+    range: crate::SourceRange,
+}
+
+fn markdown_headings(body: &str) -> Vec<MarkdownHeading> {
+    let mut pending: Option<(HeadingLevel, String, std::ops::Range<usize>)> = None;
+    let mut headings = Vec::new();
+    for (event, range) in Parser::new_ext(body, Options::empty()).into_offset_iter() {
+        match event {
+            Event::Start(Tag::Heading { level, .. }) => {
+                pending = Some((level, String::new(), range));
+            }
+            Event::Text(text) | Event::Code(text) => {
+                if let Some((_, value, _)) = pending.as_mut() {
+                    value.push_str(&text);
+                }
+            }
+            Event::End(TagEnd::Heading(_)) => {
+                if let Some((level, text, start)) = pending.take() {
+                    let mut end = range.end;
+                    while end > start.start
+                        && body
+                            .as_bytes()
+                            .get(end - 1)
+                            .is_some_and(|byte| matches!(*byte, b'\r' | b'\n'))
+                    {
+                        end -= 1;
+                    }
+                    headings.push(MarkdownHeading {
+                        level,
+                        text,
+                        range: source_range_for(body, start.start, end),
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+    headings
+}
+
+fn is_iso_date(value: &str) -> bool {
+    chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok()
+        && value.len() == "YYYY-MM-DD".len()
+}
+
+fn source_range_for(text: &str, start: usize, end: usize) -> crate::SourceRange {
+    crate::SourceRange {
+        start: source_position_for(text, start),
+        end: source_position_for(text, end),
+    }
+}
+
+fn source_position_for(text: &str, byte_offset: usize) -> crate::SourcePosition {
+    let prefix = &text[..byte_offset.min(text.len())];
+    let mut line = 0usize;
+    let mut character = 0usize;
+    let mut chars = prefix.chars().peekable();
+    while let Some(value) = chars.next() {
+        if value == '\r' {
+            if chars.peek().is_some_and(|next| *next == '\n') {
+                chars.next();
+            }
+            line += 1;
+            character = 0;
+        } else if value == '\n' {
+            line += 1;
+            character = 0;
+        } else {
+            character += value.len_utf16();
+        }
+    }
+    crate::SourcePosition {
+        offset: prefix.encode_utf16().count(),
+        line,
+        character,
+    }
+}
+
+fn translate_body_range(
+    body_start: &crate::SourcePosition,
+    relative: &crate::SourceRange,
+) -> crate::SourceRange {
+    crate::SourceRange {
+        start: translate_position(body_start, &relative.start),
+        end: translate_position(body_start, &relative.end),
+    }
+}
+
+fn translate_position(
+    body_start: &crate::SourcePosition,
+    relative: &crate::SourcePosition,
+) -> crate::SourcePosition {
+    crate::SourcePosition {
+        offset: body_start.offset + relative.offset,
+        line: body_start.line + relative.line,
+        character: if relative.line == 0 {
+            body_start.character + relative.character
+        } else {
+            relative.character
+        },
+    }
 }
 
 fn category_rank(category: &str) -> u8 {
@@ -347,19 +586,6 @@ fn json_value_kind(value: &serde_json::Value) -> &'static str {
         serde_json::Value::String(_) => "string",
         serde_json::Value::Array(_) => "array",
         serde_json::Value::Object(_) => "object",
-    }
-}
-
-fn finding_rank(code: &str) -> u8 {
-    match code {
-        "okf.curation.duplicate-resource" => 0,
-        "okf.curation.orphan-concept" => 1,
-        "okf.curation.missing-description" => 2,
-        "okf.curation.missing-title" => 3,
-        "okf.curation.broken-link" => 4,
-        "okf.curation.invalid-link" => 5,
-        "okf.curation.out-of-bundle-link" => 6,
-        _ => 7,
     }
 }
 

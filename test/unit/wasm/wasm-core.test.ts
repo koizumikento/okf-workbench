@@ -17,6 +17,8 @@ import {
   renderBundlePreset,
   renderConceptTemplate,
 } from '../../../src/core/templates/index.js';
+import { OKF_SEMANTIC_LIMITS } from '../../../src/core/model/index.js';
+import type { ParseBundleInput } from '../../../src/core/parser/index.js';
 import { loadFixture, readFixtureFiles } from '../../helpers/fixtures.js';
 
 const fixtureNames = [
@@ -138,6 +140,70 @@ describe('Rust/Wasm core boundary', () => {
     expect(() => createWasmOkfCore(Uint8Array.from([0, 1, 2]))).toThrow('not valid WebAssembly');
   });
 
+  test('returns malformed ABI requests as bounded data and remains reusable', () => {
+    const bytes = readFileSync(resolve('target/wasm32-unknown-unknown/release/okf_wasm.wasm'));
+    const instance = new WebAssembly.Instance(new WebAssembly.Module(bytes), {});
+    const exports = instance.exports as unknown as {
+      readonly memory: WebAssembly.Memory;
+      readonly okf_alloc: (length: number) => number;
+      readonly okf_call: (pointer: number, length: number) => bigint;
+      readonly okf_dealloc: (pointer: number, length: number) => void;
+    };
+    const invalid = Uint8Array.from([0xff]);
+    const pointer = exports.okf_alloc(invalid.byteLength);
+    new Uint8Array(exports.memory.buffer, pointer, invalid.byteLength).set(invalid);
+    const packed = exports.okf_call(pointer, invalid.byteLength);
+    const responsePointer = Number(packed >> 32n);
+    const responseLength = Number(packed & 0xffff_ffffn);
+    const response = JSON.parse(
+      new TextDecoder('utf-8', { fatal: true }).decode(
+        new Uint8Array(exports.memory.buffer, responsePointer, responseLength),
+      ),
+    ) as { readonly error?: { readonly code?: unknown } };
+    exports.okf_dealloc(responsePointer, responseLength);
+
+    expect(response.error?.code).toBe('invalid-request');
+    expect(core.renderBundle('minimal', '2026-07-24T12:34:56Z')).toHaveLength(1);
+  });
+
+  test('reuses allocations across repeated requests without unbounded memory growth', () => {
+    const bytes = readFileSync(resolve('target/wasm32-unknown-unknown/release/okf_wasm.wasm'));
+    const instance = new WebAssembly.Instance(new WebAssembly.Module(bytes), {});
+    const exports = instance.exports as unknown as {
+      readonly memory: WebAssembly.Memory;
+      readonly okf_alloc: (length: number) => number;
+      readonly okf_call: (pointer: number, length: number) => bigint;
+      readonly okf_dealloc: (pointer: number, length: number) => void;
+    };
+    const request = new TextEncoder().encode('{"operation":"metadata"}');
+    const initialMemoryBytes = exports.memory.buffer.byteLength;
+    for (let index = 0; index < 500; index += 1) {
+      const pointer = exports.okf_alloc(request.byteLength);
+      new Uint8Array(exports.memory.buffer, pointer, request.byteLength).set(request);
+      const packed = exports.okf_call(pointer, request.byteLength);
+      const responsePointer = Number(packed >> 32n);
+      const responseLength = Number(packed & 0xffff_ffffn);
+      expect(responseLength).toBeGreaterThan(0);
+      exports.okf_dealloc(responsePointer, responseLength);
+    }
+    expect(exports.memory.buffer.byteLength).toBeLessThanOrEqual(initialMemoryBytes + 65_536);
+
+    const input = inputFor(
+      [
+        ['index.md', ['---', 'okf_version: "0.1"', '---', '# Root', ''].join('\n')],
+        ['concept.md', concept('# Concept\n')],
+      ],
+      'fixture:/abi-lifecycle',
+    );
+    for (let index = 0; index < 500; index += 1) {
+      expect(core.inspect(input, '2026-07-22T12:00:00Z').graph.revision).toBe(7);
+    }
+    const second = createWasmOkfCore(bytes);
+    expect(second.inspect(input, '2026-07-22T12:00:00Z')).toEqual(
+      core.inspect(input, '2026-07-22T12:00:00Z'),
+    );
+  });
+
   test.each(['minimal', 'software-project', 'data-analytics'] as const)(
     'bundle preset %s is byte-identical to the migration oracle',
     (preset) => {
@@ -196,20 +262,481 @@ describe('Rust/Wasm core boundary', () => {
       );
     },
   );
+
+  test.each([
+    {
+      name: 'all link-resolution classifications and reference forms',
+      documents: [
+        [
+          'topics/source.md',
+          concept(
+            [
+              '[Nested target](./nested/target.md?mode=full#section)',
+              '[Root Unicode](/shared/%E6%97%A5%E6%9C%AC%20%E8%AA%9E.md)',
+              '[External](https://example.test/reference?q=1#top)',
+              '[Missing](./missing.md)',
+              '[Escape](../../outside.md)',
+              '[Encoded escape](/%2e%2e/secret.md)',
+              '[Encoded separator escape](%2F..%2Fsecret.md)',
+              '[Local heading](#details)',
+              '[Directory](./nested/)',
+              '[Malformed percent](./bad%ZZ.md)',
+              '[Not Markdown](./asset.json)',
+              '[Full reference][target]',
+              '[Collapsed][]',
+              '[shortcut]',
+              '',
+              '[target]: ./nested/target.md',
+              '[collapsed]: ./nested/target.md#collapsed',
+              '[shortcut]: ./nested/target.md?from=shortcut',
+              '',
+            ].join('\n'),
+          ),
+        ],
+        ['topics/nested/target.md', concept('# Target\n')],
+        ['topics/nested/index.md', '# Nested\n'],
+        ['shared/日本 語.md', concept('# 日本語\n')],
+      ],
+    },
+    {
+      name: 'CR-only frontmatter, body, and source ranges',
+      documents: [
+        [
+          'cr-only.md',
+          [
+            '---',
+            'type: reference',
+            'title: CR only',
+            '---',
+            '# Body',
+            '',
+            '[Target](./target.md)',
+          ].join('\r'),
+        ],
+        ['target.md', concept('# Target\n')],
+      ],
+    },
+    {
+      name: 'one BOM for text and bytes',
+      documents: [
+        ['text.md', `\uFEFF${concept('# Text 😀\n', 'title: Text 😀\n')}`],
+        [
+          'bytes.md',
+          new TextEncoder().encode(`\uFEFF${concept('# Bytes 😀\n', 'title: Bytes 😀\n')}`),
+        ],
+      ],
+    },
+    {
+      name: 'explicit standard tags reached through aliases',
+      documents: [
+        [
+          'index.md',
+          [
+            '---',
+            'version_anchor: &version !!str 0.1',
+            'okf_version: *version',
+            '---',
+            '# Root',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'aliased-type.md',
+          [
+            '---',
+            'type_anchor: &type !!str reference',
+            'type: *type',
+            'title: Aliased type',
+            '---',
+            '# Body',
+            '',
+          ].join('\n'),
+        ],
+      ],
+    },
+    {
+      name: 'tag-shaped producer mappings are not trusted as provenance',
+      documents: [
+        [
+          'index.md',
+          [
+            '---',
+            'okf_version:',
+            '  $okf-workbench:yaml-tag:',
+            '    tag: tag:yaml.org,2002:str',
+            '    value: "0.1"',
+            '    source: "0.1"',
+            '---',
+            '# Root',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'spoofed.md',
+          [
+            '---',
+            'type:',
+            '  $okf-workbench:yaml-tag:',
+            '    tag: tag:yaml.org,2002:str',
+            '    value: reference',
+            '    source: reference',
+            '---',
+            '# Body',
+            '',
+          ].join('\n'),
+        ],
+      ],
+    },
+    {
+      name: 'custom tags and non-string mapping keys fail as data',
+      documents: [
+        ['custom-tag.md', concept('', 'producer: !runtime-object value\n')],
+        [
+          'non-string-key.md',
+          ['---', 'type: reference', 'producer:', '  ? [one, two]', '  : value', '---', ''].join(
+            '\n',
+          ),
+        ],
+        ['valid.md', concept('# Valid\n')],
+      ],
+    },
+    {
+      name: 'duplicate keys and non-canonical closing delimiter fail independently',
+      documents: [
+        ['duplicate.md', ['---', 'type: note', 'type: reference', '---', ''].join('\n')],
+        ['document-end.md', ['---', 'type: reference', '...', '# Not a delimiter', ''].join('\n')],
+        ['valid.md', concept('# Valid\n')],
+      ],
+    },
+  ])('$name matches the TypeScript semantic oracle', ({ documents }) => {
+    const rootUri = 'fixture:/adversarial';
+    const entries = documents as unknown as readonly (readonly [string, string | Uint8Array])[];
+    const input = inputFor(entries, rootUri);
+    expect(core.inspect(input, '2026-07-22T12:00:00Z')).toEqual(
+      typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'),
+    );
+  });
+
+  test.each([
+    {
+      name: 'reserved-document structure, location, and version rules',
+      documents: [
+        ['index.md', ['---', 'okf_version: "0.2"', '---', 'plain text only', ''].join('\n')],
+        [
+          'area/index.md',
+          ['---', 'title: Nested frontmatter is forbidden', '---', '# Area', ''].join('\n'),
+        ],
+        ['log.md', ['# Log', '', '## 2026-02-30', 'entry', ''].join('\n')],
+        ['area/log.md', ['# Nested log without date', ''].join('\n')],
+        ['valid.md', concept('# Valid\n', 'title: Valid\ndescription: Complete\n')],
+      ],
+    },
+    {
+      name: 'concept conformance and timestamp curation boundaries',
+      documents: [
+        ['index.md', ['---', 'okf_version: "0.1"', '---', '# Root', ''].join('\n')],
+        [
+          'missing-type.md',
+          ['---', 'type: "   "', 'title: "   "', 'description: ""', '---', ''].join('\n'),
+        ],
+        [
+          'bad-timestamp.md',
+          concept('', 'title: Bad\ndescription: Bad timestamp\ntimestamp: 2026-07-22\n'),
+        ],
+        [
+          'future.md',
+          concept(
+            '',
+            'title: Future\ndescription: Future timestamp\ntimestamp: "2026-07-22T12:05:00.001Z"\n',
+          ),
+        ],
+        [
+          'tolerance.md',
+          concept(
+            '',
+            'title: Tolerance\ndescription: Exact tolerance\ntimestamp: "2026-07-22T12:05:00Z"\n',
+          ),
+        ],
+      ],
+    },
+    {
+      name: 'duplicate resources are deterministic and peer lists are bounded',
+      documents: [
+        ['index.md', ['---', 'okf_version: "0.1"', '---', '# Root', ''].join('\n')],
+        ...Array.from(
+          { length: 11 },
+          (_, index) =>
+            [
+              `resource-${String(index).padStart(2, '0')}.md`,
+              concept(
+                '',
+                `title: Resource ${String(index)}\ndescription: Duplicate\nresource: urn:shared\n`,
+              ),
+            ] as const,
+        ),
+      ],
+    },
+    {
+      name: 'source failures suppress semantic findings but retain identities and links',
+      documents: [
+        ['index.md', ['---', 'okf_version: "0.1"', '---', '# Root', ''].join('\n')],
+        ['bad.md', Uint8Array.from([0xc3, 0x28])],
+        [
+          'source.md',
+          concept('[Bad](./bad.md)\n', 'title: Source\ndescription: Links to a failed identity\n'),
+        ],
+      ],
+    },
+  ])('$name has exact validation and graph parity', ({ documents }) => {
+    const rootUri = 'fixture:/validation-adversarial';
+    const entries = documents as readonly (readonly [string, string | Uint8Array])[];
+    const input = inputFor(entries, rootUri);
+    expect(core.inspect(input, '2026-07-22T12:00:00Z')).toEqual(
+      typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'),
+    );
+  });
+
+  test('resource-limit identity, source, metadata, and Markdown one-over cases match', () => {
+    const rootUri = 'fixture:/resource-adversarial';
+    const base = [
+      'index.md',
+      ['---', 'okf_version: "0.1"', '---', '# Root', ''].join('\n'),
+    ] as const;
+    const cases: readonly {
+      readonly name: string;
+      readonly entries: readonly (readonly [string, string | Uint8Array])[];
+      readonly input?: ReturnType<typeof inputFor>;
+    }[] = [
+      {
+        name: 'provider path code units',
+        entries: [
+          base,
+          [`${'a'.repeat(OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits)}.md`, concept('')],
+        ],
+      },
+      {
+        name: 'provider path segments',
+        entries: [
+          base,
+          [
+            `${Array.from({ length: OKF_SEMANTIC_LIMITS.maxProviderPathSegments }, () => 'd').join(
+              '/',
+            )}/concept.md`,
+            concept(''),
+          ],
+        ],
+      },
+      {
+        name: 'source URI code units',
+        entries: [],
+        input: {
+          rootUri,
+          revision: 7,
+          documents: [
+            {
+              bundlePath: 'uri.md',
+              content: concept(''),
+              uri: `fixture:/${'u'.repeat(OKF_SEMANTIC_LIMITS.maxSourceUriCodeUnits)}`,
+            },
+          ],
+        },
+      },
+      {
+        name: 'content hash code units',
+        entries: [],
+        input: {
+          rootUri,
+          revision: 7,
+          documents: [
+            {
+              bundlePath: 'hash.md',
+              content: concept(''),
+              uri: `${rootUri}/hash.md`,
+              contentHash: 'h'.repeat(OKF_SEMANTIC_LIMITS.maxContentHashCodeUnits + 1),
+            },
+          ],
+        },
+      },
+      {
+        name: 'semantic source bytes',
+        entries: [
+          base,
+          [
+            'source-bytes.md',
+            concept('x'.repeat(OKF_SEMANTIC_LIMITS.maxSemanticDocumentBytes + 1)),
+          ],
+        ],
+      },
+      {
+        name: 'semantic source lines',
+        entries: [
+          base,
+          ['source-lines.md', concept('x\n'.repeat(OKF_SEMANTIC_LIMITS.maxSemanticDocumentLines))],
+        ],
+      },
+      {
+        name: 'frontmatter lines',
+        entries: [
+          base,
+          [
+            'yaml-lines.md',
+            [
+              '---',
+              'type: reference',
+              ...Array.from(
+                { length: OKF_SEMANTIC_LIMITS.maxFrontmatterLines },
+                (_, index) => `field_${String(index)}: value`,
+              ),
+              '---',
+              '',
+            ].join('\n'),
+          ],
+        ],
+      },
+      {
+        name: 'frontmatter indentation',
+        entries: [
+          base,
+          [
+            'yaml-indent.md',
+            [
+              '---',
+              'type: reference',
+              `${' '.repeat(OKF_SEMANTIC_LIMITS.maxFrontmatterIndentColumns + 1)}field: value`,
+              '---',
+              '',
+            ].join('\n'),
+          ],
+        ],
+      },
+      {
+        name: 'frontmatter structural tokens',
+        entries: [
+          base,
+          [
+            'yaml-tokens.md',
+            [
+              '---',
+              'type: reference',
+              '#'.repeat(OKF_SEMANTIC_LIMITS.maxFrontmatterStructuralTokens + 1),
+              '---',
+              '',
+            ].join('\n'),
+          ],
+        ],
+      },
+      {
+        name: 'Markdown body code units',
+        entries: [
+          base,
+          ['body-units.md', concept('x'.repeat(OKF_SEMANTIC_LIMITS.maxMarkdownBodyCodeUnits + 1))],
+        ],
+      },
+      {
+        name: 'Markdown lines',
+        entries: [
+          base,
+          ['body-lines.md', concept('x\n'.repeat(OKF_SEMANTIC_LIMITS.maxMarkdownLines + 1))],
+        ],
+      },
+      {
+        name: 'concept tags',
+        entries: [
+          base,
+          [
+            'tags.md',
+            concept(
+              '',
+              `tags: [${Array.from(
+                { length: OKF_SEMANTIC_LIMITS.maxTagsPerConcept + 1 },
+                (_, index) => `tag-${String(index)}`,
+              ).join(', ')}]\n`,
+            ),
+          ],
+        ],
+      },
+      {
+        name: 'concept type',
+        entries: [
+          base,
+          [
+            'type.md',
+            [
+              '---',
+              `type: ${'t'.repeat(OKF_SEMANTIC_LIMITS.maxTypeCodeUnits + 1)}`,
+              '---',
+              '',
+            ].join('\n'),
+          ],
+        ],
+      },
+      ...(
+        [
+          ['title', 'title', OKF_SEMANTIC_LIMITS.maxTitleCodeUnits],
+          ['description', 'description', OKF_SEMANTIC_LIMITS.maxDescriptionCodeUnits],
+          ['resource', 'resource', OKF_SEMANTIC_LIMITS.maxResourceCodeUnits],
+          ['timestamp', 'timestamp', OKF_SEMANTIC_LIMITS.maxTimestampCodeUnits],
+        ] as const
+      ).map(([name, field, limit]) => ({
+        name: `concept ${name}`,
+        entries: [
+          base,
+          [`${name}.md`, concept('', `${field}: ${'x'.repeat(limit + 1)}\n`)] as const,
+        ],
+      })),
+      {
+        name: 'concept tag identity',
+        entries: [
+          base,
+          [
+            'tag.md',
+            concept('', `tags: [${'t'.repeat(OKF_SEMANTIC_LIMITS.maxTagCodeUnits + 1)}]\n`),
+          ],
+        ],
+      },
+      {
+        name: 'link target',
+        entries: [
+          base,
+          [
+            'target.md',
+            concept(
+              `[Too long](${'a'.repeat(OKF_SEMANTIC_LIMITS.maxLinkTargetCodeUnits + 1)}.md)\n`,
+            ),
+          ],
+        ],
+      },
+      {
+        name: 'link label',
+        entries: [
+          base,
+          [
+            'label.md',
+            concept(
+              `[${'a'.repeat(OKF_SEMANTIC_LIMITS.maxLinkLabelCodeUnits + 1)}](./missing.md)\n`,
+            ),
+          ],
+        ],
+      },
+    ];
+
+    for (const item of cases) {
+      const input = item.input ?? inputFor(item.entries, rootUri);
+      const actual = core.inspect(input, '2026-07-22T12:00:00Z');
+      const expected = typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z');
+      expect(actual, item.name).toEqual(expected);
+    }
+  }, 60_000);
 });
+
+function concept(body: string, additional = ''): string {
+  return `---\ntype: reference\n${additional}---\n${body}`;
+}
 
 function inputFor(
   entries: readonly (readonly [string, string | Uint8Array])[],
   rootUri: string,
-): {
-  readonly rootUri: string;
-  readonly revision: number;
-  readonly documents: readonly {
-    readonly bundlePath: string;
-    readonly content: string | Uint8Array;
-    readonly uri: string;
-  }[];
-} {
+): ParseBundleInput {
   return {
     rootUri,
     revision: 7,

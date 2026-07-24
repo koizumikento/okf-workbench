@@ -260,6 +260,12 @@ export function validateVsixArchive(input, expectedProjectLicense) {
   ) {
     throw new Error('The packaged OKF core is not a WebAssembly module.');
   }
+  const extensionHost = readEntry('extension/dist/extension.cjs').toString('utf8');
+  if (extensionHost.includes('typescript-migration-oracle')) {
+    throw new Error(
+      'The packaged Extension Host contains the TypeScript migration oracle; production semantics must use the Wasm core exclusively.',
+    );
+  }
 
   const packagedProjectLicense = readEntry(PROJECT_LICENSE_ENTRY);
   if (!packagedProjectLicense.equals(Buffer.from(expectedProjectLicense))) {

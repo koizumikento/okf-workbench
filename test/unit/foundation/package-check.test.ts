@@ -202,6 +202,17 @@ describe('VSIX package closed-set validation', () => {
     expect(result).toEqual({ entryCount: REQUIRED_VSIX_ENTRIES.length });
   });
 
+  test('rejects a packaged TypeScript semantic oracle', () => {
+    const entries = packageEntries().map((entry) =>
+      entry.name === 'extension/dist/extension.cjs'
+        ? { ...entry, content: 'const version = "typescript-migration-oracle";\n' }
+        : entry,
+    );
+    expect(() =>
+      validateVsixArchive(createStoredZip(entries), Buffer.from(PROJECT_LICENSE)),
+    ).toThrow('contains the TypeScript migration oracle');
+  });
+
   test('rejects matching packaged and repository bytes when the source license is not canonical', () => {
     const entries = packageEntries().map((entry) =>
       entry.name === PROJECT_LICENSE_ENTRY ? { ...entry, content: PUNCTUATION_DRIFT } : entry,

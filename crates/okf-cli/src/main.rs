@@ -256,6 +256,12 @@ fn run(cli: Cli) -> Result<u8, String> {
         Command::Index(args) => {
             let input = load_bundle(&args.root)?;
             let bundle = parse_bundle(input);
+            if let Some(parse_failure) = bundle.failures.first() {
+                return Err(format!(
+                    "index generation refused an incomplete bundle: {}: {}",
+                    parse_failure.bundle_path, parse_failure.message
+                ));
+            }
             let mode = match args.mode {
                 IndexModeArg::Missing => IndexMode::Missing,
                 IndexModeArg::All => IndexMode::All,

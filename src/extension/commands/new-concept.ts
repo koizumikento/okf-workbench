@@ -7,7 +7,6 @@ import {
   normalizeConceptDescriptionInput,
   normalizeConceptPath,
   parseConceptTagsInput,
-  renderConceptTemplate,
   type ConceptTemplate,
 } from '../../core/templates/index.js';
 import { bundleFilesToProposal } from './proposals.js';
@@ -195,13 +194,6 @@ export function createNewConceptCommand<TUri>(
           ...(optionalDescription === undefined ? {} : { description: optionalDescription }),
           ...(optionalTags.length === 0 ? {} : { tags: optionalTags }),
         };
-        const preflight = renderConceptTemplate(renderInput);
-        if (!preflight.ok) {
-          await dependencies.ui.showError(
-            problemsMessage('The concept could not be rendered.', preflight.problems),
-          );
-          return { kind: 'refused', problems: preflight.problems };
-        }
         let rendered;
         try {
           if (dependencies.core === undefined) {

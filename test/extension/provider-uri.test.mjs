@@ -44,6 +44,7 @@ class ReadOnlyMemoryFileSystemProvider {
   constructor() {
     this.requests = [];
     this.mutations = [];
+    this.blockedReads = new Map();
     this.changeEmitter = new vscode.EventEmitter();
     this.onDidChangeFile = this.changeEmitter.event;
     this.directories = new Map([
@@ -117,7 +118,21 @@ class ReadOnlyMemoryFileSystemProvider {
     this.record('readFile', uri);
     const content = this.files.get(uri.path);
     if (content === undefined) throw vscode.FileSystemError.FileNotFound(uri);
+    const blockedRead = this.blockedReads.get(uri.path);
+    if (blockedRead !== undefined) {
+      this.blockedReads.delete(uri.path);
+      return blockedRead.wait.then(() => content.slice());
+    }
     return content.slice();
+  }
+
+  blockNextRead(uri) {
+    let release;
+    const wait = new Promise((resolve) => {
+      release = resolve;
+    });
+    this.blockedReads.set(uri.path, { wait });
+    return () => release();
   }
 
   createDirectory(uri) {
@@ -384,16 +399,21 @@ suite('OKF Workbench provider URI boundary', () => {
       );
       await api.waitForValidationCompletion(replacementTicket.requestId, completionTimeoutMs);
 
-      const removedWorkspaceTicket = acceptanceTicket(
-        await vscode.commands.executeCommand('okfWorkbench.validateBundle', bundleRoot),
-        'validateBundle',
-      );
-      await removeWorkspaceFolder(providerRoot);
-      await assert.rejects(
-        api.waitForValidationCompletion(removedWorkspaceTicket.requestId, completionTimeoutMs),
-        /Reason: workspace-removed\./u,
-        'Removing the selected workspace did not fail its pending command ticket.',
-      );
+      const releaseBlockedRead = provider.blockNextRead(conceptUri);
+      try {
+        const removedWorkspaceTicket = acceptanceTicket(
+          await vscode.commands.executeCommand('okfWorkbench.validateBundle', bundleRoot),
+          'validateBundle',
+        );
+        await removeWorkspaceFolder(providerRoot);
+        await assert.rejects(
+          api.waitForValidationCompletion(removedWorkspaceTicket.requestId, completionTimeoutMs),
+          /Reason: workspace-removed\./u,
+          'Removing the selected workspace did not fail its pending command ticket.',
+        );
+      } finally {
+        releaseBlockedRead();
+      }
       assert.deepEqual(
         provider.mutations,
         [],

@@ -17,6 +17,7 @@ OKF Workbench does not embed an AI model or call an AI provider. It helps existi
 - The OKF bundle is located at `knowledge/`.
 - Read `knowledge/index.md` before tasks that require project-wide context.
 - Update the relevant concept when a change affects durable project knowledge.
+- When an `okf` executable is available for a local bundle, prefer it for validation, new-concept planning, and managed-index updates; review `--check` output before `--apply`.
 - Preserve unknown YAML frontmatter fields.
 - Use bundle-relative Markdown links between concepts.
 - Do not add speculative or temporary information to the bundle.
@@ -66,6 +67,23 @@ The body covers:
 - Timestamp discipline.
 - Index regeneration.
 - Conformance and curation checks.
+- Optional CLI-assisted validation, concept planning, and managed-index updates.
+
+The generated Skill treats the CLI as an optional local-filesystem accelerator rather than a
+prerequisite. It instructs agents to use editor commands and the documented Markdown rules when
+`okf` is unavailable or the selected bundle is provider-backed. To avoid unsafe cross-shell
+interpolation, examples use `<bundle-root>` and require the agent to replace it with a correctly
+quoted local path:
+
+```text
+okf validate <bundle-root> --format json
+okf new <bundle-root> --template decision --title "<title>" --check
+okf index <bundle-root> --mode missing --check
+```
+
+Write examples start with `--check`; the Skill permits replacing it with `--apply` only after the
+reported paths and changes have been reviewed. Existing concept Markdown remains directly editable
+so unknown frontmatter can be preserved.
 
 ## Safe merge behavior
 

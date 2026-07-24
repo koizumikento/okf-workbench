@@ -17,7 +17,7 @@ Initial release.
 - Conformance diagnostics and separate curation findings for broken links, orphans, incomplete
   metadata, timestamps, and duplicate resources.
 - Safe managed-region generation for directory indexes and `AGENTS.md`, plus a portable Agent
-  Skill template.
+  Skill template with optional CLI-assisted validation and planned-write guidance.
 - A Rust `okf-core` shared by the extension through a capability-free Wasm ABI and by an offline
   native `okf` CLI with init, create, validate, index, graph, and agent commands.
 - Target-platform VSIX packages expose the validated bundled CLI to new integrated terminals on

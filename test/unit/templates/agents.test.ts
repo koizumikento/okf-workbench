@@ -31,6 +31,7 @@ describe('AGENTS.md integration', () => {
       - The OKF bundle is located at \`knowledge/\`.
       - Read \`knowledge/index.md\` before tasks that require project-wide context.
       - Update the relevant concept when a change affects durable project knowledge.
+      - When an \`okf\` executable is available for a local bundle, prefer it for validation, new-concept planning, and managed-index updates; review \`--check\` output before \`--apply\`.
       - Preserve unknown YAML frontmatter fields.
       - Use bundle-relative Markdown links between concepts.
       - Do not add speculative or temporary information to the bundle.
@@ -185,6 +186,14 @@ describe('Agent Skill integration', () => {
     ).toBe(true);
     expect(content).toContain('`docs/知識/index.md`');
     expect(content).toContain('update it instead of creating a duplicate');
+    expect(content).toContain('The `okf` CLI is optional');
+    expect(content).toContain('okf validate <bundle-root> --format json');
+    expect(content).toContain(
+      'okf new <bundle-root> --template decision --title "<title>" --check',
+    );
+    expect(content).toContain('okf index <bundle-root> --mode missing --check');
+    expect(content).toContain('with `--apply` instead of `--check`');
+    expect(content).toContain('bundle at `docs/知識/`');
     expect(content).toContain('Preserve every unknown frontmatter field');
     expect(content).toContain('may be any non-empty value');
     expect(content).toContain('explicit `Z` or numeric offset');

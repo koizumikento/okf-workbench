@@ -126,8 +126,7 @@ jobs:
           npm run rust:lint
           npm run rust:test
           npm run rust:notices:check
-          npm test
-          npm run test:acceptance
+          npm run test:platform-package
           npm run test:security
           npm run dependency:check
           cargo build --locked --release --bin okf

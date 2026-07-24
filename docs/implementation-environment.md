@@ -625,6 +625,12 @@ Security suites have one explicit owner in every aggregate workflow so a passing
 | Package smoke | Every `package-smoke` matrix lane | `security-boundaries` after its production build | Node host/path/junction boundaries run on Ubuntu, macOS, and Windows; the Chromium boundary passes before any OS package lane |
 | Open VSX release | `build-candidate` | Covered by required main-branch CI before tagging | The release reruns the deterministic Node boundary before retaining the candidate |
 
+The package-smoke matrix deliberately does not repeat the complete unit, performance-stress, or
+editor-acceptance suites on every runner. Pull-request CI owns those platform-neutral gates once.
+Each package lane instead runs the native Rust suite, the bundled-CLI host-platform contract, the
+Node filesystem security boundary, and the target VSIX reproducibility/parity checks. This keeps
+slow runner variance out of package qualification without weakening any platform-dependent gate.
+
 The repository supply-chain policy parses these workflows and fails on a missing, misplaced,
 duplicate, conditional, or failure-tolerating security command. The default Vitest config includes
 only `test/unit`, and the default Playwright config includes only `test/webview`; neither is counted

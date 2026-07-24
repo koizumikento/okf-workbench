@@ -200,6 +200,7 @@
     "typecheck": "tsc -p tsconfig.extension.json && tsc -p tsconfig.webview.json && tsc -p tsconfig.test.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:platform-package": "vitest run test/unit/activation/bundled-cli.test.ts",
     "test:acceptance": "vitest run --config test/acceptance/vitest.config.ts",
     "test:security": "vitest run --config test/security/vitest.config.ts",
     "test:integration": "vscode-test --config .vscode-test.mjs",

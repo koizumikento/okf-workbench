@@ -42,6 +42,15 @@ jobs:
       - name: Build the current Webview
         run: npm run build
 
+      - name: Retain the canonical Wasm for cross-platform packaging
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: okf-workbench-canonical-wasm-${{ github.sha }}-${{ github.run_attempt }}
+          path: dist/okf_core.wasm
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
       - name: Run the real-browser security boundary
         run: npm run test:security:webview
 
@@ -87,7 +96,16 @@ jobs:
           echo "image_os=${ImageOS}"
           echo "image_version=${ImageVersion}"
 
+      - name: Download the canonical Wasm
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: okf-workbench-canonical-wasm-${{ github.sha }}-${{ github.run_attempt }}
+          path: artifacts/canonical-wasm
+
       - name: Build, test, and inspect package
+        env:
+          OKF_ALLOW_CANONICAL_WASM: '1'
+          OKF_CANONICAL_WASM_PATH: ${{ github.workspace }}/artifacts/canonical-wasm/okf_core.wasm
         run: |
           npm ci
           npm run typecheck

@@ -33,9 +33,29 @@ const watch = process.argv.includes('--watch');
 const allowTestCorePlaceholder =
   process.argv.includes('--allow-test-core-placeholder') &&
   process.env.OKF_TEST_CORE_PLACEHOLDER === '1';
+const canonicalWasmPath =
+  process.env.OKF_CANONICAL_WASM_PATH === undefined
+    ? undefined
+    : resolve(process.env.OKF_CANONICAL_WASM_PATH);
+const canonicalWasmRoot = resolve(repositoryRoot, 'artifacts/canonical-wasm');
+const allowCanonicalWasm =
+  canonicalWasmPath !== undefined &&
+  process.env.CI === 'true' &&
+  process.env.GITHUB_ACTIONS === 'true' &&
+  process.env.OKF_ALLOW_CANONICAL_WASM === '1' &&
+  dirname(canonicalWasmPath) === canonicalWasmRoot &&
+  canonicalWasmPath === resolve(canonicalWasmRoot, 'okf_core.wasm');
 
 if (production && watch) {
   throw new Error('Choose either --production or --watch, not both.');
+}
+if (canonicalWasmPath !== undefined && !allowCanonicalWasm) {
+  throw new Error(
+    'A canonical Wasm artifact is accepted only from the fixed GitHub Actions package-smoke path.',
+  );
+}
+if (allowCanonicalWasm && allowTestCorePlaceholder) {
+  throw new Error('Choose either a canonical Wasm artifact or the test-only placeholder.');
 }
 
 await rm(distDirectory, { force: true, recursive: true });
@@ -47,6 +67,8 @@ if (allowTestCorePlaceholder) {
     resolve(distDirectory, 'okf_core.wasm'),
     Uint8Array.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]),
   );
+} else if (allowCanonicalWasm) {
+  await copyFile(canonicalWasmPath, resolve(distDirectory, 'okf_core.wasm'));
 } else {
   execFileSync(
     'cargo',
@@ -139,6 +161,7 @@ if (watch) {
     core: {
       abiVersion: 1,
       artifact: 'dist/okf_core.wasm',
+      source: allowCanonicalWasm ? 'canonical-ci-artifact' : 'local-locked-build',
       wasi: false,
     },
   };

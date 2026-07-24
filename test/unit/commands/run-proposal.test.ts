@@ -10,6 +10,7 @@ import {
 import type {
   CommandOutcome,
   ConfirmationOptions,
+  ProposalDecisionController,
   ProposalPresentation,
   ProposalPreviewSession,
   ProposalPreviewer,
@@ -124,6 +125,53 @@ describe('proposal command workflow', () => {
     expect(ui.confirmationRequests[0]?.detail).toContain('complete path list');
     expect(ui.confirmationRequests[0]?.previewIdentity).toEqual(previewer.shown[0]?.identity);
     expect(ui.confirmationRequests[0]?.modeless).toBe(true);
+    expect(port.writes).toEqual([]);
+  });
+
+  it('routes a pending decision and busy recovery through the host controller', async () => {
+    const { port, ui, previewer, dependencies } = harness();
+    const requested = deferred<undefined>();
+    const decision = deferred<boolean>();
+    const recoveryMessages: string[] = [];
+    let requestedSession: ProposalPreviewSession | undefined;
+    const controller: ProposalDecisionController = {
+      request(_options, previewSession) {
+        requestedSession = previewSession;
+        requested.resolve(undefined);
+        return decision.promise;
+      },
+      async showBusyRecovery(message) {
+        recoveryMessages.push(message);
+      },
+    };
+    const controlledDependencies = {
+      ...dependencies,
+      proposalDecisionController: controller,
+    };
+
+    const active = runProposalWorkflow(
+      controlledDependencies,
+      proposal(['first.md']),
+      presentation,
+    );
+    await requested.promise;
+    const refused = await runProposalWorkflow(
+      controlledDependencies,
+      proposal(['second.md']),
+      presentation,
+    );
+
+    expect(refused).toMatchObject({
+      kind: 'refused',
+      problems: [{ code: 'proposal-workflow-busy' }],
+    });
+    expect(requestedSession?.identity).toEqual(previewer.shown[0]?.identity);
+    expect(ui.confirmationRequests).toEqual([]);
+    expect(recoveryMessages).toHaveLength(1);
+
+    decision.resolve(false);
+    await expect(active).resolves.toEqual({ kind: 'cancelled' });
+    expect(previewer.releasedSessions).toBe(1);
     expect(port.writes).toEqual([]);
   });
 
@@ -419,6 +467,7 @@ describe('proposal command workflow', () => {
               });
             }
           },
+          async reveal() {},
           async dispose() {
             released = true;
           },

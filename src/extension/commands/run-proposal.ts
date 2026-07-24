@@ -8,6 +8,7 @@ import { inspectProposalPreviewFeasibility } from '../preview/proposal-preview-b
 import { ProposalWorkflowBusyError } from './proposal-workflow-scheduler.js';
 import type {
   CommandOutcome,
+  ConfirmationOptions,
   ProposalPresentation,
   ProposalWorkflowLease,
   ProposalPreviewSession,
@@ -152,9 +153,12 @@ export async function runProposalCommand<TUri>(
     const problem = proposalWorkflowBusyProblem();
     // One modeless warning may remain visible; every refused concurrent command still settles now.
     if (error.shouldNotify) {
-      void dependencies.ui
-        .showWarning(problemsMessage('Write operation is already in progress.', [problem]))
-        .catch(() => undefined);
+      const message = problemsMessage('Write operation is already in progress.', [problem]);
+      const notification =
+        dependencies.proposalDecisionController === undefined
+          ? dependencies.ui.showWarning(message)
+          : dependencies.proposalDecisionController.showBusyRecovery(message);
+      void notification.catch(() => undefined);
     }
     return { kind: 'refused', problems: [problem] };
   }
@@ -287,7 +291,7 @@ async function runExclusiveProposalWorkflow<TUri>(
       return outcome;
     }
     const previewIdentity = previewSession.identity;
-    const approved = await dependencies.ui.confirm({
+    const confirmation = {
       title: presentation.title,
       detail: [
         ...presentation.summary,
@@ -296,7 +300,11 @@ async function runExclusiveProposalWorkflow<TUri>(
       confirmLabel: options.confirmLabel ?? 'Apply changes',
       previewIdentity,
       modeless: true,
-    });
+    } satisfies ConfirmationOptions;
+    const approved =
+      dependencies.proposalDecisionController === undefined
+        ? await dependencies.ui.confirm(confirmation)
+        : await dependencies.proposalDecisionController.request(confirmation, previewSession);
     const workspaceProblemAfterConfirmation = workspaceMembership.currentProblem();
     if (workspaceProblemAfterConfirmation !== undefined) {
       return reportUnavailableWorkspaceFolder(dependencies, workspaceProblemAfterConfirmation);

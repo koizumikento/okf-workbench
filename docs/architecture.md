@@ -226,11 +226,15 @@ requirement.
   approval, apply, and cleanup. While it is active, reject every concurrent invocation
   immediately with the structured `proposal-workflow-busy` problem and an actionable instruction to
   finish or cancel the active workflow before retrying. Do not retain the rejected proposal in a
-  FIFO or other pending queue, and coalesce the modeless busy warning to one unresolved notification
-  per active lease. Reuse one run/target identity across the summary, diff titles, and approval
-  notification so a decision cannot be confused with another bundle's proposal. Keep that exact
-  preview alive through the result, and fail closed after asynchronous guards and immediately before
-  every write if it is no longer active.
+  FIFO or other pending queue. Keep one host-owned decision controller for the admitted preview:
+  while it is unresolved, expose a status-bar action and context-gated `Review Pending Changes`
+  command that reveal the exact summary and start a new Apply/Cancel attempt. A busy refusal offers
+  Review or Cancel against that same controller. Number prompt attempts and accept a result only
+  from the latest attempt, so a late notification cannot authorize a superseded review. Reuse one
+  run/target identity across the summary, diff titles, and every approval attempt so a decision
+  cannot be confused with another bundle's proposal. Keep that exact preview alive through the
+  result, and fail closed after asynchronous guards and immediately before every write if it is no
+  longer active.
 - Capture the proposal's workspace safety root as an exact open-folder URI when the common write
   workflow starts. The host's workspace-folder change listener irreversibly invalidates only
   sessions whose exact root was removed and closes their active previews; a containing parent,

@@ -13,6 +13,7 @@ const expectedCommandIds = [
   'okfWorkbench.openGraph',
   'okfWorkbench.setupAgentIntegration',
 ];
+const recoveryCommandId = 'okfWorkbench.reviewPendingChanges';
 
 async function withExtensionHostNetworkDenied(action) {
   const attempts = [];
@@ -63,7 +64,7 @@ async function withExtensionHostNetworkDenied(action) {
 }
 
 suite('OKF Workbench foundation', () => {
-  test('activates offline and registers the six stable command IDs', async () => {
+  test('activates offline and registers the six stable IDs plus pending-review recovery', async () => {
     const extension = vscode.extensions.getExtension(extensionId);
     assert.ok(extension, `Extension ${extensionId} was not found.`);
     await withExtensionHostNetworkDenied(async () => extension.activate());
@@ -72,5 +73,9 @@ suite('OKF Workbench foundation', () => {
     for (const commandId of expectedCommandIds) {
       assert.ok(registeredCommands.includes(commandId), `${commandId} was not registered.`);
     }
+    assert.ok(
+      registeredCommands.includes(recoveryCommandId),
+      `${recoveryCommandId} was not registered.`,
+    );
   });
 });

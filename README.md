@@ -38,10 +38,13 @@ initialize -> create -> edit -> validate -> explore -> repair
 | `OKF: Regenerate Indexes` | `okfWorkbench.regenerateIndexes` |
 | `OKF: Open 3D Graph` | `okfWorkbench.openGraph` |
 | `OKF: Set Up Agent Integration` | `okfWorkbench.setupAgentIntegration` |
+| `OKF: Review Pending Changes` | `okfWorkbench.reviewPendingChanges` |
 
-Open a workspace folder and run the `OKF:` commands from the Command Palette or an Explorer folder
-context menu. Authoring commands require a trusted workspace. Validation and graph inspection
-remain read-only.
+Open a workspace folder and run the six core `OKF:` commands from the Command Palette or an
+Explorer folder context menu. Authoring commands require a trusted workspace. Validation and graph
+inspection remain read-only. While an authoring preview awaits a decision, the status bar shows
+`OKF changes awaiting review`; activate it, or run `OKF: Review Pending Changes`, to bring back the
+exact summary and choose Apply or Cancel.
 
 The extension targets VS Code-compatible desktop editors with API floor `^1.121.0`. Compatibility
 is specific to the editor version, operating system, and exact extension package; the manifest

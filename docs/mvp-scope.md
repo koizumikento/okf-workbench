@@ -122,6 +122,18 @@ Requirements:
 - Never replace unrelated instructions in an existing `AGENTS.md`.
 - Generate a portable `.agents/skills/maintain-okf-knowledge/SKILL.md`.
 
+### Pending change recovery
+
+Every authoring preview that is awaiting Apply or Cancel must remain recoverable when its modeless
+notification is hidden:
+
+- Show an `OKF changes awaiting review` status-bar action while the decision is pending.
+- Expose `OKF: Review Pending Changes` only while a proposal is pending.
+- Reveal the exact existing summary and issue a fresh Apply/Cancel choice without rebuilding the
+  proposal.
+- Offer Review or Cancel when another write command is refused as busy.
+- Ignore late results from superseded confirmation attempts and write nothing after cancellation.
+
 ## Acceptance criteria
 
 - All core commands work without an account or network connection.

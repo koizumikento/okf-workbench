@@ -268,11 +268,16 @@ active through preflight, preview, decision, apply, and cleanup.
 While that workflow is active, every concurrent
 invocation settles immediately with the structured `proposal-workflow-busy` problem and an
 actionable instruction to finish or cancel the active workflow before retrying. The scheduler does
-not retain the rejected workflow callback, proposal, or a FIFO queue entry. It grants only the first
-busy refusal in an active lease permission to start the modeless warning, so a command flood cannot
-accumulate notification promises; every refusal still settles immediately, and warning rejection is
-contained. Cancellation and thrown failures release both the active slot and notification claim in
-`finally`, after which a newly invoked workflow may proceed and notify once for its own busy phase.
+not retain the rejected workflow callback, proposal, or a FIFO queue entry. A host-owned decision
+controller retains only the active proposal's one-shot resolver and preview identity. While that
+decision remains unresolved, it shows an `OKF changes awaiting review` status item and enables the
+context-gated `OKF: Review Pending Changes` command. Recovery reveals the exact existing summary and
+starts a numbered Apply/Cancel prompt attempt; only the newest attempt may settle the resolver, so a
+late result from a hidden notification cannot approve a superseded review. A busy refusal remains
+immediate but may offer Review or Cancel for that same pending proposal. Cancellation, preview
+invalidation, host disposal, and thrown failures release the active slot, preview tabs, virtual
+document bodies, and provider registration in `finally`, after which a newly invoked workflow may
+proceed.
 
 Validate Bundle and Open 3D Graph use a separate extension-scoped fail-fast gate around their
 complete bundle-selection and refresh-scheduling phase. The gate is acquired before automatic

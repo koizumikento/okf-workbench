@@ -10,6 +10,11 @@ import { PUBLIC_MANIFEST_RESOURCES } from '../../../scripts/package-check.mjs';
 import { OKF_COMMANDS } from '../../../src/extension/commands/ids.js';
 
 const expectedCommands = EXPECTED_COMMAND_CATALOG.map(({ id, title }) => [id, title] as const);
+const recoveryCommand = {
+  command: 'okfWorkbench.reviewPendingChanges',
+  title: 'Review Pending Changes',
+  when: 'okfWorkbench.hasPendingProposal',
+} as const;
 
 interface ManifestCommand {
   readonly category?: unknown;
@@ -77,15 +82,25 @@ describe('extension manifest', () => {
     }).toEqual(PUBLIC_MANIFEST_RESOURCES);
   });
 
-  test('contributes exactly six stable, workspace-gated commands', async () => {
+  test('contributes the six stable commands plus one pending-review recovery command', async () => {
     const manifest = await readManifest();
     const commands = manifest.contributes?.commands ?? [];
-    expect(commands).toHaveLength(expectedCommands.length);
-    expect(commands.map(({ command, title }) => [command, title])).toEqual(expectedCommands);
+    expect(commands).toHaveLength(expectedCommands.length + 1);
+    expect(
+      commands.slice(0, expectedCommands.length).map(({ command, title }) => [command, title]),
+    ).toEqual(expectedCommands);
     expect(commands.every(({ category }) => category === 'OKF')).toBe(true);
-    expect(commands.every(({ enablement }) => enablement === 'workspaceFolderCount > 0')).toBe(
-      true,
-    );
+    expect(
+      commands
+        .slice(0, expectedCommands.length)
+        .every(({ enablement }) => enablement === 'workspaceFolderCount > 0'),
+    ).toBe(true);
+    expect(commands.at(-1)).toEqual({
+      command: recoveryCommand.command,
+      title: recoveryCommand.title,
+      category: 'OKF',
+      enablement: recoveryCommand.when,
+    });
   });
 
   test('shares one exhaustive read/write command classification with packaged acceptance', () => {
@@ -101,13 +116,17 @@ describe('extension manifest', () => {
     ]);
   });
 
-  test('activates and exposes the palette for those IDs only', async () => {
+  test('activates and exposes the palette for core commands and pending-review recovery', async () => {
     const manifest = await readManifest();
     const commandIds = expectedCommands.map(([id]) => id);
-    expect(manifest.activationEvents).toEqual(commandIds.map((id) => `onCommand:${id}`));
-    expect(manifest.contributes?.menus?.commandPalette).toEqual(
-      commandIds.map((command) => ({ command, when: 'workspaceFolderCount > 0' })),
-    );
+    expect(manifest.activationEvents).toEqual([
+      ...commandIds.map((id) => `onCommand:${id}`),
+      `onCommand:${recoveryCommand.command}`,
+    ]);
+    expect(manifest.contributes?.menus?.commandPalette).toEqual([
+      ...commandIds.map((command) => ({ command, when: 'workspaceFolderCount > 0' })),
+      { command: recoveryCommand.command, when: recoveryCommand.when },
+    ]);
   });
 
   test('exposes all six commands from Explorer folders as explicit bundle entry points', async () => {

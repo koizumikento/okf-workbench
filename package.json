@@ -42,7 +42,8 @@
     "onCommand:okfWorkbench.validateBundle",
     "onCommand:okfWorkbench.regenerateIndexes",
     "onCommand:okfWorkbench.openGraph",
-    "onCommand:okfWorkbench.setupAgentIntegration"
+    "onCommand:okfWorkbench.setupAgentIntegration",
+    "onCommand:okfWorkbench.reviewPendingChanges"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -90,6 +91,12 @@
         "title": "Set Up Agent Integration",
         "category": "OKF",
         "enablement": "workspaceFolderCount > 0"
+      },
+      {
+        "command": "okfWorkbench.reviewPendingChanges",
+        "title": "Review Pending Changes",
+        "category": "OKF",
+        "enablement": "okfWorkbench.hasPendingProposal"
       }
     ],
     "menus": {
@@ -117,6 +124,10 @@
         {
           "command": "okfWorkbench.setupAgentIntegration",
           "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "okfWorkbench.reviewPendingChanges",
+          "when": "okfWorkbench.hasPendingProposal"
         }
       ],
       "explorer/context": [

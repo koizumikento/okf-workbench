@@ -36,6 +36,8 @@ Initial release.
 - Root-level `AGENTS.md` and `.agents/` agent-integration metadata are excluded from OKF concept
   discovery, preventing generated instructions from creating conformance errors in root-level
   bundles.
+- Modeless authoring decisions remain recoverable through a pending-review status item, command,
+  and busy-workflow Review/Cancel actions when the original notification is hidden.
 
 ### Security and privacy
 

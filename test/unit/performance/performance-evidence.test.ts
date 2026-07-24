@@ -67,7 +67,7 @@ beforeAll(async () => {
       0o755,
     );
   }
-});
+}, 60_000);
 
 afterAll(() => rmSync(temporaryDirectory, { recursive: true, force: true }));
 

@@ -170,7 +170,7 @@ describe('supply-chain policy', () => {
         expect.stringContaining('contents: read'),
         expect.stringContaining('bind the tag to main'),
         expect.stringContaining('GitHub release'),
-        expect.stringContaining('exactly one Open VSX publish invocation'),
+        expect.stringContaining('retained universal VSIX'),
       ]),
     );
   });
@@ -190,6 +190,7 @@ describe('supply-chain policy', () => {
         '    name: Publish retained VSIX to Open VSX',
         '    needs:',
         '      - build-candidate',
+        '      - build-cli',
         '      - github-release',
         '    runs-on: ubuntu-24.04',
       ].join('\n'),
@@ -198,6 +199,7 @@ describe('supply-chain policy', () => {
         '    name: Publish retained VSIX to Open VSX',
         '    needs:',
         '      - build-candidate',
+        '      - build-cli',
         '      - github-release',
         '    runs-on: ubuntu-24.04',
         '    continue-on-error: true',
@@ -231,16 +233,15 @@ describe('supply-chain policy', () => {
     ).toContainEqual(expect.stringContaining('OPEN_VSX_TOKEN'));
 
     const duplicatePublish = source.replace(
-      '        run: ./node_modules/.bin/ovsx publish "release-candidate/${VSIX_NAME}" --skip-duplicate',
+      '          ./node_modules/.bin/ovsx publish "release-candidate/${VSIX_NAME}" --skip-duplicate',
       [
-        '        run: |',
         '          ./node_modules/.bin/ovsx publish other.vsix',
         '          ./node_modules/.bin/ovsx publish "release-candidate/${VSIX_NAME}" --skip-duplicate',
       ].join('\n'),
     );
     expect(
       releaseWorkflowSafetyFailures('.github/workflows/open-vsx-release.yml', duplicatePublish),
-    ).toContainEqual(expect.stringContaining('exactly one Open VSX publish invocation'));
+    ).toContainEqual(expect.stringContaining('retained universal VSIX'));
   });
 
   test('requires the local aggregate to build between the disjoint security suites', () => {

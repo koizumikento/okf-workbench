@@ -39,18 +39,18 @@ not a substitute for its named manual or hosted check.
       `cc8c994cd35cfe2017945c38d0019f330cb33f628a94bf6508b2930c5c57c866`, passed the
       [hosted Compatibility run](https://github.com/koizumikento/okf-workbench/actions/runs/29900868002)
       with VS Code `1.127.0` as its then-current lane. This does not qualify the current candidate.
-- [x] The current exact candidate has successful retained artifacts from every lane in the
+- [ ] The current bundled-CLI candidate has successful retained artifacts from every lane in the
       [compatibility matrix](compatibility-matrix.md): VS Code `1.121.0` on Ubuntu, VS Code
-      `1.129.1` on Ubuntu/macOS/Windows, and VSCodium `1.121.03429` on Ubuntu/macOS/Windows,
-      retained by
-      [Compatibility run 30058922150](https://github.com/koizumikento/okf-workbench/actions/runs/30058922150).
+      `1.129.1` on Ubuntu/macOS/Windows, and VSCodium `1.121.03429` on Ubuntu/macOS/Windows.
+      [Compatibility run 30058922150](https://github.com/koizumikento/okf-workbench/actions/runs/30058922150)
+      qualifies only the prior universal candidate.
 - [x] Historical evidence: the workflow-level package gate compared all three retained OS artifacts and passed
       in [Package smoke run 29901183164](https://github.com/koizumikento/okf-workbench/actions/runs/29901183164)
       for the exact recorded digest and byte size.
-- [x] The current exact candidate passes the cross-platform package-byte identity gate on Ubuntu,
-      macOS, and Windows in
-      [Package smoke run 30058925030](https://github.com/koizumikento/okf-workbench/actions/runs/30058925030);
-      the digest and byte size match CI and Compatibility.
+- [ ] The current candidate passes the four-target package-set gate for macOS arm64/x64, Linux
+      x64, and Windows x64, including canonical Wasm identity and standalone/bundled CLI parity.
+      [Package smoke run 30058925030](https://github.com/koizumikento/okf-workbench/actions/runs/30058925030)
+      qualifies only the prior universal candidate.
 - [ ] Packaged-editor evidence plus manual inspection closes the remaining user-scenario gaps in
       [acceptance evidence](acceptance-evidence.md); current-candidate hosted lifecycle evidence is
       retained, but the workflow does not exercise every interactive command UI.
@@ -175,12 +175,13 @@ git push origin v0.1.0
 The workflow rejects a tag whose commit is not contained in `main`, whose version does not match
 the manifest, or whose changelog entry is still `Unreleased`. It installs the exact lockfiles,
 reruns the deterministic source, dependency, Node security, audit, package, reproducibility, and
-packaged security gates, and retains one VSIX plus its checksum. Native jobs test and build the
-`okf` CLI on macOS arm64, Linux x86-64, and Windows x86-64, then package each binary with the MIT
-license, Rust third-party notices, and a SHA-256 checksum. A separate job creates or updates the
-matching GitHub Release from those retained bytes.
+packaged security gates, and retains the universal VSIX plus its checksum and canonical Wasm.
+Native jobs test and build the `okf` CLI on macOS arm64/x86-64, Linux x86-64, and Windows x86-64.
+Each job feeds the exact same executable bytes into a target-platform VSIX and a standalone archive
+with the MIT license, Rust third-party notices, and checksums. Raw copy, manifest, byte-length, and
+SHA-256 parity must pass before a separate job creates or updates the matching GitHub Release.
 
-The final job downloads the same candidate, verifies its checksum, installs the locked `ovsx`
+The final job downloads all five retained VSIX packages, verifies their checksums, installs the locked `ovsx`
 `1.0.2` CLI without lifecycle scripts, and exposes `OPEN_VSX_TOKEN` only to
 `ovsx verify-pat straydog` and `ovsx publish`. Missing or invalid authorization fails the workflow.
 The publish command uses duplicate-safe retry behavior, but a registry version remains immutable;
@@ -216,7 +217,7 @@ The official process and current account requirements are documented in
 - [ ] Confirm generated workspace files remain after uninstall and that uninstall leaves no
       extension-owned background process.
 - [ ] Confirm the signed Git tag and generated GitHub Release identify the tested revision and
-      contain the retained VSIX, all three native CLI archives, their licenses and notices, and
+      contain the universal and four target VSIX packages, all four native CLI archives, their licenses and notices, and
       every corresponding checksum.
 - [ ] Revoke the one-time token, or record the owner, scope, storage, and rotation date for a
       retained release credential.
@@ -259,14 +260,15 @@ not an automated fallback in this repository.
 | --- | --- |
 | Version | `0.1.0` |
 | Extension ID | `straydog.okf-workbench` |
-| Current candidate artifact-content revision | `e0c1f8895f3dc3391be3de47f1a517f82ae62f3c` |
-| Current hosted-evidence revision | `a5b2b75b7216d644f0d8d0f739db3a989bba7ca0` — the later changes from the artifact-content revision affected tests only; the hosted rebuilds reproduced the exact candidate bytes. |
-| Current candidate VSIX SHA-256 | `d7be6180cd788b2ab5d9c7fc436de9eb2df97d967b16ccbc2578f48851f0b666` — local, CI, Compatibility, and all three Package smoke artifacts were byte-for-byte identical. |
-| Current candidate VSIX byte size | `613637` bytes across the local candidate and all five downloaded hosted VSIX files. |
+| Current candidate artifact-content revision | Pending merge commit |
+| Current hosted-evidence revision | Pending fresh CI, Compatibility, and four-target Package smoke |
+| Current candidate VSIX SHA-256 | Local `darwin-arm64`: `c17cc9b1f15614fb53d88f42552c70a71be4f4015c3b4662c4e67f5c4c26624e`; other target and hosted digests pending |
+| Current candidate VSIX byte size | Local `darwin-arm64`: `1571230` bytes; other target and hosted sizes pending |
 | Node / npm | `24.18.0` / `11.16.0` |
-| Current hosted CI | [Pass — run 30058782170](https://github.com/koizumikento/okf-workbench/actions/runs/30058782170); quality/package, hostile-content Webview, and VS Code `1.121.0`/`1.129.1` integration jobs succeeded at `a5b2b75b7216d644f0d8d0f739db3a989bba7ca0`. |
-| Current hosted compatibility | [Pass — run 30058922150](https://github.com/koizumikento/okf-workbench/actions/runs/30058922150); candidate, acceptance/Webview, and all seven current VS Code/VSCodium lifecycle jobs succeeded. Every lifecycle receipt binds the evidence revision, extension identity/version, and current candidate digest. |
-| Current hosted package smoke | [Pass — run 30058925030](https://github.com/koizumikento/okf-workbench/actions/runs/30058925030); macOS, Ubuntu, Windows, browser security, and aggregate byte-identity jobs succeeded. |
+| Current hosted CI | Pending |
+| Current hosted compatibility | Pending |
+| Current hosted package smoke | Pending four-target run |
+| Prior universal hosted qualification | [CI 30058782170](https://github.com/koizumikento/okf-workbench/actions/runs/30058782170), [Compatibility 30058922150](https://github.com/koizumikento/okf-workbench/actions/runs/30058922150), and [Package smoke 30058925030](https://github.com/koizumikento/okf-workbench/actions/runs/30058925030) passed for SHA-256 `d7be6180cd788b2ab5d9c7fc436de9eb2df97d967b16ccbc2578f48851f0b666`, `613637` bytes. |
 | Historical hosted-qualified artifact | Commit `aa90832aab64dac1bccf9c9092fabc004991f7b1`; SHA-256 `cc8c994cd35cfe2017945c38d0019f330cb33f628a94bf6508b2930c5c57c866`; `582231` bytes. |
 | Historical hosted CI | [Pass — run 29900857588](https://github.com/koizumikento/okf-workbench/actions/runs/29900857588); all four jobs for that historical candidate succeeded. |
 | Historical hosted compatibility | [Pass — run 29900868002](https://github.com/koizumikento/okf-workbench/actions/runs/29900868002); all seven then-required lifecycle lanes, including VS Code `1.127.0`, succeeded for that historical candidate. |

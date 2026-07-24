@@ -8,6 +8,11 @@ import {
 } from '../../../scripts/compatibility/driver/command-catalog.cjs';
 import { PUBLIC_MANIFEST_RESOURCES } from '../../../scripts/package-check.mjs';
 import { OKF_COMMANDS } from '../../../src/extension/commands/ids.js';
+import {
+  BUNDLED_CLI_CONFIGURATION,
+  OPEN_CLI_TERMINAL_COMMAND,
+  SHOW_CLI_STATUS_COMMAND,
+} from '../../../src/extension/cli/index.js';
 
 const expectedCommands = EXPECTED_COMMAND_CATALOG.map(({ id, title }) => [id, title] as const);
 const recoveryCommand = {
@@ -15,6 +20,10 @@ const recoveryCommand = {
   title: 'Review Pending Changes',
   when: 'okfWorkbench.hasPendingProposal',
 } as const;
+const cliCommands = [
+  [SHOW_CLI_STATUS_COMMAND, 'Show CLI Status'],
+  [OPEN_CLI_TERMINAL_COMMAND, 'Open CLI Terminal'],
+] as const;
 
 interface ManifestCommand {
   readonly category?: unknown;
@@ -35,6 +44,17 @@ interface ExtensionManifest {
   readonly bugs?: unknown;
   readonly contributes?: {
     readonly commands?: readonly ManifestCommand[];
+    readonly configuration?: {
+      readonly properties?: Record<
+        string,
+        {
+          readonly default?: unknown;
+          readonly description?: unknown;
+          readonly type?: unknown;
+        }
+      >;
+      readonly title?: unknown;
+    };
     readonly menus?: {
       readonly commandPalette?: readonly ManifestMenuCommand[];
       readonly 'explorer/context'?: readonly ManifestMenuCommand[];
@@ -43,6 +63,7 @@ interface ExtensionManifest {
   readonly engines?: {
     readonly vscode?: unknown;
   };
+  readonly extensionKind?: unknown;
   readonly main?: unknown;
   readonly icon?: unknown;
   readonly homepage?: unknown;
@@ -63,6 +84,7 @@ describe('extension manifest', () => {
     expect(manifest.main).toBe('./dist/extension.cjs');
     expect(manifest.browser).toBeUndefined();
     expect(manifest.engines?.vscode).toBe('^1.121.0');
+    expect(manifest.extensionKind).toEqual(['workspace']);
   });
 
   test('uses the confirmed release-candidate identity and icon', async () => {
@@ -82,10 +104,10 @@ describe('extension manifest', () => {
     }).toEqual(PUBLIC_MANIFEST_RESOURCES);
   });
 
-  test('contributes the six stable commands plus one pending-review recovery command', async () => {
+  test('contributes core, recovery, and bundled CLI commands', async () => {
     const manifest = await readManifest();
     const commands = manifest.contributes?.commands ?? [];
-    expect(commands).toHaveLength(expectedCommands.length + 1);
+    expect(commands).toHaveLength(expectedCommands.length + 1 + cliCommands.length);
     expect(
       commands.slice(0, expectedCommands.length).map(({ command, title }) => [command, title]),
     ).toEqual(expectedCommands);
@@ -95,12 +117,29 @@ describe('extension manifest', () => {
         .slice(0, expectedCommands.length)
         .every(({ enablement }) => enablement === 'workspaceFolderCount > 0'),
     ).toBe(true);
-    expect(commands.at(-1)).toEqual({
+    expect(commands.at(expectedCommands.length)).toEqual({
       command: recoveryCommand.command,
       title: recoveryCommand.title,
       category: 'OKF',
       enablement: recoveryCommand.when,
     });
+    expect(
+      commands
+        .slice(expectedCommands.length + 1)
+        .map(({ command, title, category, enablement }) => ({
+          command,
+          title,
+          category,
+          enablement,
+        })),
+    ).toEqual(
+      cliCommands.map(([command, title]) => ({
+        command,
+        title,
+        category: 'OKF',
+        enablement: undefined,
+      })),
+    );
   });
 
   test('shares one exhaustive read/write command classification with packaged acceptance', () => {
@@ -116,17 +155,31 @@ describe('extension manifest', () => {
     ]);
   });
 
-  test('activates and exposes the palette for core commands and pending-review recovery', async () => {
+  test('activates and exposes the palette for core, recovery, and CLI commands', async () => {
     const manifest = await readManifest();
     const commandIds = expectedCommands.map(([id]) => id);
     expect(manifest.activationEvents).toEqual([
       ...commandIds.map((id) => `onCommand:${id}`),
       `onCommand:${recoveryCommand.command}`,
+      ...cliCommands.map(([id]) => `onCommand:${id}`),
+      'onStartupFinished',
     ]);
     expect(manifest.contributes?.menus?.commandPalette).toEqual([
       ...commandIds.map((command) => ({ command, when: 'workspaceFolderCount > 0' })),
       { command: recoveryCommand.command, when: recoveryCommand.when },
+      ...cliCommands.map(([command]) => ({ command })),
     ]);
+  });
+
+  test('exposes bundled CLI terminal integration as an opt-out setting', async () => {
+    const manifest = await readManifest();
+    expect(manifest.contributes?.configuration?.title).toBe('OKF Workbench');
+    expect(manifest.contributes?.configuration?.properties?.[BUNDLED_CLI_CONFIGURATION]).toEqual({
+      type: 'boolean',
+      default: true,
+      description:
+        'Append the bundled offline OKF CLI directory to PATH for new VS Code integrated terminals. Existing PATH commands keep precedence.',
+    });
   });
 
   test('exposes all six commands from Explorer folders as explicit bundle entry points', async () => {

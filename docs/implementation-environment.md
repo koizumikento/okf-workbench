@@ -12,7 +12,8 @@ Exact dependency versions are committed in `package.json` and `package-lock.json
 
 ## Application shape
 
-OKF Workbench has a platform-neutral desktop extension package plus a separately built native CLI:
+OKF Workbench has target-platform desktop extension packages, a CLI-free universal fallback, and
+separately downloadable native CLI archives:
 
 ```text
 VS Code / VSCodium desktop
@@ -58,7 +59,9 @@ The shipped trust boundaries are:
 | Current editor test | VS Code `1.129.1` | Stable VS Code release pinned for the current release-candidate qualification |
 | VSCodium test | VSCodium `1.121.03429` | Stable VSCodium release at the decision date |
 
-Node.js 26 is Current rather than LTS at the decision date, so it is not the development baseline. The extension must not include native Node add-ons; the VSIX should remain platform-independent.
+Node.js 26 is Current rather than LTS at the decision date, so it is not the development baseline.
+The extension must not include native Node add-ons. Extension behavior stays portable through Wasm,
+while supported target-platform VSIX packages additionally contain one Rust CLI executable.
 
 References:
 
@@ -212,7 +215,11 @@ and is not accepted by package validation.
 - Read-only commands never mutate storage. `--check` is non-mutating; non-interactive writes
   require `--apply`.
 - Native binaries are OS/architecture-specific release artifacts and are not included in the
-  platform-neutral VSIX.
+  universal VSIX.
+- The initial `darwin-arm64`, `darwin-x64`, `linux-x64`, and `win32-x64` VSIX packages each include
+  the same executable bytes used by their standalone CLI archive.
+- New integrated terminals append the bundled CLI directory to `PATH` and receive the exact
+  executable path in `OKF_WORKBENCH_CLI`; external shells and profile files are untouched.
 
 ### Shared core ABI
 
@@ -632,8 +639,10 @@ Per [ADR 0006](decisions/0006-publish-open-vsx-from-version-tags.md), a pushed `
 release authorization. The workflow accepts only a tag whose commit is contained in `main`, whose
 name matches `v<package.json version>`, and whose changelog entry has a publication date. It reruns
 the deterministic source, dependency, Node security, audit, package, reproducibility, and packaged
-security checks, retains one VSIX and checksum, creates the matching GitHub Release, and then
-publishes those retained bytes without rebuilding them.
+security checks, retains the universal VSIX and canonical Wasm, then builds four native binaries.
+Each native job packages the same binary bytes into a target-platform VSIX and a standalone CLI
+archive. The workflow creates the matching GitHub Release and publishes all five retained VSIX
+files without rebuilding them.
 
 The repository secret `OPEN_VSX_TOKEN` is exposed only to `ovsx verify-pat straydog` and the
 subsequent `ovsx publish` step. Missing or invalid authorization fails closed. Pull requests,
@@ -645,15 +654,27 @@ new tag.
 The hosted repository enforces GitHub Actions SHA pinning in addition to repository-owned workflow
 checks. Every `uses:` reference remains a reviewed full commit SHA. Artifact downloads use the
 Node 24-based `actions/download-artifact` v8 line, and the aggregate package gate requires the exact
-Linux x64, Windows x64, and macOS arm64 artifact labels and one regular VSIX per label before
-comparing byte size and SHA-256.
+Linux x64, Windows x64, macOS arm64, and macOS x64 artifact labels. It validates one correctly
+targeted VSIX per label, one native executable per VSIX, and one shared canonical Wasm SHA-256.
 
 The ordinary pull-request CI and tagged candidate job run the repository-owned npm and Cargo
 notice commands. Package and security checks require both exact notice files in the VSIX. The
 Cargo notice generator traverses only dependencies reachable from `okf-wasm`; native CLI
 distribution must run the same policy against its release graph before binaries are published.
 
-The repository-owned package wrapper sets a fixed `SOURCE_DATE_EPOCH`, which makes pinned `vsce` sort ZIP entries lexicographically, and then normalizes every local-header and central-directory DOS timestamp to `1980-01-01 00:00:00` and every central-directory entry to the reviewed regular-file mode `0644`. This removes asynchronous file-discovery ordering, clock-dependent bytes, and the `0644` versus `0666` external-attribute difference emitted from Unix and Windows filesystems while preserving entry contents, CRCs, compression, extra fields, and comments. The normalizer fails closed for ZIP64, split archives, and timestamp-bearing ZIP extra fields. CI invokes that same wrapper a second time against the unchanged build and requires byte equality with the candidate before retaining it. Repository text is checked out with LF endings on every runner through `.gitattributes`; identical tracked inputs and pinned tool versions remain part of the cross-platform byte-identity contract. Because Rust's `wasm32-unknown-unknown` codegen is not byte-identical across host operating systems, package-smoke first builds and retains one capability-free canonical Wasm module on Ubuntu, then supplies that exact run-scoped artifact to the Ubuntu, macOS, and Windows package jobs through a CI-only fixed path. Each runner still builds and tests the native Rust workspace and Extension sources locally. The final comparison job fails unless all three VSIX byte sizes and SHA-256 digests are identical.
+The repository-owned package wrapper sets a fixed `SOURCE_DATE_EPOCH`, which makes pinned `vsce`
+sort ZIP entries lexicographically, and then normalizes every local-header and central-directory
+DOS timestamp to `1980-01-01 00:00:00`. Regular files use mode `0644`; Unix CLI entries use `0755`.
+This removes asynchronous file-discovery ordering, clock-dependent bytes, and host filesystem mode
+defaults while preserving entry contents, CRCs, compression, extra fields, and comments. The
+normalizer fails closed for ZIP64, split archives, timestamp-bearing ZIP extra fields, or a missing
+declared executable. CI invokes that same wrapper a second time against the unchanged build and
+requires byte equality with each candidate before retaining it. Because target VSIX packages
+intentionally differ, cross-platform byte identity is no longer the aggregate contract. Package
+smoke instead supplies one Ubuntu-built canonical capability-free Wasm module to all four package
+jobs, validates each declared platform and executable, and requires the same Wasm SHA-256 across
+the set. Each platform job also requires the standalone and bundled CLI byte length and SHA-256 to
+match.
 
 References:
 

@@ -150,6 +150,10 @@ Requirements:
 - Require `--apply` for non-interactive writes; keep `--check` strictly non-mutating.
 - Refuse path escapes, symbolic-link traversal, collisions, and malformed managed regions.
 - Emit versioned JSON for machine-readable validation and graph output.
+- Ship identical native bytes both in supported target-platform VSIX packages and standalone
+  archives; retain a CLI-free universal VSIX for unsupported targets.
+- Expose the bundled executable only to new integrated terminals, preserve an existing `okf`
+  earlier in `PATH`, and never modify an external shell profile.
 
 ## Acceptance criteria
 

@@ -20,6 +20,7 @@ export const NORMALIZED_DOS_DATE = 0x0021;
 // are identical. VSIX entries are regular, non-executable files, so normalize
 // them to the portable Unix mode used by the reviewed package.
 export const NORMALIZED_EXTERNAL_FILE_ATTRIBUTES = (0o100644 * 0x1_0000) >>> 0;
+export const NORMALIZED_EXECUTABLE_FILE_ATTRIBUTES = (0o100755 * 0x1_0000) >>> 0;
 
 const TIMESTAMP_EXTRA_FIELD_IDS = new Set([
   0x000a, // NTFS timestamps
@@ -102,7 +103,7 @@ function rejectTimestampExtraFields(archive, offset, length, description) {
  * 3.9.2 does not emit them for this extension and silently mishandling either
  * format would undermine the reproducibility guarantee.
  */
-export function normalizeVsixTimestamps(input) {
+export function normalizeVsixTimestamps(input, options = {}) {
   if (!(input instanceof Uint8Array)) {
     throw new TypeError('normalizeVsixTimestamps expects a Uint8Array.');
   }
@@ -132,6 +133,7 @@ export function normalizeVsixTimestamps(input) {
   }
 
   const localOffsets = new Set();
+  const unmatchedExecutableEntries = new Set(options.executableEntries ?? []);
   let centralOffset = centralDirectoryOffset;
   let changedEntryCount = 0;
 
@@ -170,6 +172,10 @@ export function normalizeVsixTimestamps(input) {
     localOffsets.add(localOffset);
 
     const centralName = archive.subarray(centralOffset + 46, centralOffset + 46 + fileNameLength);
+    const entryName = centralName.toString('utf8');
+    const normalizedAttributes = unmatchedExecutableEntries.delete(entryName)
+      ? NORMALIZED_EXECUTABLE_FILE_ATTRIBUTES
+      : NORMALIZED_EXTERNAL_FILE_ATTRIBUTES;
     rejectTimestampExtraFields(
       archive,
       centralOffset + 46 + fileNameLength,
@@ -213,13 +219,13 @@ export function normalizeVsixTimestamps(input) {
       archive.readUInt16LE(localOffset + 12) !== NORMALIZED_DOS_DATE ||
       archive.readUInt16LE(centralOffset + 12) !== NORMALIZED_DOS_TIME ||
       archive.readUInt16LE(centralOffset + 14) !== NORMALIZED_DOS_DATE ||
-      archive.readUInt32LE(centralOffset + 38) !== NORMALIZED_EXTERNAL_FILE_ATTRIBUTES;
+      archive.readUInt32LE(centralOffset + 38) !== normalizedAttributes;
 
     archive.writeUInt16LE(NORMALIZED_DOS_TIME, localOffset + 10);
     archive.writeUInt16LE(NORMALIZED_DOS_DATE, localOffset + 12);
     archive.writeUInt16LE(NORMALIZED_DOS_TIME, centralOffset + 12);
     archive.writeUInt16LE(NORMALIZED_DOS_DATE, centralOffset + 14);
-    archive.writeUInt32LE(NORMALIZED_EXTERNAL_FILE_ATTRIBUTES, centralOffset + 38);
+    archive.writeUInt32LE(normalizedAttributes, centralOffset + 38);
     if (changed) {
       changedEntryCount += 1;
     }
@@ -230,14 +236,19 @@ export function normalizeVsixTimestamps(input) {
   if (centralOffset !== endOffset) {
     throw new Error('The parsed central-directory length does not match the ZIP end record.');
   }
+  if (unmatchedExecutableEntries.size > 0) {
+    throw new Error(
+      `Executable VSIX entries were not found: ${[...unmatchedExecutableEntries].sort().join(', ')}`,
+    );
+  }
 
   return { archive, changedEntryCount, entryCount };
 }
 
-export async function normalizeVsixFile(filePath) {
+export async function normalizeVsixFile(filePath, options = {}) {
   const absolutePath = resolve(filePath);
   const input = await readFile(absolutePath);
-  const result = normalizeVsixTimestamps(input);
+  const result = normalizeVsixTimestamps(input, options);
   const metadata = await stat(absolutePath);
   const temporaryPath = `${absolutePath}.normalize-${process.pid}-${randomUUID()}.tmp`;
   let temporaryFile;

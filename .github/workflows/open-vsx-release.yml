@@ -136,6 +136,7 @@ jobs:
       - name: Record package checksum
         shell: bash
         run: |
+          cp dist/okf_core.wasm artifacts/okf_core.wasm
           cd artifacts
           sha256sum "${VSIX_NAME}" > "${VSIX_NAME}.sha256"
 
@@ -148,6 +149,7 @@ jobs:
             artifacts/okf-workbench.vsix
             artifacts/okf-workbench.vsix.sha256
             artifacts/runtime-licenses.json
+            artifacts/okf_core.wasm
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
@@ -163,12 +165,19 @@ jobs:
         include:
           - os: macos-15
             label: macos-aarch64
+            target: darwin-arm64
+            binary: okf
+          - os: macos-15-intel
+            label: macos-x86_64
+            target: darwin-x64
             binary: okf
           - os: ubuntu-24.04
             label: linux-x86_64
+            target: linux-x64
             binary: okf
           - os: windows-2025
             label: windows-x86_64
+            target: win32-x64
             binary: okf.exe
     steps:
       - name: Check out the tagged revision
@@ -183,6 +192,24 @@ jobs:
           rustc --version
           cargo --version
 
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install from lockfile
+        shell: bash
+        run: |
+          npm install --global npm@${NPM_VERSION}
+          npm ci
+
+      - name: Download the canonical Wasm candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.build-candidate.outputs.artifact_name }}
+          path: artifacts/canonical-wasm
+
       - name: Test and build the native CLI
         shell: bash
         run: |
@@ -190,29 +217,47 @@ jobs:
           cargo test --locked --workspace
           cargo build --locked --release --bin okf
 
-      - name: Package the native CLI with notices
+      - name: Package the same native CLI for standalone and extension distribution
         shell: bash
         env:
           CLI_BINARY: ${{ matrix.binary }}
           CLI_LABEL: ${{ matrix.label }}
+          PACKAGE_TARGET: ${{ matrix.target }}
+          OKF_ALLOW_CANONICAL_WASM: '1'
+          OKF_CANONICAL_WASM_PATH: ${{ github.workspace }}/artifacts/canonical-wasm/okf_core.wasm
         run: |
           set -euo pipefail
+          cli="target/release/${CLI_BINARY}"
+          vsix="artifacts/okf-workbench-${PACKAGE_TARGET}.vsix"
           package="okf-cli-${CLI_LABEL}"
           mkdir -p "artifacts/${package}"
-          cp "target/release/${CLI_BINARY}" "artifacts/${package}/${CLI_BINARY}"
+          cp "${cli}" "artifacts/${package}/${CLI_BINARY}"
           cp LICENSE "artifacts/${package}/LICENSE.txt"
           cp RUST_THIRD_PARTY_NOTICES.md "artifacts/${package}/RUST_THIRD_PARTY_NOTICES.md"
+          cmp "${cli}" "artifacts/${package}/${CLI_BINARY}"
           tar -C artifacts -czf "artifacts/${package}.tar.gz" "${package}"
+          npm run build
+          node scripts/package-vsix.mjs \
+            "${vsix}" --target "${PACKAGE_TARGET}" --cli "${cli}"
+          node scripts/check-vsix-reproducibility.mjs \
+            "${vsix}" --target "${PACKAGE_TARGET}" --cli "${cli}"
+          node scripts/package-check.mjs "${vsix}"
+          node scripts/check-cli-parity.mjs "${cli}" "${vsix}"
+          node scripts/security-check.mjs --vsix "${vsix}"
           cd artifacts
           shasum -a 256 "${package}.tar.gz" > "${package}.tar.gz.sha256"
+          shasum -a 256 "okf-workbench-${PACKAGE_TARGET}.vsix" \
+            > "okf-workbench-${PACKAGE_TARGET}.vsix.sha256"
 
-      - name: Retain the native CLI
+      - name: Retain standalone CLI and matching platform VSIX
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: okf-cli-${{ matrix.label }}-${{ github.sha }}-${{ github.run_attempt }}
+          name: okf-platform-${{ matrix.target }}-${{ github.sha }}-${{ github.run_attempt }}
           path: |
             artifacts/okf-cli-${{ matrix.label }}.tar.gz
             artifacts/okf-cli-${{ matrix.label }}.tar.gz.sha256
+            artifacts/okf-workbench-${{ matrix.target }}.vsix
+            artifacts/okf-workbench-${{ matrix.target }}.vsix.sha256
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
@@ -233,10 +278,10 @@ jobs:
           name: ${{ needs.build-candidate.outputs.artifact_name }}
           path: release-candidate
 
-      - name: Download the retained native CLIs
+      - name: Download the retained platform packages
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: okf-cli-*-${{ github.sha }}-${{ github.run_attempt }}
+          pattern: okf-platform-*-${{ github.sha }}-${{ github.run_attempt }}
           path: release-candidate
           merge-multiple: true
 
@@ -264,14 +309,14 @@ jobs:
               "${RELEASE_TAG}" \
               release-candidate/*.tar.gz \
               release-candidate/*.sha256 \
-              "release-candidate/${VSIX_NAME}" \
+              release-candidate/*.vsix \
               --clobber
           else
             gh release create \
               "${RELEASE_TAG}" \
               release-candidate/*.tar.gz \
               release-candidate/*.sha256 \
-              "release-candidate/${VSIX_NAME}" \
+              release-candidate/*.vsix \
               --generate-notes \
               --title "OKF Workbench ${RELEASE_VERSION}" \
               --verify-tag
@@ -281,6 +326,7 @@ jobs:
     name: Publish retained VSIX to Open VSX
     needs:
       - build-candidate
+      - build-cli
       - github-release
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -309,9 +355,21 @@ jobs:
           name: ${{ needs.build-candidate.outputs.artifact_name }}
           path: release-candidate
 
-      - name: Verify retained package checksum
+      - name: Download the retained platform packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: okf-platform-*-${{ github.sha }}-${{ github.run_attempt }}
+          path: release-candidate
+          merge-multiple: true
+
+      - name: Verify retained package checksums
         working-directory: release-candidate
-        run: sha256sum --check "${VSIX_NAME}.sha256"
+        shell: bash
+        run: |
+          set -euo pipefail
+          for checksum in *.sha256; do
+            sha256sum --check "${checksum}"
+          done
 
       - name: Verify straydog namespace authorization
         env:
@@ -323,7 +381,13 @@ jobs:
           fi
           ./node_modules/.bin/ovsx verify-pat straydog
 
-      - name: Publish the retained VSIX
+      - name: Publish universal fallback and every platform VSIX
         env:
           OVSX_PAT: ${{ secrets.OPEN_VSX_TOKEN }}
-        run: ./node_modules/.bin/ovsx publish "release-candidate/${VSIX_NAME}" --skip-duplicate
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./node_modules/.bin/ovsx publish "release-candidate/${VSIX_NAME}" --skip-duplicate
+          for vsix in release-candidate/okf-workbench-*.vsix; do
+            ./node_modules/.bin/ovsx publish "${vsix}" --skip-duplicate
+          done

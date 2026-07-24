@@ -28,7 +28,8 @@ initialize -> create -> edit -> validate -> explore -> repair
   changes.
 - Generates a managed `AGENTS.md` section and a project-local Agent Skill after preview.
 - Includes an offline native `okf` CLI backed by the same Rust core used by the extension through
-  a capability-free Wasm adapter.
+  a capability-free Wasm adapter, both in supported platform VSIX packages and as standalone
+  release archives.
 
 ## Commands
 
@@ -41,6 +42,8 @@ initialize -> create -> edit -> validate -> explore -> repair
 | `OKF: Open 3D Graph` | `okfWorkbench.openGraph` |
 | `OKF: Set Up Agent Integration` | `okfWorkbench.setupAgentIntegration` |
 | `OKF: Review Pending Changes` | `okfWorkbench.reviewPendingChanges` |
+| `OKF: Show CLI Status` | `okfWorkbench.showCliStatus` |
+| `OKF: Open CLI Terminal` | `okfWorkbench.openCliTerminal` |
 
 Open a workspace folder and run the six core `OKF:` commands from the Command Palette or an
 Explorer folder context menu. Authoring commands require a trusted workspace. Validation and graph
@@ -65,6 +68,14 @@ The CLI provides `init`, `new`, `validate`, `index`, `graph`, `agent`, and `vers
 never write. Write commands first report a complete plan; non-interactive writes require
 `--apply`, and `--check` reports whether changes are needed without modifying the workspace.
 `validate --format json` and `graph --format json` emit a versioned JSON envelope for automation.
+
+Open VSX selects a target package for macOS arm64/x64, Linux x64, or Windows x64 when supported.
+The bundled CLI is appended to `PATH` for new integrated terminals, without changing shell profile
+files or shadowing an existing standalone `okf` earlier in `PATH`. `OKF_WORKBENCH_CLI` points to the
+exact validated bundled executable. Disable this with
+`okfWorkbench.cli.exposeInIntegratedTerminal`, or run `OKF: Show CLI Status` to inspect the current
+Extension Host. A universal CLI-free VSIX remains available for other targets; standalone archives
+support external shells, CI, and editor-free use.
 
 ## Safety and file ownership
 

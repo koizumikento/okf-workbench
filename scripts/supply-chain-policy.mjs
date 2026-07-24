@@ -26,6 +26,7 @@ const aggregateSecurityGateCommand = 'npm run test:security:all';
 const openVsxReleaseWorkflowPath = '.github/workflows/open-vsx-release.yml';
 const openVsxPublishCommand =
   './node_modules/.bin/ovsx publish "release-candidate/${VSIX_NAME}" --skip-duplicate';
+const openVsxTargetPublishCommand = './node_modules/.bin/ovsx publish "${vsix}" --skip-duplicate';
 const openVsxPublishInvocationPattern = /(?:^|[/\s])ovsx(?:\.cmd)?\b[^\r\n]*\bpublish\b/u;
 const openVsxVerifyPatCommand = './node_modules/.bin/ovsx verify-pat straydog';
 const requiredSecurityWorkflowGates = Object.freeze({
@@ -346,6 +347,7 @@ export function releaseWorkflowSafetyFailures(workflowPath, workflowSource) {
     !isRecord(releaseJob) ||
     !Array.isArray(releaseJob.steps) ||
     !jobNeeds(releaseJob, 'build-candidate') ||
+    !jobNeeds(releaseJob, 'build-cli') ||
     releaseJob?.permissions?.contents !== 'write'
   ) {
     failures.push(
@@ -354,6 +356,7 @@ export function releaseWorkflowSafetyFailures(workflowPath, workflowSource) {
   }
   if (
     !jobNeeds(publishJob, 'build-candidate') ||
+    !jobNeeds(publishJob, 'build-cli') ||
     !jobNeeds(publishJob, 'github-release') ||
     publishJob?.permissions?.contents === 'write'
   ) {
@@ -369,9 +372,14 @@ export function releaseWorkflowSafetyFailures(workflowPath, workflowSource) {
       .filter((command) => openVsxPublishInvocationPattern.test(command))
       .map((command) => ({ command, index })),
   );
-  if (publishInvocations.length !== 1 || publishInvocations[0].command !== openVsxPublishCommand) {
+  if (
+    publishInvocations.length !== 2 ||
+    publishInvocations[0].command !== openVsxPublishCommand ||
+    publishInvocations[1].command !== openVsxTargetPublishCommand ||
+    publishInvocations[0].index !== publishInvocations[1].index
+  ) {
     failures.push(
-      `${workflowPath}:jobs.publish-openvsx must run exactly one Open VSX publish invocation and it must use the retained VSIX with duplicate-safe retry semantics; found ${publishInvocations.length}.`,
+      `${workflowPath}:jobs.publish-openvsx must publish the retained universal VSIX and the reviewed target loop in one fail-closed step with duplicate-safe retry semantics; found ${publishInvocations.length} invocation(s).`,
     );
     return failures;
   }
@@ -403,7 +411,7 @@ export function releaseWorkflowSafetyFailures(workflowPath, workflowSource) {
 
   const checksumIndices = steps
     .map((step, index) => ({ index, lines: commandLines(step?.run) }))
-    .filter(({ lines }) => lines.includes('sha256sum --check "${VSIX_NAME}.sha256"'))
+    .filter(({ lines }) => lines.includes('sha256sum --check "${checksum}"'))
     .map(({ index }) => index);
   if (
     checksumIndices.length !== 1 ||

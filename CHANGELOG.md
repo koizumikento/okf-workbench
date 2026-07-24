@@ -20,6 +20,8 @@ Initial release.
   Skill template.
 - A Rust `okf-core` shared by the extension through a capability-free Wasm ABI and by an offline
   native `okf` CLI with init, create, validate, index, graph, and agent commands.
+- Target-platform VSIX packages expose the validated bundled CLI to new integrated terminals on
+  macOS arm64/x64, Linux x64, and Windows x64; matching standalone CLI archives remain available.
 - Read-only `3d-force-graph` Webview with search, filters, details, backlinks, source navigation,
   stable type colors, an accessible non-spatial node list, mouse/trackpad camera navigation, visible
   camera controls, keyboard shortcuts, and interaction help.
@@ -56,3 +58,5 @@ Initial release.
 - Bundled third-party license texts and notices are included with the extension.
 - Rust/Wasm dependency notices are generated from the locked Cargo graph and packaged separately.
 - The extension identifier is `straydog.okf-workbench`.
+- Every platform release derives its VSIX and standalone CLI archive from identical native binary
+  bytes; a universal CLI-free VSIX remains the unsupported-target fallback.

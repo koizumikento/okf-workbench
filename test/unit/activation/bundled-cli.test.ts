@@ -16,6 +16,12 @@ import {
 
 const temporaryDirectories = new Set<string>();
 const executableBytes = Buffer.from('deterministic native CLI fixture');
+const hostTargetPlatform = expectedTargetPlatform(process.platform, process.arch);
+if (hostTargetPlatform === undefined) {
+  throw new Error(`Unsupported test host: ${process.platform}-${process.arch}`);
+}
+const hostExecutable = process.platform === 'win32' ? 'okf.exe' : 'okf';
+const mismatchedTargetPlatform = hostTargetPlatform === 'linux-x64' ? 'darwin-arm64' : 'linux-x64';
 
 class FakeEnvironmentCollection implements TerminalEnvironmentCollection {
   public description = '';
@@ -40,7 +46,7 @@ async function distribution(
   const directory = await mkdtemp(join(tmpdir(), 'okf-bundled-cli-'));
   temporaryDirectories.add(directory);
   const bin = join(directory, 'bin');
-  const executablePath = join(bin, 'okf');
+  const executablePath = join(bin, hostExecutable);
   await mkdir(bin);
   await writeFile(executablePath, executableBytes);
   await chmod(executablePath, 0o755);
@@ -48,8 +54,8 @@ async function distribution(
     join(directory, 'bundled-cli.json'),
     `${JSON.stringify({
       schemaVersion: 1,
-      targetPlatform: 'darwin-arm64',
-      executable: 'okf',
+      targetPlatform: hostTargetPlatform,
+      executable: hostExecutable,
       byteLength: executableBytes.byteLength,
       sha256: createHash('sha256').update(executableBytes).digest('hex'),
       cliVersion: '0.1.0',
@@ -71,11 +77,11 @@ afterEach(async () => {
 describe('bundled CLI inspection', () => {
   test('accepts an exact platform binary and manifest', async () => {
     const fixture = await distribution();
-    const result = inspectBundledCli(fixture.directory, 'darwin', 'arm64');
+    const result = inspectBundledCli(fixture.directory);
 
     expect(result).toEqual({
       available: true,
-      targetPlatform: 'darwin-arm64',
+      targetPlatform: hostTargetPlatform,
       executablePath: fixture.executablePath,
       sha256: createHash('sha256').update(executableBytes).digest('hex'),
       cliVersion: '0.1.0',
@@ -92,7 +98,7 @@ describe('bundled CLI inspection', () => {
     const directory = await mkdtemp(join(tmpdir(), 'okf-universal-cli-'));
     temporaryDirectories.add(directory);
 
-    const result = inspectBundledCli(directory, 'darwin', 'arm64');
+    const result = inspectBundledCli(directory);
 
     expect(result).toEqual({ available: false, reason: 'not-packaged' });
     expect(bundledCliStatusMessage(result)).toContain('Wasm core');
@@ -100,23 +106,23 @@ describe('bundled CLI inspection', () => {
 
   test.each([
     ['hash mismatch', { sha256: '0'.repeat(64) }, 'invalid-executable'],
-    ['target mismatch', { targetPlatform: 'linux-x64' }, 'platform-mismatch'],
+    ['target mismatch', { targetPlatform: mismatchedTargetPlatform }, 'platform-mismatch'],
     ['extra manifest key', { unexpected: true }, 'invalid-manifest'],
     ['unsupported ABI', { abiVersion: 2 }, 'invalid-manifest'],
   ] as const)('fails closed for %s', async (_label, overrides, reason) => {
     const fixture = await distribution(overrides);
 
-    expect(inspectBundledCli(fixture.directory, 'darwin', 'arm64')).toEqual({
+    expect(inspectBundledCli(fixture.directory)).toEqual({
       available: false,
       reason,
     });
   });
 
-  test('requires Unix execute permission', async () => {
+  test.runIf(process.platform !== 'win32')('requires Unix execute permission', async () => {
     const fixture = await distribution();
     await chmod(fixture.executablePath, 0o644);
 
-    expect(inspectBundledCli(fixture.directory, 'darwin', 'arm64')).toEqual({
+    expect(inspectBundledCli(fixture.directory)).toEqual({
       available: false,
       reason: 'invalid-executable',
     });
@@ -126,7 +132,7 @@ describe('bundled CLI inspection', () => {
 describe('integrated terminal environment', () => {
   test('appends the bundled directory without shadowing an existing okf command', async () => {
     const fixture = await distribution();
-    const inspection = inspectBundledCli(fixture.directory, 'darwin', 'arm64');
+    const inspection = inspectBundledCli(fixture.directory);
     const collection = new FakeEnvironmentCollection();
 
     applyBundledCliEnvironment(collection, inspection, true, ':');
@@ -142,7 +148,7 @@ describe('integrated terminal environment', () => {
 
   test('clears its mutations when the user disables exposure', async () => {
     const fixture = await distribution();
-    const inspection = inspectBundledCli(fixture.directory, 'darwin', 'arm64');
+    const inspection = inspectBundledCli(fixture.directory);
     const collection = new FakeEnvironmentCollection();
 
     applyBundledCliEnvironment(collection, inspection, false, ':');

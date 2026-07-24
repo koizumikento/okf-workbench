@@ -706,10 +706,17 @@ describe('performance evidence report', { timeout: 30_000 }, () => {
       const manifest = JSON.parse(original) as {
         platformPackages: Record<string, { files: Record<string, string> }>;
       };
-      const windowsDefinition = manifest.platformPackages['win32-x64'];
-      expect(windowsDefinition).toBeDefined();
-      if (windowsDefinition === undefined) throw new Error('Missing Windows toolchain fixture.');
-      windowsDefinition.files['README.md'] = 'f'.repeat(64);
+      const hostPlatform = `${process.platform}-${process.arch}`;
+      const nonHostPlatform = Object.keys(manifest.platformPackages)
+        .sort()
+        .find((platform) => platform !== hostPlatform);
+      expect(nonHostPlatform).toBeDefined();
+      if (nonHostPlatform === undefined) throw new Error('Missing non-host toolchain fixture.');
+      const nonHostDefinition = manifest.platformPackages[nonHostPlatform];
+      expect(nonHostDefinition).toBeDefined();
+      if (nonHostDefinition === undefined)
+        throw new Error('Missing non-host toolchain definition.');
+      nonHostDefinition.files['README.md'] = 'f'.repeat(64);
       writeFileSync(candidatePath, `${JSON.stringify(manifest, undefined, 2)}\n`, 'utf8');
       const result = runStrictEvidenceCli(
         'mutated-portable-toolchain-manifest',

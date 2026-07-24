@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,13 +8,16 @@ import { promisify } from 'node:util';
 
 import { describe, expect, test } from 'vitest';
 
+import { verifyCliParity } from '../../../scripts/check-cli-parity.mjs';
 import {
+  BUNDLED_CLI_MANIFEST_ENTRY,
   CANONICAL_PROJECT_LICENSE_TEXT,
   PROJECT_LICENSE_ENTRY,
   REQUIRED_VSIX_ENTRIES,
   validateProjectLicense,
   validateVsixArchive,
 } from '../../../scripts/package-check.mjs';
+import { NORMALIZED_EXECUTABLE_FILE_ATTRIBUTES } from '../../../scripts/normalize-vsix.mjs';
 
 const LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
 const CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
@@ -21,6 +25,7 @@ const END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
 
 interface ZipEntry {
   readonly content: string | Uint8Array;
+  readonly externalAttributes?: number;
   readonly name: string;
 }
 
@@ -36,9 +41,11 @@ const PUNCTUATION_DRIFT = PROJECT_LICENSE.replace(
 )
   .replace('TORT OR OTHERWISE', 'TORT, OR OTHERWISE')
   .replace('OUT OF OR IN CONNECTION', 'OUT OF, OR IN CONNECTION');
-const VSIX_MANIFEST = `<?xml version="1.0" encoding="utf-8"?>
+function vsixManifest(targetPlatform?: string): string {
+  return `<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest>
   <Metadata>
+    <Identity Language="en-US" Id="okf-workbench" Version="0.1.0" Publisher="straydog"${targetPlatform === undefined ? '' : ` TargetPlatform="${targetPlatform}"`} />
     <License>extension/LICENSE.txt</License>
     <Property Id="Microsoft.VisualStudio.Services.Links.Source" Value="https://github.com/koizumikento/okf-workbench.git" />
     <Property Id="Microsoft.VisualStudio.Services.Links.Getstarted" Value="https://github.com/koizumikento/okf-workbench.git" />
@@ -51,6 +58,8 @@ const VSIX_MANIFEST = `<?xml version="1.0" encoding="utf-8"?>
   </Assets>
 </PackageManifest>
 `;
+}
+const VSIX_MANIFEST = vsixManifest();
 
 function crc32(content: Uint8Array): number {
   let crc = 0xffffffff;
@@ -114,7 +123,7 @@ function createStoredZip(entries: readonly ZipEntry[]): Buffer {
     header.writeUInt16LE(0, 32);
     header.writeUInt16LE(0, 34);
     header.writeUInt16LE(0, 36);
-    header.writeUInt32LE(0, 38);
+    header.writeUInt32LE(entry.externalAttributes ?? 0, 38);
     header.writeUInt32LE(localOffsets[index] ?? 0xffffffff, 42);
 
     centralChunks.push(header, name);
@@ -199,7 +208,113 @@ describe('VSIX package closed-set validation', () => {
       Buffer.from(PROJECT_LICENSE),
     );
 
-    expect(result).toEqual({ entryCount: REQUIRED_VSIX_ENTRIES.length });
+    expect(result).toEqual({
+      entryCount: REQUIRED_VSIX_ENTRIES.length,
+      targetPlatform: undefined,
+      bundledCli: undefined,
+      wasmSha256: createHash('sha256')
+        .update(Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]))
+        .digest('hex'),
+    });
+  });
+
+  test('accepts one target-matched bundled CLI with an exact hash and executable mode', () => {
+    const executable = Buffer.from('native-okf-fixture');
+    const cliManifest = {
+      schemaVersion: 1,
+      targetPlatform: 'darwin-arm64',
+      executable: 'okf',
+      byteLength: executable.byteLength,
+      sha256: createHash('sha256').update(executable).digest('hex'),
+      cliVersion: '0.1.0',
+      coreVersion: '0.1.0',
+      abiVersion: 1,
+    };
+    const entries = packageEntries().map((entry) =>
+      entry.name === 'extension.vsixmanifest'
+        ? { ...entry, content: vsixManifest('darwin-arm64') }
+        : entry,
+    );
+    entries.push(
+      { name: BUNDLED_CLI_MANIFEST_ENTRY, content: `${JSON.stringify(cliManifest)}\n` },
+      {
+        name: 'extension/dist/bin/okf',
+        content: executable,
+        externalAttributes: NORMALIZED_EXECUTABLE_FILE_ATTRIBUTES,
+      },
+    );
+
+    expect(validateVsixArchive(createStoredZip(entries), Buffer.from(PROJECT_LICENSE))).toEqual({
+      entryCount: REQUIRED_VSIX_ENTRIES.length + 2,
+      targetPlatform: 'darwin-arm64',
+      bundledCli: {
+        byteLength: executable.byteLength,
+        executableEntry: 'extension/dist/bin/okf',
+        sha256: cliManifest.sha256,
+      },
+      wasmSha256: createHash('sha256')
+        .update(Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]))
+        .digest('hex'),
+    });
+  });
+
+  test('proves standalone and bundled CLI byte parity', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'okf-workbench-cli-parity-'));
+    const executable = Buffer.from('same-native-okf-fixture');
+    const cliPath = join(directory, 'okf');
+    const vsixPath = join(directory, 'candidate.vsix');
+    const cliManifest = {
+      schemaVersion: 1,
+      targetPlatform: 'darwin-arm64',
+      executable: 'okf',
+      byteLength: executable.byteLength,
+      sha256: createHash('sha256').update(executable).digest('hex'),
+      cliVersion: '0.1.0',
+      coreVersion: '0.1.0',
+      abiVersion: 1,
+    };
+    const entries = packageEntries().map((entry) =>
+      entry.name === 'extension.vsixmanifest'
+        ? { ...entry, content: vsixManifest('darwin-arm64') }
+        : entry,
+    );
+    entries.push(
+      { name: BUNDLED_CLI_MANIFEST_ENTRY, content: `${JSON.stringify(cliManifest)}\n` },
+      {
+        name: 'extension/dist/bin/okf',
+        content: executable,
+        externalAttributes: NORMALIZED_EXECUTABLE_FILE_ATTRIBUTES,
+      },
+    );
+    await Promise.all([
+      writeFile(cliPath, executable),
+      writeFile(vsixPath, createStoredZip(entries)),
+    ]);
+
+    try {
+      await expect(verifyCliParity(cliPath, vsixPath)).resolves.toEqual({
+        byteLength: executable.byteLength,
+        sha256: cliManifest.sha256,
+        targetPlatform: 'darwin-arm64',
+      });
+      await writeFile(cliPath, 'different');
+      await expect(verifyCliParity(cliPath, vsixPath)).rejects.toThrow(
+        'Standalone and bundled CLI bytes differ',
+      );
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  test('rejects a native CLI in the universal fallback VSIX', () => {
+    const entries = [
+      ...packageEntries(),
+      { name: 'extension/dist/bin/okf', content: 'unexpected native executable' },
+    ];
+
+    expect(() =>
+      validateVsixArchive(createStoredZip(entries), Buffer.from(PROJECT_LICENSE)),
+    ).toThrow('The universal VSIX must not contain a native CLI payload.');
   });
 
   test('rejects a packaged TypeScript semantic oracle', () => {

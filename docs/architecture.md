@@ -45,7 +45,8 @@ crates/
 
 The accepted runtime, build, test, and packaging baseline is documented in
 [Implementation environment](implementation-environment.md), [ADR 0004](decisions/0004-use-npm-typescript-esbuild-toolchain.md),
-and [ADR 0007](decisions/0007-adopt-rust-wasm-shared-core-and-cli.md). npm/esbuild own the
+and [ADR 0007](decisions/0007-adopt-rust-wasm-shared-core-and-cli.md). [ADR 0008](decisions/0008-bundle-native-cli-in-platform-vsix.md)
+defines the dual bundled/standalone CLI distribution. npm/esbuild own the
 extension and Webview package; Cargo owns the deterministic core, portable Wasm artifact, and
 native CLI.
 
@@ -83,7 +84,8 @@ versioned JSON / raw Wasm ABI              native Rust calls
 does not import filesystem, terminal, editor, Webview, or network capabilities. `okf-wasm`
 exports memory allocation/deallocation, ABI metadata, and one request dispatcher; it has no WASI
 or other imports. The Extension Host validates the ABI version, memory bounds, UTF-8, envelope,
-and operation result before publication. It loads the packaged module once during activation and
+and operation result before publication. It loads the packaged module lazily on the first core
+operation and
 does not silently switch to the TypeScript migration oracle after a missing module, version
 mismatch, trap, or malformed response.
 
@@ -91,6 +93,11 @@ The Extension Host continues to own URI-first reads, Workspace Trust, previews, 
 diagnostics, watchers, and the Webview lifecycle. The native CLI owns local path resolution,
 interactive confirmation, atomic local writes, and stdout/stderr. The Webview receives only the
 bounded presentation payload and never instantiates Wasm.
+
+Supported target-platform VSIX packages add one native CLI at the distribution boundary, while the
+universal fallback remains CLI-free. The exact same executable is also shipped in a standalone
+archive. The extension validates it and exposes it only to new integrated terminals; extension
+commands do not invoke it.
 
 ## Core model
 

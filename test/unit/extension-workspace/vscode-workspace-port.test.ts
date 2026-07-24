@@ -492,7 +492,7 @@ describe('VscodeWorkspacePort guarded writes', () => {
     });
 
     const error = await port
-      .stat(Uri.parse('file:///workspace/denied.md'))
+      .stat(Uri.parse(pathToFileURL(join(tmpdir(), 'okf-workspace-port-denied.md')).href))
       .catch((reason: unknown) => reason);
 
     expect(error).toBeInstanceOf(WorkspaceAccessError);

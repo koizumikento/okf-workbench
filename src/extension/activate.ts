@@ -1,7 +1,15 @@
 import * as vscode from 'vscode';
 
-import { loadPackagedWasmOkfCore } from '../core/wasm/index.js';
+import { createLazyOkfCore, loadPackagedWasmOkfCore } from '../core/wasm/index.js';
 import type { GraphRenderFailureReason } from '../shared/protocol/index.js';
+import {
+  applyBundledCliEnvironment,
+  BUNDLED_CLI_CONFIGURATION,
+  bundledCliStatusMessage,
+  inspectBundledCli,
+  OPEN_CLI_TERMINAL_COMMAND,
+  SHOW_CLI_STATUS_COMMAND,
+} from './cli/index.js';
 import { bundlePathWithinIntegrationRoot } from './composition/bundle-path.js';
 import { bundleSelectionChoices } from './composition/bundle-selection.js';
 import {
@@ -136,12 +144,30 @@ function uriArgument(value: unknown): vscode.Uri | undefined {
 }
 
 export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptanceApi | undefined {
-  const core = loadPackagedWasmOkfCore();
+  const core = createLazyOkfCore(loadPackagedWasmOkfCore);
   const acceptanceSignals = createAcceptanceCompletionSignals(
     process.env['OKF_ACCEPTANCE_DRIVER'],
     OKF_COMMANDS,
   );
   const output = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME, { log: true });
+  const bundledCli = inspectBundledCli(__dirname);
+  let bundledCliEnvironmentEnabled = true;
+  const synchronizeBundledCliEnvironment = (): void => {
+    bundledCliEnvironmentEnabled = vscode.workspace
+      .getConfiguration('okfWorkbench.cli')
+      .get<boolean>('exposeInIntegratedTerminal', true);
+    applyBundledCliEnvironment(
+      context.environmentVariableCollection,
+      bundledCli,
+      bundledCliEnvironmentEnabled,
+    );
+  };
+  synchronizeBundledCliEnvironment();
+  output.info(
+    bundledCli.available
+      ? `cli.integration available=true target=${bundledCli.targetPlatform}`
+      : `cli.integration available=false reason=${bundledCli.reason}`,
+  );
   const ui = new VscodeCommandUi();
   const previewer = new VscodeProposalPreviewer();
   const proposalDecisionController = new VscodeProposalDecisionController({
@@ -843,6 +869,11 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
       selectedRuntimeSelection = undefined;
       output.info('bundle.selection cleared=true reason=workspace-folder-change');
     }),
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration(BUNDLED_CLI_CONFIGURATION)) {
+        synchronizeBundledCliEnvironment();
+      }
+    }),
   );
   for (const command of OKF_COMMANDS) {
     context.subscriptions.push(
@@ -855,6 +886,22 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
     vscode.commands.registerCommand(REVIEW_PENDING_CHANGES_COMMAND, () =>
       proposalDecisionController.reviewPending(),
     ),
+    vscode.commands.registerCommand(SHOW_CLI_STATUS_COMMAND, () =>
+      vscode.window.showInformationMessage(
+        bundledCliStatusMessage(bundledCli, bundledCliEnvironmentEnabled),
+      ),
+    ),
+    vscode.commands.registerCommand(OPEN_CLI_TERMINAL_COMMAND, async () => {
+      if (!bundledCli.available || !bundledCliEnvironmentEnabled) {
+        await vscode.window.showWarningMessage(
+          bundledCliStatusMessage(bundledCli, bundledCliEnvironmentEnabled),
+        );
+        return;
+      }
+      const terminal = vscode.window.createTerminal({ name: 'OKF CLI' });
+      terminal.show();
+      terminal.sendText('okf version', false);
+    }),
   );
 
   if (acceptanceSignals !== undefined) {
@@ -864,7 +911,7 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
   }
 
   output.info(
-    `extension.activate commands=${String(OKF_COMMANDS.length + 1)} core_commands=${String(OKF_COMMANDS.length)}`,
+    `extension.activate commands=${String(OKF_COMMANDS.length + 3)} core_commands=${String(OKF_COMMANDS.length)}`,
   );
   return acceptanceSignals?.api;
 }

@@ -6,6 +6,7 @@ import { describe, expect, test } from 'vitest';
 import {
   NORMALIZED_DOS_DATE,
   NORMALIZED_DOS_TIME,
+  NORMALIZED_EXECUTABLE_FILE_ATTRIBUTES,
   NORMALIZED_EXTERNAL_FILE_ATTRIBUTES,
   normalizeVsixTimestamps,
 } from '../../../scripts/normalize-vsix.mjs';
@@ -177,6 +178,36 @@ describe('VSIX archive metadata normalization', () => {
     const normalizedAgain = normalizeVsixTimestamps(normalized.archive);
     expect(normalizedAgain.changedEntryCount).toBe(0);
     expect(normalizedAgain.archive).toEqual(normalized.archive);
+  });
+
+  test('preserves an exact reviewed executable entry as mode 0755', () => {
+    const fixture = createZipFixture(entries, 0x6f25, 0x5cf6);
+    const executableEntry = entries[1]?.name;
+    const regularOffset = fixture.centralOffsets[0];
+    const executableOffset = fixture.centralOffsets[1];
+    if (
+      executableEntry === undefined ||
+      regularOffset === undefined ||
+      executableOffset === undefined
+    ) {
+      throw new Error('Executable fixture entry is missing.');
+    }
+
+    const normalized = normalizeVsixTimestamps(fixture.archive, {
+      executableEntries: [executableEntry],
+    });
+
+    expect(normalized.archive.readUInt32LE(regularOffset + 38)).toBe(
+      NORMALIZED_EXTERNAL_FILE_ATTRIBUTES,
+    );
+    expect(normalized.archive.readUInt32LE(executableOffset + 38)).toBe(
+      NORMALIZED_EXECUTABLE_FILE_ATTRIBUTES,
+    );
+    expect(() =>
+      normalizeVsixTimestamps(fixture.archive, {
+        executableEntries: ['extension/dist/bin/missing'],
+      }),
+    ).toThrow('Executable VSIX entries were not found');
   });
 
   test.each([0x000a, 0x000d, 0x5455, 0x5855])(

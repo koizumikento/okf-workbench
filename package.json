@@ -43,7 +43,10 @@
     "onCommand:okfWorkbench.regenerateIndexes",
     "onCommand:okfWorkbench.openGraph",
     "onCommand:okfWorkbench.setupAgentIntegration",
-    "onCommand:okfWorkbench.reviewPendingChanges"
+    "onCommand:okfWorkbench.reviewPendingChanges",
+    "onCommand:okfWorkbench.showCliStatus",
+    "onCommand:okfWorkbench.openCliTerminal",
+    "onStartupFinished"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -97,6 +100,16 @@
         "title": "Review Pending Changes",
         "category": "OKF",
         "enablement": "okfWorkbench.hasPendingProposal"
+      },
+      {
+        "command": "okfWorkbench.showCliStatus",
+        "title": "Show CLI Status",
+        "category": "OKF"
+      },
+      {
+        "command": "okfWorkbench.openCliTerminal",
+        "title": "Open CLI Terminal",
+        "category": "OKF"
       }
     ],
     "menus": {
@@ -128,6 +141,12 @@
         {
           "command": "okfWorkbench.reviewPendingChanges",
           "when": "okfWorkbench.hasPendingProposal"
+        },
+        {
+          "command": "okfWorkbench.showCliStatus"
+        },
+        {
+          "command": "okfWorkbench.openCliTerminal"
         }
       ],
       "explorer/context": [
@@ -162,6 +181,16 @@
           "group": "navigation@15"
         }
       ]
+    },
+    "configuration": {
+      "title": "OKF Workbench",
+      "properties": {
+        "okfWorkbench.cli.exposeInIntegratedTerminal": {
+          "type": "boolean",
+          "default": true,
+          "description": "Append the bundled offline OKF CLI directory to PATH for new VS Code integrated terminals. Existing PATH commands keep precedence."
+        }
+      }
     }
   },
   "scripts": {
@@ -171,6 +200,7 @@
     "typecheck": "tsc -p tsconfig.extension.json && tsc -p tsconfig.webview.json && tsc -p tsconfig.test.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:platform-package": "vitest run test/unit/activation/bundled-cli.test.ts",
     "test:acceptance": "vitest run --config test/acceptance/vitest.config.ts",
     "test:security": "vitest run --config test/security/vitest.config.ts",
     "test:integration": "vscode-test --config .vscode-test.mjs",

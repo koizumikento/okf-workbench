@@ -93,6 +93,7 @@ Accepted decisions are recorded under [decisions/](decisions/):
 - [0005 — Resolve the MVP implementation questions](decisions/0005-resolve-mvp-implementation-questions.md)
 - [0006 — Publish Open VSX releases from version tags](decisions/0006-publish-open-vsx-from-version-tags.md)
 - [0007 — Adopt a Rust/Wasm shared OKF core and native CLI](decisions/0007-adopt-rust-wasm-shared-core-and-cli.md)
+- [0008 — Bundle the native CLI in platform VSIX packages and distribute it separately](decisions/0008-bundle-native-cli-in-platform-vsix.md)
 
 ## Documentation rules
 

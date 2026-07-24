@@ -1,9 +1,7 @@
 use serde_json::Value;
-use std::{
-    fs,
-    path::Path,
-    process::{Command, Stdio},
-};
+#[cfg(unix)]
+use std::process::Stdio;
+use std::{fs, path::Path, process::Command};
 use tempfile::tempdir;
 
 fn okf() -> Command {

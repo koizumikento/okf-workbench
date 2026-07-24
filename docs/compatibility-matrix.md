@@ -1,7 +1,7 @@
 # Compatibility matrix
 
-- Status: current exact candidate passed the full hosted matrix
-- Matrix qualified: 2026-07-24
+- Status: prior universal candidate qualified; bundled-CLI candidate pending hosted qualification
+- Last matrix qualified: 2026-07-24
 - Extension identifier expected by the gate: `straydog.okf-workbench`
 
 ## What this matrix proves
@@ -19,9 +19,9 @@ fixture with a fixed `SOURCE_DATE_EPOCH`, records its digest, and upgrades from
 that package. A same-version reinstall is recorded separately and is never
 counted as upgrade evidence.
 
-## Current release-candidate qualification
+## Last universal-candidate qualification
 
-The current workflow requires VS Code `1.121.0` on Ubuntu, VS Code `1.129.1` on Ubuntu, macOS,
+The workflow requires VS Code `1.121.0` on Ubuntu, VS Code `1.129.1` on Ubuntu, macOS,
 and Windows, and VSCodium `1.121.03429` on Ubuntu, macOS, and Windows.
 [Compatibility run 30058922150](https://github.com/koizumikento/okf-workbench/actions/runs/30058922150)
 passed the candidate, acceptance/Webview, and all seven lifecycle jobs at evidence revision
@@ -37,6 +37,10 @@ byte-identity job. Its three VSIX files, the Compatibility candidate, the CI art
 local candidate were byte-for-byte identical: `613637` bytes with the SHA-256 above. The
 artifact-content revision is `e0c1f8895f3dc3391be3de47f1a517f82ae62f3c`; the later commits
 through `a5b2b75b7216d644f0d8d0f739db3a989bba7ca0` changed tests only.
+
+Those results predate ADR 0008 and do not qualify the current target-platform VSIX or integrated
+terminal CLI exposure. The current candidate requires fresh package-smoke evidence for all four
+targets and fresh packaged-editor lifecycle evidence before release.
 
 ## Preserved historical hosted qualification
 

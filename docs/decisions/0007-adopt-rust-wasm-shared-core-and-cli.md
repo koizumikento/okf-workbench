@@ -38,7 +38,7 @@ and cannot read files, access the network, or write workspace content.
 The ABI is an explicitly versioned request/response envelope. The raw Wasm adapter exports only
 memory allocation, deallocation, ABI metadata, and one request dispatcher. This avoids a native
 Node add-on and avoids generated JavaScript glue that could vary by platform. The build copies the
-same Wasm bytes into the platform-neutral VSIX.
+same Wasm bytes into every VSIX variant.
 
 The CLI uses the same `okf-core` crate and provides:
 
@@ -71,8 +71,8 @@ extension and Webview; Cargo is authoritative for the Rust core, Wasm artifact, 
 Positive:
 
 - Extension and CLI share one deterministic implementation of the OKF contract.
-- The VSIX remains platform-independent because it contains portable Wasm rather than a native
-  Node add-on.
+- Extension semantics remain platform-independent because they use portable Wasm rather than a
+  native Node add-on.
 - The Wasm capability boundary is smaller than the Extension Host boundary and is independently
   testable.
 - CLI automation can validate and plan changes without launching an editor or requiring network
@@ -85,8 +85,11 @@ Costs:
   rather than assumed from parser-library similarity.
 - JS/Wasm serialization and copying add measurable overhead, so release qualification must retain
   the existing parser and graph performance thresholds.
-- CLI binaries are released per operating system and architecture, separately from the
-  platform-neutral VSIX.
+- CLI binaries require per-operating-system and per-architecture release qualification.
+
+ADR 0008 supersedes only the packaging decision above: each native CLI is distributed both in a
+target-platform VSIX and as a standalone archive, while a platform-neutral VSIX remains available
+as a CLI-free fallback.
 
 ## Rollout and rollback
 

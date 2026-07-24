@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { packageVsix } from './package-vsix.mjs';
+import { packageVsix, parsePackageArguments } from './package-vsix.mjs';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -12,17 +12,15 @@ function sha256(content) {
   return createHash('sha256').update(content).digest('hex');
 }
 
-const candidateArgument = process.argv[2];
-if (candidateArgument === undefined || process.argv.length !== 3) {
-  throw new Error('Usage: node scripts/check-vsix-reproducibility.mjs <normalized-candidate-vsix>');
-}
+const packageArguments = parsePackageArguments(process.argv.slice(2));
+const candidateArgument = packageArguments.outputPath;
 
 const candidatePath = resolve(candidateArgument);
 const temporaryDirectory = await mkdtemp(join(tmpdir(), 'okf-workbench-vsix-repro-'));
 
 try {
   const repeatedPath = join(temporaryDirectory, 'repeated.vsix');
-  await packageVsix(repeatedPath, repositoryRoot);
+  await packageVsix(repeatedPath, repositoryRoot, packageArguments);
 
   const [candidate, repeated] = await Promise.all([
     readFile(candidatePath),

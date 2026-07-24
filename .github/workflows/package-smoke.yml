@@ -62,10 +62,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - macos-15
-          - ubuntu-24.04
-          - windows-2025
+        include:
+          - os: macos-15
+            target: darwin-arm64
+            binary: okf
+          - os: macos-15-intel
+            target: darwin-x64
+            binary: okf
+          - os: ubuntu-24.04
+            target: linux-x64
+            binary: okf
+          - os: windows-2025
+            target: win32-x64
+            binary: okf.exe
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -103,23 +112,32 @@ jobs:
           path: artifacts/canonical-wasm
 
       - name: Build, test, and inspect package
+        shell: bash
         env:
           OKF_ALLOW_CANONICAL_WASM: '1'
           OKF_CANONICAL_WASM_PATH: ${{ github.workspace }}/artifacts/canonical-wasm/okf_core.wasm
+          PACKAGE_TARGET: ${{ matrix.target }}
+          CLI_BINARY: ${{ matrix.binary }}
         run: |
+          set -euo pipefail
           npm ci
           npm run typecheck
           npm run rust:format
           npm run rust:lint
           npm run rust:test
           npm run rust:notices:check
-          npm test
-          npm run test:acceptance
+          npm run test:platform-package
           npm run test:security
           npm run dependency:check
-          npm run package
-          node scripts/check-vsix-reproducibility.mjs artifacts/okf-workbench.vsix
-          npm run package:check
+          cargo build --locked --release --bin okf
+          npm run build
+          vsix="artifacts/okf-workbench-${PACKAGE_TARGET}.vsix"
+          cli="target/release/${CLI_BINARY}"
+          node scripts/package-vsix.mjs "${vsix}" --target "${PACKAGE_TARGET}" --cli "${cli}"
+          node scripts/check-vsix-reproducibility.mjs \
+            "${vsix}" --target "${PACKAGE_TARGET}" --cli "${cli}"
+          node scripts/package-check.mjs "${vsix}"
+          node scripts/check-cli-parity.mjs "${cli}" "${vsix}"
 
       - name: Retain package evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -127,13 +145,13 @@ jobs:
           name: okf-workbench-package-smoke-${{ runner.os }}-${{ runner.arch }}
           path: |
             artifacts/build-metadata.json
-            artifacts/okf-workbench.vsix
+            artifacts/okf-workbench-${{ matrix.target }}.vsix
             artifacts/runtime-licenses.json
           if-no-files-found: error
           retention-days: 14
 
   cross-platform-reproducibility:
-    name: Cross-platform VSIX byte identity
+    name: Platform VSIX set consistency
     needs: package-smoke
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -152,5 +170,5 @@ jobs:
           pattern: okf-workbench-package-smoke-*
           path: package-evidence
 
-      - name: Require identical package bytes from every runner
-        run: node scripts/check-cross-platform-vsix.mjs package-evidence
+      - name: Require every platform package and one canonical Wasm core
+        run: node scripts/check-platform-vsix-set.mjs package-evidence

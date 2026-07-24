@@ -1,7 +1,14 @@
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
+
+import { BUNDLED_CLI_TARGETS } from './cli-targets.mjs';
+import {
+  NORMALIZED_EXECUTABLE_FILE_ATTRIBUTES,
+  NORMALIZED_EXTERNAL_FILE_ATTRIBUTES,
+} from './normalize-vsix.mjs';
 
 const endSignature = 0x06054b50;
 const centralSignature = 0x02014b50;
@@ -69,7 +76,17 @@ export const REQUIRED_VSIX_ENTRIES = Object.freeze([
   'extension/package.json',
 ]);
 
-const allowedEntries = new Set(REQUIRED_VSIX_ENTRIES);
+export const BUNDLED_CLI_MANIFEST_ENTRY = 'extension/dist/bundled-cli.json';
+export const BUNDLED_CLI_EXECUTABLE_ENTRIES = Object.freeze([
+  'extension/dist/bin/okf',
+  'extension/dist/bin/okf.exe',
+]);
+
+const allowedEntries = new Set([
+  ...REQUIRED_VSIX_ENTRIES,
+  BUNDLED_CLI_MANIFEST_ENTRY,
+  ...BUNDLED_CLI_EXECUTABLE_ENTRIES,
+]);
 
 export function validateProjectLicense(input) {
   if (!(input instanceof Uint8Array)) {
@@ -191,7 +208,13 @@ export function validateVsixArchive(input, expectedProjectLicense) {
     if (entries.has(name)) {
       throw new Error(`Duplicate VSIX entry is not allowed: ${name}`);
     }
-    entries.set(name, { compression, compressedSize, localOffset, uncompressedSize });
+    entries.set(name, {
+      compression,
+      compressedSize,
+      externalAttributes: archive.readUInt32LE(centralOffset + 38),
+      localOffset,
+      uncompressedSize,
+    });
     centralOffset += 46 + fileNameLength + extraLength + commentLength;
   }
 
@@ -275,6 +298,13 @@ export function validateVsixArchive(input, expectedProjectLicense) {
   }
 
   const vsixManifest = readEntry('extension.vsixmanifest').toString('utf8');
+  const targetPlatform = extractTargetPlatform(vsixManifest);
+  const bundledCli = validateBundledCli({
+    entries,
+    readEntry,
+    targetPlatform,
+    extensionVersion: manifest.version,
+  });
   validateVsixManifestProjectLicense(vsixManifest);
   validateVsixManifestMarketplaceLinks(vsixManifest);
   const contentLicenseAssets = [
@@ -313,7 +343,104 @@ export function validateVsixArchive(input, expectedProjectLicense) {
     }
   }
 
-  return { entryCount: entries.size };
+  return {
+    entryCount: entries.size,
+    targetPlatform,
+    bundledCli,
+    wasmSha256: createHash('sha256').update(wasm).digest('hex'),
+  };
+}
+
+export function extractTargetPlatform(vsixManifest) {
+  if (typeof vsixManifest !== 'string') {
+    throw new TypeError('extractTargetPlatform expects the VSIX manifest text.');
+  }
+  const identities = [...vsixManifest.matchAll(/<Identity\b[^>]*\/?>/gu)];
+  if (identities.length !== 1) {
+    throw new Error('extension.vsixmanifest must contain exactly one Identity element.');
+  }
+  const targets = [...identities[0][0].matchAll(/\bTargetPlatform="([^"]+)"/gu)];
+  if (targets.length > 1) {
+    throw new Error('extension.vsixmanifest contains duplicate TargetPlatform attributes.');
+  }
+  return targets[0]?.[1];
+}
+
+function validateBundledCli({ entries, readEntry, targetPlatform, extensionVersion }) {
+  const manifestPresent = entries.has(BUNDLED_CLI_MANIFEST_ENTRY);
+  const executableEntries = BUNDLED_CLI_EXECUTABLE_ENTRIES.filter((entry) => entries.has(entry));
+
+  if (targetPlatform === undefined) {
+    if (manifestPresent || executableEntries.length > 0) {
+      throw new Error('The universal VSIX must not contain a native CLI payload.');
+    }
+    return undefined;
+  }
+  if (!Object.hasOwn(BUNDLED_CLI_TARGETS, targetPlatform)) {
+    throw new Error(`The VSIX declares unsupported target platform ${targetPlatform}.`);
+  }
+  if (!manifestPresent || executableEntries.length !== 1) {
+    throw new Error(
+      'A platform-specific VSIX must contain exactly one bundled CLI manifest and executable.',
+    );
+  }
+  const target = BUNDLED_CLI_TARGETS[targetPlatform];
+  const expectedEntry = `extension/dist/bin/${target.binary}`;
+  if (executableEntries[0] !== expectedEntry) {
+    throw new Error(`The bundled CLI executable does not match ${targetPlatform}.`);
+  }
+
+  let cliManifest;
+  try {
+    cliManifest = JSON.parse(readEntry(BUNDLED_CLI_MANIFEST_ENTRY).toString('utf8'));
+  } catch (error) {
+    throw new Error(`The bundled CLI manifest is not valid JSON: ${errorMessage(error)}`);
+  }
+  if (
+    !isPlainRecord(cliManifest) ||
+    Object.keys(cliManifest).length !== 8 ||
+    cliManifest.schemaVersion !== 1 ||
+    cliManifest.targetPlatform !== targetPlatform ||
+    cliManifest.executable !== target.binary ||
+    cliManifest.cliVersion !== extensionVersion ||
+    typeof cliManifest.coreVersion !== 'string' ||
+    cliManifest.abiVersion !== 1 ||
+    !Number.isSafeInteger(cliManifest.byteLength) ||
+    cliManifest.byteLength <= 0 ||
+    typeof cliManifest.sha256 !== 'string' ||
+    !/^[a-f\d]{64}$/u.test(cliManifest.sha256)
+  ) {
+    throw new Error(
+      'The bundled CLI manifest does not match the VSIX target, extension version, and ABI contract.',
+    );
+  }
+  const executable = readEntry(expectedEntry);
+  const sha256 = createHash('sha256').update(executable).digest('hex');
+  if (executable.byteLength !== cliManifest.byteLength || sha256 !== cliManifest.sha256) {
+    throw new Error('The bundled CLI bytes do not match their reviewed size and SHA-256 manifest.');
+  }
+  const expectedAttributes =
+    target.binary === 'okf'
+      ? NORMALIZED_EXECUTABLE_FILE_ATTRIBUTES
+      : NORMALIZED_EXTERNAL_FILE_ATTRIBUTES;
+  if (entries.get(expectedEntry)?.externalAttributes !== expectedAttributes) {
+    throw new Error(
+      `The bundled CLI ZIP mode is invalid for ${targetPlatform}; expected ${target.binary === 'okf' ? '0755' : '0644'}.`,
+    );
+  }
+  return Object.freeze({
+    byteLength: executable.byteLength,
+    executableEntry: expectedEntry,
+    sha256,
+  });
+}
+
+function isPlainRecord(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export async function validateVsixFile(

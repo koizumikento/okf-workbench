@@ -34,7 +34,15 @@ interface AppElements {
   readonly typeFilters: HTMLDivElement;
   readonly tagFilters: HTMLDivElement;
   readonly clearFilters: HTMLButtonElement;
+  readonly graphPanel: HTMLElement;
   readonly graphHost: HTMLDivElement;
+  readonly zoomIn: HTMLButtonElement;
+  readonly zoomOut: HTMLButtonElement;
+  readonly fitGraph: HTMLButtonElement;
+  readonly focusSelected: HTMLButtonElement;
+  readonly resetCamera: HTMLButtonElement;
+  readonly toggleNavigationHelp: HTMLButtonElement;
+  readonly navigationHelp: HTMLElement;
   readonly rendererStatus: HTMLParagraphElement;
   readonly graphEmpty: HTMLParagraphElement;
   readonly resultSummary: HTMLParagraphElement;
@@ -60,6 +68,10 @@ class UnavailableGraphRenderer implements GraphRenderer {
   public replaceGraph(): void {}
   public selectNode(): void {}
   public focusNode(): void {}
+  public zoomIn(): void {}
+  public zoomOut(): void {}
+  public fitGraph(): void {}
+  public resetCamera(): void {}
   public resize(): void {}
   public pause(): void {}
   public setVisible(): void {}
@@ -140,7 +152,8 @@ export class WorkbenchApp {
 
     try {
       this.#renderer = rendererFactory(this.#elements.graphHost, {
-        onSelect: (nodeId) => this.#selectNode(nodeId, false),
+        onFailure: () => this.#handleRendererInteractionFailure(),
+        onSelect: (nodeId, focus) => this.#selectNode(nodeId, focus),
       });
       this.#rendererOperational = true;
       this.#rendererFailureReason = undefined;
@@ -213,6 +226,34 @@ export class WorkbenchApp {
         buttons[next]?.focus();
       }
     });
+    this.#elements.zoomIn.addEventListener('click', () =>
+      this.#runRendererAction((renderer) => renderer.zoomIn()),
+    );
+    this.#elements.zoomOut.addEventListener('click', () =>
+      this.#runRendererAction((renderer) => renderer.zoomOut()),
+    );
+    this.#elements.fitGraph.addEventListener('click', () =>
+      this.#runRendererAction((renderer) => renderer.fitGraph()),
+    );
+    this.#elements.focusSelected.addEventListener('click', () => {
+      const nodeId = this.#state.selectedNodeId;
+      if (nodeId !== undefined && this.#isNodeVisible(nodeId)) {
+        this.#runRendererAction((renderer) => renderer.focusNode(nodeId));
+      }
+    });
+    this.#elements.resetCamera.addEventListener('click', () =>
+      this.#runRendererAction((renderer) => renderer.resetCamera()),
+    );
+    this.#elements.toggleNavigationHelp.addEventListener('click', () => {
+      const expanded = this.#elements.toggleNavigationHelp.getAttribute('aria-expanded') === 'true';
+      this.#setNavigationHelpVisible(!expanded);
+    });
+    this.#elements.graphHost.addEventListener('pointerdown', () => {
+      this.#elements.graphHost.focus({ preventScroll: true });
+    });
+    this.#elements.graphPanel.addEventListener('keydown', (event) =>
+      this.#handleGraphShortcut(event),
+    );
   }
 
   #dispatch(action: PresentationAction): void {
@@ -234,6 +275,7 @@ export class WorkbenchApp {
     }
     this.#renderResultSelection();
     this.#renderDetails();
+    this.#renderNavigationControls();
     this.#restoreFocusAnchor(focusAnchor);
   }
 
@@ -405,6 +447,7 @@ export class WorkbenchApp {
             : '';
     this.#elements.graphEmpty.textContent = message;
     this.#elements.graphEmpty.hidden = message.length === 0;
+    this.#renderNavigationControls();
   }
 
   #renderDetails(): void {
@@ -448,11 +491,88 @@ export class WorkbenchApp {
     this.#showRendererUnavailable();
   }
 
+  #handleRendererInteractionFailure(): void {
+    if (!this.#rendererOperational) return;
+    this.#markRendererUnavailable('renderer-update-failed');
+    this.#reportGraphRenderFailure('renderer-update-failed');
+  }
+
   #showRendererUnavailable(): void {
     this.#elements.graphHost.replaceChildren();
     this.#elements.rendererStatus.hidden = false;
     this.#elements.rendererStatus.textContent =
       'The 3D renderer is unavailable. Continue with the Concepts list, then reopen this graph view. If the problem continues, check the OKF Workbench output.';
+    this.#renderNavigationControls();
+  }
+
+  #runRendererAction(action: (renderer: GraphRenderer) => void): void {
+    if (!this.#rendererOperational) return;
+    try {
+      action(this.#renderer);
+    } catch {
+      this.#handleRendererInteractionFailure();
+    }
+  }
+
+  #handleGraphShortcut(event: KeyboardEvent): void {
+    if (event.defaultPrevented || isEditableKeyboardTarget(event.target)) return;
+    const key = event.key.toLowerCase();
+    const hasCommandModifier = event.altKey || event.ctrlKey || event.metaKey;
+    if (hasCommandModifier) return;
+
+    if (key === '+' || key === '=' || key === 'add') {
+      event.preventDefault();
+      this.#runRendererAction((renderer) => renderer.zoomIn());
+      return;
+    }
+    if (key === '-' || key === '_' || key === 'subtract') {
+      event.preventDefault();
+      this.#runRendererAction((renderer) => renderer.zoomOut());
+      return;
+    }
+    if (key === 'f') {
+      event.preventDefault();
+      this.#runRendererAction((renderer) => renderer.fitGraph());
+      return;
+    }
+    if (key === '0') {
+      event.preventDefault();
+      this.#runRendererAction((renderer) => renderer.resetCamera());
+      return;
+    }
+    if (key === 'escape') {
+      event.preventDefault();
+      this.#setNavigationHelpVisible(false);
+      this.#selectNode(undefined, false);
+    }
+  }
+
+  #renderNavigationControls(): void {
+    const hasVisibleGraph =
+      this.#rendererOperational &&
+      this.#state.graph !== undefined &&
+      visibleNodes(this.#state).length > 0;
+    for (const button of [
+      this.#elements.zoomIn,
+      this.#elements.zoomOut,
+      this.#elements.fitGraph,
+      this.#elements.resetCamera,
+    ]) {
+      button.disabled = !hasVisibleGraph;
+    }
+    this.#elements.focusSelected.disabled =
+      !hasVisibleGraph ||
+      this.#state.selectedNodeId === undefined ||
+      !this.#isNodeVisible(this.#state.selectedNodeId);
+  }
+
+  #isNodeVisible(nodeId: string): boolean {
+    return visibleNodes(this.#state).some((node) => node.id === nodeId);
+  }
+
+  #setNavigationHelpVisible(visible: boolean): void {
+    this.#elements.navigationHelp.hidden = !visible;
+    this.#elements.toggleNavigationHelp.setAttribute('aria-expanded', String(visible));
   }
 
   #reportGraphRenderFailure(reason: GraphRenderFailureReason): void {
@@ -632,6 +752,15 @@ function renderFilterGroup(
   container.replaceChildren(...items);
 }
 
+function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
+    (target instanceof HTMLElement && target.isContentEditable)
+  );
+}
+
 function createShell(root: HTMLElement): AppElements {
   root.className = 'okf-workbench';
   const header = createElement('header', 'okf-header');
@@ -668,13 +797,55 @@ function createShell(root: HTMLElement): AppElements {
   graphSection.setAttribute('aria-labelledby', 'okf-graph-title');
   const graphHeading = createElement('h2', 'okf-panel-title', '3D graph');
   graphHeading.id = 'okf-graph-title';
+  const graphToolbar = createElement('div', 'okf-graph-toolbar');
+  graphToolbar.setAttribute('role', 'toolbar');
+  graphToolbar.setAttribute('aria-label', '3D graph camera controls');
+  const zoomIn = createCameraButton('Zoom in', '+', 'zoom-in');
+  const zoomOut = createCameraButton('Zoom out', '−', 'zoom-out');
+  const fitGraph = createCameraButton('Fit graph', 'Fit', 'fit');
+  const focusSelected = createCameraButton('Focus selected concept', 'Focus', 'focus');
+  const resetCamera = createCameraButton('Reset camera', 'Reset', 'reset');
+  const toggleNavigationHelp = createCameraButton('Show graph controls', '?', 'help');
+  toggleNavigationHelp.setAttribute('aria-controls', 'okf-navigation-help');
+  toggleNavigationHelp.setAttribute('aria-expanded', 'false');
+  graphToolbar.append(zoomIn, zoomOut, fitGraph, focusSelected, resetCamera, toggleNavigationHelp);
   const graphHost = createElement('div', 'okf-graph-host');
-  graphHost.setAttribute('aria-hidden', 'true');
+  graphHost.tabIndex = 0;
+  graphHost.setAttribute('role', 'group');
+  graphHost.setAttribute(
+    'aria-label',
+    'Interactive 3D graph. Use mouse or trackpad gestures, the camera toolbar, or keyboard shortcuts.',
+  );
+  graphHost.setAttribute('aria-describedby', 'okf-navigation-help');
+  const navigationHelp = createElement('aside', 'okf-navigation-help');
+  navigationHelp.id = 'okf-navigation-help';
+  navigationHelp.setAttribute('aria-label', '3D graph controls');
+  navigationHelp.hidden = true;
+  const helpHeading = createElement('h3', 'okf-navigation-help__title', 'Graph controls');
+  const helpList = createElement('ul', 'okf-navigation-help__list');
+  for (const text of [
+    'Mouse: drag to rotate, Shift-drag or secondary-drag to pan, wheel to zoom.',
+    'Trackpad: click-drag to rotate, two-finger swipe to pan, pinch to zoom.',
+    'Keyboard: +/− zoom, F fits the graph, 0 resets the camera, Escape clears selection.',
+    'Double-click a node to focus it. Camera controls never change Markdown.',
+  ]) {
+    const item = createElement('li');
+    item.textContent = text;
+    helpList.append(item);
+  }
+  navigationHelp.append(helpHeading, helpList);
   const rendererStatus = createElement('p', 'okf-renderer-unavailable');
   rendererStatus.setAttribute('role', 'alert');
   rendererStatus.hidden = true;
   const graphEmpty = createElement('p', 'okf-empty okf-graph-empty');
-  graphSection.append(graphHeading, graphHost, rendererStatus, graphEmpty);
+  graphSection.append(
+    graphHeading,
+    graphToolbar,
+    graphHost,
+    navigationHelp,
+    rendererStatus,
+    graphEmpty,
+  );
 
   const resultsSection = createElement('nav', 'okf-results-panel');
   resultsSection.setAttribute('aria-labelledby', 'okf-results-title');
@@ -699,7 +870,15 @@ function createShell(root: HTMLElement): AppElements {
     typeFilters,
     tagFilters,
     clearFilters,
+    graphPanel: graphSection,
     graphHost,
+    zoomIn,
+    zoomOut,
+    fitGraph,
+    focusSelected,
+    resetCamera,
+    toggleNavigationHelp,
+    navigationHelp,
     rendererStatus,
     graphEmpty,
     resultSummary,
@@ -707,4 +886,13 @@ function createShell(root: HTMLElement): AppElements {
     resultEmpty,
     details,
   };
+}
+
+function createCameraButton(label: string, text: string, action: string): HTMLButtonElement {
+  const button = createElement('button', 'okf-camera-button', text);
+  button.type = 'button';
+  button.dataset.cameraAction = action;
+  button.setAttribute('aria-label', label);
+  button.title = label;
+  return button;
 }

@@ -203,7 +203,8 @@ function getFailureHarnessBundle(): Promise<string> {
                 }
                 return {
                   replaceGraph() { throw new Error('sensitive update detail'); },
-                  selectNode() {}, focusNode() {}, resize() {}, pause() {}, setVisible() {}, dispose() {}
+                  selectNode() {}, focusNode() {}, zoomIn() {}, zoomOut() {}, fitGraph() {},
+                  resetCamera() {}, resize() {}, pause() {}, setVisible() {}, dispose() {}
                 };
               }
             );

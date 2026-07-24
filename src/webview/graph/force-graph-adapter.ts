@@ -2,6 +2,7 @@ import ForceGraph3D, { type ForceGraph3DInstance } from '3d-force-graph';
 import type { GraphPayload } from '../../core/model/types.js';
 import { colorForType } from '../state/colors.js';
 import type { GraphRenderer, GraphRendererCallbacks } from './adapter.js';
+import { GraphCameraController, type CameraCoordinates } from './camera-controller.js';
 
 interface ForceNode {
   readonly id: string;
@@ -39,6 +40,7 @@ export class ForceGraphRenderer implements GraphRenderer {
   readonly #graph: ForceGraph3DInstance<ForceNode, ForceLink>;
   readonly #resizeObserver: ResizeObserver | undefined;
   readonly #onEngineStop: (() => void) | undefined;
+  readonly #cameraController: GraphCameraController;
   readonly #selectedColor: string;
   #nodes = new Map<string, ForceNode>();
   #selectedNodeId: string | undefined;
@@ -84,8 +86,32 @@ export class ForceGraphRenderer implements GraphRenderer {
       .forceEngine(options.forceEngine ?? DEFAULT_FORCE_ENGINE)
       .cooldownTicks(FORCE_GRAPH_COOLDOWN_TICKS)
       .onEngineStop(() => this.#handleEngineStop())
-      .onNodeClick((node) => callbacks.onSelect(node.id))
-      .onBackgroundClick(() => callbacks.onSelect(undefined));
+      .enableNavigationControls(true)
+      .enableNodeDrag(false)
+      .onNodeClick((node, event) => callbacks.onSelect(node.id, event.detail >= 2))
+      .onBackgroundClick(() => callbacks.onSelect(undefined, false));
+
+    const controls = graph.controls();
+    this.#cameraController = new GraphCameraController(
+      container,
+      {
+        getPosition: () => graph.cameraPosition(),
+        getTarget: () => readControlsTarget(controls),
+        moveTo: (position, target, transitionDurationMs) => {
+          graph.cameraPosition(position, target, transitionDurationMs);
+        },
+        fitGraph: (transitionDurationMs, paddingPixels) => {
+          graph.zoomToFit(transitionDurationMs, paddingPixels);
+        },
+      },
+      {
+        controls,
+        transitionDurationMs: prefersReducedMotion() ? 0 : CAMERA_TRANSITION_MS,
+        onMotionStart: () => this.#beginCameraMotion(),
+        onMotionEnd: (settleDurationMs) => this.#scheduleCameraPause(settleDurationMs),
+        ...(callbacks.onFailure === undefined ? {} : { onError: callbacks.onFailure }),
+      },
+    );
 
     if (typeof ResizeObserver === 'function') {
       this.#resizeObserver = new ResizeObserver(() => this.resize());
@@ -138,22 +164,34 @@ export class ForceGraphRenderer implements GraphRenderer {
     const node = this.#nodes.get(nodeId);
     if (node === undefined) return;
 
-    const x = finiteCoordinate(node.x);
-    const y = finiteCoordinate(node.y);
-    const z = finiteCoordinate(node.z);
-    const distance = Math.hypot(x, y, z);
-    const ratio = distance === 0 ? 1 : 1 + CAMERA_DISTANCE / distance;
-    this.#graph.cameraPosition(
-      distance === 0
-        ? { x: 0, y: 0, z: CAMERA_DISTANCE }
-        : { x: x * ratio, y: y * ratio, z: z * ratio },
-      { x, y, z },
-      CAMERA_TRANSITION_MS,
+    this.#cameraController.focus(
+      {
+        x: finiteCoordinate(node.x),
+        y: finiteCoordinate(node.y),
+        z: finiteCoordinate(node.z),
+      },
+      CAMERA_DISTANCE,
     );
-    if (this.#visible) {
-      this.#graph.resumeAnimation();
-      this.#scheduleCameraPause();
-    }
+  }
+
+  public zoomIn(): void {
+    if (this.#disposed) return;
+    this.#cameraController.zoomIn();
+  }
+
+  public zoomOut(): void {
+    if (this.#disposed) return;
+    this.#cameraController.zoomOut();
+  }
+
+  public fitGraph(): void {
+    if (this.#disposed || this.#nodes.size === 0) return;
+    this.#cameraController.fitGraph();
+  }
+
+  public resetCamera(): void {
+    if (this.#disposed) return;
+    this.#cameraController.resetCamera();
   }
 
   public resize(): void {
@@ -192,6 +230,7 @@ export class ForceGraphRenderer implements GraphRenderer {
     this.#clearCameraPauseTimer();
     this.#clearIdlePauseTimer();
     this.#resizeObserver?.disconnect();
+    this.#cameraController.dispose();
     this.#graph.pauseAnimation();
     this.#graph._destructor();
     this.#container.replaceChildren();
@@ -216,14 +255,25 @@ export class ForceGraphRenderer implements GraphRenderer {
     this.#onEngineStop?.();
   }
 
-  #scheduleCameraPause(): void {
+  #beginCameraMotion(): void {
+    if (this.#disposed || !this.#visible) return;
     this.#clearCameraPauseTimer();
-    this.#cameraPauseTimer = globalThis.setTimeout(() => {
-      this.#cameraPauseTimer = undefined;
-      if (!this.#disposed && !this.#engineActive) {
-        this.#graph.pauseAnimation();
-      }
-    }, CAMERA_TRANSITION_MS + 50);
+    this.#clearIdlePauseTimer();
+    this.#graph.resumeAnimation();
+  }
+
+  #scheduleCameraPause(settleDurationMs: number): void {
+    if (this.#disposed || !this.#visible) return;
+    this.#clearCameraPauseTimer();
+    this.#cameraPauseTimer = globalThis.setTimeout(
+      () => {
+        this.#cameraPauseTimer = undefined;
+        if (!this.#disposed && !this.#engineActive) {
+          this.#graph.pauseAnimation();
+        }
+      },
+      Math.max(0, settleDurationMs) + 50,
+    );
   }
 
   #clearCameraPauseTimer(): void {
@@ -237,6 +287,30 @@ export class ForceGraphRenderer implements GraphRenderer {
     globalThis.clearTimeout(this.#idlePauseTimer);
     this.#idlePauseTimer = undefined;
   }
+}
+
+function readControlsTarget(controls: object): CameraCoordinates {
+  if (!('target' in controls)) return { x: 0, y: 0, z: 0 };
+  const target = controls.target;
+  if (typeof target !== 'object' || target === null) return { x: 0, y: 0, z: 0 };
+  return {
+    x: readCoordinate(target, 'x'),
+    y: readCoordinate(target, 'y'),
+    z: readCoordinate(target, 'z'),
+  };
+}
+
+function readCoordinate(value: object, key: 'x' | 'y' | 'z'): number {
+  if (!(key in value)) return 0;
+  const coordinate = (value as Record<'x' | 'y' | 'z', unknown>)[key];
+  return typeof coordinate === 'number' && Number.isFinite(coordinate) ? coordinate : 0;
+}
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof globalThis.matchMedia === 'function' &&
+    globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
 }
 
 function finiteCoordinate(value: number | undefined): number {

@@ -1,8 +1,13 @@
-# Privacy statement
+---
+layout: default
+title: Privacy statement
+description: How OKF Workbench processes workspace data and where its network boundary ends.
+permalink: /privacy/
+---
 
 - Applies to: OKF Workbench MVP release candidate
 - Candidate identifier: `straydog.okf-workbench`
-- Last reviewed: 2026-07-22
+- Last reviewed: 2026-07-24
 
 ## Summary
 
@@ -63,6 +68,12 @@ requests, including:
 Those requests are outside the extension's bundle-processing workflow. OKF Workbench does not
 embed a CDN or fetch runtime assets from the Webview.
 
+This public information site is hosted by GitHub Pages. GitHub states that Pages records visitor IP
+addresses for security purposes. That hosting activity is governed by the
+[GitHub Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement)
+and is separate from the installed extension, which does not load this site during its core
+workflows.
+
 ## External agents
 
 `OKF: Set Up Agent Integration` only generates local instructions. It does not install, invoke, or
@@ -72,9 +83,11 @@ and configuration, not by OKF Workbench.
 
 ## Verification and changes
 
-The implemented controls and remaining editor-level proof gaps are recorded in
-[Security, Privacy, and Dependency Release Evidence](security-privacy-evidence.md). A future
-feature that adds telemetry, an account, an AI provider, content upload, or another network
-boundary requires an explicit project decision and an updated privacy review before release.
+The implemented controls and remaining editor-level proof gaps are recorded in the repository's
+[Security, Privacy, and Dependency Release Evidence](https://github.com/koizumikento/okf-workbench/blob/main/docs/security-privacy-evidence.md).
+A future feature that adds telemetry, an account, an AI provider, content upload, or another
+network boundary requires an explicit project decision and an updated privacy review before
+release.
 
-Questions and vulnerability-reporting guidance are in [Support](support.md).
+Questions and vulnerability-reporting guidance are in [Support]({{ '/support/' | relative_url }})
+and the [Security policy]({{ '/security/' | relative_url }}).

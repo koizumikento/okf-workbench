@@ -1,6 +1,53 @@
-# Documentation
+---
+layout: default
+title: OKF Workbench
+description: Create, validate, index, and explore Open Knowledge Format bundles locally.
+hero: true
+eyebrow: Open Knowledge Format authoring
+summary: A local-first VS Code-compatible workbench for creating, validating, indexing, and exploring OKF bundles.
+permalink: /
+---
 
-This directory is the source of truth for the initial OKF Workbench product and engineering direction.
+OKF Workbench keeps Markdown as the source of truth and turns the complete authoring loop into
+editor commands:
+
+```text
+initialize -> create -> edit -> validate -> explore -> repair
+```
+
+<div class="card-grid">
+  <section class="card">
+    <h3>Local by default</h3>
+    <p>Bundle parsing, validation, generation, and graph construction run in the editor workspace without an account or hosted content service.</p>
+    <a href="{{ '/privacy/' | relative_url }}">Privacy boundary</a>
+  </section>
+  <section class="card">
+    <h3>Safe authoring</h3>
+    <p>Generated changes are previewed and contained, while unrelated Markdown and unknown frontmatter remain under user control.</p>
+    <a href="https://github.com/koizumikento/okf-workbench#safety-and-file-ownership">Safety model</a>
+  </section>
+  <section class="card">
+    <h3>Open implementation</h3>
+    <p>The extension is published under the MIT License with its production dependency notices included in every VSIX.</p>
+    <a href="{{ '/license/' | relative_url }}">License</a>
+  </section>
+</div>
+
+## Public resources
+
+- [Source code and README](https://github.com/koizumikento/okf-workbench)
+- [Issue tracker](https://github.com/koizumikento/okf-workbench/issues)
+- [Privacy statement]({{ '/privacy/' | relative_url }})
+- [Support]({{ '/support/' | relative_url }})
+- [Security policy]({{ '/security/' | relative_url }})
+- [MIT License]({{ '/license/' | relative_url }})
+- [Third-party notices]({{ '/notices/' | relative_url }})
+
+## Project documentation
+
+The repository keeps its product decisions, compatibility evidence, and implementation references
+under [`docs/`](https://github.com/koizumikento/okf-workbench/tree/main/docs). The documents below
+are the source of truth for the initial product and engineering direction.
 
 ## Product
 
@@ -30,8 +77,9 @@ This directory is the source of truth for the initial OKF Workbench product and 
 | [Acceptance evidence](acceptance-evidence.md) | Component coverage, packaged lifecycle evidence, and remaining scenario gaps |
 | [Performance evidence](performance-evidence.md) | Reproducible fixtures, thresholds, and headed-editor measurement authority |
 | [Security and privacy evidence](security-privacy-evidence.md) | Technical controls, findings, dependency inventory, and proof gaps |
-| [Privacy statement](privacy.md) | User-facing data-processing and network boundary |
-| [Support](support.md) | Bug, compatibility, and private vulnerability reporting guidance |
+| [Privacy statement]({{ '/privacy/' | relative_url }}) | User-facing data-processing and network boundary |
+| [Support]({{ '/support/' | relative_url }}) | Bug, compatibility, and private vulnerability reporting guidance |
+| [Security policy]({{ '/security/' | relative_url }}) | Private vulnerability reporting and disclosure expectations |
 | [Changelog](../CHANGELOG.md) | Release-candidate changes and release status |
 
 ## Decisions

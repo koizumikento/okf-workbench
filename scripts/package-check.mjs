@@ -33,10 +33,30 @@ SOFTWARE.
 
 export const PROJECT_LICENSE_ENTRY = 'extension/LICENSE.txt';
 
+export const PUBLIC_MANIFEST_RESOURCES = Object.freeze({
+  homepage: 'https://koizumikento.github.io/okf-workbench/',
+  repository: Object.freeze({
+    type: 'git',
+    url: 'https://github.com/koizumikento/okf-workbench.git',
+  }),
+  bugs: Object.freeze({
+    url: 'https://github.com/koizumikento/okf-workbench/issues',
+  }),
+});
+
+export const VSIX_MARKETPLACE_LINKS = Object.freeze({
+  Source: PUBLIC_MANIFEST_RESOURCES.repository.url,
+  Getstarted: PUBLIC_MANIFEST_RESOURCES.repository.url,
+  GitHub: PUBLIC_MANIFEST_RESOURCES.repository.url,
+  Support: PUBLIC_MANIFEST_RESOURCES.bugs.url,
+  Learn: PUBLIC_MANIFEST_RESOURCES.homepage,
+});
+
 export const REQUIRED_VSIX_ENTRIES = Object.freeze([
   '[Content_Types].xml',
   'extension.vsixmanifest',
   PROJECT_LICENSE_ENTRY,
+  'extension/SECURITY.md',
   'extension/THIRD_PARTY_NOTICES.md',
   'extension/assets/icon.png',
   'extension/changelog.md',
@@ -76,6 +96,48 @@ export function validateVsixManifestProjectLicense(vsixManifest) {
   ) {
     throw new Error(
       'extension.vsixmanifest must contain exactly one canonical project-license declaration.',
+    );
+  }
+}
+
+export function validatePublicManifestResources(manifest) {
+  if (typeof manifest !== 'object' || manifest === null) {
+    throw new TypeError('validatePublicManifestResources expects a manifest object.');
+  }
+  const resources = {
+    homepage: manifest.homepage,
+    repository: manifest.repository,
+    bugs: manifest.bugs,
+  };
+  if (JSON.stringify(resources) !== JSON.stringify(PUBLIC_MANIFEST_RESOURCES)) {
+    throw new Error(
+      'The extension manifest does not preserve the approved public homepage, repository, and issue-tracker URLs.',
+    );
+  }
+}
+
+export function validateVsixManifestMarketplaceLinks(vsixManifest) {
+  if (typeof vsixManifest !== 'string') {
+    throw new TypeError('validateVsixManifestMarketplaceLinks expects the VSIX manifest text.');
+  }
+  const marketplaceLinks = [
+    ...vsixManifest.matchAll(
+      /<Property\b[^>]*\bId="Microsoft\.VisualStudio\.Services\.Links\.([^"]+)"[^>]*\bValue="([^"]+)"[^>]*\/>/gu,
+    ),
+  ].map((match) => [match[1], match[2]]);
+  const expected = Object.entries(VSIX_MARKETPLACE_LINKS);
+  if (
+    marketplaceLinks.length !== expected.length ||
+    expected.some(
+      ([expectedName, expectedValue]) =>
+        marketplaceLinks.filter(
+          ([actualName, actualValue]) =>
+            actualName === expectedName && actualValue === expectedValue,
+        ).length !== 1,
+    )
+  ) {
+    throw new Error(
+      'extension.vsixmanifest does not preserve the approved public marketplace resource links.',
     );
   }
 }
@@ -176,17 +238,15 @@ export function validateVsixArchive(input, expectedProjectLicense) {
     manifest.publisher !== 'straydog' ||
     manifest.version !== '0.1.0' ||
     manifest.license !== 'MIT' ||
-    manifest.repository !== undefined ||
-    manifest.bugs !== undefined ||
-    manifest.homepage !== undefined ||
     manifest.icon !== 'assets/icon.png' ||
     manifest.main !== './dist/extension.cjs' ||
     manifest.engines?.vscode !== '^1.121.0'
   ) {
     throw new Error(
-      'The packaged manifest does not preserve the accepted identity, MIT license, private-link exclusions, icon, entry point, and API floor.',
+      'The packaged manifest does not preserve the accepted identity, MIT license, icon, entry point, and API floor.',
     );
   }
+  validatePublicManifestResources(manifest);
 
   const packagedProjectLicense = readEntry(PROJECT_LICENSE_ENTRY);
   if (!packagedProjectLicense.equals(Buffer.from(expectedProjectLicense))) {
@@ -197,6 +257,7 @@ export function validateVsixArchive(input, expectedProjectLicense) {
 
   const vsixManifest = readEntry('extension.vsixmanifest').toString('utf8');
   validateVsixManifestProjectLicense(vsixManifest);
+  validateVsixManifestMarketplaceLinks(vsixManifest);
   const contentLicenseAssets = [
     ...vsixManifest.matchAll(
       /<Asset\b[^>]*\bType="Microsoft\.VisualStudio\.Services\.Content\.License"[^>]*\/>/gu,
@@ -211,23 +272,14 @@ export function validateVsixArchive(input, expectedProjectLicense) {
       'extension.vsixmanifest must contain exactly one canonical addressable project-license asset.',
     );
   }
-  if (
-    /Microsoft\.VisualStudio\.Services\.Links\.(?:Source|Support|Learn|GitHub|Getstarted)/u.test(
-      vsixManifest,
-    ) ||
-    /github\.com\/koizumikento\/okf-workbench/iu.test(vsixManifest)
-  ) {
-    throw new Error('extension.vsixmanifest contains private repository marketplace metadata.');
-  }
-
   for (const packagedDocument of ['extension/readme.md', 'extension/changelog.md']) {
     const content = readEntry(packagedDocument).toString('utf8');
     if (
-      /github\.com\/koizumikento\/okf-workbench/iu.test(content) ||
-      /\]\((?:\.\/)?docs\//iu.test(content)
+      /\]\((?:\.\/)?docs\//iu.test(content) ||
+      /github\.com\/koizumikento\/okf-workbench\/releases\/tag\/v0\.1\.0/iu.test(content)
     ) {
       throw new Error(
-        `${packagedDocument} contains a private repository or excluded documentation link.`,
+        `${packagedDocument} contains an excluded documentation or unpublished release link.`,
       );
     }
   }

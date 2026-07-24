@@ -1,0 +1,7 @@
+title: OKF Workbench
+description: Create, validate, index, and explore Open Knowledge Format bundles locally.
+url: https://koizumikento.github.io
+baseurl: /okf-workbench
+lang: en
+markdown: kramdown
+permalink: pretty

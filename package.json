@@ -5,6 +5,14 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
+  "homepage": "https://koizumikento.github.io/okf-workbench/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/koizumikento/okf-workbench.git"
+  },
+  "bugs": {
+    "url": "https://github.com/koizumikento/okf-workbench/issues"
+  },
   "publisher": "straydog",
   "icon": "assets/icon.png",
   "type": "module",

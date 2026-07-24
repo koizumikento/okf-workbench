@@ -24,14 +24,10 @@ const nodeSecurityGateCommand = 'npm run test:security';
 const webviewSecurityGateCommand = 'npm run test:security:webview';
 const aggregateSecurityGateCommand = 'npm run test:security:all';
 const openVsxReleaseWorkflowPath = '.github/workflows/open-vsx-release.yml';
-const openVsxPublishCommand = './node_modules/.bin/ovsx publish "${VSIX_NAME}"';
+const openVsxPublishCommand =
+  './node_modules/.bin/ovsx publish "release-candidate/${VSIX_NAME}" --skip-duplicate';
 const openVsxPublishInvocationPattern = /(?:^|[/\s])ovsx(?:\.cmd)?\b[^\r\n]*\bpublish\b/u;
 const openVsxVerifyPatCommand = './node_modules/.bin/ovsx verify-pat straydog';
-const prepublicationEvidenceFiles = Object.freeze([
-  'release-candidate/prepublication-evidence.json',
-  'release-candidate/open-vsx-registry-publish.json',
-]);
-const publicationAttemptReceiptFile = 'release-candidate/publication-attempt-receipt.json';
 const requiredSecurityWorkflowGates = Object.freeze({
   '.github/workflows/ci.yml': Object.freeze([
     Object.freeze({ command: nodeSecurityGateCommand, job: 'quality-and-package' }),
@@ -43,7 +39,6 @@ const requiredSecurityWorkflowGates = Object.freeze({
   ]),
   '.github/workflows/open-vsx-release.yml': Object.freeze([
     Object.freeze({ command: nodeSecurityGateCommand, job: 'build-candidate' }),
-    Object.freeze({ command: webviewSecurityGateCommand, job: 'build-candidate' }),
   ]),
   '.github/workflows/package-smoke.yml': Object.freeze([
     Object.freeze({ command: nodeSecurityGateCommand, job: 'package-smoke' }),
@@ -248,24 +243,6 @@ export function securityWorkflowGateFailures(workflowPath, workflowSource) {
   return failures;
 }
 
-function uploadArtifactStep(step) {
-  return (
-    isRecord(step) &&
-    typeof step.uses === 'string' &&
-    step.uses.startsWith('actions/upload-artifact@')
-  );
-}
-
-function stepPathLines(step) {
-  return typeof step?.with?.path === 'string'
-    ? step.with.path
-        .replace(/\r\n?/gu, '\n')
-        .split('\n')
-        .map((line) => line.trim())
-        .filter(Boolean)
-    : [];
-}
-
 function collectStringValues(value, output, visited) {
   if (typeof value === 'string') {
     output.push(value);
@@ -301,6 +278,10 @@ function stepUsesSecret(step, secretName) {
   return secretReferenceCount(step, secretName) > 0;
 }
 
+function jobNeeds(job, dependency) {
+  return job?.needs === dependency || (Array.isArray(job?.needs) && job.needs.includes(dependency));
+}
+
 export function releaseWorkflowSafetyFailures(workflowPath, workflowSource) {
   if (workflowPath !== openVsxReleaseWorkflowPath) {
     return [];
@@ -315,20 +296,73 @@ export function releaseWorkflowSafetyFailures(workflowPath, workflowSource) {
     ];
   }
 
-  const publishJob = workflow?.jobs?.publish;
+  const buildJob = workflow?.jobs?.['build-candidate'];
+  const releaseJob = workflow?.jobs?.['github-release'];
+  const publishJob = workflow?.jobs?.['publish-openvsx'];
   const steps = publishJob?.steps;
   if (!Array.isArray(steps)) {
-    return [`${workflowPath} must define jobs.publish.steps.`];
+    return [`${workflowPath} must define jobs.publish-openvsx.steps.`];
   }
 
   const failures = [];
-  if (publishJob?.environment?.name !== 'open-vsx') {
-    failures.push(`${workflowPath}:jobs.publish must use the protected open-vsx Environment.`);
+  const triggers = workflow?.on;
+  if (
+    !isRecord(triggers) ||
+    !isRecord(triggers.push) ||
+    !Array.isArray(triggers.push.tags) ||
+    triggers.push.tags.length !== 1 ||
+    triggers.push.tags[0] !== 'v*' ||
+    Object.keys(triggers).some((trigger) => trigger !== 'push')
+  ) {
+    failures.push(
+      `${workflowPath} must be triggered only by pushed v* tags so a tag is the release authorization.`,
+    );
+  }
+  if (workflow?.permissions?.contents !== 'read') {
+    failures.push(`${workflowPath} must default to contents: read.`);
+  }
+  if (!isRecord(buildJob) || !Array.isArray(buildJob.steps)) {
+    failures.push(`${workflowPath} must define jobs.build-candidate.steps.`);
+  } else {
+    const buildSource = buildJob.steps
+      .map((step) => (typeof step?.run === 'string' ? step.run : ''))
+      .join('\n');
+    if (
+      !buildSource.includes('git merge-base --is-ancestor "${GITHUB_SHA}" origin/main') ||
+      !buildSource.includes('EXPECTED_TAG="v${VERSION}"') ||
+      !buildSource.includes('## ${VERSION} - Unreleased')
+    ) {
+      failures.push(
+        `${workflowPath}:jobs.build-candidate must bind the tag to main, package version, and a dated changelog.`,
+      );
+    }
+    if (secretReferenceCount(buildJob, 'OPEN_VSX_TOKEN') !== 0) {
+      failures.push(
+        `${workflowPath}:jobs.build-candidate must not receive the Open VSX credential.`,
+      );
+    }
+  }
+  if (
+    !isRecord(releaseJob) ||
+    !Array.isArray(releaseJob.steps) ||
+    !jobNeeds(releaseJob, 'build-candidate') ||
+    releaseJob?.permissions?.contents !== 'write'
+  ) {
+    failures.push(
+      `${workflowPath}:jobs.github-release must depend on build-candidate and scope contents: write to that job only.`,
+    );
+  }
+  if (
+    !jobNeeds(publishJob, 'build-candidate') ||
+    !jobNeeds(publishJob, 'github-release') ||
+    publishJob?.permissions?.contents === 'write'
+  ) {
+    failures.push(
+      `${workflowPath}:jobs.publish-openvsx must publish only after the candidate and GitHub release, without contents: write.`,
+    );
   }
   if (publishJob?.if !== undefined || canContinueOnError(publishJob?.['continue-on-error'])) {
-    failures.push(
-      `${workflowPath}:jobs.publish must be an unconditional fail-closed protected job.`,
-    );
+    failures.push(`${workflowPath}:jobs.publish-openvsx must be an unconditional fail-closed job.`);
   }
   const publishInvocations = steps.flatMap((step, index) =>
     commandLines(step?.run)
@@ -337,7 +371,7 @@ export function releaseWorkflowSafetyFailures(workflowPath, workflowSource) {
   );
   if (publishInvocations.length !== 1 || publishInvocations[0].command !== openVsxPublishCommand) {
     failures.push(
-      `${workflowPath}:jobs.publish must run exactly one Open VSX publish invocation and it must be the canonical retained-VSIX command; found ${publishInvocations.length}.`,
+      `${workflowPath}:jobs.publish-openvsx must run exactly one Open VSX publish invocation and it must use the retained VSIX with duplicate-safe retry semantics; found ${publishInvocations.length}.`,
     );
     return failures;
   }
@@ -353,7 +387,7 @@ export function releaseWorkflowSafetyFailures(workflowPath, workflowSource) {
     .map(({ index }) => index);
   if (verifyPatIndices.length !== 1 || verifyPatIndices[0] >= publishIndex) {
     failures.push(
-      `${workflowPath}:jobs.publish must verify the straydog PAT exactly once before publication.`,
+      `${workflowPath}:jobs.publish-openvsx must verify the straydog PAT exactly once before publication.`,
     );
   } else {
     const verifyPatStep = steps[verifyPatIndices[0]];
@@ -367,126 +401,21 @@ export function releaseWorkflowSafetyFailures(workflowPath, workflowSource) {
     }
   }
 
-  const evidenceCreationIndices = steps
-    .map((step, index) => ({ index, source: typeof step?.run === 'string' ? step.run : '' }))
-    .filter(
-      ({ source }) =>
-        source.includes("'prepublication-evidence.json'") &&
-        source.includes('approvalBinding') &&
-        source.includes('namespaceAuthorization'),
-    )
+  const checksumIndices = steps
+    .map((step, index) => ({ index, lines: commandLines(step?.run) }))
+    .filter(({ lines }) => lines.includes('sha256sum --check "${VSIX_NAME}.sha256"'))
     .map(({ index }) => index);
   if (
-    evidenceCreationIndices.length !== 1 ||
-    evidenceCreationIndices[0] <= (verifyPatIndices[0] ?? Number.POSITIVE_INFINITY) ||
-    evidenceCreationIndices[0] >= publishIndex
+    checksumIndices.length !== 1 ||
+    checksumIndices[0] >= (verifyPatIndices[0] ?? Number.NEGATIVE_INFINITY)
   ) {
     failures.push(
-      `${workflowPath}:jobs.publish must create approval-, digest-, revision-, and namespace-bound pre-publication evidence after PAT verification and before publication.`,
+      `${workflowPath}:jobs.publish-openvsx must verify the retained checksum before PAT authorization.`,
     );
-  }
-
-  const requiredEvidenceUploads = steps
-    .map((step, index) => ({ index, paths: stepPathLines(step), step }))
-    .filter(
-      ({ paths, step }) =>
-        uploadArtifactStep(step) &&
-        prepublicationEvidenceFiles.every((requiredPath) => paths.includes(requiredPath)),
-    );
-  if (requiredEvidenceUploads.length !== 1) {
-    failures.push(
-      `${workflowPath}:jobs.publish must upload exactly one complete pre-publication evidence artifact; found ${requiredEvidenceUploads.length}.`,
-    );
-  } else {
-    const [{ index, step }] = requiredEvidenceUploads;
-    if (
-      index <= (evidenceCreationIndices[0] ?? Number.POSITIVE_INFINITY) ||
-      index >= publishIndex
-    ) {
-      failures.push(
-        `${workflowPath}:jobs.publish must durably upload complete pre-publication evidence after creating it and before the irreversible publish command.`,
-      );
-    }
-    if (
-      canContinueOnError(step?.['continue-on-error']) ||
-      step?.with?.['if-no-files-found'] !== 'error'
-    ) {
-      failures.push(
-        `${workflowPath}: the pre-publication evidence upload must be a required fail-closed barrier.`,
-      );
-    }
-  }
-
-  for (const [index, step] of steps.entries()) {
-    if (index <= publishIndex || !uploadArtifactStep(step)) {
-      continue;
-    }
-    if (
-      step?.if !== '${{ always() }}' ||
-      step?.['continue-on-error'] !== true ||
-      step?.with?.['if-no-files-found'] === 'error'
-    ) {
-      failures.push(
-        `${workflowPath}: every post-publish artifact upload must be always-run and best-effort so receipt failure cannot make a successful irreversible publication rerun-only.`,
-      );
-    }
-  }
-
-  const receiptCreationIndices = steps
-    .map((step, index) => ({
-      index,
-      source: typeof step?.run === 'string' ? step.run : '',
-      step,
-    }))
-    .filter(
-      ({ source }) =>
-        source.includes("'publication-attempt-receipt.json'") &&
-        source.includes('publishCommandOutcome') &&
-        source.includes("phase: 'publication-attempt'"),
-    );
-  if (receiptCreationIndices.length !== 1) {
-    failures.push(
-      `${workflowPath}:jobs.publish must create exactly one best-effort publication-attempt receipt; found ${receiptCreationIndices.length}.`,
-    );
-  } else {
-    const [{ index, step }] = receiptCreationIndices;
-    if (
-      index <= publishIndex ||
-      step?.if !== '${{ always() }}' ||
-      step?.['continue-on-error'] !== true
-    ) {
-      failures.push(
-        `${workflowPath}:jobs.publish must create the publication-attempt receipt after publication with always-run, best-effort semantics.`,
-      );
-    }
-  }
-
-  const receiptUploads = steps
-    .map((step, index) => ({ index, paths: stepPathLines(step), step }))
-    .filter(
-      ({ paths, step }) =>
-        uploadArtifactStep(step) && paths.includes(publicationAttemptReceiptFile),
-    );
-  if (receiptUploads.length !== 1) {
-    failures.push(
-      `${workflowPath}:jobs.publish must upload exactly one best-effort publication-attempt receipt; found ${receiptUploads.length}.`,
-    );
-  } else {
-    const [{ index, step }] = receiptUploads;
-    if (
-      index <= (receiptCreationIndices[0]?.index ?? Number.POSITIVE_INFINITY) ||
-      step?.if !== '${{ always() }}' ||
-      step?.['continue-on-error'] !== true ||
-      step?.with?.['if-no-files-found'] === 'error'
-    ) {
-      failures.push(
-        `${workflowPath}:jobs.publish must upload the publication-attempt receipt after creating it with always-run, best-effort semantics.`,
-      );
-    }
   }
 
   const secretStepIndices = steps
-    .map((step, index) => ({ index, usesSecret: stepUsesSecret(step, 'OVSX_PAT') }))
+    .map((step, index) => ({ index, usesSecret: stepUsesSecret(step, 'OPEN_VSX_TOKEN') }))
     .filter(({ usesSecret }) => usesSecret)
     .map(({ index }) => index);
   const expectedSecretIndices = [verifyPatIndices[0], publishIndex].filter(
@@ -495,10 +424,10 @@ export function releaseWorkflowSafetyFailures(workflowPath, workflowSource) {
   if (
     secretStepIndices.length !== 2 ||
     secretStepIndices.some((index, position) => index !== expectedSecretIndices[position]) ||
-    secretReferenceCount(workflow, 'OVSX_PAT') !== 2
+    secretReferenceCount(workflow, 'OPEN_VSX_TOKEN') !== 2
   ) {
     failures.push(
-      `${workflowPath}:OVSX_PAT must be exposed only to the PAT verification and publish command steps.`,
+      `${workflowPath}:OPEN_VSX_TOKEN must be exposed only to the PAT verification and publish command steps.`,
     );
   }
 

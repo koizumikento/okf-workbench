@@ -18,7 +18,9 @@ At the decision date, Node.js 24 is LTS, VS Code stable is 1.127, and VSCodium s
 - Use esbuild for separate extension-host CommonJS and Webview ESM bundles, with `vscode` externalized and all Webview assets local.
 - Use plain TypeScript, DOM APIs, CSS, and reducer-style state in the Webview. Do not add React, a router, a state framework, or a CSS framework.
 - Use Vitest for core and DOM unit tests, the VS Code Test CLI with `@vscode/test-electron` for extension integration, and Playwright for a standalone real-browser Webview harness.
-- Package with `@vscode/vsce` and validate or publish the built VSIX with `ovsx` only from a protected release environment.
+- Package with `@vscode/vsce` and validate or publish the built VSIX with `ovsx` only from the
+  repository release workflow. ADR 0006 supersedes this record's earlier protected-Environment
+  requirement with version-tag authorization.
 - Keep runtime dependencies initially limited to focused YAML, Markdown AST, and graph-renderer packages documented in [Implementation environment](../implementation-environment.md).
 - Keep the MVP desktop-only. A VS Code Web `browser` entry is a separate compatibility decision.
 

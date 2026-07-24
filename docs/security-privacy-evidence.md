@@ -30,9 +30,12 @@ This is a bounded release preflight, not a claim that OKF Workbench is secure, c
 - Severity: **Resolved hardening finding**
 - Candidate: `CI-01` (`remediated`)
 - Evidence: every `uses:` entry in CI, package smoke, compatibility, and Open VSX release workflows is pinned to a reviewed 40-character commit SHA with its human-readable release tag in a comment. Workflow contract checks reject mutable references, and the hosted repository setting now enforces `sha_pinning_required: true` for GitHub Actions.
-- Existing controls: ordinary workflows declare only `contents: read`; there is no `pull_request_target`, OIDC permission, or self-hosted runner. Only the dispatch-only publish job enters the separately named `open-vsx` Environment.
-- Residual risk: future action updates still require dependency review, and the independent hosted
-  publication environment remains covered by `PG-04`.
+- Existing controls: ordinary workflows and the release workflow default to `contents: read`; there
+  is no `pull_request_target`, OIDC permission, or self-hosted runner. Only the GitHub Release job
+  receives job-scoped `contents: write`, and only the two Open VSX CLI steps receive
+  `OPEN_VSX_TOKEN`.
+- Residual risk: future action updates still require dependency review, and the tagged external
+  publication boundary remains covered by `PG-04`.
 - Owner: repository maintainer.
 
 ### F-03 — The hosted repository had no protected-main or scanning baseline (resolved)
@@ -48,8 +51,8 @@ This is a bounded release preflight, not a claim that OKF Workbench is secure, c
   [CodeQL run 30060996475](https://github.com/koizumikento/okf-workbench/actions/runs/30060996475)
   passed Actions and JavaScript/TypeScript analysis. Read-only alert queries returned zero open
   CodeQL, secret-scanning, or Dependabot alerts on 2026-07-24.
-- Residual risk: the single-maintainer branch baseline does not substitute for independent Open VSX
-  publication approval; that remains `PG-04`.
+- Residual risk: the maintainer's version tag is the accepted Open VSX publication authorization;
+  credential ownership and live namespace authorization remain `PG-04`.
 - Owner: repository maintainer.
 
 No other confirmed security finding was found in the reviewed local surface. That statement does not close the proof gaps below.
@@ -80,7 +83,7 @@ The gate:
 Use `--write-notices` only after an intentional lockfile change. It has no timestamp input, so the generated notice is stable for the same lockfile and installed production graph.
 
 The ordinary pull-request CI quality/package job runs this exact command immediately after
-`npm ci`. The protected Open VSX candidate job uses the same command and script, so dependency
+`npm ci`. The tagged Open VSX candidate job uses the same command and script, so dependency
 classification and notice freshness do not diverge between merge and release gates. The later
 packaged-VSIX invocation adds artifact checks; it does not replace or redefine this source gate.
 
@@ -235,8 +238,8 @@ validated by clean install, integration tests, and the full-tree audit.
 | `DEP-01` | Dependency license | A production dependency has missing, forbidden, high-risk, or unresolved licensing. | Exact 78-package gate reports only MIT, ISC, and BSD-3-Clause and includes each notice text. | suppressed | Human license review remains `PG-01`. |
 | `VULN-01` | Known advisories | npm reports a known production or development vulnerability. | Live production-only and full-tree npm audits returned zero advisories on the review date after reviewed test-only transitive overrides. | suppressed | Point-in-time and known-advisory limitation applies. |
 | `COMPAT-01` | Packaged editor lifecycle | The exact candidate does not complete the required editor/OS lifecycle matrix. | Current [Compatibility run 30058922150](https://github.com/koizumikento/okf-workbench/actions/runs/30058922150) passed the candidate, acceptance/Webview, and all seven VS Code/VSCodium lifecycle jobs at evidence revision `a5b2b75b7216d644f0d8d0f739db3a989bba7ca0`. Current [Package smoke run 30058925030](https://github.com/koizumikento/okf-workbench/actions/runs/30058925030) passed all three operating systems and aggregate byte identity. The CI, Compatibility, package-smoke, and local VSIX files were byte-identical at SHA-256 `d7be6180cd788b2ab5d9c7fc436de9eb2df97d967b16ccbc2578f48851f0b666`, `613637` bytes. | suppressed for current candidate | Re-run for any packaged-content or required-matrix change. |
-| `HOST-01` | Repository/hosted settings | Protected-main and provider scanning controls are absent. | The public repository protects `main` with four required CI checks, administrator enforcement, conversation resolution, and force-push/deletion denial. CODEOWNERS is present; secret scanning with push protection, Dependabot, CodeQL default setup, and private vulnerability reporting are enabled. Initial CodeQL passed and all three open-alert queries returned zero. | remediated | Recheck settings and alerts before release; independent publication approval remains `PG-04`. |
-| `RELEASE-01` | Open VSX publishing | Publication uses protected short-lived credentials and reviewed artifacts. | The dispatch-only workflow binds approval to version, commit, and normalized VSIX digest, packages once, performs credential-free public registry preflights, and exposes `OVSX_PAT` only to PAT verification and publication. After authorization it must durably upload token-free, approval/digest/revision/registry-bound pre-publication evidence before the irreversible command. Public evidence confirms `straydog` is verified/restricted and the exact target version is available. The named Environment, reviewers, branch policy, credential, authenticated authorization, and Agreement state are not configured or evidenced. | deferred | Repository control is implemented; hosted boundary remains `PG-04`. |
+| `HOST-01` | Repository/hosted settings | Protected-main and provider scanning controls are absent. | The public repository protects `main` with four required CI checks, administrator enforcement, conversation resolution, and force-push/deletion denial. CODEOWNERS is present; secret scanning with push protection, Dependabot, CodeQL default setup, and private vulnerability reporting are enabled. Initial CodeQL passed and all three open-alert queries returned zero. | remediated | Recheck settings and alerts before release; live publication authorization remains `PG-04`. |
+| `RELEASE-01` | Open VSX publishing | A release tag publishes only reviewed, retained bytes with a narrowly exposed credential. | The `v*`-only workflow requires the tagged commit to be contained in protected `main`, binds the tag to the manifest version and dated changelog, reruns deterministic package/security gates, retains one VSIX and checksum, creates the GitHub Release, and exposes `OPEN_VSX_TOKEN` only to PAT verification and publication. Public evidence confirms `straydog` is verified/restricted and the target version is available. The secret value, authenticated authorization, and Agreement state cannot be established until release. | deferred | Repository control is implemented; live hosted boundary remains `PG-04`. |
 
 ## Coverage ledger
 
@@ -248,7 +251,7 @@ validated by clean install, integration tests, and the full-tree audit.
 | Secrets, logs, telemetry, and content egress | covered statically, in the current strict headed Webview, and for current packaged activation/read/untrusted-refusal phases | First-party static scan, activation log review, browser interception, current schema-v3 headed Webview CDP capture, current packaged Extension Host CommonJS-owner/global hooks, hosted settings and alert APIs | `NET-01`, `LOG-01`, `PRIV-01`, `COMPAT-01`, `HOST-01` | The current observations are candidate/editor/lane-specific. The Extension Host hooks are not OS isolation and exclude ESM named bindings, cached references, raw/prototype bindings, `dns.promises`, child processes, editor-owned traffic, Webview traffic, and trusted write-command execution. Hosted scanning is enabled and its initial open-alert queries are clean, but remains point-in-time evidence. |
 | Production dependency and license inventory | covered technically | Lock graph, installed manifests, license texts, integrity, install-script gate, npm audit | `DEP-01`, `VULN-01` | Human legal/license judgment: `PG-01`. |
 | Project license and packaged notices | covered technically in the final hosted-identical artifact | MIT manifest/root license plus exact final local and hosted VSIX license and notice inspection | `LIC-01` | Human third-party review remains `PG-01`. |
-| CI workflows and hosted repository policy | partial | Full-SHA action pins, local YAML permissions/triggers/artifacts, digest-bound release workflow; read-only protection/scanning/alert/environment APIs | `CI-01`, `HOST-01`, `RELEASE-01` | Action mutability and the protected-main/scanning baseline are remediated. The independent release environment remains `PG-04`. |
+| CI workflows and hosted repository policy | partial | Full-SHA action pins, local YAML permissions/triggers/artifacts, version-tag release workflow, and read-only protection/scanning/alert APIs | `CI-01`, `HOST-01`, `RELEASE-01` | Action mutability and the protected-main/scanning baseline are remediated. Live credential and namespace authorization remain `PG-04`. |
 | Authentication/authorization and inbound public service | covered as absent | Manifest, architecture, source and runtime dependency inventory | `PRIV-01`, `PUBLIC-01` | Re-review if scope changes. |
 
 ## Proof gaps and required human verification
@@ -324,17 +327,29 @@ validated by clean install, integration tests, and the full-tree audit.
 - Retained verification: initial CodeQL passed and read-only CodeQL, secret-scanning, and Dependabot
   queries returned zero open alerts on 2026-07-24.
 - Remaining boundary: these are point-in-time hosted controls and alerts. Recheck them before
-  release. Independent release approval and credential isolation are not closed here and remain
-  `PG-04`.
+  release. Live credential and namespace authorization are not closed here and remain `PG-04`.
 
 ### PG-04 — Open VSX hosted publication boundary
 
-- Unproven fact: the `straydog` credential ownership, authenticated authorization, approval environment, artifact identity, and publication process are controlled by the intended maintainer.
-- Current established state: the repository contains a dispatch-only, digest-bound workflow that packages once, performs no-store public registry preflights before candidate retention and again after Environment approval, scopes the secret to the two authenticated CLI steps, and requires token-free approval/digest/revision/registry/authorization evidence to be durably uploaded before publication; all action references are immutable and repository SHA pinning is enforced. A post-command receipt is always attempted on a best-effort basis so its upload cannot turn a successful irreversible publication into a rerun-only failure. Retained public evidence reports `straydog` as verified/restricted and `straydog.okf-workbench@0.1.0` as available. Read-only GitHub metadata reports zero Environments and repository-level secret names `OPEN_VSX_TOKEN` and `STRAY_TOOLS_TOKEN`; secret values were not accessed and the workflow references neither name.
-- Why not established here: public metadata does not establish the current PAT, exact namespace role, or current Publisher Agreement profile state. The named GitHub Environment, required reviewers, deployment policy, environment-scoped credential, authenticated namespace authorization, and exact-digest publication approval have not been configured or validated, and no artifact was published during this preflight. The owner and purpose of the repository-level `OPEN_VSX_TOKEN` name are also unverified; if it is a credential, it must be revoked or removed from repository scope before a new narrowly scoped Environment credential is provisioned.
+- Unproven fact: `OPEN_VSX_TOKEN` belongs to the intended maintainer, remains authorized for
+  `straydog`, and satisfies the current Publisher Agreement requirement.
+- Current established state: ADR 0006 makes a matching `v*` tag on a reviewed `main` commit the
+  publication authorization. The workflow reruns deterministic package/security gates, retains one
+  VSIX and checksum, creates the GitHub Release, verifies the retained checksum, and exposes the
+  secret only to `ovsx verify-pat straydog` and the duplicate-safe publish command. All action
+  references are immutable and repository SHA pinning is enforced. Retained public evidence reports
+  `straydog` as verified/restricted and `straydog.okf-workbench@0.1.0` as available. Read-only
+  GitHub metadata confirms the repository secret name `OPEN_VSX_TOKEN`; secret values were not
+  accessed. The same namespace and secret-name pattern has completed Open VSX publication in the
+  maintainer's `shosei` repository.
+- Why not established here: GitHub does not reveal the OKF Workbench secret value, and no tagged
+  OKF Workbench run has yet executed authenticated namespace verification or publication. The
+  Publisher Agreement remains an out-of-band profile prerequisite.
 - Potential impact: namespace misuse, credential leakage, or publication of an unreviewed artifact.
 - Owner: Open VSX namespace owner and release maintainer.
-- Smallest safe evidence: identify the owner and purpose of `OPEN_VSX_TOKEN` without exposing its value, revoke or remove it if it is a credential, configure and inspect the `open-vsx` Environment and independent review policy, confirm namespace ownership and Publisher Agreement state, add only a new environment-scoped credential, and retain approval for the exact workflow commit and VSIX digest immediately before publication.
+- Smallest safe evidence: confirm credential ownership and Publisher Agreement state, then retain a
+  successful tagged workflow showing checksum verification, `ovsx verify-pat straydog`, and the
+  public registry result.
 - Release before closure: **no**.
 
 ## Commands and observed results
@@ -381,8 +396,7 @@ Current recommendation: **hold public release**.
   `PG-01` and `PG-04` also remain open and have named owners and safe closure evidence.
 - The retained public state of the `straydog` namespace and target version does not close current
   PAT authorization or Publisher Agreement verification. Public marketplace resources are now
-  available; explicit maintainer approval for the exact digest remains unchecked in the release
-  checklist.
+  available; the maintainer has not yet authorized release by pushing the version tag.
 - Suppressed candidates have explicit counter-evidence; not-applicable candidates identify absent surfaces; deferred candidates map to proof gaps.
 
 The final local exact-notice, security, build, package, packaged-VSIX, reproducibility, npm audit,

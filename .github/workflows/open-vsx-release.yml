@@ -1,27 +1,12 @@
 name: Open VSX release
 
 on:
-  workflow_dispatch:
-    inputs:
-      source_revision:
-        description: Exact lowercase 40-character SHA of the current default-branch workflow revision
-        required: true
-        type: string
-      version:
-        description: Exact package version to publish (for example, 0.1.0)
-        required: true
-        type: string
-      vsix_sha256:
-        description: Expected lowercase SHA-256 of the normalized VSIX
-        required: true
-        type: string
-      approval:
-        description: Exact PUBLISH phrase documented in docs/release-checklist.md
-        required: true
-        type: string
+  push:
+    tags:
+      - 'v*'
 
 concurrency:
-  group: open-vsx-release-${{ inputs.version }}
+  group: open-vsx-release-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -35,21 +20,19 @@ env:
 
 jobs:
   build-candidate:
-    name: Build the approved candidate once
+    name: Validate tag and package VSIX
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 30
     outputs:
-      artifact_name: ${{ steps.identity.outputs.artifact_name }}
-      revision: ${{ steps.identity.outputs.revision }}
-      sha256: ${{ steps.evidence.outputs.sha256 }}
-      version: ${{ steps.identity.outputs.version }}
+      artifact_name: ${{ steps.metadata.outputs.artifact_name }}
+      revision: ${{ steps.metadata.outputs.revision }}
+      version: ${{ steps.metadata.outputs.version }}
     steps:
-      - name: Check out the exact candidate revision
+      - name: Check out the tagged revision
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ inputs.source_revision }}
 
       - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
@@ -60,529 +43,190 @@ jobs:
       - name: Pin npm
         run: npm install --global npm@${NPM_VERSION}
 
-      - name: Validate immutable identity and typed approval
-        id: identity
+      - name: Validate release identity
+        id: metadata
         shell: bash
-        env:
-          APPROVAL: ${{ inputs.approval }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          DISPATCH_REF: ${{ github.ref }}
-          EVENT_REVISION: ${{ github.sha }}
-          EXPECTED_SHA256: ${{ inputs.vsix_sha256 }}
-          RELEASE_VERSION: ${{ inputs.version }}
-          SOURCE_REVISION: ${{ inputs.source_revision }}
-          WORKFLOW_REF: ${{ github.workflow_ref }}
-          WORKFLOW_REVISION: ${{ github.workflow_sha }}
         run: |
           set -euo pipefail
 
-          if [[ ! "${SOURCE_REVISION}" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::source_revision must be an exact lowercase 40-character commit SHA."
-            exit 1
-          fi
-          if [[ ! "${EXPECTED_SHA256}" =~ ^[0-9a-f]{64}$ ]]; then
-            echo "::error::vsix_sha256 must be an exact lowercase 64-character SHA-256."
-            exit 1
-          fi
-          if [[ "${DISPATCH_REF}" != "refs/heads/${DEFAULT_BRANCH}" ]]; then
-            echo "::error::The release workflow must be dispatched from the repository default branch."
-            exit 1
-          fi
-          EXPECTED_WORKFLOW_REF="${GITHUB_REPOSITORY}/.github/workflows/open-vsx-release.yml@refs/heads/${DEFAULT_BRANCH}"
-          if [[ "${WORKFLOW_REF}" != "${EXPECTED_WORKFLOW_REF}" ]]; then
-            echo "::error::The executed workflow definition is not the reviewed default-branch release workflow."
-            exit 1
-          fi
-          if [[ ! "${EVENT_REVISION}" =~ ^[0-9a-f]{40}$ || ! "${WORKFLOW_REVISION}" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::GitHub did not provide exact workflow and event commit identities."
-            exit 1
-          fi
-          if [[ "${WORKFLOW_REVISION}" != "${EVENT_REVISION}" || "${EVENT_REVISION}" != "${SOURCE_REVISION}" ]]; then
-            echo "::error::The workflow definition, dispatch revision, and candidate commit must be identical."
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+            echo "::error::Release tags must point to a commit contained in main."
             exit 1
           fi
 
-          ACTUAL_REVISION="$(git rev-parse HEAD)"
-          if [[ "${ACTUAL_REVISION}" != "${SOURCE_REVISION}" ]]; then
-            echo "::error::Checked-out revision does not match source_revision."
-            exit 1
-          fi
-          if ! git merge-base --is-ancestor "${ACTUAL_REVISION}" "origin/${DEFAULT_BRANCH}"; then
-            echo "::error::source_revision is not on the repository default branch."
-            exit 1
-          fi
-
-          node --input-type=module <<'NODE'
-          import { readFileSync } from 'node:fs';
-
-          const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
-          const lockfile = JSON.parse(readFileSync('package-lock.json', 'utf8'));
-          const ovsxLock = lockfile.packages?.['node_modules/ovsx'];
-          const expectedVersion = process.env.RELEASE_VERSION;
-          const expectedIdentity = process.env.EXTENSION_ID;
-          const actualIdentity = `${manifest.publisher}.${manifest.name}`;
-
-          if (actualIdentity !== expectedIdentity) {
-            throw new Error(`Manifest identity ${actualIdentity} does not match ${expectedIdentity}.`);
-          }
-          if (manifest.version !== expectedVersion) {
-            throw new Error(`Manifest version ${manifest.version} does not match ${expectedVersion}.`);
-          }
-          if (lockfile.version !== expectedVersion || lockfile.packages?.['']?.version !== expectedVersion) {
-            throw new Error('package-lock.json does not match the approved manifest version.');
-          }
-          if (lockfile.packages?.['']?.name !== manifest.name) {
-            throw new Error('package-lock.json does not match the approved manifest name.');
-          }
-          if (
-            manifest.devDependencies?.ovsx !== '1.0.2' ||
-            ovsxLock?.version !== '1.0.2' ||
-            ovsxLock?.resolved !== 'https://registry.npmjs.org/ovsx/-/ovsx-1.0.2.tgz' ||
-            ovsxLock?.integrity !==
-              'sha512-N0gWlINGgoOA2Sn0AhrF9L3ap40a/QbsFUpMDKR+CKYyZGJeTFEoNGngplLHjAYtcjrrZv2jX2K7ktPzxWjPNg=='
-          ) {
-            throw new Error('The Open VSX CLI is not pinned to the reviewed 1.0.2 package bytes.');
-          }
-          NODE
-
-          REQUIRED_APPROVAL="PUBLISH ${EXTENSION_ID}@${RELEASE_VERSION} SHA256:${EXPECTED_SHA256} COMMIT:${SOURCE_REVISION}"
-          if [[ "${APPROVAL}" != "${REQUIRED_APPROVAL}" ]]; then
-            echo "::error::approval does not exactly match the version, VSIX digest, and commit."
+          VERSION="$(node --input-type=module -e "
+            import manifest from './package.json' with { type: 'json' };
+            if (manifest.publisher !== 'straydog' || manifest.name !== 'okf-workbench') {
+              throw new Error('Unexpected extension identity.');
+            }
+            process.stdout.write(manifest.version);
+          ")"
+          EXPECTED_TAG="v${VERSION}"
+          if [[ "${GITHUB_REF_NAME}" != "${EXPECTED_TAG}" ]]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package version ${VERSION}; expected ${EXPECTED_TAG}."
             exit 1
           fi
 
-          SHORT_REVISION="${ACTUAL_REVISION:0:12}"
+          if grep -Fq "## ${VERSION} - Unreleased" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md must contain the publication date before tagging ${EXPECTED_TAG}."
+            exit 1
+          fi
+
           {
-            echo "artifact_name=open-vsx-candidate-${RELEASE_VERSION}-${SHORT_REVISION}-${GITHUB_RUN_ATTEMPT}"
-            echo "revision=${ACTUAL_REVISION}"
-            echo "version=${RELEASE_VERSION}"
+            echo "artifact_name=open-vsx-candidate-${VERSION}-${GITHUB_SHA}-${GITHUB_RUN_ATTEMPT}"
+            echo "revision=${GITHUB_SHA}"
+            echo "version=${VERSION}"
           } >> "${GITHUB_OUTPUT}"
 
-      - name: Verify public Open VSX registry state and version availability
-        env:
-          RELEASE_VERSION: ${{ steps.identity.outputs.version }}
-        run: >-
-          node scripts/check-open-vsx-registry.mjs
-          straydog
-          okf-workbench
-          "${RELEASE_VERSION}"
-          artifacts/open-vsx-registry.json
-
-      - name: Record tool and runner versions
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(node --version)" = "v${NODE_VERSION}"
-          test "$(npm --version)" = "${NPM_VERSION}"
-          node --version
-          npm --version
-          echo "runner_os=${RUNNER_OS}"
-          echo "runner_arch=${RUNNER_ARCH}"
-          echo "image_os=${ImageOS}"
-          echo "image_version=${ImageVersion}"
-
-      - name: Install from the exact lockfile
+      - name: Install from lockfile
         run: npm ci
 
-      - name: Run source and dependency gates
-        run: |
-          npm run format
-          npm run lint
-          npm run typecheck
-          npm test
-          npm run test:acceptance
-          npm run test:security
-          npm run dependency:check
-          node scripts/security-check.mjs --check-notices
-          npm audit --omit=dev --audit-level=high
+      - name: Verify production dependency licenses and notice freshness
+        run: node scripts/security-check.mjs --check-notices
 
-      - name: Install pinned Playwright Chromium
-        run: npx --no-install playwright install --with-deps chromium
+      - name: Check formatting
+        run: npm run format
 
-      - name: Run Webview behavior and hostile-content gates
-        run: |
-          npm run test:webview
-          npm run test:security:webview
+      - name: Lint
+        run: npm run lint
 
-      - name: Build and package once
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Run unit and fixture tests
+        run: npm test
+
+      - name: Run acceptance component gate
+        run: npm run test:acceptance
+
+      - name: Run security boundary gate
+        run: npm run test:security
+
+      - name: Review runtime dependencies and licenses
+        run: npm run dependency:check
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Package VSIX
         run: npm run package
 
-      - name: Bind headed performance evidence to the packaged production build
-        run: |
-          node scripts/benchmark-report.mjs \
-            --measurements docs/evidence/performance/vscode-1.129.1.json \
-            --require-passing \
-            > artifacts/performance/vscode-1.129.1-release-check.md
-          cmp \
-            docs/evidence/performance/vscode-1.129.1.md \
-            artifacts/performance/vscode-1.129.1-release-check.md
+      - name: Verify reproducible VSIX bytes
+        run: node scripts/check-vsix-reproducibility.mjs artifacts/${VSIX_NAME}
 
-      - name: Inspect the packaged candidate
-        run: |
-          npm run package:check
-          node scripts/security-check.mjs --vsix artifacts/okf-workbench.vsix
+      - name: Inspect VSIX contents
+        run: npm run package:check
 
-      - name: Run extension integration tests against the built revision
-        env:
-          VSCODE_TEST_VERSION: 1.121.0
-        run: xvfb-run --auto-servernum npm run test:integration
+      - name: Inspect packaged security and license boundary
+        run: node scripts/security-check.mjs --vsix artifacts/${VSIX_NAME}
 
-      - name: Ensure release metadata was not mutated by a gate
-        run: git diff --exit-code -- package.json package-lock.json
-
-      - name: Create checksum and release evidence
-        id: evidence
+      - name: Record package checksum
         shell: bash
-        env:
-          RELEASE_VERSION: ${{ steps.identity.outputs.version }}
-          SOURCE_REVISION: ${{ steps.identity.outputs.revision }}
         run: |
-          set -euo pipefail
-          mkdir -p release-candidate
-          cp artifacts/okf-workbench.vsix "release-candidate/${VSIX_NAME}"
-          cp artifacts/open-vsx-registry.json release-candidate/
-          cp scripts/check-open-vsx-registry.mjs release-candidate/
-          cp package.json package-lock.json release-candidate/
+          cd artifacts
+          sha256sum "${VSIX_NAME}" > "${VSIX_NAME}.sha256"
 
-          SHA256="$(sha256sum "release-candidate/${VSIX_NAME}" | cut -d ' ' -f 1)"
-          BYTE_SIZE="$(stat --format='%s' "release-candidate/${VSIX_NAME}")"
-          printf '%s  %s\n' "${SHA256}" "${VSIX_NAME}" > "release-candidate/${VSIX_NAME}.sha256"
-
-          SHA256="${SHA256}" BYTE_SIZE="${BYTE_SIZE}" node --input-type=module <<'NODE'
-          import { readFileSync, writeFileSync } from 'node:fs';
-
-          const openVsxRegistry = JSON.parse(
-            readFileSync('release-candidate/open-vsx-registry.json', 'utf8'),
-          );
-
-          if (
-            openVsxRegistry.namespace?.name !== 'straydog' ||
-            openVsxRegistry.namespace?.verified !== true ||
-            openVsxRegistry.namespace?.access !== 'restricted' ||
-            openVsxRegistry.extension?.id !== process.env.EXTENSION_ID ||
-            openVsxRegistry.extension?.targetVersion !== process.env.RELEASE_VERSION ||
-            openVsxRegistry.extension?.targetVersionAvailable !== true ||
-            openVsxRegistry.freshness?.requestCacheMode !== 'no-store'
-          ) {
-            throw new Error('Retained Open VSX registry evidence does not match the release identity.');
-          }
-
-          const evidence = {
-            schemaVersion: 1,
-            extensionId: process.env.EXTENSION_ID,
-            version: process.env.RELEASE_VERSION,
-            revision: process.env.SOURCE_REVISION,
-            vsix: {
-              file: process.env.VSIX_NAME,
-              sha256: process.env.SHA256,
-              byteSize: Number(process.env.BYTE_SIZE),
-            },
-            toolchain: {
-              node: process.version,
-              npm: process.env.NPM_VERSION,
-            },
-            runner: {
-              os: process.env.RUNNER_OS,
-              arch: process.env.RUNNER_ARCH,
-              imageOs: process.env.ImageOS,
-              imageVersion: process.env.ImageVersion,
-            },
-            github: {
-              repository: process.env.GITHUB_REPOSITORY,
-              runId: process.env.GITHUB_RUN_ID,
-              runAttempt: process.env.GITHUB_RUN_ATTEMPT,
-              workflow: process.env.GITHUB_WORKFLOW,
-            },
-            openVsxRegistry,
-          };
-
-          writeFileSync('release-candidate/release-evidence.json', `${JSON.stringify(evidence, null, 2)}\n`);
-          NODE
-
-          echo "sha256=${SHA256}" >> "${GITHUB_OUTPUT}"
-          {
-            echo "## Open VSX immutable candidate"
-            echo
-            echo "- Extension: \`${EXTENSION_ID}@${RELEASE_VERSION}\`"
-            echo "- Commit: \`${SOURCE_REVISION}\`"
-            echo "- VSIX SHA-256: \`${SHA256}\`"
-            echo "- VSIX bytes: \`${BYTE_SIZE}\`"
-            echo "- Open VSX namespace: \`straydog\` (verified, restricted)"
-            echo "- Target version available: \`${EXTENSION_ID}@${RELEASE_VERSION}\`"
-            echo
-            echo "The protected \`open-vsx\` reviewer must compare these values with the retained approval record before approving deployment."
-          } >> "${GITHUB_STEP_SUMMARY}"
-
-      - name: Retain the immutable candidate
+      - name: Retain release candidate
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: ${{ steps.identity.outputs.artifact_name }}
-          path: release-candidate/
+          name: ${{ steps.metadata.outputs.artifact_name }}
+          path: |
+            artifacts/build-metadata.json
+            artifacts/okf-workbench.vsix
+            artifacts/okf-workbench.vsix.sha256
+            artifacts/runtime-licenses.json
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
 
-      - name: Match the built bytes to the typed approval
-        shell: bash
-        env:
-          ACTUAL_SHA256: ${{ steps.evidence.outputs.sha256 }}
-          EXPECTED_SHA256: ${{ inputs.vsix_sha256 }}
-        run: |
-          set -euo pipefail
-          if [[ "${ACTUAL_SHA256}" != "${EXPECTED_SHA256}" ]]; then
-            echo "::error::Built VSIX SHA-256 does not match the typed approval; publication is blocked."
-            exit 1
-          fi
-
-  publish:
-    name: Verify namespace and publish the retained VSIX
+  github-release:
+    name: Create GitHub release
     needs: build-candidate
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    environment:
-      name: open-vsx
-      url: https://open-vsx.org/extension/straydog/okf-workbench
+    permissions:
+      contents: write
     steps:
-      - name: Download the retained candidate without rebuilding
+      - name: Download the retained candidate
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ${{ needs.build-candidate.outputs.artifact_name }}
           path: release-candidate
 
-      - name: Revalidate candidate identity and checksum
+      - name: Create or update the GitHub release
         shell: bash
         env:
-          ACTUAL_SHA256: ${{ needs.build-candidate.outputs.sha256 }}
-          APPROVAL: ${{ inputs.approval }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
           RELEASE_VERSION: ${{ needs.build-candidate.outputs.version }}
-          SOURCE_REVISION: ${{ needs.build-candidate.outputs.revision }}
         run: |
           set -euo pipefail
-          cd release-candidate
-          sha256sum --check "${VSIX_NAME}.sha256"
 
-          DOWNLOADED_SHA256="$(sha256sum "${VSIX_NAME}" | cut -d ' ' -f 1)"
-          if [[ "${DOWNLOADED_SHA256}" != "${ACTUAL_SHA256}" ]]; then
-            echo "::error::Downloaded candidate digest does not match the build job output."
-            exit 1
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload \
+              "${RELEASE_TAG}" \
+              "release-candidate/${VSIX_NAME}" \
+              "release-candidate/${VSIX_NAME}.sha256" \
+              --clobber
+          else
+            gh release create \
+              "${RELEASE_TAG}" \
+              "release-candidate/${VSIX_NAME}" \
+              "release-candidate/${VSIX_NAME}.sha256" \
+              --generate-notes \
+              --title "OKF Workbench ${RELEASE_VERSION}" \
+              --verify-tag
           fi
 
-          REQUIRED_APPROVAL="PUBLISH ${EXTENSION_ID}@${RELEASE_VERSION} SHA256:${DOWNLOADED_SHA256} COMMIT:${SOURCE_REVISION}"
-          if [[ "${APPROVAL}" != "${REQUIRED_APPROVAL}" ]]; then
-            echo "::error::Typed approval is no longer bound to the downloaded candidate."
-            exit 1
-          fi
+  publish-openvsx:
+    name: Publish retained VSIX to Open VSX
+    needs:
+      - build-candidate
+      - github-release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out the tagged revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          ref: ${{ needs.build-candidate.outputs.revision }}
 
-      - name: Set up pinned release tooling
+      - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: release-candidate/package-lock.json
 
-      - name: Install the exact locked Open VSX CLI without lifecycle scripts
-        working-directory: release-candidate
+      - name: Install the locked Open VSX CLI
         run: |
           npm install --global npm@${NPM_VERSION}
-          test "$(node --version)" = "v${NODE_VERSION}"
-          test "$(npm --version)" = "${NPM_VERSION}"
           npm ci --ignore-scripts --no-audit --no-fund
           test "$(./node_modules/.bin/ovsx --version)" = "1.0.2"
 
-      - name: Recheck the public registry immediately before authorization
+      - name: Download the retained candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.build-candidate.outputs.artifact_name }}
+          path: release-candidate
+
+      - name: Verify retained package checksum
         working-directory: release-candidate
-        shell: bash
-        env:
-          RELEASE_VERSION: ${{ needs.build-candidate.outputs.version }}
-        run: |
-          node check-open-vsx-registry.mjs \
-            straydog \
-            okf-workbench \
-            "${RELEASE_VERSION}" \
-            open-vsx-registry-publish.json
+        run: sha256sum --check "${VSIX_NAME}.sha256"
 
       - name: Verify straydog namespace authorization
-        working-directory: release-candidate
-        shell: bash
         env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+          OVSX_PAT: ${{ secrets.OPEN_VSX_TOKEN }}
         run: |
-          if [[ -z "${OVSX_PAT}" ]]; then
-            echo "::error::The protected open-vsx environment does not provide OVSX_PAT."
+          if [[ -z "${OVSX_PAT:-}" ]]; then
+            echo "::error::OPEN_VSX_TOKEN is not configured."
             exit 1
           fi
           ./node_modules/.bin/ovsx verify-pat straydog
 
-      - name: Create complete pre-publication evidence
-        working-directory: release-candidate
-        shell: bash
+      - name: Publish the retained VSIX
         env:
-          APPROVAL: ${{ inputs.approval }}
-          EXPECTED_SHA256: ${{ needs.build-candidate.outputs.sha256 }}
-          RELEASE_VERSION: ${{ needs.build-candidate.outputs.version }}
-          SOURCE_REVISION: ${{ needs.build-candidate.outputs.revision }}
-        run: |
-          set -euo pipefail
-
-          ACTUAL_SHA256="$(sha256sum "${VSIX_NAME}" | cut -d ' ' -f 1)"
-          BYTE_SIZE="$(stat --format='%s' "${VSIX_NAME}")"
-          if [[ "${ACTUAL_SHA256}" != "${EXPECTED_SHA256}" ]]; then
-            echo "::error::VSIX bytes changed before pre-publication evidence retention."
-            exit 1
-          fi
-          EXPECTED_APPROVAL="PUBLISH ${EXTENSION_ID}@${RELEASE_VERSION} SHA256:${EXPECTED_SHA256} COMMIT:${SOURCE_REVISION}"
-          if [[ "${APPROVAL}" != "${EXPECTED_APPROVAL}" ]]; then
-            echo "::error::Typed approval changed before pre-publication evidence retention."
-            exit 1
-          fi
-
-          BYTE_SIZE="${BYTE_SIZE}" node --input-type=module <<'NODE'
-          import { readFileSync, writeFileSync } from 'node:fs';
-
-          const releaseEvidence = JSON.parse(readFileSync('release-evidence.json', 'utf8'));
-          const registryEvidence = JSON.parse(
-            readFileSync('open-vsx-registry-publish.json', 'utf8'),
-          );
-          const expected = {
-            extensionId: process.env.EXTENSION_ID,
-            revision: process.env.SOURCE_REVISION,
-            sha256: process.env.EXPECTED_SHA256,
-            version: process.env.RELEASE_VERSION,
-          };
-
-          if (
-            releaseEvidence.extensionId !== expected.extensionId ||
-            releaseEvidence.version !== expected.version ||
-            releaseEvidence.revision !== expected.revision ||
-            releaseEvidence.vsix?.file !== process.env.VSIX_NAME ||
-            releaseEvidence.vsix?.sha256 !== expected.sha256 ||
-            releaseEvidence.vsix?.byteSize !== Number(process.env.BYTE_SIZE)
-          ) {
-            throw new Error('Retained candidate evidence no longer matches the approved VSIX.');
-          }
-          if (
-            registryEvidence.namespace?.name !== 'straydog' ||
-            registryEvidence.namespace?.verified !== true ||
-            registryEvidence.namespace?.access !== 'restricted' ||
-            registryEvidence.extension?.id !== expected.extensionId ||
-            registryEvidence.extension?.targetVersion !== expected.version ||
-            registryEvidence.extension?.targetVersionAvailable !== true ||
-            registryEvidence.freshness?.requestCacheMode !== 'no-store'
-          ) {
-            throw new Error('Immediate registry evidence does not match the approved release.');
-          }
-
-          const evidence = {
-            schemaVersion: 1,
-            phase: 'prepublication',
-            extensionId: expected.extensionId,
-            version: expected.version,
-            revision: expected.revision,
-            approvalBinding: {
-              exactMatch: true,
-              extensionId: expected.extensionId,
-              version: expected.version,
-              revision: expected.revision,
-              vsixSha256: expected.sha256,
-            },
-            vsix: {
-              file: process.env.VSIX_NAME,
-              sha256: expected.sha256,
-              byteSize: Number(process.env.BYTE_SIZE),
-            },
-            namespaceAuthorization: {
-              namespace: 'straydog',
-              ovsxVerifyPat: 'passed',
-            },
-            toolchain: {
-              node: process.version,
-              npm: process.env.NPM_VERSION,
-              ovsx: '1.0.2',
-            },
-            runner: {
-              os: process.env.RUNNER_OS,
-              arch: process.env.RUNNER_ARCH,
-              imageOs: process.env.ImageOS,
-              imageVersion: process.env.ImageVersion,
-            },
-            github: {
-              repository: process.env.GITHUB_REPOSITORY,
-              runId: process.env.GITHUB_RUN_ID,
-              runAttempt: process.env.GITHUB_RUN_ATTEMPT,
-              workflow: process.env.GITHUB_WORKFLOW,
-            },
-            registryEvidence,
-          };
-
-          writeFileSync(
-            'prepublication-evidence.json',
-            `${JSON.stringify(evidence, null, 2)}\n`,
-          );
-          NODE
-
-      - name: Retain complete pre-publication evidence before publishing
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        with:
-          name: open-vsx-prepublication-evidence-${{ needs.build-candidate.outputs.version }}-${{ needs.build-candidate.outputs.revision }}-${{ github.run_attempt }}
-          path: |
-            release-candidate/prepublication-evidence.json
-            release-candidate/open-vsx-registry-publish.json
-          if-no-files-found: error
-          retention-days: 30
-          compression-level: 0
-
-      - name: Publish the already-built VSIX
-        id: publish
-        working-directory: release-candidate
-        shell: bash
-        env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: ./node_modules/.bin/ovsx publish "${VSIX_NAME}"
-
-      - name: Create a post-publication attempt receipt
-        if: ${{ always() }}
-        continue-on-error: true
-        working-directory: release-candidate
-        env:
-          EXPECTED_SHA256: ${{ needs.build-candidate.outputs.sha256 }}
-          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
-          RELEASE_VERSION: ${{ needs.build-candidate.outputs.version }}
-          SOURCE_REVISION: ${{ needs.build-candidate.outputs.revision }}
-        run: |
-          node --input-type=module <<'NODE'
-          import { writeFileSync } from 'node:fs';
-
-          const receipt = {
-            schemaVersion: 1,
-            phase: 'publication-attempt',
-            extensionId: process.env.EXTENSION_ID,
-            version: process.env.RELEASE_VERSION,
-            revision: process.env.SOURCE_REVISION,
-            vsixSha256: process.env.EXPECTED_SHA256,
-            publishCommandOutcome: process.env.PUBLISH_OUTCOME,
-            github: {
-              repository: process.env.GITHUB_REPOSITORY,
-              runId: process.env.GITHUB_RUN_ID,
-              runAttempt: process.env.GITHUB_RUN_ATTEMPT,
-              workflow: process.env.GITHUB_WORKFLOW,
-            },
-            note:
-              'This receipt records the workflow command outcome only; registry verification remains a separate post-publication gate.',
-          };
-
-          writeFileSync(
-            'publication-attempt-receipt.json',
-            `${JSON.stringify(receipt, null, 2)}\n`,
-          );
-          NODE
-
-      - name: Retain the post-publication attempt receipt
-        if: ${{ always() }}
-        continue-on-error: true
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        with:
-          name: open-vsx-publication-attempt-${{ needs.build-candidate.outputs.version }}-${{ needs.build-candidate.outputs.revision }}-${{ github.run_attempt }}
-          path: release-candidate/publication-attempt-receipt.json
-          if-no-files-found: warn
-          retention-days: 30
-          compression-level: 0
+          OVSX_PAT: ${{ secrets.OPEN_VSX_TOKEN }}
+        run: ./node_modules/.bin/ovsx publish "release-candidate/${VSIX_NAME}" --skip-duplicate

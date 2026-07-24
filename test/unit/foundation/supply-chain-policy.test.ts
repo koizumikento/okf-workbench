@@ -146,45 +146,36 @@ describe('supply-chain policy', () => {
     ]);
   });
 
-  test('requires durable pre-publication evidence before the irreversible Open VSX command', () => {
+  test('requires a main-bound v-tag release before Open VSX publication', () => {
     const unsafeRelease = [
+      'on:',
+      '  workflow_dispatch:',
+      'permissions:',
+      '  contents: write',
       'jobs:',
-      '  publish:',
+      '  build-candidate:',
+      '    steps: []',
+      '  github-release:',
+      '    steps: []',
+      '  publish-openvsx:',
       '    steps:',
-      '      - name: Verify',
-      '        env:',
-      '          OVSX_PAT: ${{ secrets.OVSX_PAT }}',
-      '        run: ./node_modules/.bin/ovsx verify-pat straydog',
-      '      - name: Create evidence',
-      '        run: |',
-      "          approvalBinding='matched'",
-      "          namespaceAuthorization='passed'",
-      "          output='prepublication-evidence.json'",
-      '      - name: Publish',
-      '        env:',
-      '          OVSX_PAT: ${{ secrets.OVSX_PAT }}',
-      '        run: ./node_modules/.bin/ovsx publish "${VSIX_NAME}"',
-      '      - name: Too-late evidence',
-      '        uses: actions/upload-artifact@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-      '        with:',
-      '          path: |',
-      '            release-candidate/prepublication-evidence.json',
-      '            release-candidate/open-vsx-registry-publish.json',
-      '          if-no-files-found: error',
+      '      - run: ./node_modules/.bin/ovsx publish other.vsix',
     ].join('\n');
 
     expect(
       releaseWorkflowSafetyFailures('.github/workflows/open-vsx-release.yml', unsafeRelease),
     ).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('before the irreversible publish command'),
-        expect.stringContaining('post-publish artifact upload'),
-        expect.stringContaining('publication-attempt receipt'),
+        expect.stringContaining('pushed v* tags'),
+        expect.stringContaining('contents: read'),
+        expect.stringContaining('bind the tag to main'),
+        expect.stringContaining('GitHub release'),
+        expect.stringContaining('exactly one Open VSX publish invocation'),
       ]),
     );
   });
 
-  test('rejects release-job error tolerance, bypassable PAT verification, and bracket secret leakage', async () => {
+  test('rejects release-job error tolerance, bypassable PAT verification, and secret leakage', async () => {
     const source = await readFile(
       new URL('../../../.github/workflows/open-vsx-release.yml', import.meta.url),
       'utf8',
@@ -195,22 +186,26 @@ describe('supply-chain policy', () => {
 
     const tolerantJob = source.replace(
       [
-        '  publish:',
-        '    name: Verify namespace and publish the retained VSIX',
-        '    needs: build-candidate',
+        '  publish-openvsx:',
+        '    name: Publish retained VSIX to Open VSX',
+        '    needs:',
+        '      - build-candidate',
+        '      - github-release',
         '    runs-on: ubuntu-24.04',
       ].join('\n'),
       [
-        '  publish:',
-        '    name: Verify namespace and publish the retained VSIX',
-        '    needs: build-candidate',
+        '  publish-openvsx:',
+        '    name: Publish retained VSIX to Open VSX',
+        '    needs:',
+        '      - build-candidate',
+        '      - github-release',
         '    runs-on: ubuntu-24.04',
         '    continue-on-error: true',
       ].join('\n'),
     );
     expect(
       releaseWorkflowSafetyFailures('.github/workflows/open-vsx-release.yml', tolerantJob),
-    ).toContainEqual(expect.stringContaining('unconditional fail-closed protected job'));
+    ).toContainEqual(expect.stringContaining('unconditional fail-closed job'));
 
     const bypassablePat = source.replace(
       '      - name: Verify straydog namespace authorization\n',
@@ -221,23 +216,26 @@ describe('supply-chain policy', () => {
     ).toContainEqual(expect.stringContaining('PAT verification step'));
 
     const leakedBracketSecret = source.replace(
-      '          APPROVAL: ${{ inputs.approval }}\n',
+      '      - name: Install from lockfile\n',
       [
-        "          LEAKED_PAT: ${{ secrets['OVSX_PAT'] }}",
-        '          APPROVAL: ${{ inputs.approval }}',
+        '      - name: Leak credential',
+        '        env:',
+        "          LEAKED_PAT: ${{ secrets['OPEN_VSX_TOKEN'] }}",
+        '        run: npm ci',
+        '      - name: Install from lockfile',
         '',
       ].join('\n'),
     );
     expect(
       releaseWorkflowSafetyFailures('.github/workflows/open-vsx-release.yml', leakedBracketSecret),
-    ).toContainEqual(expect.stringContaining('OVSX_PAT must be exposed only'));
+    ).toContainEqual(expect.stringContaining('OPEN_VSX_TOKEN'));
 
     const duplicatePublish = source.replace(
-      '        run: ./node_modules/.bin/ovsx publish "${VSIX_NAME}"',
+      '        run: ./node_modules/.bin/ovsx publish "release-candidate/${VSIX_NAME}" --skip-duplicate',
       [
         '        run: |',
         '          ./node_modules/.bin/ovsx publish other.vsix',
-        '          ./node_modules/.bin/ovsx publish "${VSIX_NAME}"',
+        '          ./node_modules/.bin/ovsx publish "release-candidate/${VSIX_NAME}" --skip-duplicate',
       ].join('\n'),
     );
     expect(

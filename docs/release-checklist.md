@@ -59,9 +59,9 @@ not a substitute for its named manual or hosted check.
       repeats it without a token.
 - [ ] The authenticated publishing identity has current `straydog` authorization, a valid PAT,
       and a signed current Open VSX Publisher Agreement.
-- [ ] The listing provides a durable public end-user support and security-contact route. The
-      project license is packaged, while private-only repository, issue, homepage, privacy, and
-      notice URLs are deliberately omitted rather than advertised.
+- [x] The listing provides durable public repository, issue, homepage, privacy, support, security,
+      license, and notice routes. GitHub private vulnerability reporting is enabled, and the
+      project license, security policy, and generated third-party notices are packaged.
 - [ ] The maintainer has explicitly approved publication of the exact candidate SHA-256.
 - [ ] The GitHub `open-vsx` Environment is protected and independently reviewed as described
       below; its environment-scoped `OVSX_PAT` is not duplicated as a repository or organization
@@ -77,11 +77,12 @@ not a substitute for its named manual or hosted check.
 - [ ] `CHANGELOG.md` contains exactly one `0.1.0` entry and `Unreleased` is replaced with the
       intended publication date before the immutable candidate is built. If that date changes,
       rebuild, requalify, and reapprove the new bytes.
-- [x] The public manifest omits `repository`, `bugs`, and `homepage` while the source repository is
-      private; the packaged README and changelog contain no private-repository,
-      excluded-documentation, or speculative release-tag links.
-- [ ] A durable public support and security-contact route is selected and validated without
-      requiring access to the private source repository.
+- [x] The public manifest contains the exact approved public `repository`, `bugs`, and `homepage`
+      values; the packaged README and changelog contain no excluded-documentation or speculative
+      release-tag links.
+- [x] The public GitHub Pages support and security routes return successfully without requiring
+      authentication, the issue tracker is public, and GitHub private vulnerability reporting is
+      enabled.
 - [x] The packaged README states privacy behavior, MIT licensing, and bundled third-party notices
       inline; the VSIX carries the corresponding license and notice files.
 - [x] The 128×128-or-larger PNG icon is referenced by the manifest and present in the VSIX.
@@ -169,10 +170,10 @@ named exactly `open-vsx` with all of the following hosted controls:
 1. Add required reviewers who are authorized to release `straydog.okf-workbench`. Prevent
    self-review and administrator bypass where the repository plan supports those controls.
    [GitHub's environment rules documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)
-   states that required reviewers for private repositories are not available on GitHub Free, Pro,
-   or Team. Confirm that this private repository's plan supports the control; if it does not,
-   upgrade the plan or keep publication on hold. The typed workflow input does not replace an
-   independent Environment review.
+   describes the available protection rules. The repository is public, so the earlier
+   private-repository plan limitation no longer applies; the Environment and its independent
+   reviewer still must be configured and verified. The typed workflow input does not replace that
+   review.
 2. Restrict deployments to the protected release branch or tag policy. Protect the default branch
    with required review and required release checks, and give workflow changes explicit ownership.
 3. Store the Open VSX token only as the Environment secret `OVSX_PAT`. Do not create a repository
@@ -231,10 +232,10 @@ and byte size.
 **Current proof gap:** a read-only GitHub API check on 2026-07-23 reported zero Environments and
 `404 Not Found` for `open-vsx`. The repository-level secret-name list contained
 `OPEN_VSX_TOKEN` and `STRAY_TOOLS_TOKEN`, but neither establishes the required protected
-Environment or its environment-scoped `OVSX_PAT`; secret values were not accessed. The API
-response did not establish whether the current plan supports required reviewers for this private
-repository. Thus the hosted `open-vsx` Environment, required reviewers, deployment restrictions,
-plan eligibility, and environment-scoped `OVSX_PAT` have not been configured or observed. No
+Environment or its environment-scoped `OVSX_PAT`; secret values were not accessed. Making the
+repository public removed the earlier private-plan eligibility uncertainty, but the hosted
+`open-vsx` Environment, required reviewers, deployment restrictions, and environment-scoped
+`OVSX_PAT` still have not been configured or observed. No
 protected-environment approval, authenticated namespace authorization command, or publication
 has been run. The value and purpose of the repository-level `OPEN_VSX_TOKEN` were not inspected:
 before publication its owner must confirm whether it is a credential and, if so, revoke or remove

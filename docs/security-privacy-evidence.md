@@ -5,8 +5,8 @@
 - Scope: STR-214 release preflight for the current source, including fresh schema-v3 headed
   evidence, the final rebuilt VSIX, and current hosted receipts
 - Audience: maintainers and release reviewers
-- Decision controls: confirmed candidate `HOST-01`; remediated candidates `LIC-01`, `CI-01`;
-  open proof gaps `PG-01`, `PG-02`, `PG-03`, and `PG-04`; the strict schema-v3 headed Webview and
+- Decision controls: remediated candidates `LIC-01`, `CI-01`, and `HOST-01`;
+  open proof gaps `PG-01`, `PG-02`, and `PG-04`; the strict schema-v3 headed Webview and
   current packaged read/untrusted-refusal observations are complete while trusted write-command
   observation remains outside packaged `PG-02`
 
@@ -31,17 +31,26 @@ This is a bounded release preflight, not a claim that OKF Workbench is secure, c
 - Candidate: `CI-01` (`remediated`)
 - Evidence: every `uses:` entry in CI, package smoke, compatibility, and Open VSX release workflows is pinned to a reviewed 40-character commit SHA with its human-readable release tag in a comment. Workflow contract checks reject mutable references, and the hosted repository setting now enforces `sha_pinning_required: true` for GitHub Actions.
 - Existing controls: ordinary workflows declare only `contents: read`; there is no `pull_request_target`, OIDC permission, or self-hosted runner. Only the dispatch-only publish job enters the separately named `open-vsx` Environment.
-- Residual risk: future action updates still require dependency review, and hosted branch/environment protection remains covered by `HOST-01` and `PG-04`.
+- Residual risk: future action updates still require dependency review, and the independent hosted
+  publication environment remains covered by `PG-04`.
 - Owner: repository maintainer.
 
-### F-03 — The hosted repository has no protected-main or scanning baseline
+### F-03 — The hosted repository had no protected-main or scanning baseline (resolved)
 
-- Severity: **Medium release governance; not a local-build blocker**
-- Candidate: `HOST-01` (`confirmed`)
-- Evidence: read-only GitHub API reported a private repository with `main` as default, zero repository rulesets, `main` not protected, secret scanning disabled, and code scanning not enabled. The separate Actions SHA-pinning policy is enabled and closes action-reference mutability, but does not replace branch protection or scanning.
-- Impact: direct or insufficiently reviewed changes can reach the release branch, and GitHub is not producing provider secret/code-scanning alerts for this repository.
-- Smallest remediation: configure a reviewed ruleset or branch protection with required checks/review, enable the security-analysis features available to the repository, define workflow ownership, and record the effective settings. If a feature is intentionally unavailable, the release owner must document an equivalent control and explicit risk acceptance.
-- Owner: repository/organization administrator.
+- Severity: **Resolved release-governance finding**
+- Candidate: `HOST-01` (`remediated`)
+- Evidence: the repository is public and `main` protection applies to administrators, requires the
+  four CI jobs and conversation resolution, and prohibits force-push and deletion. CODEOWNERS
+  names the maintainer for the repository, workflows, security policy, and package/security gates.
+  Secret scanning, push protection, Dependabot alerts/security updates, CodeQL default setup, and
+  private vulnerability reporting are enabled.
+- Verification: initial
+  [CodeQL run 30060996475](https://github.com/koizumikento/okf-workbench/actions/runs/30060996475)
+  passed Actions and JavaScript/TypeScript analysis. Read-only alert queries returned zero open
+  CodeQL, secret-scanning, or Dependabot alerts on 2026-07-24.
+- Residual risk: the single-maintainer branch baseline does not substitute for independent Open VSX
+  publication approval; that remains `PG-04`.
+- Owner: repository maintainer.
 
 No other confirmed security finding was found in the reviewed local surface. That statement does not close the proof gaps below.
 
@@ -226,7 +235,7 @@ validated by clean install, integration tests, and the full-tree audit.
 | `DEP-01` | Dependency license | A production dependency has missing, forbidden, high-risk, or unresolved licensing. | Exact 78-package gate reports only MIT, ISC, and BSD-3-Clause and includes each notice text. | suppressed | Human license review remains `PG-01`. |
 | `VULN-01` | Known advisories | npm reports a known production or development vulnerability. | Live production-only and full-tree npm audits returned zero advisories on the review date after reviewed test-only transitive overrides. | suppressed | Point-in-time and known-advisory limitation applies. |
 | `COMPAT-01` | Packaged editor lifecycle | The exact candidate does not complete the required editor/OS lifecycle matrix. | Current [Compatibility run 30058922150](https://github.com/koizumikento/okf-workbench/actions/runs/30058922150) passed the candidate, acceptance/Webview, and all seven VS Code/VSCodium lifecycle jobs at evidence revision `a5b2b75b7216d644f0d8d0f739db3a989bba7ca0`. Current [Package smoke run 30058925030](https://github.com/koizumikento/okf-workbench/actions/runs/30058925030) passed all three operating systems and aggregate byte identity. The CI, Compatibility, package-smoke, and local VSIX files were byte-identical at SHA-256 `d7be6180cd788b2ab5d9c7fc436de9eb2df97d967b16ccbc2578f48851f0b666`, `613637` bytes. | suppressed for current candidate | Re-run for any packaged-content or required-matrix change. |
-| `HOST-01` | Repository/hosted settings | Protected-main and provider scanning controls are absent. | Read-only GitHub API returned zero rulesets, unprotected `main`, secret scanning disabled, and code scanning not enabled. Actions SHA pinning is now enforced at repository level. | confirmed | Action-reference mutability is closed; harden or explicitly accept the remaining branch/scanning gap before publication. Linked to `PG-03`. |
+| `HOST-01` | Repository/hosted settings | Protected-main and provider scanning controls are absent. | The public repository protects `main` with four required CI checks, administrator enforcement, conversation resolution, and force-push/deletion denial. CODEOWNERS is present; secret scanning with push protection, Dependabot, CodeQL default setup, and private vulnerability reporting are enabled. Initial CodeQL passed and all three open-alert queries returned zero. | remediated | Recheck settings and alerts before release; independent publication approval remains `PG-04`. |
 | `RELEASE-01` | Open VSX publishing | Publication uses protected short-lived credentials and reviewed artifacts. | The dispatch-only workflow binds approval to version, commit, and normalized VSIX digest, packages once, performs credential-free public registry preflights, and exposes `OVSX_PAT` only to PAT verification and publication. After authorization it must durably upload token-free, approval/digest/revision/registry-bound pre-publication evidence before the irreversible command. Public evidence confirms `straydog` is verified/restricted and the exact target version is available. The named Environment, reviewers, branch policy, credential, authenticated authorization, and Agreement state are not configured or evidenced. | deferred | Repository control is implemented; hosted boundary remains `PG-04`. |
 
 ## Coverage ledger
@@ -236,10 +245,10 @@ validated by clean install, integration tests, and the full-tree audit.
 | Webview CSP, content injection, and local assets | covered | Host HTML, DOM source, protocol source, unit tests, Chromium harness, production bundle, headed VS Code Webview CDP network capture | `CSP-01`, `NET-01`, `XSS-01` | The zero-egress observation is candidate/editor-specific, not a universal guarantee. |
 | Privileged source navigation and messaging | covered | Strict decoder, controller, host source map, navigation rejection regression | `PROTO-01`, `NAV-01` | No active exploit testing was performed. |
 | Workspace path/read-and-write containment | covered for pure, memory-backed, and tested local `file:` symlink boundaries | Exact open-folder membership tracker, modeless-workflow invalidation, provider pre-commit authorization, path guard, native identity-bound read handles with close-failure tests, per-resource and per-traversed-directory parent generations, proposal applicator read boundaries, runtime/authoring regressions, VS Code `FileType.SymbolicLink` mapping, and real temporary-workspace permanent plus root/deep transient swap-and-restore regressions for command, watcher, discovery, and enumeration paths | `PATH-01` | Non-`file:` providers are an explicit trusted-provider boundary owned by compatibility evidence; no universal `openat`/privileged-mount atomicity or existing-file update-CAS claim is made. |
-| Secrets, logs, telemetry, and content egress | covered statically, in the current strict headed Webview, and for current packaged activation/read/untrusted-refusal phases | First-party static scan, activation log review, browser interception, current schema-v3 headed Webview CDP capture, current packaged Extension Host CommonJS-owner/global hooks, hosted settings API | `NET-01`, `LOG-01`, `PRIV-01`, `COMPAT-01`, `HOST-01` | The current observations are candidate/editor/lane-specific. The Extension Host hooks are not OS isolation and exclude ESM named bindings, cached references, raw/prototype bindings, `dns.promises`, child processes, editor-owned traffic, Webview traffic, and trusted write-command execution. Hosted repository scanning is confirmed disabled. |
+| Secrets, logs, telemetry, and content egress | covered statically, in the current strict headed Webview, and for current packaged activation/read/untrusted-refusal phases | First-party static scan, activation log review, browser interception, current schema-v3 headed Webview CDP capture, current packaged Extension Host CommonJS-owner/global hooks, hosted settings and alert APIs | `NET-01`, `LOG-01`, `PRIV-01`, `COMPAT-01`, `HOST-01` | The current observations are candidate/editor/lane-specific. The Extension Host hooks are not OS isolation and exclude ESM named bindings, cached references, raw/prototype bindings, `dns.promises`, child processes, editor-owned traffic, Webview traffic, and trusted write-command execution. Hosted scanning is enabled and its initial open-alert queries are clean, but remains point-in-time evidence. |
 | Production dependency and license inventory | covered technically | Lock graph, installed manifests, license texts, integrity, install-script gate, npm audit | `DEP-01`, `VULN-01` | Human legal/license judgment: `PG-01`. |
 | Project license and packaged notices | covered technically in the final hosted-identical artifact | MIT manifest/root license plus exact final local and hosted VSIX license and notice inspection | `LIC-01` | Human third-party review remains `PG-01`. |
-| CI workflows and hosted repository policy | partial | Full-SHA action pins, local YAML permissions/triggers/artifacts, digest-bound release workflow; read-only ruleset/protection/scanning/environment API | `CI-01`, `HOST-01`, `RELEASE-01` | Action mutability is remediated. Protection/scanning are confirmed absent; release environment remains `PG-04`. |
+| CI workflows and hosted repository policy | partial | Full-SHA action pins, local YAML permissions/triggers/artifacts, digest-bound release workflow; read-only protection/scanning/alert/environment APIs | `CI-01`, `HOST-01`, `RELEASE-01` | Action mutability and the protected-main/scanning baseline are remediated. The independent release environment remains `PG-04`. |
 | Authentication/authorization and inbound public service | covered as absent | Manifest, architecture, source and runtime dependency inventory | `PRIV-01`, `PUBLIC-01` | Re-review if scope changes. |
 
 ## Proof gaps and required human verification
@@ -305,15 +314,18 @@ validated by clean install, integration tests, and the full-tree audit.
   but it does not execute the trusted write-command workflows under those hooks. Historical
   packaged observations remain bounded evidence for their old exact bytes only.
 
-### PG-03 — Hosted GitHub protection, scanning, and alert review
+### PG-03 — Hosted GitHub protection, scanning, and alert review (closed)
 
-- Unproven fact: after protection/scanning remediation, required review/checks, workflow ownership, alert handling, and retained logs/artifacts will match repository policy and show no unresolved release-affecting alert.
-- Current established state: the repository enforces full-SHA GitHub Action references, but has no ruleset or main protection, and both secret scanning and code scanning are disabled or not enabled.
-- Why the remaining fact is not established here: changing hosted policy is outside this preflight, and a disabled scanner has no meaningful clean alert state.
-- Potential impact: unreviewed changes, undetected credential exposure, or unsafe release inputs.
-- Owner: GitHub organization/repository administrator.
-- Smallest safe evidence: enable or document equivalent controls, then retain a read-only settings export or screenshots plus scanning alert status and workflow/ruleset review.
-- Release before closure: only after the release owner explicitly accepts or closes the gap.
+- Established state: the public repository enforces immutable Action references and protects
+  `main` with the four required CI checks, administrator enforcement, conversation resolution, and
+  force-push/deletion denial. CODEOWNERS identifies workflow and release-gate ownership. Secret
+  scanning with push protection, Dependabot, CodeQL default setup, and private vulnerability
+  reporting are enabled.
+- Retained verification: initial CodeQL passed and read-only CodeQL, secret-scanning, and Dependabot
+  queries returned zero open alerts on 2026-07-24.
+- Remaining boundary: these are point-in-time hosted controls and alerts. Recheck them before
+  release. Independent release approval and credential isolation are not closed here and remain
+  `PG-04`.
 
 ### PG-04 — Open VSX hosted publication boundary
 
@@ -348,7 +360,7 @@ validated by clean install, integration tests, and the full-tree audit.
 | Historical `npm run package` before the 2026-07-23 MIT decision | Package produced; `vsce` warned that the project license was missing. Superseded source state. |
 | Historical packaged license gate before the 2026-07-23 MIT decision | Expected failure: exact notice present, but zero project-license entries. Superseded by the post-MIT pre-final artifact result below. |
 | Historical post-MIT pre-final local `package:check`, packaged security, notice, and reproducibility gates | Pass on 2026-07-23 for 11 entries, SHA-256 `94f71a906c964857ab5df3d971c744be1300bd17d25671df7935f298983ee200`, and `605189` bytes. The canonical `extension/LICENSE.txt` was byte-identical to the MIT root license and the exact notices were packaged. Superseded by the final local candidate row above. |
-| Read-only GitHub repository/ruleset/protection/scanning API calls | Repository private; zero rulesets; `main` unprotected; secret scanning disabled; code scanning not enabled. |
+| Read-only GitHub repository/protection/scanning API calls | Repository public; `main` protected for administrators by four required CI checks, conversation resolution, and force-push/deletion denial; CODEOWNERS present; secret scanning/push protection, Dependabot, CodeQL default setup, and private vulnerability reporting enabled; initial CodeQL passed; zero open CodeQL, secret-scanning, or Dependabot alerts. |
 | GitHub Actions permissions API | Pass; repository policy reports `enabled: true`, `allowed_actions: all`, and `sha_pinning_required: true`. |
 | `node scripts/check-open-vsx-registry.mjs straydog okf-workbench 0.1.0 docs/evidence/open-vsx-registry.json` | Pass at `2026-07-23T08:35:06.452Z`; all three responses passed strict `Date` parsing and the `Age`-absent inclusive 30-second freshness/future-time guard, namespace verified/restricted, extension absent, and target version available. |
 
@@ -359,15 +371,18 @@ Current recommendation: **hold public release**.
 - `LIC-01` is remediated in source and the final local candidate passed the packaged license,
   notice, and reproducibility gates. Hosted cross-platform byte identity also passed; human
   third-party review remains open.
-- `CI-01` is remediated. `HOST-01` must be hardened or explicitly accepted before a privileged publication path is trusted.
+- `CI-01` and `HOST-01` are remediated. Hosted branch protection, workflow ownership, scanning,
+  private vulnerability reporting, and initial alert review close `PG-03`; point-in-time rechecks
+  remain part of release operation.
 - `PG-02` is closed for the current strict headed-Webview and packaged activation/read/untrusted-
   refusal surfaces. It remains open for trusted write-command execution and the documented hook
   exclusions. Older headed and hosted observations remain historical evidence only for their
   exact identities/bytes and named observation surfaces.
-  `PG-01`, `PG-03`, and `PG-04` also remain open and have named owners and safe closure evidence.
+  `PG-01` and `PG-04` also remain open and have named owners and safe closure evidence.
 - The retained public state of the `straydog` namespace and target version does not close current
-  PAT authorization or Publisher Agreement verification. Public marketplace resources and explicit
-  maintainer approval for the exact digest also remain unchecked in the release checklist.
+  PAT authorization or Publisher Agreement verification. Public marketplace resources are now
+  available; explicit maintainer approval for the exact digest remains unchecked in the release
+  checklist.
 - Suppressed candidates have explicit counter-evidence; not-applicable candidates identify absent surfaces; deferred candidates map to proof gaps.
 
 The final local exact-notice, security, build, package, packaged-VSIX, reproducibility, npm audit,

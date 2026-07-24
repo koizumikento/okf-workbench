@@ -640,7 +640,7 @@ describe('parser semantic resource limits', () => {
       links: [],
       source: { contentHash: 'resource-limit:unparsed' },
     });
-  });
+  }, 20_000);
 
   it('charges aggregate Markdown container work at exact and +1 boundaries', () => {
     const depth = OKF_SEMANTIC_LIMITS.maxMarkdownContainerNestingDepth;

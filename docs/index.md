@@ -92,6 +92,7 @@ Accepted decisions are recorded under [decisions/](decisions/):
 - [0004 — Use a single-package npm, TypeScript, and esbuild toolchain](decisions/0004-use-npm-typescript-esbuild-toolchain.md)
 - [0005 — Resolve the MVP implementation questions](decisions/0005-resolve-mvp-implementation-questions.md)
 - [0006 — Publish Open VSX releases from version tags](decisions/0006-publish-open-vsx-from-version-tags.md)
+- [0007 — Adopt a Rust/Wasm shared OKF core and native CLI](decisions/0007-adopt-rust-wasm-shared-core-and-cli.md)
 
 ## Documentation rules
 

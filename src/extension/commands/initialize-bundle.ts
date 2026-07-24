@@ -2,7 +2,6 @@ import {
   BUNDLE_PRESETS,
   normalizeBundleDirectory,
   normalizeTemplateOutputPath,
-  renderBundlePreset,
   type BundlePreset,
 } from '../../core/templates/index.js';
 import { bundleFilesToProposal } from './proposals.js';
@@ -99,14 +98,19 @@ export function createInitializeBundleCommand<TUri>(
           return { kind: 'cancelled' };
         }
 
-        const rendered = renderBundlePreset({ preset, timestamp: dependencies.now() });
-        if (!rendered.ok) {
+        let rendered;
+        try {
+          if (dependencies.core === undefined) {
+            throw new Error('The production Wasm core was not supplied.');
+          }
+          rendered = dependencies.core.renderBundle(preset, dependencies.now());
+        } catch (error: unknown) {
           await dependencies.ui.showError(
-            problemsMessage('The selected bundle preset could not be rendered.', rendered.problems),
+            `The selected bundle preset could not be rendered. ${error instanceof Error ? error.message : 'The deterministic core rejected the request.'}`,
           );
-          return { kind: 'refused', problems: rendered.problems };
+          return { kind: 'failed' };
         }
-        for (const file of rendered.value) {
+        for (const file of rendered) {
           const relativePath =
             normalizedDirectory.value === '.'
               ? file.relativePath
@@ -138,7 +142,7 @@ export function createInitializeBundleCommand<TUri>(
         const proposal = bundleFilesToProposal(
           'initialize-bundle',
           target.targetRootUri,
-          rendered.value,
+          rendered,
           dependencies.uris,
           {
             relativePathPrefix: normalizedDirectory.value,

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 
+import { loadPackagedWasmOkfCore } from '../core/wasm/index.js';
 import type { GraphRenderFailureReason } from '../shared/protocol/index.js';
 import { bundlePathWithinIntegrationRoot } from './composition/bundle-path.js';
 import { bundleSelectionChoices } from './composition/bundle-selection.js';
@@ -135,6 +136,7 @@ function uriArgument(value: unknown): vscode.Uri | undefined {
 }
 
 export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptanceApi | undefined {
+  const core = loadPackagedWasmOkfCore();
   const acceptanceSignals = createAcceptanceCompletionSignals(
     process.env['OKF_ACCEPTANCE_DRIVER'],
     OKF_COMMANDS,
@@ -346,6 +348,7 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
     }
   };
   const runtime = createVscodeBundleRuntime({
+    core,
     onPublish: onRuntimePublish,
     onClear: () => {
       failAllAcceptanceRequests('runtime-cleared');
@@ -625,6 +628,7 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
   };
 
   const workflowDependencies = {
+    core,
     port,
     uris: vscodeUriCodec,
     applicator,

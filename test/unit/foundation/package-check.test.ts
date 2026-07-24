@@ -20,7 +20,7 @@ const CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
 const END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
 
 interface ZipEntry {
-  readonly content: string;
+  readonly content: string | Uint8Array;
   readonly name: string;
 }
 
@@ -71,7 +71,7 @@ function createStoredZip(entries: readonly ZipEntry[]): Buffer {
 
   for (const entry of entries) {
     const name = Buffer.from(entry.name, 'utf8');
-    const content = Buffer.from(entry.content, 'utf8');
+    const content = Buffer.from(entry.content);
     const header = Buffer.alloc(30);
     header.writeUInt32LE(LOCAL_FILE_HEADER_SIGNATURE, 0);
     header.writeUInt16LE(20, 4);
@@ -94,7 +94,10 @@ function createStoredZip(entries: readonly ZipEntry[]): Buffer {
   let centralOffset = centralDirectoryOffset;
   entries.forEach((entry, index) => {
     const name = Buffer.from(entry.name, 'utf8');
-    const content = Buffer.from(entry.content, 'utf8');
+    const content =
+      typeof entry.content === 'string'
+        ? Buffer.from(entry.content, 'utf8')
+        : Buffer.from(entry.content);
     const header = Buffer.alloc(46);
     header.writeUInt32LE(CENTRAL_DIRECTORY_SIGNATURE, 0);
     header.writeUInt16LE(0x031e, 4);
@@ -131,7 +134,10 @@ function createStoredZip(entries: readonly ZipEntry[]): Buffer {
   return Buffer.concat([...localChunks, ...centralChunks, end]);
 }
 
-function contentFor(name: string): string {
+function contentFor(name: string): string | Uint8Array {
+  if (name === 'extension/dist/okf_core.wasm') {
+    return Uint8Array.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
+  }
   if (name === 'extension/package.json') {
     return `${JSON.stringify({
       name: 'okf-workbench',
@@ -245,6 +251,7 @@ describe('VSIX package closed-set validation', () => {
     (license) => {
       const entries = packageEntries().map((entry) => {
         if (entry.name !== 'extension/package.json') return entry;
+        if (typeof entry.content !== 'string') throw new Error('Expected manifest text.');
         const manifest = JSON.parse(entry.content) as Record<string, unknown>;
         if (license === undefined) delete manifest.license;
         else manifest.license = license;
@@ -266,6 +273,7 @@ describe('VSIX package closed-set validation', () => {
   ])('rejects alternate packaged public-resource field %s', (field, value) => {
     const entries = packageEntries().map((entry) => {
       if (entry.name !== 'extension/package.json') return entry;
+      if (typeof entry.content !== 'string') throw new Error('Expected manifest text.');
       const manifest = JSON.parse(entry.content) as Record<string, unknown>;
       manifest[field] = value;
       return { ...entry, content: `${JSON.stringify(manifest)}\n` };

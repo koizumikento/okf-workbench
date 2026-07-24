@@ -187,25 +187,38 @@ export function createNewConceptCommand<TUri>(
             ? undefined
             : normalizedDescription;
         const optionalTags = parsedTags.value;
-        const rendered = renderConceptTemplate({
+        const renderInput = {
           template,
           relativePath: conceptPath(destination.value, filename),
           type,
           title,
           ...(optionalDescription === undefined ? {} : { description: optionalDescription }),
           ...(optionalTags.length === 0 ? {} : { tags: optionalTags }),
-        });
-        if (!rendered.ok) {
+        };
+        const preflight = renderConceptTemplate(renderInput);
+        if (!preflight.ok) {
           await dependencies.ui.showError(
-            problemsMessage('The concept could not be rendered.', rendered.problems),
+            problemsMessage('The concept could not be rendered.', preflight.problems),
           );
-          return { kind: 'refused', problems: rendered.problems };
+          return { kind: 'refused', problems: preflight.problems };
+        }
+        let rendered;
+        try {
+          if (dependencies.core === undefined) {
+            throw new Error('The production Wasm core was not supplied.');
+          }
+          rendered = dependencies.core.renderConcept(renderInput);
+        } catch (error: unknown) {
+          await dependencies.ui.showError(
+            `The concept could not be rendered. ${error instanceof Error ? error.message : 'The deterministic core rejected the request.'}`,
+          );
+          return { kind: 'failed' };
         }
 
         const proposal = bundleFilesToProposal(
           'new-concept',
           selection.bundleRootUri,
-          [rendered.value],
+          [rendered],
           dependencies.uris,
           { workspaceSafetyRoot: selection.workspaceSafetyRootUri },
         );
@@ -231,7 +244,7 @@ export function createNewConceptCommand<TUri>(
         if (outcome.kind === 'applied') {
           const createdUri = dependencies.uris.joinContained(
             selection.bundleRootUri,
-            rendered.value.relativePath,
+            rendered.relativePath,
           );
           try {
             await dependencies.ui.openDocument(createdUri);

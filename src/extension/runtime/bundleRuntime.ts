@@ -1,8 +1,6 @@
-import { buildGraphPayload } from '../../core/graph/index.js';
 import { OKF_SEMANTIC_LIMITS } from '../../core/model/index.js';
-import type { GraphPayload, ParseFailure, ParsedBundle } from '../../core/model/index.js';
-import { parseBundle } from '../../core/parser/index.js';
-import { validateBundle } from '../../core/validation/index.js';
+import type { GraphPayload, ParsedBundle } from '../../core/model/index.js';
+import type { OkfCore } from '../../core/wasm/index.js';
 import type { RuntimeDiagnosticsSink } from '../diagnostics/index.js';
 import {
   RefreshCoordinator,
@@ -23,6 +21,7 @@ export interface BundleRuntimeOptions<TUri> {
   readonly onClear?: () => void;
   readonly onError?: (error: unknown, context: BundleRuntimeContext<TUri>) => void;
   readonly now?: () => Date | string;
+  readonly core: OkfCore;
 }
 
 /** Owns the selected bundle's complete derived state and scoped watcher lifecycle. */
@@ -33,6 +32,7 @@ export class BundleRuntime<TUri> implements DisposableLike {
   readonly #onPublish: ((snapshot: BundleRuntimeSnapshot<TUri>) => void) | undefined;
   readonly #onClear: (() => void) | undefined;
   readonly #now: () => Date | string;
+  readonly #core: OkfCore;
   readonly #coordinator: RefreshCoordinator<BundleRuntimeContext<TUri>, LoadedBundleInput, TUri>;
 
   #current: BundleRuntimeSnapshot<TUri> | undefined;
@@ -45,6 +45,7 @@ export class BundleRuntime<TUri> implements DisposableLike {
     this.#onPublish = options.onPublish;
     this.#onClear = options.onClear;
     this.#now = options.now ?? (() => new Date());
+    this.#core = options.core;
     this.#coordinator = new RefreshCoordinator({
       refresh: async ({ context, signal }) =>
         loadBundle(
@@ -116,12 +117,16 @@ export class BundleRuntime<TUri> implements DisposableLike {
         `the selected bundle contains more than ${String(OKF_SEMANTIC_LIMITS.maxRuntimeDocuments)} readable Markdown documents`,
       );
     }
-    const parsed = parseBundle({
-      rootUri: loaded.rootUri,
-      revision,
-      documents: loaded.documents,
-    });
-    const semanticFailure = parsed.failures.find(
+    const inspection = this.#core.inspect(
+      {
+        rootUri: loaded.rootUri,
+        revision,
+        documents: loaded.documents,
+      },
+      this.#now(),
+      loaded.failures,
+    );
+    const semanticFailure = inspection.bundle.failures.find(
       (failure) => failure.reason === 'resource-limit' && failure.scope === 'bundle',
     );
     if (semanticFailure !== undefined) {
@@ -129,13 +134,13 @@ export class BundleRuntime<TUri> implements DisposableLike {
         `bundle parsing exceeded a semantic-output limit (${semanticFailure.message})`,
       );
     }
-    if (parsed.concepts.length > OKF_SEMANTIC_LIMITS.maxGraphNodes) {
+    if (inspection.bundle.concepts.length > OKF_SEMANTIC_LIMITS.maxGraphNodes) {
       throw semanticLimitError(
         `the selected bundle contains more than ${String(OKF_SEMANTIC_LIMITS.maxGraphNodes)} graph concepts`,
       );
     }
     let linkCount = 0;
-    for (const concept of parsed.concepts) {
+    for (const concept of inspection.bundle.concepts) {
       linkCount += concept.links.length;
       if (linkCount > OKF_SEMANTIC_LIMITS.maxBundleLinks) {
         throw semanticLimitError(
@@ -143,18 +148,14 @@ export class BundleRuntime<TUri> implements DisposableLike {
         );
       }
     }
-    const withReadFailures: ParsedBundle = {
-      ...parsed,
-      failures: sortFailures([...parsed.failures, ...loaded.failures]),
-    };
-    const findings = validateBundle(withReadFailures, { now: this.#now() });
+    const findings = inspection.findings;
     if (findings.length > OKF_SEMANTIC_LIMITS.maxFindings) {
       throw semanticLimitError(
         `validation produced more than ${String(OKF_SEMANTIC_LIMITS.maxFindings)} findings`,
       );
     }
-    const bundle: ParsedBundle = { ...withReadFailures, findings };
-    const graph = buildGraphPayload(bundle);
+    const bundle = inspection.bundle;
+    const graph = inspection.graph;
     if (
       graph.nodes.length > OKF_SEMANTIC_LIMITS.maxGraphNodes ||
       graph.edges.length > OKF_SEMANTIC_LIMITS.maxGraphEdges ||
@@ -224,13 +225,4 @@ function buildNodeSources<TUri>(
     });
   }
   return sources;
-}
-
-function sortFailures(failures: readonly ParseFailure[]): readonly ParseFailure[] {
-  return [...failures].sort(
-    (left, right) =>
-      left.bundlePath.localeCompare(right.bundlePath) ||
-      left.uri.localeCompare(right.uri) ||
-      left.reason.localeCompare(right.reason),
-  );
 }

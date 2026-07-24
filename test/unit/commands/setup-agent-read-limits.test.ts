@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { typescriptOkfCore } from '../../../src/core/wasm/index.js';
 import { SerialProposalWorkflowScheduler } from '../../../src/extension/commands/proposal-workflow-scheduler.js';
 import { createSetupAgentIntegrationCommand } from '../../../src/extension/commands/setup-agent-integration.js';
 import { BUNDLE_READ_LIMITS } from '../../../src/extension/workspace/readSafety.js';
@@ -45,6 +46,7 @@ function createCommand(port: ExistingAgentPort) {
   const previewer = new FakeProposalPreviewer();
   ui.selections.push('agents-md');
   const command = createSetupAgentIntegrationCommand({
+    core: typescriptOkfCore,
     port,
     uris: stringUriCodec,
     applicator: new ProposalApplicator(port, stringUriCodec),

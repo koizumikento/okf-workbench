@@ -34,6 +34,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Resolve pinned Rust and Wasm toolchain
+        run: |
+          rustc --version
+          cargo --version
+
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -94,6 +99,13 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
+      - name: Check Rust formatting, lint, tests, and notices
+        run: |
+          npm run rust:format
+          npm run rust:lint
+          npm run rust:test
+          npm run rust:notices:check
+
       - name: Run unit and fixture tests
         run: npm test
 
@@ -140,9 +152,76 @@ jobs:
           retention-days: 30
           compression-level: 0
 
+  build-cli:
+    name: Build native CLI (${{ matrix.label }})
+    needs: build-candidate
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            label: macos-aarch64
+            binary: okf
+          - os: ubuntu-24.04
+            label: linux-x86_64
+            binary: okf
+          - os: windows-2025
+            label: windows-x86_64
+            binary: okf.exe
+    steps:
+      - name: Check out the tagged revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.build-candidate.outputs.revision }}
+
+      - name: Resolve pinned Rust toolchain
+        shell: bash
+        run: |
+          rustc --version
+          cargo --version
+
+      - name: Test and build the native CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked --workspace
+          cargo build --locked --release --bin okf
+
+      - name: Package the native CLI with notices
+        shell: bash
+        env:
+          CLI_BINARY: ${{ matrix.binary }}
+          CLI_LABEL: ${{ matrix.label }}
+        run: |
+          set -euo pipefail
+          package="okf-cli-${CLI_LABEL}"
+          mkdir -p "artifacts/${package}"
+          cp "target/release/${CLI_BINARY}" "artifacts/${package}/${CLI_BINARY}"
+          cp LICENSE "artifacts/${package}/LICENSE.txt"
+          cp RUST_THIRD_PARTY_NOTICES.md "artifacts/${package}/RUST_THIRD_PARTY_NOTICES.md"
+          tar -C artifacts -czf "artifacts/${package}.tar.gz" "${package}"
+          cd artifacts
+          shasum -a 256 "${package}.tar.gz" > "${package}.tar.gz.sha256"
+
+      - name: Retain the native CLI
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: okf-cli-${{ matrix.label }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            artifacts/okf-cli-${{ matrix.label }}.tar.gz
+            artifacts/okf-cli-${{ matrix.label }}.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
   github-release:
     name: Create GitHub release
-    needs: build-candidate
+    needs:
+      - build-candidate
+      - build-cli
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -153,6 +232,22 @@ jobs:
         with:
           name: ${{ needs.build-candidate.outputs.artifact_name }}
           path: release-candidate
+
+      - name: Download the retained native CLIs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: okf-cli-*-${{ github.sha }}-${{ github.run_attempt }}
+          path: release-candidate
+          merge-multiple: true
+
+      - name: Verify every retained checksum
+        working-directory: release-candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          for checksum in *.sha256; do
+            sha256sum --check "${checksum}"
+          done
 
       - name: Create or update the GitHub release
         shell: bash
@@ -167,14 +262,16 @@ jobs:
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
             gh release upload \
               "${RELEASE_TAG}" \
+              release-candidate/*.tar.gz \
+              release-candidate/*.sha256 \
               "release-candidate/${VSIX_NAME}" \
-              "release-candidate/${VSIX_NAME}.sha256" \
               --clobber
           else
             gh release create \
               "${RELEASE_TAG}" \
+              release-candidate/*.tar.gz \
+              release-candidate/*.sha256 \
               "release-candidate/${VSIX_NAME}" \
-              "release-candidate/${VSIX_NAME}.sha256" \
               --generate-notes \
               --title "OKF Workbench ${RELEASE_VERSION}" \
               --verify-tag

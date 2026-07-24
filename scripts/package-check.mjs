@@ -58,10 +58,12 @@ export const REQUIRED_VSIX_ENTRIES = Object.freeze([
   PROJECT_LICENSE_ENTRY,
   'extension/SECURITY.md',
   'extension/THIRD_PARTY_NOTICES.md',
+  'extension/RUST_THIRD_PARTY_NOTICES.md',
   'extension/assets/icon.png',
   'extension/changelog.md',
   'extension/readme.md',
   'extension/dist/extension.cjs',
+  'extension/dist/okf_core.wasm',
   'extension/dist/webview/main.css',
   'extension/dist/webview/main.js',
   'extension/package.json',
@@ -247,6 +249,17 @@ export function validateVsixArchive(input, expectedProjectLicense) {
     );
   }
   validatePublicManifestResources(manifest);
+
+  const wasm = readEntry('extension/dist/okf_core.wasm');
+  if (
+    wasm.length < 8 ||
+    wasm[0] !== 0x00 ||
+    wasm[1] !== 0x61 ||
+    wasm[2] !== 0x73 ||
+    wasm[3] !== 0x6d
+  ) {
+    throw new Error('The packaged OKF core is not a WebAssembly module.');
+  }
 
   const packagedProjectLicense = readEntry(PROJECT_LICENSE_ENTRY);
   if (!packagedProjectLicense.equals(Buffer.from(expectedProjectLicense))) {

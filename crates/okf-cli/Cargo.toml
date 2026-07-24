@@ -1,0 +1,21 @@
+[package]
+name = "okf-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Offline command-line workbench for Open Knowledge Format bundles"
+
+[[bin]]
+name = "okf"
+path = "src/main.rs"
+
+[dependencies]
+chrono.workspace = true
+clap.workspace = true
+okf-core = { path = "../okf-core" }
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+walkdir.workspace = true

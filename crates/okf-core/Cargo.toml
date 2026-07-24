@@ -1,0 +1,17 @@
+[package]
+name = "okf-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Deterministic, capability-free Open Knowledge Format core"
+
+[dependencies]
+base64.workspace = true
+chrono.workspace = true
+pulldown-cmark.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+thiserror.workspace = true

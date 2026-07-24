@@ -1,4 +1,5 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { copyFile, mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,6 +30,9 @@ const distDirectory = resolve(repositoryRoot, 'dist');
 const artifactDirectory = resolve(repositoryRoot, 'artifacts');
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
+const allowTestCorePlaceholder =
+  process.argv.includes('--allow-test-core-placeholder') &&
+  process.env.OKF_TEST_CORE_PLACEHOLDER === '1';
 
 if (production && watch) {
   throw new Error('Choose either --production or --watch, not both.');
@@ -37,6 +41,31 @@ if (production && watch) {
 await rm(distDirectory, { force: true, recursive: true });
 await mkdir(distDirectory, { recursive: true });
 await mkdir(artifactDirectory, { recursive: true });
+
+if (allowTestCorePlaceholder) {
+  await writeFile(
+    resolve(distDirectory, 'okf_core.wasm'),
+    Uint8Array.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]),
+  );
+} else {
+  execFileSync(
+    'cargo',
+    [
+      'build',
+      '--locked',
+      '--target',
+      'wasm32-unknown-unknown',
+      '--release',
+      '--package',
+      'okf-wasm',
+    ],
+    { cwd: repositoryRoot, stdio: 'inherit' },
+  );
+  await copyFile(
+    resolve(repositoryRoot, 'target/wasm32-unknown-unknown/release/okf_wasm.wasm'),
+    resolve(distDirectory, 'okf_core.wasm'),
+  );
+}
 
 const sharedOptions = {
   absWorkingDir: repositoryRoot,
@@ -101,10 +130,16 @@ if (watch) {
     targets: {
       extension: 'node22/commonjs',
       webview: 'es2022/esm',
+      core: 'wasm32-unknown-unknown',
     },
     bundles: {
       extension: extensionResult.metafile,
       webview: webviewResult.metafile,
+    },
+    core: {
+      abiVersion: 1,
+      artifact: 'dist/okf_core.wasm',
+      wasi: false,
     },
   };
 

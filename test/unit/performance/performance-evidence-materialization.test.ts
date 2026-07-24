@@ -39,8 +39,13 @@ describe('immutable performance build materialization', () => {
         '--production',
         '--repository-root',
         materializationRoot,
+        '--allow-test-core-placeholder',
       ],
-      { cwd: materializationRoot, stdio: 'pipe' },
+      {
+        cwd: materializationRoot,
+        env: { ...process.env, OKF_TEST_CORE_PLACEHOLDER: '1' },
+        stdio: 'pipe',
+      },
     );
     writeProductionFixture(sourceRoot, 'captured-A');
 

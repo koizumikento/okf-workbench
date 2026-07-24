@@ -31,8 +31,15 @@ export const CURRENT_PERFORMANCE_VSCODE_VERSION = '1.129.1';
 export const HEADED_HARNESS_BUILD_CONFIGURATION_PATH = 'test/benchmarks/headed-harness-build.json';
 export const DIAGNOSTICS_OBSERVER_PATH = 'test/benchmarks/diagnostics-observer';
 const PRODUCTION_SOURCE_DIRECTORY = 'src';
+const PRODUCTION_RUST_SOURCE_DIRECTORY = 'crates';
 const PLATFORM_NATIVE_ESBUILD_SHIM_PATH = 'node_modules/esbuild/bin/esbuild';
-const PRODUCTION_RUNTIME_STATIC_PATHS = Object.freeze(['package.json', 'assets/icon.png']);
+const PRODUCTION_RUNTIME_STATIC_PATHS = Object.freeze([
+  'package.json',
+  'assets/icon.png',
+  'Cargo.toml',
+  'Cargo.lock',
+  'rust-toolchain.toml',
+]);
 const HEADED_HARNESS_STATIC_PATHS = Object.freeze([
   HEADED_HARNESS_BUILD_CONFIGURATION_PATH,
   'test/benchmarks/headed-animation-frame-deadline.mjs',
@@ -58,7 +65,11 @@ export async function captureProductionBuildInputSnapshot(repositoryRoot) {
   const discoveredInputs = productionBuildInputPaths(repositoryRoot, metadata);
   const toolchainDirectories =
     await discoverPortablePerformanceToolchainDirectories(repositoryRoot);
-  const directories = pruneDirectoryRoots([PRODUCTION_SOURCE_DIRECTORY, ...toolchainDirectories]);
+  const directories = pruneDirectoryRoots([
+    PRODUCTION_SOURCE_DIRECTORY,
+    PRODUCTION_RUST_SOURCE_DIRECTORY,
+    ...toolchainDirectories,
+  ]);
   const files = filesOutsideDirectories(
     withResolverManifests([
       ...discoveredInputs,

@@ -86,7 +86,8 @@ Synthesizes directory index entries from concept metadata.
 
 Requirements:
 
-- Preview the diff before applying it.
+- Apply without preview when every proposed index is a new file; preview the complete diff and
+  require explicit approval when any existing index would be updated.
 - Support "missing indexes only" and "update all" modes.
 - Preserve content outside an explicitly managed region, or refuse to update when safe merging is not possible.
 - Use each concept's title and description when present.

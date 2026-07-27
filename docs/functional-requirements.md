@@ -91,7 +91,7 @@ Markdown files are the source of truth. Diagnostics, indexes, and the graph are 
 | ID | Requirement | Acceptance condition |
 | --- | --- | --- |
 | FR-040 | `OKF: Regenerate Indexes` MUST offer `missing indexes only` and `update all` modes. | The selected mode limits the proposed files accordingly. |
-| FR-041 | Index generation MUST show a diff before applying changes. | Canceling the diff preview changes no file. |
+| FR-041 | Index generation MUST apply without preview when every proposed index is a new file, and MUST preview the complete proposal when any existing index would be updated. | An all-create proposal produces no diff or confirmation request; a mixed or update proposal shows every proposed change, and canceling its diff preview changes no file. |
 | FR-042 | Generated entries MUST use concept titles and descriptions when present and MUST tolerate their absence. | Fixtures with complete and minimal metadata both generate valid index entries. |
 | FR-043 | Updating an existing index MUST change only one valid managed region and preserve unrelated content. | Content outside the managed markers remains byte-for-byte unchanged where practical. |
 | FR-044 | Workbench MUST refuse automatic merging when managed markers are malformed or duplicated. | The command reports the affected file and performs no partial write. |

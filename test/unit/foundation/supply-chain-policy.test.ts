@@ -170,7 +170,7 @@ describe('supply-chain policy', () => {
         expect.stringContaining('contents: read'),
         expect.stringContaining('bind the tag to main'),
         expect.stringContaining('GitHub release'),
-        expect.stringContaining('publish-package-repository'),
+        expect.stringContaining('publish-package-repo'),
         expect.stringContaining('retained universal VSIX'),
       ]),
     );

@@ -651,8 +651,8 @@ archive. The workflow creates the matching GitHub Release and publishes all five
 files without rebuilding them. After the GitHub Release exists, the package-repository job verifies
 the retained macOS and Windows CLI archive checksums, deterministically generates
 `Formula/okf.rb` and `bucket/okf.json`, and pushes only those paths to the repository named by
-`TAP_REPO`. The Homebrew and Scoop manifests point back to the immutable GitHub Release archives;
-they do not introduce another binary build.
+the `TAP_REPO` repository secret. The Homebrew and Scoop manifests point back to the immutable
+GitHub Release archives; they do not introduce another binary build.
 
 The repository secret `OPEN_VSX_TOKEN` is exposed only to `ovsx verify-pat straydog` and the
 subsequent `ovsx publish` step. Missing or invalid authorization fails closed. Pull requests,

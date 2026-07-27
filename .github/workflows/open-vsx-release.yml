@@ -322,7 +322,7 @@ jobs:
               --verify-tag
           fi
 
-  publish-package-repository:
+  publish-package-repo:
     name: Publish Homebrew formula and Scoop manifest
     needs:
       - build-candidate

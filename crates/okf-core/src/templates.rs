@@ -249,6 +249,7 @@ pub fn concept_template_file(input: &ConceptTemplateInput) -> RenderedFile {
         frontmatter.push(format!("timestamp: {}", yaml_string(timestamp)));
     }
     frontmatter.push("---".to_owned());
+    frontmatter.push(String::new());
     frontmatter.push(format!("# {title}"));
     frontmatter.push(String::new());
     if let Some(description) = &input.description
@@ -630,5 +631,19 @@ mod tests {
             timestamp: None,
         });
         assert_eq!(file.relative_path, "folder/日本語.md");
+    }
+
+    #[test]
+    fn concept_heading_is_separated_from_frontmatter() {
+        let file = concept_template_file(&ConceptTemplateInput {
+            template: "generic-concept".to_owned(),
+            relative_path: "concept.md".to_owned(),
+            r#type: "concept".to_owned(),
+            title: "A title".to_owned(),
+            description: None,
+            tags: vec![],
+            timestamp: None,
+        });
+        assert!(file.content.contains("\n---\n\n# A title\n"));
     }
 }

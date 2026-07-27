@@ -374,7 +374,7 @@ function renderBody(
   title: string,
   description: string | undefined,
 ): string {
-  const lines = [`# ${title}`, ''];
+  const lines = ['', `# ${title}`, ''];
   if (description !== undefined && description.trim().length > 0) {
     lines.push(description, '');
   }

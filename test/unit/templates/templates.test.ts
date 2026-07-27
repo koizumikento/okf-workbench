@@ -341,6 +341,7 @@ describe('built-in concept templates', () => {
         '  - "quote\\"tag"',
         'timestamp: "2026-07-22T10:00:00+09:00"',
         '---',
+        '',
         '# 量子 実験',
         '',
         '一行目',
@@ -357,6 +358,19 @@ describe('built-in concept templates', () => {
       ].join('\n'),
     );
     expect(file.content).not.toContain('\r');
+  });
+
+  it('separates YAML frontmatter from the title heading', () => {
+    const file = valueOf(
+      renderConceptTemplate({
+        template: 'generic-concept',
+        relativePath: 'lint-clean.md',
+        type: 'concept',
+        title: 'Lint-clean concept',
+      }),
+    );
+
+    expect(file.content).toContain('\n---\n\n# Lint-clean concept\n');
   });
 
   it.each([

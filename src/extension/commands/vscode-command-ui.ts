@@ -49,8 +49,16 @@ export class VscodeCommandUi implements CommandUi<vscode.Uri> {
     return selected === options.confirmLabel;
   }
 
-  async showInformation(message: string): Promise<void> {
-    await vscode.window.showInformationMessage(message);
+  showInformation(message: string): Promise<void> {
+    try {
+      void Promise.resolve(vscode.window.showInformationMessage(message)).then(
+        () => undefined,
+        () => undefined,
+      );
+    } catch {
+      // Informational notification failures must not retain or fail a completed write workflow.
+    }
+    return Promise.resolve();
   }
 
   async showWarning(message: string): Promise<void> {

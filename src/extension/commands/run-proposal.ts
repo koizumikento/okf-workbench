@@ -38,6 +38,13 @@ function partialFailureMessage(report: ApplyReport): string {
   ].join('\n\n');
 }
 
+function showInformationWithoutBlocking<TUri>(
+  dependencies: ProposalWorkflowDependencies<TUri>,
+  message: string,
+): void {
+  void dependencies.ui.showInformation(message).catch(() => undefined);
+}
+
 function previewUnavailableProblem(
   previewSession: ProposalPreviewSession,
 ): OperationProblem | undefined {
@@ -199,7 +206,7 @@ async function runExclusiveProposalWorkflow<TUri>(
   }
 
   if (proposal.changes.length === 0) {
-    await dependencies.ui.showInformation(`${presentation.title}: no changes are required.`);
+    showInformationWithoutBlocking(dependencies, `${presentation.title}: no changes are required.`);
     return { kind: 'unchanged' };
   }
 
@@ -386,7 +393,8 @@ async function runExclusiveProposalWorkflow<TUri>(
       return { kind: 'failed', report };
     }
 
-    await dependencies.ui.showInformation(
+    showInformationWithoutBlocking(
+      dependencies,
       `${presentation.title}: wrote ${report.completed.length} file${report.completed.length === 1 ? '' : 's'}.`,
     );
     return { kind: 'applied', report };

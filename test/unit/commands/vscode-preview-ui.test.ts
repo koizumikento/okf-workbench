@@ -40,6 +40,7 @@ const vscodeState = vi.hoisted(() => ({
   tabListenerDisposals: [] as ReturnType<typeof vi.fn>[],
   tabGroupListenerDisposals: [] as ReturnType<typeof vi.fn>[],
   closeTabs: vi.fn(),
+  showInformationMessage: vi.fn(),
   showWarningMessage: vi.fn(),
   executeCommand: vi.fn(),
 }));
@@ -131,6 +132,7 @@ vi.mock('vscode', () => {
           listener({ opened: [tab], closed: [], changed: [] });
         }
       }),
+      showInformationMessage: vscodeState.showInformationMessage,
       showWarningMessage: vscodeState.showWarningMessage,
       tabGroups: {
         get all() {
@@ -522,11 +524,36 @@ beforeEach(() => {
   vscodeState.tabListenerDisposals.length = 0;
   vscodeState.tabGroupListenerDisposals.length = 0;
   vscodeState.closeTabs.mockClear();
+  vscodeState.showInformationMessage.mockReset();
   vscodeState.showWarningMessage.mockReset();
   vscodeState.executeCommand.mockClear();
 });
 
 describe('VS Code proposal confirmation', () => {
+  it('does not retain a completed command while an informational notification remains open', async () => {
+    let dismissNotification: (() => void) | undefined;
+    vscodeState.showInformationMessage.mockReturnValue(
+      new Promise<void>((resolve) => {
+        dismissNotification = resolve;
+      }),
+    );
+    const ui = new VscodeCommandUi();
+
+    await expect(ui.showInformation('Bundle initialized.')).resolves.toBeUndefined();
+
+    expect(vscodeState.showInformationMessage).toHaveBeenCalledWith('Bundle initialized.');
+    dismissNotification?.();
+  });
+
+  it('does not fail a completed command when an informational notification throws', async () => {
+    vscodeState.showInformationMessage.mockImplementation(() => {
+      throw new Error('host notification failure');
+    });
+    const ui = new VscodeCommandUi();
+
+    await expect(ui.showInformation('Bundle initialized.')).resolves.toBeUndefined();
+  });
+
   it('keeps the editor interactive while the apply continuation is pending', async () => {
     vscodeState.showWarningMessage.mockResolvedValue('Apply changes');
     const ui = new VscodeCommandUi();

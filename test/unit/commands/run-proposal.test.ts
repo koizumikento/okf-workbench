@@ -186,6 +186,36 @@ describe('proposal command workflow', () => {
     expect(previewer.releasedSessions).toBe(1);
   });
 
+  it('releases the write gate while a host keeps the completion notification open', async () => {
+    const { port, previewer, dependencies } = harness();
+    const openNotification = deferred<undefined>();
+    class PersistentInformationUi extends FakeCommandUi {
+      override showInformation(message: string): Promise<void> {
+        this.information.push(message);
+        return openNotification.promise;
+      }
+    }
+    const ui = new PersistentInformationUi();
+    ui.confirmations.push(true, true);
+    const hostDependencies = { ...dependencies, ui };
+
+    await expect(
+      runProposalWorkflow(hostDependencies, proposal(['first.md']), presentation),
+    ).resolves.toMatchObject({ kind: 'applied' });
+    await expect(
+      runProposalWorkflow(hostDependencies, proposal(['second.md']), presentation),
+    ).resolves.toMatchObject({ kind: 'applied' });
+
+    expect(port.text(`${root}/first.md`)).toBe('first.md\n');
+    expect(port.text(`${root}/second.md`)).toBe('second.md\n');
+    expect(ui.information).toEqual([
+      'Test proposal: wrote 1 file.',
+      'Test proposal: wrote 1 file.',
+    ]);
+    expect(previewer.releasedSessions).toBe(2);
+    openNotification.resolve(undefined);
+  });
+
   it('refuses an over-count preview before applicator preflight or workspace I/O', async () => {
     const port = new PreflightTrackingPort();
     const { ui, previewer, dependencies } = harness(port);

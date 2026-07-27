@@ -298,12 +298,12 @@ export function createRegenerateIndexesCommand<TUri>(
           const problems = [
             problem(
               'preview-limit',
-              `Index regeneration would change ${String(changes.length)} files, exceeding the complete-preview limit of ${String(MAX_PROPOSAL_PREVIEW_CHANGES)}.`,
-              'Narrow the bundle or regenerate indexes in smaller subtrees so every proposed file can be previewed before applying.',
+              `Index regeneration would change ${String(changes.length)} files, exceeding the complete-proposal limit of ${String(MAX_PROPOSAL_PREVIEW_CHANGES)}.`,
+              'Narrow the bundle or regenerate indexes in smaller subtrees so each complete proposal remains within the safe change limit.',
             ),
           ];
           await dependencies.ui.showError(
-            problemsMessage('Indexes could not be previewed completely.', problems),
+            problemsMessage('Indexes could not be prepared safely.', problems),
           );
           return { kind: 'refused', problems };
         }
@@ -335,8 +335,9 @@ export function createRegenerateIndexesCommand<TUri>(
             ],
           },
           revalidateBundleWrite === undefined
-            ? {}
+            ? { previewMode: 'existing-file-changes' }
             : {
+                previewMode: 'existing-file-changes',
                 beforeApply: () => revalidateBundleWrite(selection.bundleRootUri),
               },
         );

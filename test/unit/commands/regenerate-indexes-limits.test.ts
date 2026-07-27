@@ -53,14 +53,14 @@ function createCommand(directoryCount: number) {
   return { command, port, previewer, ui };
 }
 
-describe('Regenerate Indexes complete-preview boundary', () => {
-  it('previews exactly the change limit and refuses +1 before opening a preview', async () => {
+describe('Regenerate Indexes complete-proposal boundary', () => {
+  it('applies create-only indexes at the exact change limit and refuses +1 before I/O', async () => {
     // Every distinct concept directory creates its own index plus the root index.
     const exact = createCommand(MAX_PROPOSAL_PREVIEW_CHANGES - 1);
-    await expect(exact.command()).resolves.toEqual({ kind: 'cancelled' });
-    expect(exact.previewer.shown).toHaveLength(1);
-    expect(exact.previewer.shown[0]?.proposal.changes).toHaveLength(MAX_PROPOSAL_PREVIEW_CHANGES);
-    expect(exact.port.writes).toEqual([]);
+    await expect(exact.command()).resolves.toMatchObject({ kind: 'applied' });
+    expect(exact.previewer.shown).toEqual([]);
+    expect(exact.ui.confirmationRequests).toEqual([]);
+    expect(exact.port.writes).toHaveLength(MAX_PROPOSAL_PREVIEW_CHANGES);
 
     const exceeded = createCommand(MAX_PROPOSAL_PREVIEW_CHANGES);
     const result = await exceeded.command();
@@ -77,6 +77,6 @@ describe('Regenerate Indexes complete-preview boundary', () => {
     expect(exceeded.previewer.shown).toEqual([]);
     expect(exceeded.ui.confirmationRequests).toEqual([]);
     expect(exceeded.port.writes).toEqual([]);
-    expect(exceeded.ui.errors[0]).toContain('Indexes could not be previewed completely');
+    expect(exceeded.ui.errors[0]).toContain('Indexes could not be prepared safely');
   });
 });

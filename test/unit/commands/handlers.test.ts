@@ -7,7 +7,7 @@ import { createNewConceptCommand } from '../../../src/extension/commands/new-con
 import { SerialProposalWorkflowScheduler } from '../../../src/extension/commands/proposal-workflow-scheduler.js';
 import { createRegenerateIndexesCommand } from '../../../src/extension/commands/regenerate-indexes.js';
 import { createSetupAgentIntegrationCommand } from '../../../src/extension/commands/setup-agent-integration.js';
-import type { CommandOutcome, ProposalPreviewer } from '../../../src/extension/commands/types.js';
+import type { CommandOutcome } from '../../../src/extension/commands/types.js';
 import {
   guardBundleWriteSelection,
   inspectBundleWriteAccess,
@@ -126,16 +126,26 @@ describe('authoring command handlers', () => {
         ...shared,
         captureWorkspaceFolderMembership: (root: string) => tracker.capture(root),
       };
-      ui.confirm = async (options) => {
-        ui.confirmationRequests.push(options);
-        openFolders = ['memfs://other'];
-        tracker.handleWorkspaceFoldersChanged({ removed: [workspaceRoot] });
-        // Re-adding the same URI cannot authorize a proposal reviewed before removal.
-        openFolders = [workspaceRoot, 'memfs://other'];
-        return true;
-      };
 
       prepare(ui, port);
+      const stat = port.stat.bind(port);
+      let invalidated = false;
+      let targetStats = 0;
+      port.stat = async (uri) => {
+        const result = await stat(uri);
+        if (uri === expectedTarget) {
+          targetStats += 1;
+        }
+        const invalidationStat = command === 'Set Up Agent Integration' ? 2 : 1;
+        if (!invalidated && targetStats === invalidationStat) {
+          invalidated = true;
+          openFolders = ['memfs://other'];
+          tracker.handleWorkspaceFoldersChanged({ removed: [workspaceRoot] });
+          // Re-adding the same URI cannot authorize a create admitted before removal.
+          openFolders = [workspaceRoot, 'memfs://other'];
+        }
+        return result;
+      };
       let authoringCommand: () => Promise<CommandOutcome>;
       if (command === 'Initialize Bundle') {
         authoringCommand = createInitializeBundleCommand({
@@ -177,18 +187,18 @@ describe('authoring command handlers', () => {
       });
       expect(port.text(expectedTarget)).toBeUndefined();
       expect(port.writes).toEqual([]);
-      expect(previewer.releasedSessions).toBe(1);
+      expect(previewer.shown).toEqual([]);
+      expect(previewer.releasedSessions).toBe(0);
     },
   );
 
   it('fails same- and cross-command concurrency before selection, reads, or planning', async () => {
     const { port, ui, previewer, shared } = harness();
-    const approval = deferred<boolean>();
-    const confirmationStarted = deferred<undefined>();
-    ui.confirm = async (options) => {
-      ui.confirmationRequests.push(options);
-      confirmationStarted.resolve(undefined);
-      return approval.promise;
+    const inputStarted = deferred<undefined>();
+    const inputResult = deferred<string | undefined>();
+    ui.input = async () => {
+      inputStarted.resolve(undefined);
+      return inputResult.promise;
     };
 
     const calls = {
@@ -238,10 +248,8 @@ describe('authoring command handlers', () => {
       },
     });
 
-    ui.inputs.push('knowledge');
-    ui.selections.push('minimal');
     const active = initialize();
-    await confirmationStarted.promise;
+    await inputStarted.promise;
     const readsWhileActive = port.reads.length;
     const writesWhileActive = port.writes.length;
     const busyCommands = [initialize, newConcept, regenerate, setupAgent] as const;
@@ -265,30 +273,26 @@ describe('authoring command handlers', () => {
     });
     expect(port.reads).toHaveLength(readsWhileActive);
     expect(port.writes).toHaveLength(writesWhileActive);
-    expect(previewer.shown).toHaveLength(1);
-    expect(ui.confirmationRequests).toHaveLength(1);
+    expect(previewer.shown).toEqual([]);
+    expect(ui.confirmationRequests).toEqual([]);
     expect(ui.warnings).toHaveLength(1);
 
-    approval.resolve(false);
+    inputResult.resolve(undefined);
     await expect(active).resolves.toEqual({ kind: 'cancelled' });
-    ui.confirm = async (options) => {
-      ui.confirmationRequests.push(options);
-      return false;
-    };
+    ui.input = async () => ui.inputs.shift();
     ui.selections.push('agent-skill');
-    await expect(setupAgent()).resolves.toEqual({ kind: 'cancelled' });
+    await expect(setupAgent()).resolves.toMatchObject({ kind: 'applied' });
     expect(calls.agentTarget).toBe(1);
-    expect(previewer.shown).toHaveLength(2);
+    expect(previewer.shown).toEqual([]);
   });
 
   it('releases the public-command gate when an active command throws', async () => {
     const { ui, previewer, shared } = harness();
-    const approval = deferred<boolean>();
-    const confirmationStarted = deferred<undefined>();
-    ui.confirm = async (options) => {
-      ui.confirmationRequests.push(options);
-      confirmationStarted.resolve(undefined);
-      return approval.promise;
+    const inputStarted = deferred<undefined>();
+    const inputResult = deferred<string | undefined>();
+    ui.input = async () => {
+      inputStarted.resolve(undefined);
+      return inputResult.promise;
     };
     let initializeSelections = 0;
     const initialize = createInitializeBundleCommand({
@@ -305,32 +309,26 @@ describe('authoring command handlers', () => {
       selectInitializedBundle: () => undefined,
       now: () => '2026-07-22T10:00:00+09:00',
     });
-    ui.inputs.push('knowledge');
-    ui.selections.push('minimal');
     const failed = initialize();
-    await confirmationStarted.promise;
+    await inputStarted.promise;
 
-    approval.reject(new Error('Confirmation host failed.'));
-    await expect(failed).rejects.toThrow('Confirmation host failed.');
-    ui.confirm = async (options) => {
-      ui.confirmationRequests.push(options);
-      return false;
-    };
+    inputResult.reject(new Error('Input host failed.'));
+    await expect(failed).rejects.toThrow('Input host failed.');
+    ui.input = async () => ui.inputs.shift();
     ui.inputs.push('knowledge');
     ui.selections.push('minimal');
-    await expect(initialize()).resolves.toEqual({ kind: 'cancelled' });
+    await expect(initialize()).resolves.toMatchObject({ kind: 'applied' });
 
     expect(initializeSelections).toBe(2);
-    expect(previewer.shown).toHaveLength(2);
-    expect(previewer.releasedSessions).toBe(2);
+    expect(previewer.shown).toEqual([]);
+    expect(previewer.releasedSessions).toBe(0);
   });
 
-  it('initializes one of all three presets only after approval and selects its root', async () => {
+  it('initializes all three create-only presets without approval and selects the root', async () => {
     for (const preset of ['minimal', 'software-project', 'data-analytics'] as const) {
-      const { port, ui, shared } = harness();
+      const { port, ui, previewer, shared } = harness();
       ui.inputs.push('knowledge');
       ui.selections.push(preset);
-      ui.confirmations.push(true);
       const selected: string[] = [];
       const command = createInitializeBundleCommand({
         ...shared,
@@ -352,14 +350,57 @@ describe('authoring command handlers', () => {
       expect(port.text(`${bundleRoot}/index.md`)).toContain('okf_version: "0.1"');
       expect(selected).toEqual([bundleRoot]);
       expect(ui.opened).toEqual([`${bundleRoot}/index.md`]);
+      expect(previewer.shown).toEqual([]);
+      expect(ui.confirmationRequests).toEqual([]);
     }
   });
 
-  it('does not initialize or select a bundle when approval is cancelled', async () => {
+  it('releases the write gate while post-create bundle selection is still pending', async () => {
     const { port, ui, shared } = harness();
+    const selectionStarted = deferred<undefined>();
+    const selectionFinished = deferred<undefined>();
     ui.inputs.push('knowledge');
     ui.selections.push('minimal');
-    ui.confirmations.push(false);
+    const initialize = createInitializeBundleCommand({
+      ...shared,
+      selectInitializationTarget: async () => ({
+        targetRootUri: workspaceRoot,
+        workspaceSafetyRootUri: workspaceRoot,
+        label: 'workspace',
+        suggestedBundleDirectory: 'knowledge',
+      }),
+      selectInitializedBundle: async () => {
+        selectionStarted.resolve(undefined);
+        await selectionFinished.promise;
+      },
+      now: () => '2026-07-22T10:00:00+09:00',
+    });
+
+    await expect(initialize()).resolves.toMatchObject({ kind: 'applied' });
+    await selectionStarted.promise;
+
+    ui.selections.push('generic-concept');
+    ui.inputs.push('.', 'concept', 'Created while selection is pending', '', '', 'next.md');
+    const newConcept = createNewConceptCommand({
+      ...shared,
+      selectBundle: async () => writableBundleSelection,
+    });
+    await expect(newConcept()).resolves.toMatchObject({ kind: 'applied' });
+
+    expect(port.text(`${bundleRoot}/next.md`)).toContain(
+      'title: "Created while selection is pending"',
+    );
+    expect(ui.warnings).toEqual([]);
+    selectionFinished.resolve(undefined);
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+
+  it('refuses an initialization collision without requesting approval', async () => {
+    const { port, ui, previewer, shared } = harness();
+    port.putText(`${bundleRoot}/index.md`, 'existing bundle\n');
+    ui.inputs.push('knowledge');
+    ui.selections.push('minimal');
     const selected: string[] = [];
     const command = createInitializeBundleCommand({
       ...shared,
@@ -375,13 +416,19 @@ describe('authoring command handlers', () => {
       now: () => '2026-07-22T10:00:00+09:00',
     });
 
-    expect(await command()).toEqual({ kind: 'cancelled' });
+    await expect(command()).resolves.toMatchObject({
+      kind: 'failed',
+      report: { failed: [{ code: 'collision' }] },
+    });
     expect(port.writes).toEqual([]);
     expect(selected).toEqual([]);
     expect(ui.opened).toEqual([]);
+    expect(previewer.shown).toEqual([]);
+    expect(ui.confirmationRequests).toEqual([]);
+    expect(ui.errors[0]).toContain('already exists');
   });
 
-  it('previews an exact-boundary initialization path and refuses +1 before any preview', async () => {
+  it('creates at the exact initialization path boundary and refuses +1 before workspace I/O', async () => {
     const exactDirectory = 'a'.repeat(
       OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits - '/index.md'.length,
     );
@@ -400,11 +447,10 @@ describe('authoring command handlers', () => {
       now: () => '2026-07-22T10:00:00+09:00',
     });
 
-    expect(await exactCommand()).toEqual({ kind: 'cancelled' });
-    expect(exactHarness.previewer.shown[0]?.proposal.changes[0]?.relativePath).toHaveLength(
-      OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits,
-    );
-    expect(exactHarness.port.writes).toEqual([]);
+    await expect(exactCommand()).resolves.toMatchObject({ kind: 'applied' });
+    expect(`${exactDirectory}/index.md`).toHaveLength(OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits);
+    expect(exactHarness.previewer.shown).toEqual([]);
+    expect(exactHarness.port.writes).toEqual([`${workspaceRoot}/${exactDirectory}/index.md`]);
 
     const exceededHarness = harness();
     exceededHarness.ui.inputs.push(`${exactDirectory}a`);
@@ -446,10 +492,11 @@ describe('authoring command handlers', () => {
       now: () => '2026-07-22T10:00:00+09:00',
     });
 
-    expect(await exactCommand()).toEqual({ kind: 'cancelled' });
-    expect(
-      encoder.encode(exactHarness.previewer.shown[0]?.proposal.changes[0]?.relativePath),
-    ).toHaveLength(OKF_SEMANTIC_LIMITS.maxProviderPathBytes);
+    await expect(exactCommand()).resolves.toMatchObject({ kind: 'applied' });
+    expect(encoder.encode(`${exactDirectory}/index.md`)).toHaveLength(
+      OKF_SEMANTIC_LIMITS.maxProviderPathBytes,
+    );
+    expect(exactHarness.previewer.shown).toEqual([]);
 
     const exceededHarness = harness();
     exceededHarness.ui.inputs.push(`${exactDirectory}a`);
@@ -503,7 +550,6 @@ describe('authoring command handlers', () => {
     const { port, ui, shared } = harness();
     ui.inputs.push('knowledge');
     ui.selections.push('minimal');
-    ui.confirmations.push(true);
     ui.openFailure = new Error('Editor unavailable');
     const selected: string[] = [];
     const command = createInitializeBundleCommand({
@@ -567,7 +613,6 @@ describe('authoring command handlers', () => {
       'test, result',
       'result.md',
     );
-    ui.confirmations.push(true);
     const command = createNewConceptCommand({
       ...shared,
       selectBundle: async () => writableBundleSelection,
@@ -581,9 +626,54 @@ describe('authoring command handlers', () => {
     expect(port.text(target)).toContain('description: "Description"');
     expect(port.text(target)).toContain('tags:\n  - "test"\n  - "result"');
     expect(ui.opened).toEqual([target]);
+    expect(ui.confirmationRequests).toEqual([]);
   });
 
-  it('previews an exact-boundary concept path and refuses a combined +1 path', async () => {
+  it('releases the write gate while VS Code is still opening the created concept', async () => {
+    const { port, ui, shared } = harness();
+    const firstOpen = deferred<undefined>();
+    const firstTarget = `${bundleRoot}/first.md`;
+    const secondTarget = `${bundleRoot}/second.md`;
+    ui.selections.push('generic-concept', 'generic-concept');
+    ui.inputs.push(
+      '.',
+      'concept',
+      'First',
+      '',
+      '',
+      'first.md',
+      '.',
+      'concept',
+      'Second',
+      '',
+      '',
+      'second.md',
+    );
+    ui.confirmations.push(true, true);
+    ui.openDocument = async (uri) => {
+      ui.opened.push(uri);
+      if (uri === firstTarget) {
+        await firstOpen.promise;
+      }
+    };
+    const command = createNewConceptCommand({
+      ...shared,
+      selectBundle: async () => writableBundleSelection,
+    });
+
+    await expect(command()).resolves.toMatchObject({ kind: 'applied' });
+    expect(ui.opened).toEqual([firstTarget]);
+
+    await expect(command()).resolves.toMatchObject({ kind: 'applied' });
+
+    expect(port.text(firstTarget)).toContain('title: "First"');
+    expect(port.text(secondTarget)).toContain('title: "Second"');
+    expect(ui.opened).toEqual([firstTarget, secondTarget]);
+    expect(ui.warnings).toEqual([]);
+    firstOpen.resolve(undefined);
+  });
+
+  it('creates at the exact concept path boundary and refuses a combined +1 path', async () => {
     const exactDestination = 'd'.repeat(
       OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits - '/a.md'.length,
     );
@@ -595,11 +685,10 @@ describe('authoring command handlers', () => {
       selectBundle: async () => writableBundleSelection,
     });
 
-    expect(await exactCommand()).toEqual({ kind: 'cancelled' });
-    expect(exactHarness.previewer.shown[0]?.proposal.changes[0]?.relativePath).toHaveLength(
-      OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits,
-    );
-    expect(exactHarness.port.writes).toEqual([]);
+    await expect(exactCommand()).resolves.toMatchObject({ kind: 'applied' });
+    expect(`${exactDestination}/a.md`).toHaveLength(OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits);
+    expect(exactHarness.previewer.shown).toEqual([]);
+    expect(exactHarness.port.writes).toEqual([`${bundleRoot}/${exactDestination}/a.md`]);
 
     const exceededHarness = harness();
     exceededHarness.ui.selections.push('generic-concept');
@@ -634,10 +723,11 @@ describe('authoring command handlers', () => {
       selectBundle: async () => writableBundleSelection,
     });
 
-    expect(await exactCommand()).toEqual({ kind: 'cancelled' });
-    expect(
-      encoder.encode(exactHarness.previewer.shown[0]?.proposal.changes[0]?.relativePath),
-    ).toHaveLength(OKF_SEMANTIC_LIMITS.maxProviderPathBytes);
+    await expect(exactCommand()).resolves.toMatchObject({ kind: 'applied' });
+    expect(encoder.encode(`${exactDestination}/a.md`)).toHaveLength(
+      OKF_SEMANTIC_LIMITS.maxProviderPathBytes,
+    );
+    expect(exactHarness.previewer.shown).toEqual([]);
 
     const exceededHarness = harness();
     exceededHarness.ui.selections.push('generic-concept');
@@ -684,7 +774,6 @@ describe('authoring command handlers', () => {
     const { port, ui, shared } = harness();
     ui.selections.push('generic-concept');
     ui.inputs.push('.', 'concept', 'Minimal metadata', ' \t ', ' ,  , ', 'minimal.md');
-    ui.confirmations.push(true);
     const command = createNewConceptCommand({
       ...shared,
       selectBundle: async () => writableBundleSelection,
@@ -1038,7 +1127,6 @@ describe('authoring command handlers', () => {
       throw new Error('Expected the provider bundle path to be safe.');
     }
     ui.selections.push('both');
-    ui.confirmations.push(true);
     const command = createSetupAgentIntegrationCommand({
       ...shared,
       selectAgentIntegrationTarget: async () => ({
@@ -1055,12 +1143,11 @@ describe('authoring command handlers', () => {
       expect(output).toContain('`docs:knowledge/literal%2Fsegment/知識/index.md`');
       expect(output).not.toContain('literal/segment');
     }
-    expect(previewer.shown[0]?.presentation.summary).toContain(
-      'Actual bundle path: docs:knowledge/literal%2Fsegment/知識',
-    );
+    expect(previewer.shown).toEqual([]);
+    expect(ui.confirmationRequests).toEqual([]);
   });
 
-  it('previews an exact-boundary agent bundle path and refuses +1 before workspace reads', async () => {
+  it('creates at the exact agent bundle path boundary and refuses +1 before workspace reads', async () => {
     const exactPath = 'b'.repeat(OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits);
     const exactHarness = harness();
     exactHarness.ui.selections.push('both');
@@ -1072,12 +1159,10 @@ describe('authoring command handlers', () => {
       }),
     });
 
-    expect(await exactCommand()).toEqual({ kind: 'cancelled' });
-    expect(exactHarness.previewer.shown).toHaveLength(1);
-    expect(exactHarness.previewer.shown[0]?.presentation.summary).toContain(
-      `Actual bundle path: ${exactPath}`,
-    );
-    expect(exactHarness.port.writes).toEqual([]);
+    await expect(exactCommand()).resolves.toMatchObject({ kind: 'applied' });
+    expect(exactHarness.previewer.shown).toEqual([]);
+    expect(exactHarness.ui.confirmationRequests).toEqual([]);
+    expect(exactHarness.port.writes).toHaveLength(2);
 
     const exceededHarness = harness();
     exceededHarness.ui.selections.push('both');
@@ -1110,9 +1195,10 @@ describe('authoring command handlers', () => {
       }),
     });
 
-    expect(await exactCommand()).toEqual({ kind: 'cancelled' });
+    await expect(exactCommand()).resolves.toMatchObject({ kind: 'applied' });
     expect(encoder.encode(exactPath)).toHaveLength(OKF_SEMANTIC_LIMITS.maxProviderPathBytes);
-    expect(exactHarness.previewer.shown).toHaveLength(1);
+    expect(exactHarness.previewer.shown).toEqual([]);
+    expect(exactHarness.ui.confirmationRequests).toEqual([]);
 
     const exceededHarness = harness();
     exceededHarness.ui.selections.push('both');
@@ -1241,7 +1327,7 @@ describe('authoring command handlers', () => {
     expect(port.writes).toEqual([]);
   });
 
-  it('refuses a concept write when the bundle becomes unsupported during modeless preview', async () => {
+  it('refuses a create-only concept write when the bundle becomes unsupported before apply', async () => {
     const { port, ui, previewer, shared } = harness();
     port.putDirectory(bundleRoot);
     const rootIndex = `${bundleRoot}/index.md`;
@@ -1249,20 +1335,12 @@ describe('authoring command handlers', () => {
     port.putText(rootIndex, '---\nokf_version: "0.1"\n---\n# Knowledge\n');
     ui.selections.push('generic-concept');
     ui.inputs.push('.', 'concept', 'Safe until approval', '', '', 'concept.md');
-    ui.confirmations.push(true);
 
-    const changingPreviewer: ProposalPreviewer<string> = {
-      async show(proposal, presentation) {
-        const session = await previewer.show(proposal, presentation);
-        port.putText(rootIndex, '---\nokf_version: "1.0"\n---\n# Changed bundle\n');
-        return session;
-      },
-    };
     const command = createNewConceptCommand({
       ...shared,
-      previewer: changingPreviewer,
       selectBundle: async () => writableBundleSelection,
       revalidateBundleWrite: async (root) => {
+        port.putText(rootIndex, '---\nokf_version: "1.0"\n---\n# Changed bundle\n');
         const access = await inspectBundleWriteAccess(root, port, stringUriCodec);
         return access.ok ? undefined : access.problem;
       },
@@ -1278,14 +1356,14 @@ describe('authoring command handlers', () => {
     expect(port.writes).toEqual([]);
     expect(ui.opened).toEqual([]);
     expect(ui.errors.at(-1)).toContain('unsupported OKF version "1.0"');
-    expect(previewer.releasedSessions).toBe(1);
+    expect(previewer.shown).toEqual([]);
+    expect(previewer.releasedSessions).toBe(0);
   });
 
   it('revalidates the selected bundle before applying agent integration outside that bundle', async () => {
     const { port, ui, shared } = harness();
     port.putText(`${bundleRoot}/index.md`, '---\nokf_version: "0.1"\n---\n# Knowledge\n');
     ui.selections.push('agents-md');
-    ui.confirmations.push(true);
     const checkedRoots: string[] = [];
     const command = createSetupAgentIntegrationCommand({
       ...shared,

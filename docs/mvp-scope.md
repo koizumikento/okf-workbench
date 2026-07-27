@@ -32,8 +32,8 @@ Initial presets:
 
 Requirements:
 
-- Show the target path and generated files before writing.
-- Never overwrite existing files without explicit confirmation.
+- Apply immediately after the final input when every generated target is absent.
+- Refuse the complete initialization when any target already exists; never overwrite it.
 - Create a root `index.md` declaring `okf_version: "0.1"`.
 - Allow users to change the suggested bundle directory.
 
@@ -122,7 +122,8 @@ Requirements:
 
 - Offer `AGENTS.md`, Agent Skill, or both.
 - Insert the actual bundle path into generated instructions.
-- Preview changes.
+- Apply without preview when every output is a new file; preview the complete proposal when any
+  output updates or replaces an existing file.
 - Never replace unrelated instructions in an existing `AGENTS.md`.
 - Generate a portable `.agents/skills/maintain-okf-knowledge/SKILL.md`.
 - Prefer the native CLI for safe local validation and planned writes when available, without making
@@ -130,8 +131,8 @@ Requirements:
 
 ### Pending change recovery
 
-Every authoring preview that is awaiting Apply or Cancel must remain recoverable when its modeless
-notification is hidden:
+Create-only proposals do not open a preview. Every authoring preview for an existing-file change
+that is awaiting Apply or Cancel must remain recoverable when its modeless notification is hidden:
 
 - Show an `OKF changes awaiting review` status-bar action while the decision is pending.
 - Expose `OKF: Review Pending Changes` only while a proposal is pending.

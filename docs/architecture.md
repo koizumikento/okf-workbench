@@ -267,8 +267,11 @@ requirement.
 - Admit at most one complete write-command workflow per Extension Host activation, acquiring its
   opaque lease at the registered command entry before trust checks, trust notifications, target
   selection, workspace reads, or proposal planning. Pass that same lease into the authoring factory
-  rather than nesting scheduler admission, and retain it through preflight, preview, modeless
-  approval, apply, and cleanup. While it is active, reject every concurrent invocation
+  rather than nesting scheduler admission, and retain it through preflight, optional preview and
+  modeless approval, apply, and cleanup. After pure feasibility and complete preflight, apply a
+  proposal directly only when every change is `create` with an absent-target precondition. If any
+  change updates or replaces an existing file, preview the complete proposal and require approval.
+  While the lease is active, reject every concurrent invocation
   immediately with the structured `proposal-workflow-busy` problem and an actionable instruction to
   finish or cancel the active workflow before retrying. Do not retain the rejected proposal in a
   FIFO or other pending queue. Keep one host-owned decision controller for the admitted preview:
@@ -279,26 +282,27 @@ requirement.
   run/target identity across the summary, diff titles, and every approval attempt so a decision
   cannot be confused with another bundle's proposal. Keep that exact preview alive through the
   result, and fail closed after asynchronous guards and immediately before every write if it is no
-  longer active.
+  longer active. Treat post-create selection and editor navigation as best-effort follow-up work:
+  do not retain the write lease while those host UI promises remain pending.
 - Capture the proposal's workspace safety root as an exact open-folder URI when the common write
   workflow starts. The host's workspace-folder change listener irreversibly invalidates only
-  sessions whose exact root was removed and closes their active previews; a containing parent,
-  another authority, or a same-URI re-add cannot revive an already reviewed proposal. Recheck the
-  live exact folder set before the first and every subsequent change, then pass the same
-  authorization callback into the workspace adapter so it runs again after preparatory provider
-  awaits and immediately before `applyEdit` or `writeFile`.
+  sessions whose exact root was removed and closes any active preview; a containing parent, another
+  authority, or a same-URI re-add cannot revive a direct-create authorization or reviewed proposal.
+  Recheck the live exact folder set before the first and every subsequent change, then pass the
+  same authorization callback into the workspace adapter so it runs again after preparatory
+  provider awaits and immediately before `applyEdit` or `writeFile`.
 - Admit only one `Validate Bundle` or `Open 3D Graph` selection-and-scheduling phase at a time.
   Acquire this read-command gate before bundle discovery or any bundle picker. Concurrent read
   commands fail immediately with `read-command-busy`; their callbacks and explicit-root arguments
   are neither retained nor shared with the admitted command. Coalesce the ordinary-session busy
   warning to one notification per active phase.
-- Run a pure preview-feasibility check before workspace preflight or any workspace I/O. Inclusive
+- Run a pure proposal-feasibility check before workspace preflight or any workspace I/O. Inclusive
   limits are 64 changes, 2 MiB for each proposed output and each declared existing
   `expected.byteLength`, 16 MiB for cumulative UTF-8 before-and-after bodies, and 1 MiB for the
-  generated summary. After that check passes, prepare every before/after snapshot before registering
-  a virtual-document provider or opening any tab. Refuse the whole proposal rather than exposing a
-  partial change set when a limit or later snapshot read fails; exact-boundary proposals remain
-  eligible for a complete preview.
+  generated summary. A create-only proposal remains eligible for direct application. For a
+  previewed proposal, prepare every before/after snapshot before registering a virtual-document
+  provider or opening any tab. Refuse the whole proposal rather than exposing a partial change set
+  when a limit or later snapshot read fails; exact-boundary proposals remain eligible.
 - Keep provider path identity and user-input normalization as separate APIs. A literal provider
   filename such as `encoded%2Fsegment.md` must not alias `encoded/segment.md`, while encoded
   traversal in user input remains rejected. Both branches use the same pre-allocation envelope:

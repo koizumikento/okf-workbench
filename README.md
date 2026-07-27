@@ -12,8 +12,8 @@ initialize -> create -> edit -> validate -> explore -> repair
 
 ## What it does
 
-- Initializes Minimal, Software Project, or Data & Analytics bundles after preview and
-  confirmation.
+- Initializes Minimal, Software Project, or Data & Analytics bundles with collision-safe
+  create-only writes.
 - Creates concepts from seven built-in templates while allowing arbitrary non-empty concept
   types.
 - Reports OKF conformance errors separately from curation warnings in the Problems panel.
@@ -26,7 +26,8 @@ initialize -> create -> edit -> validate -> explore -> repair
   and keyboard camera controls.
 - Opens source Markdown from graph nodes and refreshes the selected bundle after workspace
   changes.
-- Generates a managed `AGENTS.md` section and a project-local Agent Skill after preview.
+- Generates a managed `AGENTS.md` section and a project-local Agent Skill, previewing any proposal
+  that would update or replace an existing file.
 - Includes an offline native `okf` CLI backed by the same Rust core used by the extension through
   a capability-free Wasm adapter, both in supported platform VSIX packages and as standalone
   release archives.
@@ -49,7 +50,8 @@ Open a workspace folder and run the six core `OKF:` commands from the Command Pa
 Explorer folder context menu. Authoring commands require a trusted workspace. Validation and graph
 inspection remain read-only. While an authoring preview awaits a decision, the status bar shows
 `OKF changes awaiting review`; activate it, or run `OKF: Review Pending Changes`, to bring back the
-exact summary and choose Apply or Cancel.
+exact summary and choose Apply or Cancel. Proposals containing only new files apply immediately
+after the final input; collision checks refuse an existing target without overwriting it.
 
 The extension targets VS Code-compatible desktop editors with API floor `^1.121.0`. Compatibility
 is specific to the editor version, operating system, and exact extension package; the manifest
@@ -80,7 +82,8 @@ support external shells, CI, and editor-free use.
 ## Safety and file ownership
 
 - Markdown in the workspace is the source of truth; the graph is derived and read-only.
-- Generated changes are previewed, path-contained, and collision-checked before application.
+- Create-only changes are path-contained and atomically collision-checked; any proposal that may
+  update or replace an existing file is previewed before application.
 - Existing unrelated `index.md` and `AGENTS.md` content is preserved through managed regions.
 - Unknown frontmatter fields and arbitrary non-empty concept types remain valid.
 - Webview scripts and styles are packaged locally under a restrictive Content Security Policy.

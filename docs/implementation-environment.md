@@ -300,10 +300,13 @@ a trusted-provider `stat` / `readFile` / `stat` metadata sandwich plus directory
 revalidation. Provider compatibility tests must exercise this boundary; the implementation does not
 describe it as an atomic snapshot.
 
-Generated changes are handled as a two-step flow:
+Generated changes start from one immutable proposal containing target URI, expected current state,
+and proposed bytes. The Extension Host then selects one of two flows:
 
-1. Build an immutable proposal containing target URI, expected current content hash, and proposed bytes.
-2. Preview, re-check the expected content, and apply only after explicit confirmation.
+1. When every change is `create` with an absent-target precondition, run complete preflight and
+   apply directly without a preview or confirmation.
+2. When any change updates or replaces an existing file, preview the complete proposal, re-check
+   the expected content, and apply only after explicit confirmation.
 
 Diff previews use a read-only virtual document provider and the built-in VS Code diff editor. Approval
 is a modeless continuation so the user can switch among every opened diff before applying or
@@ -311,7 +314,7 @@ cancelling. One extension-scoped scheduler admits only one complete write-comman
 time. Its opaque lease is acquired by the registered command entry before trust checks, trust
 notifications, target selection, workspace reads, or proposal planning. The entry passes that same
 lease into the selected authoring factory instead of reacquiring the scheduler, and it remains
-active through preflight, preview, decision, apply, and cleanup.
+active through preflight, optional preview and decision, apply, and cleanup.
 While that workflow is active, every concurrent
 invocation settles immediately with the structured `proposal-workflow-busy` problem and an
 actionable instruction to finish or cancel the active workflow before retrying. The scheduler does
@@ -324,7 +327,9 @@ late result from a hidden notification cannot approve a superseded review. A bus
 immediate but may offer Review or Cancel for that same pending proposal. Cancellation, preview
 invalidation, host disposal, and thrown failures release the active slot, preview tabs, virtual
 document bodies, and provider registration in `finally`, after which a newly invoked workflow may
-proceed.
+proceed. Selecting an initialized bundle and opening a generated Markdown document are best-effort
+follow-up navigation. The command does not await those host UI promises inside the write lease, so
+a slow editor reveal cannot make the next authoring invocation appear concurrently active.
 
 Validate Bundle and Open 3D Graph use a separate extension-scoped fail-fast gate around their
 complete bundle-selection and refresh-scheduling phase. The gate is acquired before automatic
@@ -345,17 +350,19 @@ check over the immutable proposal and generated presentation. It accepts the inc
 of 64 changes, 2 MiB of UTF-8 for each proposed output, 2 MiB for each declared existing
 `expected.byteLength`, 16 MiB of cumulative UTF-8 before-and-after bodies, and 1 MiB for the
 generated summary. A proposal exceeding any boundary is refused without workspace I/O, provider
-registration, or tab creation. The 64-change ceiling is deliberately conservative because the
-current review surface opens one pinned diff per change, for at most 65 run-owned editor tabs
-including the summary; it is a reliability guard rather than a measured editor-performance claim.
-Raising it requires a virtualized or multi-diff review surface with new evidence. After feasibility
-passes, Workbench prepares every accepted before/after snapshot with overflow-safe accounting before
-registering the run's provider or opening any tab. An oversized or inconsistent existing snapshot,
-decode failure, or later read failure therefore refuses the entire preview without leaving a partial
-summary, diff set, registration, or retained body. Create previews validate either a stable absent
-target under an existing parent or a stably absent parent suffix without reading through it.
-Snapshots for all distinct target parents are retained and deduplicated, and the last workspace
-pass before returning the prepared bodies revalidates every snapshot.
+registration, or tab creation. The 64-change ceiling is deliberately conservative because a
+previewed proposal opens one pinned diff per change, for at most 65 run-owned editor tabs including
+the summary; it is a reliability guard rather than a measured editor-performance claim. Raising it
+requires a virtualized or multi-diff review surface with new evidence. A create-only proposal moves
+from feasibility through complete preflight to guarded application without registering preview
+resources. For a previewed proposal, Workbench prepares every accepted before/after snapshot with
+overflow-safe accounting before registering the run's provider or opening any tab. An oversized or
+inconsistent existing snapshot, decode failure, or later read failure therefore refuses the entire
+preview without leaving a partial summary, diff set, registration, or retained body. Preview
+snapshots validate either a stable absent target under an existing parent or a stably absent parent
+suffix without reading through it. Snapshots for all distinct target parents are retained and
+deduplicated, and the last workspace pass before returning the prepared bodies revalidates every
+snapshot.
 
 After approval, cancellation, failure, or host disposal, the extension closes only the summary and
 diff tabs whose URIs exactly match that activation and run, then releases the before/after bodies and
@@ -374,13 +381,13 @@ write result. The workflow verifies that preview synchronously after preflight a
 compatibility guards and again immediately before every individual write; closing it refuses the
 first write or stops the remaining writes with an explicit partial report. The proposal also captures the exact open
 workspace-folder URI that supplied its safety root. Removing that folder irreversibly invalidates
-the active workflow and disposes its preview; leaving a containing parent open or re-adding the same
-URI requires a new command and preview. Exact membership is checked before the first and each later
-change. The authorization callback is also carried into the workspace port, which invokes it before
-directory creation and again after absence/hash verification immediately before `applyEdit` or
-`workspace.fs.writeFile`. This closes membership changes that occur during provider preparation;
-the provider API still offers no atomic lock spanning an already-started asynchronous mutation and
-the editor's folder-change event.
+the active workflow and disposes its preview when one exists; leaving a containing parent open or
+re-adding the same URI requires a new command and authorization. Exact membership is checked before
+the first and each later change. The authorization callback is also carried into the workspace
+port, which invokes it before directory creation and again after absence/hash verification
+immediately before `applyEdit` or `workspace.fs.writeFile`. This closes membership changes that
+occur during provider preparation; the provider API still offers no atomic lock spanning an
+already-started asynchronous mutation and the editor's folder-change event.
 The extension preflights all targets before starting a multi-file write. That preflight calls the workspace port's `stat` for
 the proposal write root and every existing intermediate segment; `FileType.SymbolicLink`, a normal
 file used as a parent, or an unknown entry refuses the entire proposal before the first write.
@@ -393,7 +400,11 @@ Because virtual workspace providers do not guarantee a cross-file transaction, a
 after a successful preflight must stop remaining writes and report completed, failed, and untouched
 targets explicitly.
 
-Creates use `WorkspaceEdit.createFile` with overwrite and ignore-if-exists both disabled and with the proposed bytes supplied as the initial content. This is the strongest provider-neutral no-overwrite create exposed by the supported VS Code API. The adapter does not fall back to `workspace.fs.writeFile` when a provider cannot apply that resource edit; it fails closed instead.
+Creates use `WorkspaceEdit.createFile` with overwrite and ignore-if-exists both disabled and with
+the proposed bytes supplied as the initial content. This is the strongest provider-neutral
+no-overwrite create exposed by the supported VS Code API and is the final guard for direct
+create-only application when a target appears after preflight. The adapter does not fall back to
+`workspace.fs.writeFile` when a provider cannot apply that resource edit; it fails closed instead.
 
 Updates retain the SHA-256 of the original provider bytes, including an optional UTF-8 BOM, instead of deriving the guard by decoding and re-encoding text. They re-read and compare that exact preview hash as the final awaited operation before starting `workspace.fs.writeFile`, then verify the resulting bytes. Caller-owned target-parent snapshots are prepared before both internal reads and checked around their stat/read boundaries, including the post-write readback. VS Code's public workspace filesystem API does not expose an expected version, ETag, hash precondition, or other compare-and-swap option for an existing resource. A provider or remote actor can therefore change an existing file in the narrow interval between the hash check and the write, and the write can overwrite that change; similarly, no directory lock spans the provider mutation. The MVP reports this limitation explicitly as a fail-detect boundary and does not claim full update CAS or a universal atomic pathname walk. Remote and virtual provider acceptance evidence must exercise collision and failure behavior for each supported editor/provider combination.
 

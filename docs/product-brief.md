@@ -69,7 +69,10 @@ The extension must tolerate unknown types, extra frontmatter fields, missing opt
 
 ### Safe generation
 
-Generated files are previewable. Existing user content is never silently overwritten. Re-running a generator should be idempotent wherever practical.
+Create-only generation applies without an extra confirmation only when every target is absent and
+the workspace adapter can enforce no-overwrite creation. Any proposal that may update or replace an
+existing file is previewable and requires explicit approval. Existing user content is never
+silently overwritten. Re-running a generator should be idempotent wherever practical.
 
 ### Useful without AI
 

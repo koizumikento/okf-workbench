@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, test } from 'vitest';
 
 import {
+  EXPECTED_CLI_COMMANDS,
   EXPECTED_COMMAND_CATALOG,
   EXPECTED_WRITE_COMMAND_IDS,
 } from '../../../scripts/compatibility/driver/command-catalog.cjs';
@@ -20,10 +21,7 @@ const recoveryCommand = {
   title: 'Review Pending Changes',
   when: 'okfWorkbench.hasPendingProposal',
 } as const;
-const cliCommands = [
-  [SHOW_CLI_STATUS_COMMAND, 'Show CLI Status'],
-  [OPEN_CLI_TERMINAL_COMMAND, 'Open CLI Terminal'],
-] as const;
+const cliCommands = EXPECTED_CLI_COMMANDS.map(({ id, title }) => [id, title] as const);
 
 interface ManifestCommand {
   readonly category?: unknown;
@@ -144,6 +142,10 @@ describe('extension manifest', () => {
 
   test('shares one exhaustive read/write command classification with packaged acceptance', () => {
     expect(OKF_COMMANDS).toEqual(EXPECTED_COMMAND_CATALOG);
+    expect(EXPECTED_CLI_COMMANDS).toEqual([
+      { id: SHOW_CLI_STATUS_COMMAND, title: 'Show CLI Status' },
+      { id: OPEN_CLI_TERMINAL_COMMAND, title: 'Open CLI Terminal' },
+    ]);
     expect(
       OKF_COMMANDS.filter(({ workspaceAccess }) => workspaceAccess === 'write').map(({ id }) => id),
     ).toEqual(EXPECTED_WRITE_COMMAND_IDS);

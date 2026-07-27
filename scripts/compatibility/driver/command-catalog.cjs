@@ -43,8 +43,23 @@ const EXPECTED_WRITE_COMMAND_IDS = Object.freeze(
     ({ id }) => id,
   ),
 );
+const EXPECTED_CLI_COMMANDS = Object.freeze(
+  [
+    {
+      id: 'okfWorkbench.showCliStatus',
+      title: 'Show CLI Status',
+    },
+    {
+      id: 'okfWorkbench.openCliTerminal',
+      title: 'Open CLI Terminal',
+    },
+  ].map((command) => Object.freeze(command)),
+);
+const EXPECTED_CLI_COMMAND_IDS = Object.freeze(EXPECTED_CLI_COMMANDS.map(({ id }) => id));
 
 module.exports = {
+  EXPECTED_CLI_COMMANDS,
+  EXPECTED_CLI_COMMAND_IDS,
   EXPECTED_COMMAND_CATALOG,
   EXPECTED_COMMAND_IDS,
   EXPECTED_WRITE_COMMAND_IDS,

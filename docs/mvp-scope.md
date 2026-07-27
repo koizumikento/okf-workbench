@@ -125,6 +125,8 @@ Requirements:
 - Preview changes.
 - Never replace unrelated instructions in an existing `AGENTS.md`.
 - Generate a portable `.agents/skills/maintain-okf-knowledge/SKILL.md`.
+- Prefer the native CLI for safe local validation and planned writes when available, without making
+  it a requirement for provider-backed or CLI-free environments.
 
 ### Pending change recovery
 

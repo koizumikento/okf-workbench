@@ -458,6 +458,9 @@ describe('MVP acceptance scenarios — deterministic component evidence', () => 
     );
     expect(agentsText?.startsWith(unrelated)).toBe(true);
     expect(skillText).toContain('`knowledge/index.md`');
+    expect(agentsText).toContain('When an `okf` executable is available for a local bundle');
+    expect(skillText).toContain('okf validate <bundle-root> --format json');
+    expect(skillText).toContain('with `--apply` instead of `--check`');
     expect(previewer.shown).toHaveLength(1);
 
     ui.selections.push('both');

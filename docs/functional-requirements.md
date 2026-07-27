@@ -130,6 +130,7 @@ Markdown files are the source of truth. Diagnostics, indexes, and the graph are 
 | FR-075 | The default Agent Skill output MUST be `.agents/skills/maintain-okf-knowledge/SKILL.md`. | Generation creates a Skill with valid frontmatter and the documented maintenance workflow. When the bundle is the workspace root, this Skill and the root `AGENTS.md` remain outside the OKF concept and diagnostic inventory. |
 | FR-076 | An existing Agent Skill MUST NOT be replaced without an explicit preview and replacement confirmation. | One exact replacement preview remains open through its tied replace-and-apply decision and write result; cancellation is non-destructive. |
 | FR-077 | Agent setup MUST generate instructions only; it MUST NOT invoke an agent, model, or external provider. | The complete setup flow performs no model request or provider authentication. |
+| FR-078 | Generated instructions SHOULD prefer the native `okf` CLI for local-filesystem validation, new-concept planning, and managed-index updates when it is available, but MUST remain usable without it. | `AGENTS.md` keeps one concise optional-CLI rule; the Skill provides `validate`, `new --check`, and `index --check` examples, requires review before `--apply`, and directs provider-backed or CLI-free environments to editor commands and document rules. |
 
 ### 8. Common file and workspace behavior
 

@@ -210,6 +210,16 @@ fn agent_outputs_stay_outside_bundle_validation() {
         .output()
         .unwrap();
     assert!(agent.status.success(), "{agent:?}");
+    let agents = fs::read_to_string(directory.path().join("AGENTS.md")).unwrap();
+    let skill = fs::read_to_string(
+        directory
+            .path()
+            .join(".agents/skills/maintain-okf-knowledge/SKILL.md"),
+    )
+    .unwrap();
+    assert!(agents.contains("When an `okf` executable is available for a local bundle"));
+    assert!(skill.contains("okf validate <bundle-root> --format json"));
+    assert!(skill.contains("with `--apply` instead of `--check`"));
 
     let validate = okf()
         .args([

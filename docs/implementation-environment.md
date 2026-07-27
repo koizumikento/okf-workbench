@@ -534,7 +534,7 @@ retaining individual entries, and discovery uses `stat.size` to avoid avoidable 
 | Webview state unit tests | Vitest `4.1.x`, Node environment | Pure search, type/tag/folder filtering, folder hierarchy, focus, presentation, color, custom-force, and message-decoding state without claiming browser DOM behavior |
 | Security boundaries | Dedicated Vitest and Playwright configs | Host/path/protocol boundaries plus hostile-content DOM execution and browser egress interception |
 | Extension integration | `@vscode/test-cli` `0.0.x` and `@vscode/test-electron` `3.1.x` with Mocha | Commands, workspace FS, diagnostics, watchers, URI behavior, source navigation, and the registered non-`file:` read boundary |
-| Webview browser harness | Playwright `1.61.x` on Chromium | Real DOM, WebGL smoke, CSP-compatible bundle loading, folder tree/filter/breadcrumb interaction, keyboard interaction, camera toolbar behavior, and wheel/pinch event boundaries |
+| Webview browser harness | Playwright `1.62.x` on Chromium | Real DOM, WebGL smoke, CSP-compatible bundle loading, folder tree/filter/breadcrumb interaction, keyboard interaction, camera toolbar behavior, and wheel/pinch event boundaries |
 | Release smoke | Packaged VSIX in VS Code and VSCodium | Installation, activation, packaged resources, upgrade, uninstall |
 | Performance | Headed VS Code `1.129.1` release benchmark harness | QR-002 and QR-003 evidence on recorded hardware; VSCodium performance may be investigated separately but cannot satisfy the current strict release record |
 

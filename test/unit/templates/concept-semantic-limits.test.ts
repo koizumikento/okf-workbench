@@ -56,10 +56,6 @@ function parseGeneratedConcept(file: RenderedTemplateFile) {
   });
 }
 
-function exactMultibyteUtf8(byteLength: number): string {
-  return `${'界'.repeat(Math.floor(byteLength / 3))}${'a'.repeat(byteLength % 3)}`;
-}
-
 describe('generated concept semantic limits', () => {
   it('accepts every inclusive metadata boundary and remains parseable and conformant', () => {
     const file = valueOf(
@@ -179,20 +175,13 @@ describe('generated concept semantic limits', () => {
     );
   });
 
-  it('mirrors post-AST UTF-8 bounds for generated Markdown links', () => {
-    const exactLabel = exactMultibyteUtf8(OKF_SEMANTIC_LIMITS.maxLinkLabelBytes);
-    const exactTarget = exactMultibyteUtf8(OKF_SEMANTIC_LIMITS.maxLinkTargetBytes);
-    const exactFile = valueOf(render({ description: `[${exactLabel}](${exactTarget})` }));
+  it('keeps Markdown-looking descriptions out of the generated body', () => {
+    const description = '# Alternate title\n[Link](target.md)';
+    const file = valueOf(render({ description }));
 
-    expect(parseGeneratedConcept(exactFile).failures).toEqual([]);
-    expectFailureCode(
-      render({ description: `[${exactLabel}a](${exactTarget})` }),
-      'generated-concept-markdown-limit',
-    );
-    expectFailureCode(
-      render({ description: `[${exactLabel}](${exactTarget}a)` }),
-      'generated-concept-markdown-limit',
-    );
+    expect(file.content).toContain('description: "# Alternate title\\n[Link](target.md)"\n');
+    expect(file.content).not.toContain(`\n${description}\n`);
+    expect(parseGeneratedConcept(file).failures).toEqual([]);
   });
 
   it('normalizes comma-separated command tags without retaining empty segments', () => {

@@ -250,12 +250,6 @@ pub fn concept_template_file(input: &ConceptTemplateInput) -> RenderedFile {
     }
     frontmatter.push("---".to_owned());
     frontmatter.push(String::new());
-    if let Some(description) = &input.description
-        && !description.trim().is_empty()
-    {
-        frontmatter.push(description.trim().to_owned());
-        frontmatter.push(String::new());
-    }
     frontmatter.extend(
         body_sections(&input.template)
             .iter()
@@ -638,11 +632,17 @@ mod tests {
             relative_path: "concept.md".to_owned(),
             r#type: "concept".to_owned(),
             title: "A title".to_owned(),
-            description: None,
+            description: Some("# Alternate title\n[Link](target.md)".to_owned()),
             tags: vec![],
             timestamp: None,
         });
+        assert!(
+            file.content
+                .contains("description: \"# Alternate title\\n[Link](target.md)\"\n")
+        );
         assert!(file.content.contains("\n---\n\n## Summary\n"));
         assert!(!file.content.contains("\n# A title\n"));
+        assert!(!file.content.contains("\n# Alternate title\n"));
+        assert!(!file.content.contains("\n[Link](target.md)\n"));
     }
 }

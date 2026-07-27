@@ -5,7 +5,7 @@ All notable changes to OKF Workbench are documented in this file.
 The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and intends to use
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) after the first public release.
 
-## Unreleased
+## 0.1.2 - 2026-07-27
 
 ### Changed
 
@@ -15,6 +15,9 @@ The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ### Fixed
 
+- Generated concept files now keep the frontmatter title as the single document title and retain
+  descriptions as metadata instead of duplicating either value as body Markdown, avoiding
+  markdownlint MD025 warnings.
 - Successful Initialize Bundle and New Concept commands no longer retain the write-command lease
   while VS Code selects or opens their generated documents.
 

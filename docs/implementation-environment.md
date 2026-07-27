@@ -648,14 +648,20 @@ the deterministic source, dependency, Node security, audit, package, reproducibi
 security checks, retains the universal VSIX and canonical Wasm, then builds four native binaries.
 Each native job packages the same binary bytes into a target-platform VSIX and a standalone CLI
 archive. The workflow creates the matching GitHub Release and publishes all five retained VSIX
-files without rebuilding them.
+files without rebuilding them. After the GitHub Release exists, the package-repository job verifies
+the retained macOS and Windows CLI archive checksums, deterministically generates
+`Formula/okf.rb` and `bucket/okf.json`, and pushes only those paths to the repository named by
+`TAP_REPO`. The Homebrew and Scoop manifests point back to the immutable GitHub Release archives;
+they do not introduce another binary build.
 
 The repository secret `OPEN_VSX_TOKEN` is exposed only to `ovsx verify-pat straydog` and the
 subsequent `ovsx publish` step. Missing or invalid authorization fails closed. Pull requests,
 ordinary branch builds, the candidate build job, and the GitHub Release job do not receive the
 credential. The locked `ovsx` `1.0.2` command uses duplicate-safe retry behavior, while Open VSX
 still treats a published version as immutable; changed bytes require a higher SemVer version and a
-new tag.
+new tag. The package-repository credential follows the same step-local boundary:
+`STRAY_TOOLS_TOKEN` and `TAP_REPO` are exposed only to the manifest push step, both are required,
+and an inaccessible repository or failed push fails the tagged workflow.
 
 The hosted repository enforces GitHub Actions SHA pinning in addition to repository-owned workflow
 checks. Every `uses:` reference remains a reviewed full commit SHA. Artifact downloads use the

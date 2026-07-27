@@ -299,6 +299,7 @@ export function releaseWorkflowSafetyFailures(workflowPath, workflowSource) {
 
   const buildJob = workflow?.jobs?.['build-candidate'];
   const releaseJob = workflow?.jobs?.['github-release'];
+  const packagePublishJob = workflow?.jobs?.['publish-package-repository'];
   const publishJob = workflow?.jobs?.['publish-openvsx'];
   const steps = publishJob?.steps;
   if (!Array.isArray(steps)) {
@@ -353,6 +354,64 @@ export function releaseWorkflowSafetyFailures(workflowPath, workflowSource) {
     failures.push(
       `${workflowPath}:jobs.github-release must depend on build-candidate and scope contents: write to that job only.`,
     );
+  }
+  if (
+    !isRecord(packagePublishJob) ||
+    !Array.isArray(packagePublishJob.steps) ||
+    !jobNeeds(packagePublishJob, 'build-candidate') ||
+    !jobNeeds(packagePublishJob, 'build-cli') ||
+    !jobNeeds(packagePublishJob, 'github-release') ||
+    packagePublishJob?.permissions?.contents === 'write'
+  ) {
+    failures.push(
+      `${workflowPath}:jobs.publish-package-repository must publish only after the candidate and GitHub release, without contents: write.`,
+    );
+  } else {
+    if (
+      packagePublishJob.if !== undefined ||
+      canContinueOnError(packagePublishJob['continue-on-error'])
+    ) {
+      failures.push(
+        `${workflowPath}:jobs.publish-package-repository must be an unconditional fail-closed job.`,
+      );
+    }
+    const packagePushIndices = packagePublishJob.steps
+      .map((step, index) => ({ index, lines: commandLines(step?.run) }))
+      .filter(({ lines }) => lines.includes('git push origin HEAD'))
+      .map(({ index }) => index);
+    const packageCredentialIndices = packagePublishJob.steps
+      .map((step, index) => ({
+        index,
+        usesRepository: stepUsesSecret(step, 'TAP_REPO'),
+        usesToken: stepUsesSecret(step, 'STRAY_TOOLS_TOKEN'),
+      }))
+      .filter(({ usesRepository, usesToken }) => usesRepository || usesToken);
+    if (
+      packagePushIndices.length !== 1 ||
+      packageCredentialIndices.length !== 1 ||
+      packageCredentialIndices[0].index !== packagePushIndices[0] ||
+      !packageCredentialIndices[0].usesRepository ||
+      !packageCredentialIndices[0].usesToken ||
+      secretReferenceCount(workflow, 'TAP_REPO') !== 1 ||
+      secretReferenceCount(workflow, 'STRAY_TOOLS_TOKEN') !== 1
+    ) {
+      failures.push(
+        `${workflowPath}:TAP_REPO and STRAY_TOOLS_TOKEN must be exposed only to the stray-tools push step.`,
+      );
+    }
+    const packageSource = packagePublishJob.steps
+      .map((step) => (typeof step?.run === 'string' ? step.run : ''))
+      .join('\n');
+    if (
+      !packageSource.includes('sha256sum --check "${archive}.sha256"') ||
+      !packageSource.includes('node scripts/generate-package-manifests.mjs') ||
+      !packageSource.includes('git add -- Formula/okf.rb bucket/okf.json') ||
+      !packageSource.includes('gh repo clone "${TAP_REPO}" package-repository')
+    ) {
+      failures.push(
+        `${workflowPath}:jobs.publish-package-repository must verify retained CLI archives and update only Formula/okf.rb and bucket/okf.json.`,
+      );
+    }
   }
   if (
     !jobNeeds(publishJob, 'build-candidate') ||

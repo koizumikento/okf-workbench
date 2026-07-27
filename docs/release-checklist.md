@@ -66,6 +66,9 @@ not a substitute for its named manual or hosted check.
 - [x] The repository secret name `OPEN_VSX_TOKEN` exists and is referenced only by the
       authorization and publication steps. Its value remains unreadable through GitHub APIs and
       is validated at release time with `ovsx verify-pat straydog`.
+- [x] The repository secret names `TAP_REPO` and `STRAY_TOOLS_TOKEN` exist. They are exposed only
+      to the package-repository push step; their values and current write authorization remain
+      unreadable through GitHub APIs and are validated by the tagged workflow.
 - [ ] The maintainer has reviewed the final `main` commit and is ready to authorize publication by
       pushing its matching version tag.
 - [ ] The Rust/Wasm core migration has fresh current-candidate CI, compatibility, package-smoke,
@@ -181,11 +184,15 @@ Each job feeds the exact same executable bytes into a target-platform VSIX and a
 with the MIT license, Rust third-party notices, and checksums. Raw copy, manifest, byte-length, and
 SHA-256 parity must pass before a separate job creates or updates the matching GitHub Release.
 
-The final job downloads all five retained VSIX packages, verifies their checksums, installs the locked `ovsx`
+After the GitHub Release exists, one publication job verifies the retained macOS and Windows CLI
+archive checksums, generates the Homebrew formula and Scoop manifest twice, requires byte-identical
+outputs, validates their Ruby and JSON structure, and exposes `TAP_REPO` plus
+`STRAY_TOOLS_TOKEN` only while updating `Formula/okf.rb` and `bucket/okf.json`. A separate job
+downloads all five retained VSIX packages, verifies their checksums, installs the locked `ovsx`
 `1.0.2` CLI without lifecycle scripts, and exposes `OPEN_VSX_TOKEN` only to
 `ovsx verify-pat straydog` and `ovsx publish`. Missing or invalid authorization fails the workflow.
-The publish command uses duplicate-safe retry behavior, but a registry version remains immutable;
-changed bytes require a higher SemVer version and a new tag.
+The Open VSX publish command uses duplicate-safe retry behavior, but a registry version remains
+immutable; changed bytes require a higher SemVer version and a new tag.
 
 Do not print the token, pass it as a command argument, save it in shell history, or commit it. Do
 not run `ovsx publish` against a mutable local path as a fallback. If a runner is lost after the
@@ -219,6 +226,9 @@ The official process and current account requirements are documented in
 - [ ] Confirm the signed Git tag and generated GitHub Release identify the tested revision and
       contain the universal and four target VSIX packages, all four native CLI archives, their licenses and notices, and
       every corresponding checksum.
+- [ ] Confirm `koizumikento/stray-tools` contains the released `Formula/okf.rb` and
+      `bucket/okf.json`, that both reference the matching GitHub Release checksums, and that clean
+      Homebrew and Scoop installs run `okf version` successfully on their supported targets.
 - [ ] Revoke the one-time token, or record the owner, scope, storage, and rotation date for a
       retained release credential.
 

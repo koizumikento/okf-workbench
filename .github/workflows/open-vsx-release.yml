@@ -322,6 +322,140 @@ jobs:
               --verify-tag
           fi
 
+  publish-package-repository:
+    name: Publish Homebrew formula and Scoop manifest
+    needs:
+      - build-candidate
+      - build-cli
+      - github-release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out the tagged revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.build-candidate.outputs.revision }}
+
+      - name: Download the retained platform packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: okf-platform-*-${{ github.sha }}-${{ github.run_attempt }}
+          path: release-packages
+          merge-multiple: true
+
+      - name: Verify CLI archives and generate package manifests
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          SOURCE_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          archives=(
+            okf-cli-macos-aarch64.tar.gz
+            okf-cli-macos-x86_64.tar.gz
+            okf-cli-windows-x86_64.tar.gz
+          )
+          for archive in "${archives[@]}"; do
+            checksum="release-packages/${archive}.sha256"
+            [[ -f "release-packages/${archive}" ]]
+            [[ -f "${checksum}" ]]
+            (
+              cd release-packages
+              sha256sum --check "${archive}.sha256"
+            )
+          done
+
+          macos_arm64_sha="$(awk 'NR == 1 { print $1 }' \
+            release-packages/okf-cli-macos-aarch64.tar.gz.sha256)"
+          macos_x64_sha="$(awk 'NR == 1 { print $1 }' \
+            release-packages/okf-cli-macos-x86_64.tar.gz.sha256)"
+          windows_x64_sha="$(awk 'NR == 1 { print $1 }' \
+            release-packages/okf-cli-windows-x86_64.tar.gz.sha256)"
+
+          node scripts/generate-package-manifests.mjs \
+            --tag "${RELEASE_TAG}" \
+            --repo "${SOURCE_REPO}" \
+            --macos-arm64-sha "${macos_arm64_sha}" \
+            --macos-x64-sha "${macos_x64_sha}" \
+            --windows-x64-sha "${windows_x64_sha}" \
+            --output-dir package-manifests
+          node scripts/generate-package-manifests.mjs \
+            --tag "${RELEASE_TAG}" \
+            --repo "${SOURCE_REPO}" \
+            --macos-arm64-sha "${macos_arm64_sha}" \
+            --macos-x64-sha "${macos_x64_sha}" \
+            --windows-x64-sha "${windows_x64_sha}" \
+            --output-dir package-manifests-second
+
+          cmp package-manifests/okf.rb package-manifests-second/okf.rb
+          cmp package-manifests/okf.json package-manifests-second/okf.json
+          ruby -c package-manifests/okf.rb
+          jq -e \
+            --arg version "${RELEASE_TAG#v}" \
+            --arg sha "${windows_x64_sha}" \
+            '.version == $version and
+             .architecture["64bit"].hash == $sha and
+             .architecture["64bit"].extract_dir == "okf-cli-windows-x86_64" and
+             .bin == "okf.exe"' \
+            package-manifests/okf.json >/dev/null
+
+      - name: Push manifests to stray-tools
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          STRAY_TOOLS_TOKEN: ${{ secrets.STRAY_TOOLS_TOKEN }}
+          TAP_REPO: ${{ secrets.TAP_REPO }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${STRAY_TOOLS_TOKEN:-}" ]]; then
+            echo "::error::STRAY_TOOLS_TOKEN is not configured."
+            exit 1
+          fi
+          if [[ -z "${TAP_REPO:-}" ]]; then
+            echo "::error::TAP_REPO is not configured."
+            exit 1
+          fi
+          if ! [[ "${TAP_REPO}" =~ ^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]*$ ]] ||
+             [[ "${TAP_REPO}" == *..* ]] ||
+             [[ "${TAP_REPO}" == *. ]]; then
+            echo "::error::TAP_REPO must be a safe owner/repository identifier."
+            exit 1
+          fi
+
+          export GH_TOKEN="${STRAY_TOOLS_TOKEN}"
+          gh auth setup-git
+          gh repo clone "${TAP_REPO}" package-repository
+          mkdir -p package-repository/Formula package-repository/bucket
+          cp package-manifests/okf.rb package-repository/Formula/okf.rb
+          cp package-manifests/okf.json package-repository/bucket/okf.json
+
+          cd package-repository
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- Formula/okf.rb bucket/okf.json
+
+          if git diff --cached --quiet; then
+            echo "Package manifests are already up to date."
+            exit 0
+          fi
+
+          changed_paths="$(git diff --cached --name-only)"
+          while IFS= read -r changed_path; do
+            case "${changed_path}" in
+              Formula/okf.rb|bucket/okf.json) ;;
+              *)
+                echo "::error::Refusing to publish unexpected path."
+                exit 1
+                ;;
+            esac
+          done <<< "${changed_paths}"
+
+          git commit -m "okf ${RELEASE_TAG}"
+          git push origin HEAD
+
   publish-openvsx:
     name: Publish retained VSIX to Open VSX
     needs:

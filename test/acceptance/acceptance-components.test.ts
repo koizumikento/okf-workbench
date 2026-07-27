@@ -89,7 +89,6 @@ describe('MVP acceptance scenarios — deterministic component evidence', () => 
     const selectedRoots: string[] = [];
     ui.inputs.push('knowledge');
     ui.selections.push('minimal');
-    ui.confirmations.push(true);
     const initialize = createInitializeBundleCommand({
       ...shared,
       selectInitializationTarget: async () => ({
@@ -114,7 +113,6 @@ describe('MVP acceptance scenarios — deterministic component evidence', () => 
       'start',
       'welcome.md',
     );
-    ui.confirmations.push(true);
     const createConcept = createNewConceptCommand({
       ...shared,
       selectBundle: async () => ({
@@ -141,7 +139,8 @@ describe('MVP acceptance scenarios — deterministic component evidence', () => 
       `${COMMAND_BUNDLE_ROOT}/index.md`,
       `${COMMAND_BUNDLE_ROOT}/welcome.md`,
     ]);
-    expect(previewer.shown).toHaveLength(2);
+    expect(previewer.shown).toEqual([]);
+    expect(ui.confirmationRequests).toEqual([]);
     expect(findings.filter(({ category }) => category === 'conformance')).toEqual([]);
   });
 

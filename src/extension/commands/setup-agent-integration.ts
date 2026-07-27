@@ -336,6 +336,7 @@ export function createSetupAgentIntegrationCommand<TUri>(
         const bundleRootUri = target.bundleRootUri;
         return runProposalWorkflow(dependencies, lease, proposal, presentation, {
           ...(replacementRequired ? { confirmLabel: 'Replace Agent Skill and apply' } : {}),
+          previewMode: 'existing-file-changes',
           ...(revalidateBundleWrite === undefined || bundleRootUri === undefined
             ? {}
             : {

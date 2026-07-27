@@ -342,8 +342,6 @@ describe('built-in concept templates', () => {
         'timestamp: "2026-07-22T10:00:00+09:00"',
         '---',
         '',
-        '# 量子 実験',
-        '',
         '一行目',
         '二行目',
         '',
@@ -360,7 +358,7 @@ describe('built-in concept templates', () => {
     expect(file.content).not.toContain('\r');
   });
 
-  it('separates YAML frontmatter from the title heading', () => {
+  it('uses the frontmatter title without duplicating it as a body heading', () => {
     const file = valueOf(
       renderConceptTemplate({
         template: 'generic-concept',
@@ -370,7 +368,8 @@ describe('built-in concept templates', () => {
       }),
     );
 
-    expect(file.content).toContain('\n---\n\n# Lint-clean concept\n');
+    expect(file.content).toContain('\n---\n\n## Summary\n');
+    expect(file.content).not.toContain('\n# Lint-clean concept\n');
   });
 
   it.each([

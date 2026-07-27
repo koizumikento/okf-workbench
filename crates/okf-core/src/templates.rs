@@ -250,8 +250,6 @@ pub fn concept_template_file(input: &ConceptTemplateInput) -> RenderedFile {
     }
     frontmatter.push("---".to_owned());
     frontmatter.push(String::new());
-    frontmatter.push(format!("# {title}"));
-    frontmatter.push(String::new());
     if let Some(description) = &input.description
         && !description.trim().is_empty()
     {
@@ -634,7 +632,7 @@ mod tests {
     }
 
     #[test]
-    fn concept_heading_is_separated_from_frontmatter() {
+    fn concept_title_is_not_duplicated_as_a_body_heading() {
         let file = concept_template_file(&ConceptTemplateInput {
             template: "generic-concept".to_owned(),
             relative_path: "concept.md".to_owned(),
@@ -644,6 +642,7 @@ mod tests {
             tags: vec![],
             timestamp: None,
         });
-        assert!(file.content.contains("\n---\n\n# A title\n"));
+        assert!(file.content.contains("\n---\n\n## Summary\n"));
+        assert!(!file.content.contains("\n# A title\n"));
     }
 }

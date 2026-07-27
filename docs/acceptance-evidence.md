@@ -2,18 +2,21 @@
 
 - Target: MVP acceptance scenarios AC-001 through AC-008
 - Packaged extension ID: `straydog.okf-workbench`
-- Evidence date: 2026-07-24
+- Evidence date: 2026-07-27
 - Component harness: `test/acceptance/vitest.config.ts`
 - Historical hosted packaged lifecycle run: [Compatibility 29900868002](https://github.com/koizumikento/okf-workbench/actions/runs/29900868002)
 - Historical hosted package byte-identity run: [Package smoke 29901183164](https://github.com/koizumikento/okf-workbench/actions/runs/29901183164)
 - Current exact-candidate hosted qualification:
-  [Compatibility 30058922150](https://github.com/koizumikento/okf-workbench/actions/runs/30058922150)
+  [Compatibility 30231123424](https://github.com/koizumikento/okf-workbench/actions/runs/30231123424)
   and
-  [Package smoke 30058925030](https://github.com/koizumikento/okf-workbench/actions/runs/30058925030)
-  passed for SHA-256 `d7be6180cd788b2ab5d9c7fc436de9eb2df97d967b16ccbc2578f48851f0b666`
-- Current schema-v3 headed Webview observation: Pass for the exact current-input VS Code `1.129.1`
-  capture in `docs/evidence/performance/vscode-1.129.1.{json,md}`; the retained older record is
-  historical-only
+  [Package smoke 30231124503](https://github.com/koizumikento/okf-workbench/actions/runs/30231124503)
+  passed every configured lane and aggregate check for revision
+  `71435433a9338627eda824e31aa5efaa0fbaa6f9`
+- Predecessor schema-v3 headed Webview observation: the VS Code `1.129.1` capture in
+  `docs/evidence/performance/vscode-1.129.1.{json,md}` passed for its recorded inputs. Strict
+  re-evaluation on 2026-07-27 reports production and harness identity mismatches against the final
+  candidate, so final-candidate headed performance/network evidence is unmeasured and assigned to
+  post-publication verification.
 - Preserved predecessor-candidate local evidence: `docs/evidence/compatibility/`
 
 ## Evidence semantics
@@ -23,11 +26,11 @@ packaged lifecycle automation, and full user-scenario evidence.
 
 - **Component automated** means a checked-in Vitest scenario exercises the repository's pure core, an injectable command/workspace boundary, or Webview presentation state. The command tests use in-memory doubles, not VS Code UI. A passing result supports only the assertions named in the table.
 - **Development Extension Host provider automated** means the built development extension ran in a real VS Code Extension Host against a test-owned, registered, read-only `okfmem:` `FileSystemProvider`. It proves the read-only command boundary named below, but it is neither a packaged-VSIX result nor evidence for an external remote provider.
-- **Current packaged lifecycle automated** means the exact `613637`-byte VSIX with SHA-256
-  `d7be6180cd788b2ab5d9c7fc436de9eb2df97d967b16ccbc2578f48851f0b666` passed the current
-  seven-lane hosted matrix. Each retained report binds evidence revision
-  `a5b2b75b7216d644f0d8d0f739db3a989bba7ca0`, extension
-  `straydog.okf-workbench@0.1.0`, and the same candidate digest. The reports prove clean,
+- **Current packaged lifecycle automated** means the exact `972532`-byte universal VSIX with
+  SHA-256 `027da261d0198c73f030de8e4443853e38e7fb90f9a6f52849427dcb327205b3`
+  passed the current seven-lane hosted matrix for revision
+  `71435433a9338627eda824e31aa5efaa0fbaa6f9`. Each retained report binds that revision,
+  extension `straydog.okf-workbench@0.1.0`, and the same candidate digest. The reports prove clean,
   untrusted, upgrade, and uninstall lifecycles; request-correlated Validate Bundle and Open 3D
   Graph completion; catalog-derived refusal of all four write commands in an untrusted workspace;
   zero calls through the listed CommonJS-owner/global hooks during the observed active phases; and
@@ -103,9 +106,14 @@ candidate.
 | AC-005 | The graph model exposes directed backlinks, broken-link counts, and orphan state; Webview state supports NFKC search, type/tag filters, selection, and focus without mutating source input. The development Extension Host additionally waits for the graph render acknowledgement for the same provider-backed revision and observes no provider write. The current hosted matrix proves request-correlated Open 3D Graph data application and no five-file workspace change for the exact packaged candidate. | Actual 3D/Webview interaction, keyboard-only traversal, details UI, source opening, and packaged external-provider execution. | Partial — component + development provider boundary + current packaged lifecycle |
 | AC-006 | Successive create, edit, rename, and delete graph revisions converge in presentation state; renamed/deleted selection clears; stale delivery is ignored. | Workspace file watchers, the 250 ms debounce, extension-to-Webview delivery, rendered details convergence, and extension-host continuity. | Partial — component |
 | AC-007 | The injectable agent command previews, approves, and applies both outputs in memory, preserves unrelated `AGENTS.md` text, and returns unchanged on its second run. A root-level bundle reload proves that the generated root `AGENTS.md` and `.agents/` Skill stay outside the concept and conformance inventory. The packaged lifecycle also preserves pre-existing `AGENTS.md` and Skill sentinels through upgrade and uninstall, but does not execute the authoring command. | Actual preview/confirmation UI, physical or remote workspace application, collision handling, and a differing-Skill replacement decision in a packaged editor. | Partial — component + lifecycle preservation |
-| AC-008 | Representative template, parse, validation, index, graph-state, and agent-plan components complete while the JavaScript `fetch` boundary is disabled. The current headed VS Code record observed zero remote HTTP(S)/WS and other-scheme requests. In all seven current hosted lanes, activation and request-correlated Validate/Open completion made zero calls through the listed CommonJS builtin export-owner/global hooks; the hooks remained installed until Extension Host exit, and all four write commands were refused in the untrusted-workspace probe. | Execute every trusted write-command flow under the hooks. ESM named bindings, cached references, raw/prototype bindings, `dns.promises`, child processes, and editor-owned traffic remain outside the Extension Host hook assertion. | Partial — component + current packaged CommonJS-owner/global hook window + current headed Webview observation |
+| AC-008 | Representative template, parse, validation, index, graph-state, and agent-plan components complete while the JavaScript `fetch` boundary is disabled. The predecessor headed VS Code record observed zero remote HTTP(S)/WS and other-scheme requests for its recorded identities, which do not match the final candidate. In all seven current hosted lanes, activation and request-correlated Validate/Open completion made zero calls through the listed CommonJS builtin export-owner/global hooks; the hooks remained installed until Extension Host exit, and all four write commands were refused in the untrusted-workspace probe. | Capture the final-candidate headed Webview and execute every trusted write-command flow under the hooks. ESM named bindings, cached references, raw/prototype bindings, `dns.promises`, child processes, and editor-owned traffic remain outside the Extension Host hook assertion. | Partial — component + current packaged CommonJS-owner/global hook window; final-candidate headed observation deferred |
 
 ## Remaining release evidence
+
+On 2026-07-27, the maintainer accepted the bounded remaining interactive UI, trusted-write
+observation, and external-provider gaps for the initial release and assigned the following checks
+to post-publication verification. This acceptance does not convert any unobserved clause into a
+pass.
 
 Packaged acceptance should record, at minimum:
 

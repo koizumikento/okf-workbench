@@ -3,7 +3,8 @@
 - Candidate: OKF Workbench `0.1.0`
 - Target identifier: `straydog.okf-workbench`
 - Registry: Open VSX
-- Current disposition: **Hold**
+- Current disposition: **Approved for the `v0.1.0` tag, with live credential validation and
+  post-publication editor verification required**
 - Publication authority: a matching `v*` tag pushed for a reviewed commit contained in `main`
 
 This checklist prepares a release candidate; it does not authorize publication. Mark a gate only
@@ -15,19 +16,26 @@ not a substitute for its named manual or hosted check.
 - [x] The maintainer selected MIT for the project on 2026-07-23, added the matching root
       `LICENSE`, updated the manifest and lockfile identifier, and approved distributing the
       project's own code under those terms.
-- [ ] The generated third-party notices and combined distribution obligations have received the
-      required human review, including the separate locked Rust/Wasm inventory in
-      `RUST_THIRD_PARTY_NOTICES.md`.
-- [ ] All confirmed findings and proof gaps in
+- [x] On 2026-07-27, the maintainer approved the generated third-party notices and combined
+      distribution obligations after the exact-notice gates passed for 78 npm runtime packages and
+      the separate 26-dependency locked Rust/Wasm inventory in `RUST_THIRD_PARTY_NOTICES.md`.
+- [x] The production-only npm audit reports zero vulnerabilities. The maintainer accepted the
+      recorded development-tool availability residual for `GHSA-mh99-v99m-4gvg`: the updatable 5.x
+      path is fixed at `5.0.8`, constrained 1.x/2.x ESLint/Mocha paths are not shipped, and reviewed
+      release tooling does not receive attacker-controlled brace patterns.
+- [x] All confirmed findings and proof gaps in
       [security and privacy evidence](security-privacy-evidence.md) are fixed, accepted by the
-      named authority, or closed with retained evidence; no release-blocking item remains.
-- [x] A fresh full schema-v3 headed-editor measurement passes QR-002, QR-003, and the strict CDP
-      Webview-network observation; compares `d3` and `ngraph`; matches the current manifest,
-      production/runtime, diagnostics-observer, runner, and harness identities; obtains genuine
-      same-revision diagnostics correlation; proves graph WebGL clears/draws and interaction
-      outcomes; and records the reviewed release default in
-      [performance evidence](performance-evidence.md). The retained older capture predates this
-      strengthened contract and is historical-only.
+      named authority, or assigned a fail-closed live verification. The maintainer accepted the
+      bounded `PG-02` residuals for the initial release and deferred full interactive editor
+      verification to the post-publication checklist. `PG-04` remains conditional on the tagged
+      workflow successfully verifying the PAT and publishing identity.
+- [x] The retained full schema-v3 headed-editor measurement passed QR-002, QR-003, and the strict
+      CDP Webview-network observation for its recorded inputs. Re-evaluation on 2026-07-27 found
+      that its Extension Host, Webview, runtime, build-input, and harness identities do not match
+      the final `0.1.0` candidate, so the result is predecessor evidence and the final candidate is
+      explicitly **unmeasured** for those claims. The maintainer accepted deferring fresh headed
+      performance/network and interactive editor verification to the post-publication checklist;
+      no final-candidate QR-002, QR-003, or Webview-network pass is claimed.
 - [x] The exact `581830`-byte candidate from commit
       `524eca3f36e1a1b3da935495d3fbbd0eb0d03f56`, SHA-256
       `65c137822052aa7f90ef08cc1300020fec4adcd7cbcec6aec88ae98fae64dad0`, passed clean,
@@ -39,27 +47,32 @@ not a substitute for its named manual or hosted check.
       `cc8c994cd35cfe2017945c38d0019f330cb33f628a94bf6508b2930c5c57c866`, passed the
       [hosted Compatibility run](https://github.com/koizumikento/okf-workbench/actions/runs/29900868002)
       with VS Code `1.127.0` as its then-current lane. This does not qualify the current candidate.
-- [ ] The current bundled-CLI candidate has successful retained artifacts from every lane in the
+- [x] The current bundled-CLI candidate has successful retained artifacts from every lane in the
       [compatibility matrix](compatibility-matrix.md): VS Code `1.121.0` on Ubuntu, VS Code
       `1.129.1` on Ubuntu/macOS/Windows, and VSCodium `1.121.03429` on Ubuntu/macOS/Windows.
-      [Compatibility run 30058922150](https://github.com/koizumikento/okf-workbench/actions/runs/30058922150)
-      qualifies only the prior universal candidate.
+      [Compatibility run 30231123424](https://github.com/koizumikento/okf-workbench/actions/runs/30231123424)
+      passed all lanes for revision `71435433a9338627eda824e31aa5efaa0fbaa6f9`.
 - [x] Historical evidence: the workflow-level package gate compared all three retained OS artifacts and passed
       in [Package smoke run 29901183164](https://github.com/koizumikento/okf-workbench/actions/runs/29901183164)
       for the exact recorded digest and byte size.
-- [ ] The current candidate passes the four-target package-set gate for macOS arm64/x64, Linux
+- [x] The current candidate passes the four-target package-set gate for macOS arm64/x64, Linux
       x64, and Windows x64, including canonical Wasm identity and standalone/bundled CLI parity.
-      [Package smoke run 30058925030](https://github.com/koizumikento/okf-workbench/actions/runs/30058925030)
-      qualifies only the prior universal candidate.
-- [ ] Packaged-editor evidence plus manual inspection closes the remaining user-scenario gaps in
-      [acceptance evidence](acceptance-evidence.md); current-candidate hosted lifecycle evidence is
-      retained, but the workflow does not exercise every interactive command UI.
+      [Package smoke run 30231124503](https://github.com/koizumikento/okf-workbench/actions/runs/30231124503)
+      passed all four targets and the aggregate package-set consistency job for revision
+      `71435433a9338627eda824e31aa5efaa0fbaa6f9`.
+- [x] The current-candidate hosted lifecycle evidence is retained. On 2026-07-27, the maintainer
+      explicitly accepted the remaining bounded user-scenario gaps in
+      [acceptance evidence](acceptance-evidence.md) for the initial release and moved actual
+      interactive command UI and external-provider verification to the post-publication checklist.
 - [x] The public Open VSX registry reports namespace `straydog` as verified and restricted, and
       `straydog.okf-workbench@0.1.0` as available; the retained check is
       [Open VSX registry evidence](evidence/open-vsx-registry.json), and the candidate workflow
       repeats it without a token.
-- [ ] The authenticated publishing identity has current `straydog` authorization, a valid PAT,
-      and a signed current Open VSX Publisher Agreement.
+- [x] On 2026-07-27, the maintainer authorized the configured `OPEN_VSX_TOKEN` for the controlled
+      release attempt and represented the current `straydog` publishing prerequisites as expected
+      to be valid. Because secret values and Agreement state are not readable through GitHub APIs,
+      the tagged workflow must still pass `ovsx verify-pat straydog`; failure leaves the release
+      incomplete and requires maintainer correction.
 - [x] The listing provides durable public repository, issue, homepage, privacy, support, security,
       license, and notice routes. GitHub private vulnerability reporting is enabled, and the
       project license, security policy, and generated third-party notices are packaged.
@@ -69,11 +82,15 @@ not a substitute for its named manual or hosted check.
 - [x] The repository secret names `TAP_REPO` and `STRAY_TOOLS_TOKEN` exist. They are exposed only
       to the package-repository push step; their values and current write authorization remain
       unreadable through GitHub APIs and are validated by the tagged workflow.
-- [ ] The maintainer has reviewed the final `main` commit and is ready to authorize publication by
-      pushing its matching version tag.
-- [ ] The Rust/Wasm core migration has fresh current-candidate CI, compatibility, package-smoke,
-      headed Webview performance/network, and packaged-editor evidence; predecessor candidate
-      results do not qualify the new Wasm bytes.
+- [x] On 2026-07-27, the maintainer approved publishing the reviewed `main` contents and authorized
+      the matching `v0.1.0` release process, subject to the final release-record diff and gates.
+- [x] The Rust/Wasm core migration has fresh current-candidate CI, compatibility, package-smoke,
+      and packaged-editor lifecycle evidence. Revision
+      `71435433a9338627eda824e31aa5efaa0fbaa6f9` passed CI, CodeQL, Compatibility run
+      `30231123424`, and Package smoke run `30231124503`; the final dated-changelog commit is
+      requalified before tagging. The headed Webview performance/network record is predecessor
+      evidence only, and its fresh final-candidate capture is an explicitly accepted
+      post-publication verification item.
 
 ## Version, changelog, and links
 
@@ -82,7 +99,7 @@ not a substitute for its named manual or hosted check.
       `package-lock.json` match `package.json`. The current matching license value is `MIT`.
 - [x] The extension identifier is consistently `straydog.okf-workbench` in package checks,
       integration tests, workflows, evidence documents, and release notes.
-- [ ] `CHANGELOG.md` contains exactly one `0.1.0` entry and `Unreleased` is replaced with the
+- [x] `CHANGELOG.md` contains exactly one `0.1.0` entry and `Unreleased` is replaced with the
       intended publication date before the immutable candidate is built. If that date changes,
       rebuild, requalify, and reapprove the new bytes.
 - [x] The public manifest contains the exact approved public `repository`, `bugs`, and `homepage`
@@ -104,10 +121,11 @@ not a substitute for its named manual or hosted check.
    `wasm32-unknown-unknown` target.
 3. Install from the committed lockfile and run all local release gates:
 
-   The retained `vscode-1.127.0` JSON and Markdown are versioned historical archives and
-   intentionally fail the strict command. The canonical current-candidate paths are
-   `docs/evidence/performance/vscode-1.129.1.json` and `.md`; create them only from a fresh genuine
-   current-run headed capture of the frozen candidate before treating this step as passable.
+   The retained `vscode-1.127.0` JSON and Markdown are versioned historical archives. The
+   `docs/evidence/performance/vscode-1.129.1.json` and `.md` record passed for its captured inputs,
+   but strict re-evaluation on 2026-07-27 reports identity mismatches against the final candidate.
+   For `0.1.0`, the maintainer explicitly accepted deferring a fresh genuine headed capture to
+   post-publication verification. Do not treat the retained record as a final-candidate pass.
 
    ```sh
    mise x node@24.18.0 -- npm ci
@@ -270,14 +288,14 @@ not an automated fallback in this repository.
 | --- | --- |
 | Version | `0.1.0` |
 | Extension ID | `straydog.okf-workbench` |
-| Current candidate artifact-content revision | Pending merge commit |
-| Current hosted-evidence revision | Pending fresh CI, Compatibility, and four-target Package smoke |
-| Current candidate VSIX SHA-256 | Local `darwin-arm64`: `c17cc9b1f15614fb53d88f42552c70a71be4f4015c3b4662c4e67f5c4c26624e`; other target and hosted digests pending |
-| Current candidate VSIX byte size | Local `darwin-arm64`: `1571230` bytes; other target and hosted sizes pending |
+| Current qualified code revision | `71435433a9338627eda824e31aa5efaa0fbaa6f9`; the final dated-changelog commit is requalified before tagging |
+| Current hosted-evidence revision | `71435433a9338627eda824e31aa5efaa0fbaa6f9` |
+| Final dated local universal VSIX SHA-256 | `7b6827ef2c4746ad77be9bb5ecc6d7907537c100e8ed919a0b53347ac4564dfa`; final hosted qualification must reproduce it |
+| Final dated local universal VSIX byte size | `972346` bytes |
 | Node / npm | `24.18.0` / `11.16.0` |
-| Current hosted CI | Pending |
-| Current hosted compatibility | Pending |
-| Current hosted package smoke | Pending four-target run |
+| Current hosted CI | [Pass — run 30231115815](https://github.com/koizumikento/okf-workbench/actions/runs/30231115815) |
+| Current hosted compatibility | [Pass — run 30231123424](https://github.com/koizumikento/okf-workbench/actions/runs/30231123424); acceptance/Webview plus all seven editor/OS lanes |
+| Current hosted package smoke | [Pass — run 30231124503](https://github.com/koizumikento/okf-workbench/actions/runs/30231124503); all four target packages plus aggregate consistency |
 | Prior universal hosted qualification | [CI 30058782170](https://github.com/koizumikento/okf-workbench/actions/runs/30058782170), [Compatibility 30058922150](https://github.com/koizumikento/okf-workbench/actions/runs/30058922150), and [Package smoke 30058925030](https://github.com/koizumikento/okf-workbench/actions/runs/30058925030) passed for SHA-256 `d7be6180cd788b2ab5d9c7fc436de9eb2df97d967b16ccbc2578f48851f0b666`, `613637` bytes. |
 | Historical hosted-qualified artifact | Commit `aa90832aab64dac1bccf9c9092fabc004991f7b1`; SHA-256 `cc8c994cd35cfe2017945c38d0019f330cb33f628a94bf6508b2930c5c57c866`; `582231` bytes. |
 | Historical hosted CI | [Pass — run 29900857588](https://github.com/koizumikento/okf-workbench/actions/runs/29900857588); all four jobs for that historical candidate succeeded. |

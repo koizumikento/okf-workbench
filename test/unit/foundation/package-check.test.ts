@@ -45,7 +45,7 @@ function vsixManifest(targetPlatform?: string): string {
   return `<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest>
   <Metadata>
-    <Identity Language="en-US" Id="okf-workbench" Version="0.1.0" Publisher="straydog"${targetPlatform === undefined ? '' : ` TargetPlatform="${targetPlatform}"`} />
+    <Identity Language="en-US" Id="okf-workbench" Version="0.1.1" Publisher="straydog"${targetPlatform === undefined ? '' : ` TargetPlatform="${targetPlatform}"`} />
     <License>extension/LICENSE.txt</License>
     <Property Id="Microsoft.VisualStudio.Services.Links.Source" Value="https://github.com/koizumikento/okf-workbench.git" />
     <Property Id="Microsoft.VisualStudio.Services.Links.Getstarted" Value="https://github.com/koizumikento/okf-workbench.git" />
@@ -151,7 +151,7 @@ function contentFor(name: string): string | Uint8Array {
     return `${JSON.stringify({
       name: 'okf-workbench',
       publisher: 'straydog',
-      version: '0.1.0',
+      version: '0.1.1',
       license: 'MIT',
       homepage: 'https://koizumikento.github.io/okf-workbench/',
       repository: {
@@ -226,8 +226,8 @@ describe('VSIX package closed-set validation', () => {
       executable: 'okf',
       byteLength: executable.byteLength,
       sha256: createHash('sha256').update(executable).digest('hex'),
-      cliVersion: '0.1.0',
-      coreVersion: '0.1.0',
+      cliVersion: '0.1.1',
+      coreVersion: '0.1.1',
       abiVersion: 1,
     };
     const entries = packageEntries().map((entry) =>
@@ -269,8 +269,8 @@ describe('VSIX package closed-set validation', () => {
       executable: 'okf',
       byteLength: executable.byteLength,
       sha256: createHash('sha256').update(executable).digest('hex'),
-      cliVersion: '0.1.0',
-      coreVersion: '0.1.0',
+      cliVersion: '0.1.1',
+      coreVersion: '0.1.1',
       abiVersion: 1,
     };
     const entries = packageEntries().map((entry) =>

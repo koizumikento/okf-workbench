@@ -184,7 +184,7 @@ describe('New Concept semantic input bounds', () => {
   });
 
   it('writes normalized descriptions and tags that immediately parse successfully', async () => {
-    const { command, port, ui } = harness();
+    const { command, port, previewer, ui } = harness();
     ui.selections.push('generic-concept');
     ui.inputs.push(
       '.',
@@ -194,9 +194,10 @@ describe('New Concept semantic input bounds', () => {
       ' experiment, , result ,, ',
       'normalized.md',
     );
-    ui.confirmations.push(true);
 
     await expect(command()).resolves.toMatchObject({ kind: 'applied' });
+    expect(previewer.shown).toEqual([]);
+    expect(ui.confirmationRequests).toEqual([]);
     const content = port.text(`${bundleRoot}/normalized.md`);
     if (content === undefined) {
       throw new Error('Expected the normalized concept to be written.');

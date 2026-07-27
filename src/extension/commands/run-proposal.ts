@@ -17,9 +17,12 @@ import type {
 
 function failuresMessage(prefix: string, failures: readonly ApplyFailure[]): string {
   const details = failures.map((item) => {
-    const next = item.retryable
-      ? 'Refresh the preview and try again.'
-      : 'Check workspace permissions or repair the named file before retrying.';
+    const next =
+      item.code === 'collision'
+        ? 'Choose another destination or filename, then try again.'
+        : item.retryable
+          ? 'Run the command again and review the current workspace state.'
+          : 'Check workspace permissions or repair the named file before retrying.';
     return `- ${item.targetUri}: ${item.message} ${next}`;
   });
   return `${prefix}\n${details.join('\n')}`;
@@ -129,7 +132,12 @@ export async function refuseUntrustedWorkspace<TUri>(
 
 export interface RunProposalOptions {
   readonly confirmLabel?: string;
-  /** Runs after approval and content preflight, immediately before the first proposed write. */
+  /**
+   * Applies an all-create, all-absent proposal without opening a preview. Any update, replacement,
+   * or mixed proposal still requires the complete preview and explicit approval.
+   */
+  readonly previewMode?: 'always' | 'existing-file-changes';
+  /** Runs after content preflight, immediately before the first proposed write. */
   readonly beforeApply?: () => Promise<OperationProblem | undefined>;
 }
 
@@ -194,6 +202,69 @@ export async function runPublicProposalCommand<TUri>(
   });
 }
 
+function isCreateOnlyProposal(proposal: ChangeSetProposal): boolean {
+  return (
+    proposal.changes.length > 0 &&
+    proposal.changes.every(
+      (change) => change.operation === 'create' && change.expected.kind === 'absent',
+    )
+  );
+}
+
+async function runCreateOnlyProposalWorkflow<TUri>(
+  dependencies: ProposalWorkflowDependencies<TUri>,
+  proposal: ChangeSetProposal,
+  presentation: ProposalPresentation,
+  options: RunProposalOptions,
+  workspaceMembership: ReturnType<
+    ProposalWorkflowDependencies<TUri>['captureWorkspaceFolderMembership']
+  >,
+): Promise<CommandOutcome> {
+  const trustRefusal = await refuseUntrustedWorkspace(dependencies);
+  if (trustRefusal !== undefined) {
+    return trustRefusal;
+  }
+
+  const writeAuthorizationGuard = (): OperationProblem | undefined =>
+    workspaceMembership.currentProblem();
+  const applyResult = await dependencies.applicator.applyGuarded(
+    proposal,
+    async () => {
+      const unavailableBeforeGuard = writeAuthorizationGuard();
+      if (unavailableBeforeGuard !== undefined) {
+        return unavailableBeforeGuard;
+      }
+      const compatibilityProblem = await options.beforeApply?.();
+      return writeAuthorizationGuard() ?? compatibilityProblem;
+    },
+    writeAuthorizationGuard,
+  );
+  if (applyResult.kind === 'refused') {
+    const heading =
+      applyResult.problem.code === 'workspace-folder-unavailable'
+        ? 'No files were written because the selected workspace folder changed.'
+        : 'No files were written because bundle compatibility changed.';
+    await dependencies.ui.showError(problemsMessage(heading, [applyResult.problem]));
+    return { kind: 'refused', problems: [applyResult.problem] };
+  }
+
+  const report = applyResult.report;
+  if (report.failed.length > 0) {
+    await dependencies.ui.showError(
+      report.completed.length === 0
+        ? failuresMessage('No files were written because creation checks failed.', report.failed)
+        : partialFailureMessage(report),
+    );
+    return { kind: 'failed', report };
+  }
+
+  showInformationWithoutBlocking(
+    dependencies,
+    `${presentation.title}: wrote ${report.completed.length} file${report.completed.length === 1 ? '' : 's'}.`,
+  );
+  return { kind: 'applied', report };
+}
+
 async function runExclusiveProposalWorkflow<TUri>(
   dependencies: ProposalWorkflowDependencies<TUri>,
   proposal: ChangeSetProposal,
@@ -225,15 +296,15 @@ async function runExclusiveProposalWorkflow<TUri>(
     return reportUnavailableWorkspaceFolder(dependencies, initialWorkspaceProblem);
   }
 
-  const previewFeasibility = inspectProposalPreviewFeasibility(proposal, presentation);
-  if (!previewFeasibility.ready) {
+  const proposalFeasibility = inspectProposalPreviewFeasibility(proposal, presentation);
+  if (!proposalFeasibility.ready) {
     workspaceMembership.dispose();
     await dependencies.ui.showError(
-      problemsMessage('No files were written because preview limits were exceeded.', [
-        previewFeasibility.problem,
+      problemsMessage('No files were written because proposal limits were exceeded.', [
+        proposalFeasibility.problem,
       ]),
     );
-    return { kind: 'refused', problems: [previewFeasibility.problem] };
+    return { kind: 'refused', problems: [proposalFeasibility.problem] };
   }
 
   let firstPreflight;
@@ -263,6 +334,20 @@ async function runExclusiveProposalWorkflow<TUri>(
           ),
       },
     };
+  }
+
+  if (options.previewMode === 'existing-file-changes' && isCreateOnlyProposal(proposal)) {
+    try {
+      return await runCreateOnlyProposalWorkflow(
+        dependencies,
+        proposal,
+        presentation,
+        options,
+        workspaceMembership,
+      );
+    } finally {
+      workspaceMembership.dispose();
+    }
   }
 
   let previewSession: ProposalPreviewSession | undefined;

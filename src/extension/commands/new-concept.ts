@@ -238,8 +238,9 @@ export function createNewConceptCommand<TUri>(
             ],
           },
           revalidateBundleWrite === undefined
-            ? {}
+            ? { previewMode: 'existing-file-changes' }
             : {
+                previewMode: 'existing-file-changes',
                 beforeApply: () => revalidateBundleWrite(selection.bundleRootUri),
               },
         );
@@ -248,13 +249,17 @@ export function createNewConceptCommand<TUri>(
             selection.bundleRootUri,
             rendered.relativePath,
           );
-          try {
-            await dependencies.ui.openDocument(createdUri);
-          } catch {
-            await dependencies.ui.showError(
-              `The concept was created at ${dependencies.uris.serialize(createdUri)}, but the editor could not open it. Open the file from the Explorer.`,
+          // Opening the completed document is follow-up navigation, not part of the guarded write.
+          // Do not retain the extension-wide write lease while VS Code reveals the new editor.
+          void Promise.resolve()
+            .then(() => dependencies.ui.openDocument(createdUri))
+            .catch(() =>
+              dependencies.ui
+                .showError(
+                  `The concept was created at ${dependencies.uris.serialize(createdUri)}, but the editor could not open it. Open the file from the Explorer.`,
+                )
+                .catch(() => undefined),
             );
-          }
         }
         return outcome;
       },

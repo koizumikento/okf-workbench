@@ -23,7 +23,7 @@ initialize -> create -> edit -> validate -> explore -> repair
   </section>
   <section class="card">
     <h3>Safe authoring</h3>
-    <p>Generated changes are previewed and contained, while unrelated Markdown and unknown frontmatter remain under user control.</p>
+    <p>New files use guarded no-overwrite creation, while existing-file changes are previewed and unrelated Markdown and unknown frontmatter remain under user control.</p>
     <a href="https://github.com/koizumikento/okf-workbench#safety-and-file-ownership">Safety model</a>
   </section>
   <section class="card">
@@ -94,6 +94,7 @@ Accepted decisions are recorded under [decisions/](decisions/):
 - [0006 — Publish Open VSX releases from version tags](decisions/0006-publish-open-vsx-from-version-tags.md)
 - [0007 — Adopt a Rust/Wasm shared OKF core and native CLI](decisions/0007-adopt-rust-wasm-shared-core-and-cli.md)
 - [0008 — Bundle the native CLI in platform VSIX packages and distribute it separately](decisions/0008-bundle-native-cli-in-platform-vsix.md)
+- [0009 — Preview only proposals that may change existing files](decisions/0009-preview-only-existing-file-changes.md)
 
 ## Documentation rules
 

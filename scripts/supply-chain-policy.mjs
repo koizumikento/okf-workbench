@@ -299,7 +299,7 @@ export function releaseWorkflowSafetyFailures(workflowPath, workflowSource) {
 
   const buildJob = workflow?.jobs?.['build-candidate'];
   const releaseJob = workflow?.jobs?.['github-release'];
-  const packagePublishJob = workflow?.jobs?.['publish-package-repository'];
+  const packagePublishJob = workflow?.jobs?.['publish-package-repo'];
   const publishJob = workflow?.jobs?.['publish-openvsx'];
   const steps = publishJob?.steps;
   if (!Array.isArray(steps)) {
@@ -364,7 +364,7 @@ export function releaseWorkflowSafetyFailures(workflowPath, workflowSource) {
     packagePublishJob?.permissions?.contents === 'write'
   ) {
     failures.push(
-      `${workflowPath}:jobs.publish-package-repository must publish only after the candidate and GitHub release, without contents: write.`,
+      `${workflowPath}:jobs.publish-package-repo must publish only after the candidate and GitHub release, without contents: write.`,
     );
   } else {
     if (
@@ -372,7 +372,7 @@ export function releaseWorkflowSafetyFailures(workflowPath, workflowSource) {
       canContinueOnError(packagePublishJob['continue-on-error'])
     ) {
       failures.push(
-        `${workflowPath}:jobs.publish-package-repository must be an unconditional fail-closed job.`,
+        `${workflowPath}:jobs.publish-package-repo must be an unconditional fail-closed job.`,
       );
     }
     const packagePushIndices = packagePublishJob.steps
@@ -409,7 +409,7 @@ export function releaseWorkflowSafetyFailures(workflowPath, workflowSource) {
       !packageSource.includes('gh repo clone "${TAP_REPO}" package-repository')
     ) {
       failures.push(
-        `${workflowPath}:jobs.publish-package-repository must verify retained CLI archives and update only Formula/okf.rb and bucket/okf.json.`,
+        `${workflowPath}:jobs.publish-package-repo must verify retained CLI archives and update only Formula/okf.rb and bucket/okf.json.`,
       );
     }
   }

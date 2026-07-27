@@ -22,6 +22,7 @@ import {
   MAX_PROPOSAL_PREVIEW_SUMMARY_BYTES,
 } from '../../../src/extension/preview/proposal-preview-budget.js';
 import { ProposalApplicator } from '../../../src/extension/workspace/proposalApplicator.js';
+import { sha256Content } from '../../../src/extension/workspace/contentHash.js';
 import { BUNDLE_READ_LIMITS } from '../../../src/extension/workspace/readSafety.js';
 import { WorkspaceAccessError } from '../../../src/extension/workspace/types.js';
 import { WorkspaceFolderMembershipTracker } from '../../../src/extension/workspace/workspaceFolderMembership.js';
@@ -184,6 +185,98 @@ describe('proposal command workflow', () => {
     expect(result).toMatchObject({ kind: 'applied' });
     expect(port.text(`${root}/first.md`)).toBe('first.md\n');
     expect(previewer.releasedSessions).toBe(1);
+  });
+
+  it('applies an all-create proposal without opening a preview or requesting approval', async () => {
+    const { port, ui, previewer, dependencies } = harness();
+
+    const result = await runProposalWorkflow(
+      dependencies,
+      proposal(['first.md', 'second.md']),
+      presentation,
+      { previewMode: 'existing-file-changes' },
+    );
+
+    expect(result).toMatchObject({ kind: 'applied' });
+    expect(port.text(`${root}/first.md`)).toBe('first.md\n');
+    expect(port.text(`${root}/second.md`)).toBe('second.md\n');
+    expect(previewer.shown).toEqual([]);
+    expect(ui.confirmationRequests).toEqual([]);
+  });
+
+  it('refuses a create-only collision without previewing or overwriting the target', async () => {
+    const { port, ui, previewer, dependencies } = harness();
+    port.putText(`${root}/first.md`, 'existing\n');
+
+    const result = await runProposalWorkflow(dependencies, proposal(['first.md']), presentation, {
+      previewMode: 'existing-file-changes',
+    });
+
+    expect(result).toMatchObject({
+      kind: 'failed',
+      report: { failed: [{ code: 'collision' }] },
+    });
+    expect(port.text(`${root}/first.md`)).toBe('existing\n');
+    expect(port.writes).toEqual([]);
+    expect(previewer.shown).toEqual([]);
+    expect(ui.confirmationRequests).toEqual([]);
+    expect(ui.errors[0]).toContain('already exists');
+  });
+
+  it('does not overwrite a target that appears after create-only preflight', async () => {
+    const { port, ui, previewer, dependencies } = harness();
+    port.beforeWrite = (uri) => {
+      port.putText(uri, 'racing writer\n');
+    };
+
+    const result = await runProposalWorkflow(dependencies, proposal(['first.md']), presentation, {
+      previewMode: 'existing-file-changes',
+    });
+
+    expect(result).toMatchObject({
+      kind: 'failed',
+      report: { failed: [{ code: 'collision' }] },
+    });
+    expect(port.text(`${root}/first.md`)).toBe('racing writer\n');
+    expect(port.writes).toEqual([]);
+    expect(previewer.shown).toEqual([]);
+    expect(ui.confirmationRequests).toEqual([]);
+  });
+
+  it('keeps a complete preview when one proposal mixes creation with an existing-file update', async () => {
+    const { port, ui, previewer, dependencies } = harness();
+    const existing = new TextEncoder().encode('existing\n');
+    port.putText(`${root}/existing.md`, 'existing\n');
+    const mixed: ChangeSetProposal = {
+      ...proposal(['created.md']),
+      changes: [
+        ...proposal(['created.md']).changes,
+        {
+          targetUri: `${root}/existing.md`,
+          relativePath: 'existing.md',
+          operation: 'update',
+          expected: {
+            kind: 'sha256',
+            value: sha256Content(existing),
+            byteLength: existing.byteLength,
+          },
+          encoding: 'utf8',
+          proposedText: 'updated\n',
+        },
+      ],
+    };
+    ui.confirmations.push(false);
+
+    const result = await runProposalWorkflow(dependencies, mixed, presentation, {
+      previewMode: 'existing-file-changes',
+    });
+
+    expect(result).toEqual({ kind: 'cancelled' });
+    expect(previewer.shown).toHaveLength(1);
+    expect(ui.confirmationRequests).toHaveLength(1);
+    expect(port.text(`${root}/created.md`)).toBeUndefined();
+    expect(port.text(`${root}/existing.md`)).toBe('existing\n');
+    expect(port.writes).toEqual([]);
   });
 
   it('releases the write gate while a host keeps the completion notification open', async () => {

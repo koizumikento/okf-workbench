@@ -149,31 +149,47 @@ export function createInitializeBundleCommand<TUri>(
             workspaceSafetyRoot: target.workspaceSafetyRootUri,
           },
         );
-        const outcome = await runProposalWorkflow(dependencies, lease, proposal, {
-          title: 'Initialize OKF bundle',
-          summary: [
-            `Workspace target: ${target.label}`,
-            `Bundle directory: ${normalizedDirectory.value}`,
-            `Preset: ${presetLabel(preset)}`,
-          ],
-        });
+        const outcome = await runProposalWorkflow(
+          dependencies,
+          lease,
+          proposal,
+          {
+            title: 'Initialize OKF bundle',
+            summary: [
+              `Workspace target: ${target.label}`,
+              `Bundle directory: ${normalizedDirectory.value}`,
+              `Preset: ${presetLabel(preset)}`,
+            ],
+          },
+          {
+            previewMode: 'existing-file-changes',
+          },
+        );
 
         if (outcome.kind === 'applied') {
-          try {
-            await dependencies.selectInitializedBundle(bundleRootUri);
-          } catch {
-            await dependencies.ui.showError(
-              'The bundle files were created, but Workbench could not select the new root. Select the bundle directory and continue; do not rerun initialization over the created files.',
-            );
-          }
-          try {
-            const rootIndexUri = dependencies.uris.joinContained(bundleRootUri, 'index.md');
-            await dependencies.ui.openDocument(rootIndexUri);
-          } catch {
-            await dependencies.ui.showError(
-              'The bundle files were created, but the editor could not open the generated root index.md. Open index.md from the Explorer; do not rerun initialization over the created files.',
-            );
-          }
+          // Selection and editor navigation happen after the guarded create and must not retain the
+          // extension-wide write lease while VS Code reveals the generated root.
+          void Promise.resolve().then(async () => {
+            try {
+              await dependencies.selectInitializedBundle(bundleRootUri);
+            } catch {
+              await dependencies.ui
+                .showError(
+                  'The bundle files were created, but Workbench could not select the new root. Select the bundle directory and continue; do not rerun initialization over the created files.',
+                )
+                .catch(() => undefined);
+            }
+            try {
+              const rootIndexUri = dependencies.uris.joinContained(bundleRootUri, 'index.md');
+              await dependencies.ui.openDocument(rootIndexUri);
+            } catch {
+              await dependencies.ui
+                .showError(
+                  'The bundle files were created, but the editor could not open the generated root index.md. Open index.md from the Explorer; do not rerun initialization over the created files.',
+                )
+                .catch(() => undefined);
+            }
+          });
         }
         return outcome;
       },

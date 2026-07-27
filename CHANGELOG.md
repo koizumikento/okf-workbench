@@ -5,6 +5,19 @@ All notable changes to OKF Workbench are documented in this file.
 The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and intends to use
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) after the first public release.
 
+## Unreleased
+
+### Changed
+
+- Authoring proposals containing only collision-guarded new files now apply after the final input
+  without opening a redundant preview or Apply prompt. Any proposal containing an existing-file
+  update or replacement still previews the complete change set and requires explicit approval.
+
+### Fixed
+
+- Successful Initialize Bundle and New Concept commands no longer retain the write-command lease
+  while VS Code selects or opens their generated documents.
+
 ## 0.1.1 - 2026-07-27
 
 ### Fixed

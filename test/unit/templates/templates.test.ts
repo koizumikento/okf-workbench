@@ -341,10 +341,6 @@ describe('built-in concept templates', () => {
         '  - "quote\\"tag"',
         'timestamp: "2026-07-22T10:00:00+09:00"',
         '---',
-        '# 量子 実験',
-        '',
-        '一行目',
-        '二行目',
         '',
         '## Summary',
         '',
@@ -357,6 +353,24 @@ describe('built-in concept templates', () => {
       ].join('\n'),
     );
     expect(file.content).not.toContain('\r');
+  });
+
+  it('keeps title and Markdown-looking descriptions in frontmatter only', () => {
+    const file = valueOf(
+      renderConceptTemplate({
+        template: 'generic-concept',
+        relativePath: 'lint-clean.md',
+        type: 'concept',
+        title: 'Lint-clean concept',
+        description: '# Alternate title\n[Link](target.md)',
+      }),
+    );
+
+    expect(file.content).toContain('description: "# Alternate title\\n[Link](target.md)"\n');
+    expect(file.content).toContain('\n---\n\n## Summary\n');
+    expect(file.content).not.toContain('\n# Lint-clean concept\n');
+    expect(file.content).not.toContain('\n# Alternate title\n');
+    expect(file.content).not.toContain('\n[Link](target.md)\n');
   });
 
   it.each([

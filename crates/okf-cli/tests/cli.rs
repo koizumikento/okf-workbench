@@ -156,6 +156,32 @@ fn version_and_new_use_the_stable_json_envelope() {
 }
 
 #[test]
+fn new_keeps_markdown_looking_description_in_frontmatter_only() {
+    let directory = tempdir().unwrap();
+    initialize(directory.path());
+    let created = okf()
+        .args([
+            "new",
+            directory.path().to_str().unwrap(),
+            "--title",
+            "CLI lint contract",
+            "--description",
+            "# Alternate title\n[Link](target.md)",
+            "--path",
+            "lint-contract.md",
+            "--apply",
+        ])
+        .output()
+        .unwrap();
+    assert!(created.status.success(), "{created:?}");
+
+    let content = fs::read_to_string(directory.path().join("lint-contract.md")).unwrap();
+    assert!(content.contains("description: \"# Alternate title\\n[Link](target.md)\"\n"));
+    assert!(!content.contains("\n# Alternate title\n"));
+    assert!(!content.contains("\n[Link](target.md)\n"));
+}
+
+#[test]
 fn index_refuses_partial_parse_results_without_writing() {
     let directory = tempdir().unwrap();
     initialize(directory.path());

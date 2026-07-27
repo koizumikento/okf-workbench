@@ -369,16 +369,8 @@ export function parseConceptTagsInput(value: string): OperationResult<readonly s
   return { ok: true, value: tags, warnings: [] };
 }
 
-function renderBody(
-  template: ConceptTemplate,
-  title: string,
-  description: string | undefined,
-): string {
-  const lines = [`# ${title}`, ''];
-  if (description !== undefined && description.trim().length > 0) {
-    lines.push(description, '');
-  }
-
+function renderBody(template: ConceptTemplate): string {
+  const lines = [''];
   lines.push(...BODY_SECTIONS[template]);
   return `${lines.join('\n')}\n`;
 }
@@ -490,7 +482,7 @@ export function renderConceptTemplate(
     ...(description === undefined ? {} : { description }),
     ...(input.timestamp === undefined ? {} : { timestamp: input.timestamp }),
   });
-  const body = renderBody(input.template, title, description);
+  const body = renderBody(input.template);
   const consumabilityProblem = generatedConceptProblem(frontmatter, body);
   if (consumabilityProblem !== undefined) {
     return problemResult(consumabilityProblem);

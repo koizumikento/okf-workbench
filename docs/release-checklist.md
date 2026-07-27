@@ -50,16 +50,16 @@ not a substitute for its named manual or hosted check.
 - [x] The current bundled-CLI candidate has successful retained artifacts from every lane in the
       [compatibility matrix](compatibility-matrix.md): VS Code `1.121.0` on Ubuntu, VS Code
       `1.129.1` on Ubuntu/macOS/Windows, and VSCodium `1.121.03429` on Ubuntu/macOS/Windows.
-      [Compatibility run 30231123424](https://github.com/koizumikento/okf-workbench/actions/runs/30231123424)
-      passed all lanes for revision `71435433a9338627eda824e31aa5efaa0fbaa6f9`.
+      [Compatibility run 30232289948](https://github.com/koizumikento/okf-workbench/actions/runs/30232289948)
+      passed all lanes for revision `2ba03b1f9bdbcf2a49418829255ac829936a8eb2`.
 - [x] Historical evidence: the workflow-level package gate compared all three retained OS artifacts and passed
       in [Package smoke run 29901183164](https://github.com/koizumikento/okf-workbench/actions/runs/29901183164)
       for the exact recorded digest and byte size.
 - [x] The current candidate passes the four-target package-set gate for macOS arm64/x64, Linux
       x64, and Windows x64, including canonical Wasm identity and standalone/bundled CLI parity.
-      [Package smoke run 30231124503](https://github.com/koizumikento/okf-workbench/actions/runs/30231124503)
+      [Package smoke run 30232290835](https://github.com/koizumikento/okf-workbench/actions/runs/30232290835)
       passed all four targets and the aggregate package-set consistency job for revision
-      `71435433a9338627eda824e31aa5efaa0fbaa6f9`.
+      `2ba03b1f9bdbcf2a49418829255ac829936a8eb2`.
 - [x] The current-candidate hosted lifecycle evidence is retained. On 2026-07-27, the maintainer
       explicitly accepted the remaining bounded user-scenario gaps in
       [acceptance evidence](acceptance-evidence.md) for the initial release and moved actual
@@ -86,9 +86,8 @@ not a substitute for its named manual or hosted check.
       the matching `v0.1.0` release process, subject to the final release-record diff and gates.
 - [x] The Rust/Wasm core migration has fresh current-candidate CI, compatibility, package-smoke,
       and packaged-editor lifecycle evidence. Revision
-      `71435433a9338627eda824e31aa5efaa0fbaa6f9` passed CI, CodeQL, Compatibility run
-      `30231123424`, and Package smoke run `30231124503`; the final dated-changelog commit is
-      requalified before tagging. The headed Webview performance/network record is predecessor
+      `2ba03b1f9bdbcf2a49418829255ac829936a8eb2` passed CI, CodeQL, Compatibility run
+      `30232289948`, and Package smoke run `30232290835`. The headed Webview performance/network record is predecessor
       evidence only, and its fresh final-candidate capture is an explicitly accepted
       post-publication verification item.
 
@@ -288,14 +287,14 @@ not an automated fallback in this repository.
 | --- | --- |
 | Version | `0.1.0` |
 | Extension ID | `straydog.okf-workbench` |
-| Current qualified code revision | `71435433a9338627eda824e31aa5efaa0fbaa6f9`; the final dated-changelog commit is requalified before tagging |
-| Current hosted-evidence revision | `71435433a9338627eda824e31aa5efaa0fbaa6f9` |
-| Final dated local universal VSIX SHA-256 | `7b6827ef2c4746ad77be9bb5ecc6d7907537c100e8ed919a0b53347ac4564dfa`; final hosted qualification must reproduce it |
-| Final dated local universal VSIX byte size | `972346` bytes |
+| Current qualified code revision | `2ba03b1f9bdbcf2a49418829255ac829936a8eb2` |
+| Current hosted-evidence revision | `2ba03b1f9bdbcf2a49418829255ac829936a8eb2` |
+| Final hosted universal VSIX SHA-256 | `54468ec2f4d1f28189552aecde581cea52e3a37a337e1c3c8f61d248f0a3ed52` |
+| Final hosted universal VSIX byte size | `972540` bytes |
 | Node / npm | `24.18.0` / `11.16.0` |
-| Current hosted CI | [Pass — run 30231115815](https://github.com/koizumikento/okf-workbench/actions/runs/30231115815) |
-| Current hosted compatibility | [Pass — run 30231123424](https://github.com/koizumikento/okf-workbench/actions/runs/30231123424); acceptance/Webview plus all seven editor/OS lanes |
-| Current hosted package smoke | [Pass — run 30231124503](https://github.com/koizumikento/okf-workbench/actions/runs/30231124503); all four target packages plus aggregate consistency |
+| Current hosted CI | [Pass — run 30232280114](https://github.com/koizumikento/okf-workbench/actions/runs/30232280114) |
+| Current hosted compatibility | [Pass — run 30232289948](https://github.com/koizumikento/okf-workbench/actions/runs/30232289948); acceptance/Webview plus all seven editor/OS lanes |
+| Current hosted package smoke | [Pass — run 30232290835](https://github.com/koizumikento/okf-workbench/actions/runs/30232290835); all four target packages plus aggregate consistency |
 | Prior universal hosted qualification | [CI 30058782170](https://github.com/koizumikento/okf-workbench/actions/runs/30058782170), [Compatibility 30058922150](https://github.com/koizumikento/okf-workbench/actions/runs/30058922150), and [Package smoke 30058925030](https://github.com/koizumikento/okf-workbench/actions/runs/30058925030) passed for SHA-256 `d7be6180cd788b2ab5d9c7fc436de9eb2df97d967b16ccbc2578f48851f0b666`, `613637` bytes. |
 | Historical hosted-qualified artifact | Commit `aa90832aab64dac1bccf9c9092fabc004991f7b1`; SHA-256 `cc8c994cd35cfe2017945c38d0019f330cb33f628a94bf6508b2930c5c57c866`; `582231` bytes. |
 | Historical hosted CI | [Pass — run 29900857588](https://github.com/koizumikento/okf-workbench/actions/runs/29900857588); all four jobs for that historical candidate succeeded. |

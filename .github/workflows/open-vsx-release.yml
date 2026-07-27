@@ -245,9 +245,15 @@ jobs:
           node scripts/check-cli-parity.mjs "${cli}" "${vsix}"
           node scripts/security-check.mjs --vsix "${vsix}"
           cd artifacts
-          shasum -a 256 "${package}.tar.gz" > "${package}.tar.gz.sha256"
-          shasum -a 256 "okf-workbench-${PACKAGE_TARGET}.vsix" \
-            > "okf-workbench-${PACKAGE_TARGET}.vsix.sha256"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${package}.tar.gz" > "${package}.tar.gz.sha256"
+            sha256sum "okf-workbench-${PACKAGE_TARGET}.vsix" \
+              > "okf-workbench-${PACKAGE_TARGET}.vsix.sha256"
+          else
+            shasum -a 256 "${package}.tar.gz" > "${package}.tar.gz.sha256"
+            shasum -a 256 "okf-workbench-${PACKAGE_TARGET}.vsix" \
+              > "okf-workbench-${PACKAGE_TARGET}.vsix.sha256"
+          fi
 
       - name: Retain standalone CLI and matching platform VSIX
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

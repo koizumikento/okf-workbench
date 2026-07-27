@@ -216,12 +216,12 @@ not run `ovsx publish` against a mutable local path as a fallback. If a runner i
 publish command starts, inspect Open VSX before retrying because the external outcome may already
 have succeeded.
 
-**Current proof gap:** the repository-level secret name `OPEN_VSX_TOKEN` exists, and the same
-`straydog` publishing pattern has succeeded in the `shosei` repository. GitHub does not reveal
-secret values, so OKF Workbench's credential and current namespace authorization remain unproven
-until the tagged workflow runs `ovsx verify-pat straydog`. The current Publisher Agreement state
-also remains an out-of-band maintainer check. No OKF Workbench release tag, GitHub Release, or Open
-VSX publication has been created.
+**Retained publication proof:** signed tag `v0.1.0` ran the fail-closed release workflow
+[30233342837](https://github.com/koizumikento/okf-workbench/actions/runs/30233342837).
+The workflow verified the `straydog` PAT, published the universal and four target packages, created
+the GitHub Release, and pushed the Homebrew/Scoop manifests. GitHub still does not reveal the secret
+value, and the Publisher Agreement remains an out-of-band account prerequisite rather than a
+repository-verifiable record.
 
 The official process and current account requirements are documented in
 [Publishing Extensions](https://github.com/eclipse-openvsx/openvsx/wiki/Publishing-Extensions).
@@ -231,21 +231,22 @@ The official process and current account requirements are documented in
 - [ ] Open `https://open-vsx.org/extension/straydog/okf-workbench` and confirm publisher, verified
       state, version, icon, README, changelog, license, inline privacy text, public contact route,
       deliberate source-link omissions, and categories.
-- [ ] Confirm the registry reports `straydog.okf-workbench` version `0.1.0` and the publishing
+- [x] Confirm the registry reports `straydog.okf-workbench` version `0.1.0` and the publishing
       identity expected by the approval record.
-- [ ] Download the published version with `ovsx get`, inspect its metadata and contents, and record
+- [x] Download the published version, inspect its metadata and contents, and record
       the downloaded SHA-256. Investigate any difference from the approved artifact before calling
       the release complete.
 - [ ] Install from Open VSX in a clean supported VSCodium profile, activate every command, and run
       the minimal offline workflow without using a development or preinstalled VSIX.
 - [ ] Confirm generated workspace files remain after uninstall and that uninstall leaves no
       extension-owned background process.
-- [ ] Confirm the signed Git tag and generated GitHub Release identify the tested revision and
+- [x] Confirm the signed Git tag and generated GitHub Release identify the tested revision and
       contain the universal and four target VSIX packages, all four native CLI archives, their licenses and notices, and
       every corresponding checksum.
-- [ ] Confirm `koizumikento/stray-tools` contains the released `Formula/okf.rb` and
-      `bucket/okf.json`, that both reference the matching GitHub Release checksums, and that clean
-      Homebrew and Scoop installs run `okf version` successfully on their supported targets.
+- [x] Confirm `koizumikento/stray-tools` contains the released `Formula/okf.rb` and
+      `bucket/okf.json`, and that both reference the matching GitHub Release checksums.
+- [ ] Confirm clean Homebrew and Scoop installs run `okf version` successfully on their supported
+      targets.
 - [ ] Revoke the one-time token, or record the owner, scope, storage, and rotation date for a
       retained release credential.
 
@@ -289,6 +290,8 @@ not an automated fallback in this repository.
 | Extension ID | `straydog.okf-workbench` |
 | Current qualified code revision | `2ba03b1f9bdbcf2a49418829255ac829936a8eb2` |
 | Current hosted-evidence revision | `2ba03b1f9bdbcf2a49418829255ac829936a8eb2` |
+| Tagged release revision | `438f1ed2233fdf86d289bd7dfdb934757c6a35f3` |
+| Release workflow | [Pass — run 30233342837](https://github.com/koizumikento/okf-workbench/actions/runs/30233342837); candidate gate, all four CLI/target VSIX builds, GitHub Release, package manifests, and Open VSX publication succeeded. |
 | Final hosted universal VSIX SHA-256 | `54468ec2f4d1f28189552aecde581cea52e3a37a337e1c3c8f61d248f0a3ed52` |
 | Final hosted universal VSIX byte size | `972540` bytes |
 | Node / npm | `24.18.0` / `11.16.0` |
@@ -305,10 +308,10 @@ not an automated fallback in this repository.
 | Historical aggregate package gate | [Pass — run 29901183164](https://github.com/koizumikento/okf-workbench/actions/runs/29901183164); all three OS jobs and the aggregate byte-identity job succeeded for the historical SHA-256 `cc8c994cd35cfe2017945c38d0019f330cb33f628a94bf6508b2930c5c57c866`, `582231` bytes, and three artifacts. |
 | Preserved local predecessor evidence | Pass — commit `524eca3f36e1a1b3da935495d3fbbd0eb0d03f56`, `581830` bytes, SHA-256 `65c137822052aa7f90ef08cc1300020fec4adcd7cbcec6aec88ae98fae64dad0`; VS Code `1.121.0`, VS Code `1.127.0`, and VSCodium `1.121.03429` on macOS arm64. |
 | Headed performance evidence | Pass — genuine headed VS Code `1.129.1` schema-v3 capture at `2026-07-23T09:59:23.073Z`; QR-002 `832 ms` p95 across 20 samples, QR-003 selected `d3`, and strict CDP counts were remote `0`, packaged local `2`, internal Webview `2`, other `0`. Raw evidence SHA-256: `0fd512512c0ff3d8fecbecd1c50d87bc6a727f2dad68fca3403ed8b400f7d3f5`. |
-| Security/license approver | Pending |
-| Namespace/publishing identity | Public API pass at `2026-07-23T08:35:06.452Z`: `straydog` verified/restricted and `straydog.okf-workbench@0.1.0` available; authenticated PAT/role and Publisher Agreement evidence pending. |
-| Version-tag authorization | Pending — no release tag has been pushed. |
-| Open VSX listing URL | Pending |
-| Downloaded artifact SHA-256 | Pending |
+| Security/license approver | Maintainer approved MIT and the third-party inventory for publication on `2026-07-27`. |
+| Namespace/publishing identity | Live `ovsx verify-pat straydog` pass in release workflow `30233342837`; public API reports publisher `koizumikento`, verified/restricted namespace access, and all five `0.1.0` package targets. Publisher Agreement state remains an out-of-band account record. |
+| Version-tag authorization | Completed — signed `v0.1.0` published from `438f1ed2233fdf86d289bd7dfdb934757c6a35f3`. |
+| Open VSX listing URL | <https://open-vsx.org/extension/straydog/okf-workbench> |
+| Downloaded artifact SHA-256 | `54468ec2f4d1f28189552aecde581cea52e3a37a337e1c3c8f61d248f0a3ed52`; public universal VSIX package inspection passed with 14 entries. |
 | Post-publish VSCodium verification | Pending |
 | Token revocation/rotation record | Pending |

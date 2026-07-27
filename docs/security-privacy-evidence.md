@@ -109,11 +109,11 @@ In addition to the static checks, this requires:
 - no host-only URI, proposed-content, or workspace API field in the Webview bundle.
 
 The source candidate contains the MIT project license and exact notice files. On 2026-07-27, the
-universal VSIX retained by Compatibility run `30231123424` for revision
-`71435433a9338627eda824e31aa5efaa0fbaa6f9` passed the canonical filename, exact-byte,
+universal VSIX retained by Compatibility run `30232289948` for revision
+`2ba03b1f9bdbcf2a49418829255ac829936a8eb2` passed the canonical filename, exact-byte,
 manifest-value, duplicate-entry, security, notice, and reproducibility checks at SHA-256
-`027da261d0198c73f030de8e4443853e38e7fb90f9a6f52849427dcb327205b3` and `972532`
-bytes. Package smoke run `30231124503` independently passed all four target packages and aggregate
+`54468ec2f4d1f28189552aecde581cea52e3a37a337e1c3c8f61d248f0a3ed52` and `972540`
+bytes. Package smoke run `30232290835` independently passed all four target packages and aggregate
 Wasm/CLI consistency. Earlier post-MIT artifacts remain historical input-readiness evidence.
 
 ### Security boundary tests
@@ -247,7 +247,7 @@ when compatible patched dependency paths become available.
 | `PUBLIC-01` | Public exposure | The candidate exposes an inbound network service. | The artifact is a desktop workspace extension with no server, listener, route, webhook, or cloud resource. | not_applicable | No public-service surface reviewed. |
 | `DEP-01` | Dependency license | A production dependency has missing, forbidden, high-risk, or unresolved licensing. | Exact 78-package gate reports only MIT, ISC, and BSD-3-Clause and includes each notice text. | suppressed | Human license review remains `PG-01`. |
 | `VULN-01` | Known advisories | npm reports a known production or development vulnerability. | The 2026-07-27 production-only audit reports zero vulnerabilities. The full development graph reports `GHSA-mh99-v99m-4gvg` through ESLint/Mocha glob tooling; the directly updatable 5.x path is fixed at `5.0.8`, while constrained 1.x/2.x paths remain excluded from release artifacts and receive reviewed repository-controlled patterns. | suppressed for production; accepted development-tool availability residual | Track compatible upstream ESLint/VS Code test-runner updates; do not pass attacker-controlled brace patterns to the affected development tools. |
-| `COMPAT-01` | Packaged editor lifecycle | The exact candidate does not complete the required editor/OS lifecycle matrix. | Revision `71435433a9338627eda824e31aa5efaa0fbaa6f9` passed CI `30231115815`, all seven editor/OS lifecycle lanes plus the acceptance/Webview gate in Compatibility `30231123424`, and all four target packages plus aggregate consistency in Package smoke `30231124503`. | remediated for the qualified revision | Re-run the affected gates for the final dated-changelog commit before tagging. |
+| `COMPAT-01` | Packaged editor lifecycle | The exact candidate does not complete the required editor/OS lifecycle matrix. | Final revision `2ba03b1f9bdbcf2a49418829255ac829936a8eb2` passed CI `30232280114`, all seven editor/OS lifecycle lanes plus the acceptance/Webview gate in Compatibility `30232289948`, and all four target packages plus aggregate consistency in Package smoke `30232290835`. | remediated for the qualified revision | The tagged workflow must reproduce and retain the release packages. |
 | `HOST-01` | Repository/hosted settings | Protected-main and provider scanning controls are absent. | The public repository protects `main` with four required CI checks, administrator enforcement, conversation resolution, and force-push/deletion denial. CODEOWNERS is present; secret scanning with push protection, Dependabot, CodeQL default setup, and private vulnerability reporting are enabled. Initial CodeQL passed and all three open-alert queries returned zero. | remediated | Recheck settings and alerts before release; live publication authorization remains `PG-04`. |
 | `RELEASE-01` | Open VSX publishing | A release tag publishes only reviewed, retained bytes with a narrowly exposed credential. | The `v*`-only workflow requires the tagged commit to be contained in protected `main`, binds the tag to the manifest version and dated changelog, retains one universal and four target VSIX packages plus four standalone CLI archives, verifies checksums and CLI byte parity, creates the GitHub Release, and exposes `OPEN_VSX_TOKEN` only to PAT verification and publication. Public evidence confirms `straydog` is verified/restricted and the target version is available. The secret value, authenticated authorization, Agreement state, and first multi-target run remain unproven until release. | deferred | Repository control is implemented; live hosted boundary remains `PG-04`. |
 
@@ -294,17 +294,17 @@ when compatible patched dependency paths become available.
   Strict re-evaluation on 2026-07-27 reports Extension Host JavaScript, Webview JavaScript/CSS,
   domain-separated bundle-set, runtime, build-input, and harness identity mismatches against the
   final `0.1.0` candidate. It is not final-candidate performance or network evidence.
-- Current packaged evidence: the `972532`-byte universal VSIX from revision
-  `71435433a9338627eda824e31aa5efaa0fbaa6f9` and SHA-256
-  `027da261d0198c73f030de8e4443853e38e7fb90f9a6f52849427dcb327205b3` completed the
+- Current packaged evidence: the `972540`-byte universal VSIX from revision
+  `2ba03b1f9bdbcf2a49418829255ac829936a8eb2` and SHA-256
+  `54468ec2f4d1f28189552aecde581cea52e3a37a337e1c3c8f61d248f0a3ed52` completed the
   current seven-lane packaged lifecycle in
-  [Compatibility run 30231123424](https://github.com/koizumikento/okf-workbench/actions/runs/30231123424).
+  [Compatibility run 30232289948](https://github.com/koizumikento/okf-workbench/actions/runs/30232289948).
   Every clean, untrusted, and upgrade activation installed the recorded CommonJS-owner/global
   hooks. Activation, request-correlated Validate/Open completion, and guarded quiescence recorded
   zero calls; the hooks remained installed until Extension Host exit. The catalog-derived
   untrusted probe refused Initialize Bundle, New Concept, Regenerate Indexes, and Set Up Agent
   Integration. Every lifecycle report binds the candidate identity/version and qualified revision;
-  [Package smoke run 30231124503](https://github.com/koizumikento/okf-workbench/actions/runs/30231124503)
+  [Package smoke run 30232290835](https://github.com/koizumikento/okf-workbench/actions/runs/30232290835)
   independently passed every target package and the aggregate canonical-Wasm/CLI-parity check.
 - Historical established evidence: the `582231`-byte VSIX from commit `aa90832aab64dac1bccf9c9092fabc004991f7b1` and SHA-256 `cc8c994cd35cfe2017945c38d0019f330cb33f628a94bf6508b2930c5c57c866` completed the packaged Extension Host lifecycle on VS Code 1.121.0 on Ubuntu; VS Code 1.127.0 on Ubuntu, macOS, and Windows; and VSCodium 1.121.03429 on Ubuntu, macOS, and Windows. Every clean, untrusted, and upgrade activation hooked these properties on the CommonJS builtin export-owner objects returned by `require`: `node:http.get/request`, `node:https.get/request`, `node:http2.connect`, `node:net.connect/createConnection`, `node:tls.connect`, `node:dns.lookup/resolve/resolve4/resolve6`, and `node:dgram.createSocket`; it also hooked the available `globalThis.fetch` and `globalThis.WebSocket`. Activation, Validate Bundle dispatch followed by a newer runtime publication, Open 3D Graph dispatch followed by a graph data-application acknowledgement, and the quiescence window recorded zero calls through those hooks. The retained schema did not correlate the asynchronous signals to their initiating requests and restored the hooks after a successful report, so this is not request-correlated completion or host-exit-lifetime evidence. The [Compatibility run](https://github.com/koizumikento/okf-workbench/actions/runs/29900868002) retained the per-lane result artifacts. The [Package smoke run](https://github.com/koizumikento/okf-workbench/actions/runs/29900868155) also reproduced those exact bytes independently on macOS, Ubuntu, and Windows. Current source does not inherit this evidence.
 - Historical headed Webview evidence: the schema-v3 capture at `2026-07-23T04:07:30.642Z`

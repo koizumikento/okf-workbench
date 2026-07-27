@@ -7,11 +7,11 @@
 - Historical hosted packaged lifecycle run: [Compatibility 29900868002](https://github.com/koizumikento/okf-workbench/actions/runs/29900868002)
 - Historical hosted package byte-identity run: [Package smoke 29901183164](https://github.com/koizumikento/okf-workbench/actions/runs/29901183164)
 - Current exact-candidate hosted qualification:
-  [Compatibility 30231123424](https://github.com/koizumikento/okf-workbench/actions/runs/30231123424)
+  [Compatibility 30232289948](https://github.com/koizumikento/okf-workbench/actions/runs/30232289948)
   and
-  [Package smoke 30231124503](https://github.com/koizumikento/okf-workbench/actions/runs/30231124503)
+  [Package smoke 30232290835](https://github.com/koizumikento/okf-workbench/actions/runs/30232290835)
   passed every configured lane and aggregate check for revision
-  `71435433a9338627eda824e31aa5efaa0fbaa6f9`
+  `2ba03b1f9bdbcf2a49418829255ac829936a8eb2`
 - Predecessor schema-v3 headed Webview observation: the VS Code `1.129.1` capture in
   `docs/evidence/performance/vscode-1.129.1.{json,md}` passed for its recorded inputs. Strict
   re-evaluation on 2026-07-27 reports production and harness identity mismatches against the final
@@ -26,10 +26,10 @@ packaged lifecycle automation, and full user-scenario evidence.
 
 - **Component automated** means a checked-in Vitest scenario exercises the repository's pure core, an injectable command/workspace boundary, or Webview presentation state. The command tests use in-memory doubles, not VS Code UI. A passing result supports only the assertions named in the table.
 - **Development Extension Host provider automated** means the built development extension ran in a real VS Code Extension Host against a test-owned, registered, read-only `okfmem:` `FileSystemProvider`. It proves the read-only command boundary named below, but it is neither a packaged-VSIX result nor evidence for an external remote provider.
-- **Current packaged lifecycle automated** means the exact `972532`-byte universal VSIX with
-  SHA-256 `027da261d0198c73f030de8e4443853e38e7fb90f9a6f52849427dcb327205b3`
+- **Current packaged lifecycle automated** means the exact `972540`-byte universal VSIX with
+  SHA-256 `54468ec2f4d1f28189552aecde581cea52e3a37a337e1c3c8f61d248f0a3ed52`
   passed the current seven-lane hosted matrix for revision
-  `71435433a9338627eda824e31aa5efaa0fbaa6f9`. Each retained report binds that revision,
+  `2ba03b1f9bdbcf2a49418829255ac829936a8eb2`. Each retained report binds that revision,
   extension `straydog.okf-workbench@0.1.0`, and the same candidate digest. The reports prove clean,
   untrusted, upgrade, and uninstall lifecycles; request-correlated Validate Bundle and Open 3D
   Graph completion; catalog-derived refusal of all four write commands in an untrusted workspace;

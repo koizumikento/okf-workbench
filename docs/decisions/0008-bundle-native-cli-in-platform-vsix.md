@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — 2026-07-24
+Accepted — 2026-07-24; Homebrew and Scoop publication added 2026-07-27
 
 ## Context
 
@@ -22,7 +22,9 @@ Release each version through two complementary distribution paths:
 1. Target-platform VSIX packages bundle one native `okf` executable so a new integrated terminal
    can use the CLI immediately.
 2. Standalone native CLI archives remain available for CI, external terminals, servers, and users
-   who do not install the extension.
+   who do not install the extension. Tagged releases also update `Formula/okf.rb` and
+   `bucket/okf.json` in `koizumikento/stray-tools`; those manifests reference the retained GitHub
+   Release archives and checksums rather than rebuilding the CLI.
 
 The initial target set is:
 
@@ -57,6 +59,8 @@ lazy until a core operation is requested.
 
 - Extension installation provides an immediate, offline CLI path on supported targets.
 - Standalone use remains independent of VS Code and Open VSX.
+- Homebrew on macOS and Scoop on Windows provide package-manager discovery for the same retained
+  standalone archives; GitHub Release remains their artifact authority.
 - One release carries five VSIX files: four target packages and one universal fallback.
 - Native executable size is paid once per installed target package, not for every target.
 - Existing terminals must be recreated after installing, updating, or changing the exposure

@@ -170,6 +170,7 @@ describe('supply-chain policy', () => {
         expect.stringContaining('contents: read'),
         expect.stringContaining('bind the tag to main'),
         expect.stringContaining('GitHub release'),
+        expect.stringContaining('publish-package-repository'),
         expect.stringContaining('retained universal VSIX'),
       ]),
     );
@@ -242,6 +243,21 @@ describe('supply-chain policy', () => {
     expect(
       releaseWorkflowSafetyFailures('.github/workflows/open-vsx-release.yml', duplicatePublish),
     ).toContainEqual(expect.stringContaining('retained universal VSIX'));
+
+    const leakedPackageToken = source.replace(
+      '      - name: Download the retained candidate\n',
+      [
+        '      - name: Leak package credential',
+        '        env:',
+        '          LEAKED_TOKEN: ${{ secrets.STRAY_TOOLS_TOKEN }}',
+        '        run: echo leaked',
+        '      - name: Download the retained candidate',
+        '',
+      ].join('\n'),
+    );
+    expect(
+      releaseWorkflowSafetyFailures('.github/workflows/open-vsx-release.yml', leakedPackageToken),
+    ).toContainEqual(expect.stringContaining('STRAY_TOOLS_TOKEN'));
   });
 
   test('requires the local aggregate to build between the disjoint security suites', () => {

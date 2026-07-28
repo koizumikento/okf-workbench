@@ -5,6 +5,16 @@ All notable changes to OKF Workbench are documented in this file.
 The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and intends to use
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) after the first public release.
 
+## 0.2.1 - 2026-07-28
+
+### Fixed
+
+- Orphan-only concepts no longer appear as actionable curation warnings in the Workbench sidebar;
+  the separate orphan count and resource indicator remain visible.
+- Creating or editing concepts while the 3D graph is hidden no longer sends refresh data to a
+  destroyed Webview context or shows a misleading interaction error. The latest graph revision is
+  delivered when the panel is shown again.
+
 ## 0.2.0 - 2026-07-28
 
 ### Added

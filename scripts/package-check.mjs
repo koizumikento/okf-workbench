@@ -262,7 +262,7 @@ export function validateVsixArchive(input, expectedProjectLicense) {
   if (
     manifest.name !== 'okf-workbench' ||
     manifest.publisher !== 'straydog' ||
-    manifest.version !== '0.2.0' ||
+    manifest.version !== '0.2.1' ||
     manifest.license !== 'MIT' ||
     manifest.icon !== 'assets/icon.png' ||
     manifest.main !== './dist/extension.cjs' ||

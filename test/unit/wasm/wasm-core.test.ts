@@ -59,7 +59,7 @@ describe('Rust/Wasm core boundary', () => {
     const module = new WebAssembly.Module(bytes);
     expect(WebAssembly.Module.imports(module)).toEqual([]);
     expect(core.abiVersion).toBe(1);
-    expect(core.coreVersion).toBe('0.1.2');
+    expect(core.coreVersion).toBe('0.2.0');
   });
 
   test.each(fixtureNames)('%s preserves the canonical semantic projection', async (name) => {

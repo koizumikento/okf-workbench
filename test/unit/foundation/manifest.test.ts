@@ -118,7 +118,7 @@ describe('extension manifest', () => {
   test('uses the confirmed release-candidate identity and icon', async () => {
     const manifest = await readManifest();
     expect(manifest.publisher).toBe('straydog');
-    expect(manifest.version).toBe('0.1.2');
+    expect(manifest.version).toBe('0.2.0');
     expect(manifest.license).toBe('MIT');
     expect(manifest.icon).toBe('assets/icon.png');
   });

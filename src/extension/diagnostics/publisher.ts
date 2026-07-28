@@ -1,7 +1,6 @@
 import type { Finding } from '../../core/model/index.js';
 import { findingToDiagnostic, type FindingDiagnostic } from './findingDiagnostic.js';
-
-const ORPHAN_CONCEPT_FINDING_CODE = 'okf.curation.orphan-concept';
+import { ORPHAN_CONCEPT_FINDING_CODE } from './findingCodes.js';
 
 export interface DiagnosticCollectionPort<TUri, TDiagnostic> {
   clear(): void;

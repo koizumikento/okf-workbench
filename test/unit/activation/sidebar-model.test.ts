@@ -93,7 +93,7 @@ const findings: readonly Finding[] = [
   {
     category: 'curation',
     severity: 'warning',
-    code: 'orphan-concept',
+    code: 'okf.curation.orphan-concept',
     uri: concepts[0].source.uri,
     message: 'Orphan.',
   },

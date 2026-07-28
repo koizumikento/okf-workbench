@@ -76,17 +76,22 @@ class FakeWebview implements GraphWebviewPort {
 
 class FakePanel implements GraphWebviewPanelPort {
   public readonly webview = new FakeWebview();
-  #listener: (() => void) | undefined;
+  public readonly visible = true;
+  #disposeListener: (() => void) | undefined;
 
   public reveal(): void {}
 
+  public onDidChangeViewState(): { dispose(): void } {
+    return { dispose() {} };
+  }
+
   public onDidDispose(listener: () => void): { dispose(): void } {
-    this.#listener = listener;
-    return { dispose: () => (this.#listener = undefined) };
+    this.#disposeListener = listener;
+    return { dispose: () => (this.#disposeListener = undefined) };
   }
 
   public dispose(): void {
-    this.#listener?.();
+    this.#disposeListener?.();
   }
 }
 

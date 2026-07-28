@@ -19,7 +19,9 @@ export interface GraphWebviewPort {
 
 export interface GraphWebviewPanelPort {
   readonly webview: GraphWebviewPort;
+  readonly visible: boolean;
   reveal(): void;
+  onDidChangeViewState(listener: () => void): DisposableLike;
   onDidDispose(listener: () => void): DisposableLike;
   dispose(): void;
 }
@@ -93,6 +95,14 @@ export class GraphPanelController<TUri> implements DisposableLike {
           this.#reportPostError(error);
         });
       }),
+      this.#panel.onDidChangeViewState(() => {
+        if (!this.#panel.visible) {
+          // With `retainContextWhenHidden: false`, a hidden Webview may be destroyed. Treat its
+          // readiness and any in-flight post as stale; the recreated context will announce ready
+          // and receive the latest retained graph when the panel becomes visible again.
+          this.#invalidateWebviewContext();
+        }
+      }),
       this.#panel.onDidDispose(() => {
         this.dispose();
       }),
@@ -133,7 +143,7 @@ export class GraphPanelController<TUri> implements DisposableLike {
       onDeliveryFailure === undefined
         ? undefined
         : { revision: graph.revision, onFailure: onDeliveryFailure };
-    if (this.#ready) {
+    if (this.#ready && this.#panel.visible) {
       this.#postGraph();
     }
   }
@@ -153,9 +163,10 @@ export class GraphPanelController<TUri> implements DisposableLike {
         // controller and its revision-scoped delivery remain current. Invalidate only the post
         // made to the previous context; the replacement context gets the same graph below and
         // may still complete the pending delivery with an acknowledgement for its exact post.
-        this.#postAttempt = undefined;
-        this.#currentDelivery = undefined;
-        this.#settledDeliveryId = undefined;
+        this.#invalidateWebviewContext();
+      }
+      if (!this.#panel.visible) {
+        return 'ready';
       }
       this.#ready = true;
       this.#postGraph();
@@ -330,6 +341,13 @@ export class GraphPanelController<TUri> implements DisposableLike {
     } catch {
       // Error reporters are observational and must not create a second unhandled failure.
     }
+  }
+
+  #invalidateWebviewContext(): void {
+    this.#ready = false;
+    this.#postAttempt = undefined;
+    this.#currentDelivery = undefined;
+    this.#settledDeliveryId = undefined;
   }
 }
 

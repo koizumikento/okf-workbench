@@ -3,8 +3,8 @@
 - Candidate: OKF Workbench `0.2.0`
 - Target identifier: `straydog.okf-workbench`
 - Registry: Open VSX
-- Current disposition: **Release preparation is complete locally; publication remains blocked until
-  fresh hosted compatibility and package-smoke evidence is retained for the immutable candidate**
+- Current disposition: **Approved for the signed `v0.2.0` tag; the tagged workflow must still
+  validate live credentials and complete publication before the release is considered complete**
 - Publication authority: a matching signed `v*` tag pushed for a reviewed commit contained in
   `main`
 
@@ -24,7 +24,7 @@ records are historical evidence for those exact released bytes only.
       graphs: 78 npm runtime packages and 26 Rust/Wasm dependencies.
 - [x] The production-only npm audit reports zero vulnerabilities. The previously accepted
       development-tool availability residual for `GHSA-mh99-v99m-4gvg` is not shipped.
-- [x] PR #36 passed the required CI and CodeQL checks for the `0.2.0` release-preparation changes.
+- [x] PR #36 and the compatibility-harness fix in PR #37 passed all required CI and CodeQL checks.
 - [x] Local VS Code integration passed on minimum `1.121.0` and current `1.129.1`; all 16 Webview
       browser tests passed.
 - [x] A fresh genuine headed VS Code `1.129.1` capture for the `0.2.0` candidate passed QR-002 at
@@ -37,13 +37,17 @@ records are historical evidence for those exact released bytes only.
 - [x] The sidebar was manually reviewed in dark, light, and high-contrast themes. Screen Reader
       Optimized Mode exposed the Bundle, Resources, and Actions views, and keyboard focus traversed
       the Bundle tree without pointer input.
-- [ ] Record the immutable `main` candidate revision after the release-preparation PR is merged.
-- [ ] Run the hosted Compatibility workflow for that revision and retain every required
-      VS Code/VSCodium and OS lifecycle artifact.
-- [ ] Run the hosted Package smoke workflow for that revision and retain all four target packages
-      plus the aggregate package-set consistency result.
-- [ ] Confirm the repository secret names `OPEN_VSX_TOKEN`, `TAP_REPO`, and `STRAY_TOOLS_TOKEN`
-      exist. Their values remain unreadable through GitHub APIs and must be validated by the tagged
+- [x] The immutable packaged candidate revision is
+      `522fd5fcff02350aabaaf32c5f46407287a1493d`. The release-record update that follows is
+      documentation-only and does not change packaged inputs.
+- [x] [Compatibility run 30325248296](https://github.com/koizumikento/okf-workbench/actions/runs/30325248296)
+      passed acceptance plus all seven VS Code/VSCodium and OS lifecycle lanes for that revision,
+      using the published `v0.1.2` universal VSIX as the verified upgrade predecessor.
+- [x] [Package smoke run 30325249515](https://github.com/koizumikento/okf-workbench/actions/runs/30325249515)
+      passed the browser boundary, all four target packages, and aggregate package-set consistency
+      for that revision.
+- [x] The repository secret names `OPEN_VSX_TOKEN`, `TAP_REPO`, and `STRAY_TOOLS_TOKEN` exist.
+      Their values remain unreadable through GitHub APIs and must be validated by the tagged
       workflow without being printed.
 - [x] On 2026-07-28, the maintainer requested the release, authorized creation and merge of the
       release PR when checks pass, and authorized branch cleanup. Publication still remains
@@ -195,12 +199,13 @@ For a security, privacy, credential, or licensing incident:
 | Field | `0.2.0` value |
 | --- | --- |
 | Extension ID | `straydog.okf-workbench` |
-| Immutable candidate revision | Pending merge of PR #36 |
-| Hosted CI | [PR #36 checks](https://github.com/koizumikento/okf-workbench/pull/36/checks) |
-| Hosted compatibility | Pending |
-| Hosted package smoke | Pending |
+| Immutable packaged candidate revision | `522fd5fcff02350aabaaf32c5f46407287a1493d` |
+| Hosted CI | [PR #36 checks](https://github.com/koizumikento/okf-workbench/pull/36/checks) and [PR #37 checks](https://github.com/koizumikento/okf-workbench/pull/37/checks) passed |
+| Hosted compatibility | [Pass — run 30325248296](https://github.com/koizumikento/okf-workbench/actions/runs/30325248296); acceptance plus all seven editor/OS lifecycle lanes using published `v0.1.2` as the upgrade predecessor |
+| Hosted package smoke | [Pass — run 30325249515](https://github.com/koizumikento/okf-workbench/actions/runs/30325249515); browser boundary, four targets, and aggregate consistency |
 | Headed performance/network | Pass — VS Code `1.129.1`, QR-002 `672 ms` p95/20 samples, QR-003 `d3`, remote `0`, packaged local `2`, internal Webview `2`, other `0` |
 | Local universal VSIX | `978017` bytes; SHA-256 `6fcda0bb7da0237d6cef31d4476178611234df6201a059aec366ff057264361b` |
+| Hosted qualified universal VSIX | `978140` bytes; SHA-256 `d3c012c1f7bcacf3284fde8b810eb4c176b12c118290486ba31733dd064c3eeb` |
 | Node / npm / Rust | `24.18.0` / `11.16.0` / `1.92.0` |
 | Signed tag | Pending `v0.2.0` |
 | Release workflow | Pending |

@@ -629,6 +629,26 @@ describe('authoring command handlers', () => {
     expect(ui.confirmationRequests).toEqual([]);
   });
 
+  it('uses a validated sidebar folder as the initial concept destination', async () => {
+    const { port, ui, shared } = harness();
+    ui.selections.push('generic-concept');
+    ui.inputs.push('decisions', 'decision', 'Sidebar default', '', '', 'sidebar.md');
+    const command = createNewConceptCommand({
+      ...shared,
+      initialDestination: 'decisions',
+      selectBundle: async () => writableBundleSelection,
+    });
+
+    const result = await command();
+
+    expect(result.kind).toBe('applied');
+    expect(ui.inputRequests[0]).toMatchObject({
+      prompt: 'Destination directory relative to the selected bundle',
+      value: 'decisions',
+    });
+    expect(port.text(`${bundleRoot}/decisions/sidebar.md`)).toContain('title: "Sidebar default"');
+  });
+
   it('releases the write gate while VS Code is still opening the created concept', async () => {
     const { port, ui, shared } = harness();
     const firstOpen = deferred<undefined>();

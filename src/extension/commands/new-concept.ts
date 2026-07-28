@@ -34,6 +34,7 @@ const TEMPLATE_ITEMS: readonly SelectionItem<ConceptTemplate>[] = CONCEPT_TEMPLA
 );
 
 export interface NewConceptCommandDependencies<TUri> extends ProposalWorkflowDependencies<TUri> {
+  readonly initialDestination?: string;
   readonly selectBundle: SelectBundle<TUri>;
 }
 
@@ -76,10 +77,14 @@ export function createNewConceptCommand<TUri>(
           return { kind: 'cancelled' };
         }
 
+        const initialDestination =
+          dependencies.initialDestination === undefined
+            ? undefined
+            : normalizeBundleDirectory(dependencies.initialDestination);
         const destinationInput = await dependencies.ui.input({
           title: 'OKF: New Concept',
           prompt: 'Destination directory relative to the selected bundle',
-          value: '.',
+          value: initialDestination?.ok === true ? initialDestination.value : '.',
           placeHolder: 'decisions',
           validate(value) {
             const result = normalizeBundleDirectory(value);

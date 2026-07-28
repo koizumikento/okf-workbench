@@ -16,6 +16,10 @@ import { createNewConceptCommand } from '../../src/extension/commands/new-concep
 import { createRegenerateIndexesCommand } from '../../src/extension/commands/regenerate-indexes.js';
 import { createSetupAgentIntegrationCommand } from '../../src/extension/commands/setup-agent-integration.js';
 import { loadBundle } from '../../src/extension/runtime/loadBundle.js';
+import {
+  buildSidebarBundleSummary,
+  buildSidebarResourceTree,
+} from '../../src/extension/sidebar/model.js';
 import { ProposalApplicator } from '../../src/extension/workspace/proposalApplicator.js';
 import {
   createInitialPresentationState,
@@ -554,5 +558,45 @@ describe('MVP acceptance scenarios — deterministic component evidence', () => 
     expect(presentation.graph?.statistics.conceptCount).toBe(1);
     expect(agentPlan.readyToApply).toBe(true);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('[AC-009] derives Workbench summary and resources from the selected runtime model', () => {
+    const bundle = parseAcceptanceBundle(9, [
+      rootIndex(),
+      acceptanceDocument(
+        'decisions/architecture.md',
+        conceptDocument({
+          type: 'decision',
+          title: 'Architecture',
+          description: 'A nested concept.',
+        }),
+      ),
+      acceptanceDocument(
+        'custom.md',
+        conceptDocument({
+          type: 'producer-defined-type',
+          title: 'Custom',
+          description: 'An arbitrary valid type remains visible.',
+        }),
+      ),
+    ]);
+    const findings = validateBundle(bundle, { now: ACCEPTANCE_NOW });
+    const graph = buildGraphPayload(bundle);
+
+    expect(buildSidebarBundleSummary(bundle, findings, graph)).toMatchObject({
+      conceptCount: 2,
+      conformanceErrors: 0,
+    });
+    const resources = buildSidebarResourceTree(bundle, findings, graph);
+    expect(resources.map(({ kind, label }) => [kind, label])).toEqual([
+      ['folder', 'decisions'],
+      ['concept', 'Custom'],
+      ['reserved', 'index.md'],
+    ]);
+    expect(resources[1]).toMatchObject({
+      kind: 'concept',
+      conceptId: 'custom',
+      type: 'producer-defined-type',
+    });
   });
 });

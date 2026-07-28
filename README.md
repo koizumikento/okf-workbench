@@ -12,6 +12,8 @@ initialize -> create -> edit -> validate -> explore -> repair
 
 ## What it does
 
+- Adds an OKF Workbench Activity Bar container for bundle status, Markdown resource navigation,
+  and direct access to the authoring loop and 3D Graph.
 - Initializes Minimal, Software Project, or Data & Analytics bundles with collision-safe
   create-only writes.
 - Creates concepts from seven built-in templates while allowing arbitrary non-empty concept
@@ -44,12 +46,16 @@ initialize -> create -> edit -> validate -> explore -> repair
 | `OKF: Open 3D Graph` | `okfWorkbench.openGraph` |
 | `OKF: Set Up Agent Integration` | `okfWorkbench.setupAgentIntegration` |
 | `OKF: Review Pending Changes` | `okfWorkbench.reviewPendingChanges` |
+| `OKF: Select Bundle` | `okfWorkbench.selectBundle` |
+| `OKF: Refresh Bundle` | `okfWorkbench.refreshBundle` |
 | `OKF: Show CLI Status` | `okfWorkbench.showCliStatus` |
 | `OKF: Open CLI Terminal` | `okfWorkbench.openCliTerminal` |
 
-Open a workspace folder and run the six core `OKF:` commands from the Command Palette or an
-Explorer folder context menu. Authoring commands require a trusted workspace. Validation and graph
-inspection remain read-only. While an authoring preview awaits a decision, the status bar shows
+Open the **OKF Workbench** icon in the Activity Bar to select a bundle, inspect current counts,
+browse nested concepts and reserved documents, open source, and launch the existing 3D Graph.
+The same six core `OKF:` workflows remain available from the Command Palette or an Explorer folder
+context menu. Authoring commands require a trusted workspace. Validation, resource navigation, and
+graph inspection remain read-only. While an authoring preview awaits a decision, the status bar shows
 `OKF changes awaiting review`; activate it, or run `OKF: Review Pending Changes`, to bring back the
 exact summary and choose Apply or Cancel. Proposals containing only new files apply immediately
 after the final input; collision checks refuse an existing target without overwriting it.

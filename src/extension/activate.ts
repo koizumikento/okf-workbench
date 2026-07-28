@@ -46,6 +46,14 @@ import {
   type RuntimeSelectionIdentity,
 } from './runtimeSelection.js';
 import {
+  NEW_CONCEPT_IN_FOLDER_COMMAND,
+  OPEN_RESOURCE_COMMAND,
+  REFRESH_BUNDLE_COMMAND,
+  SELECT_BUNDLE_COMMAND,
+  SIDEBAR_COMMANDS,
+  VscodeSidebarService,
+} from './sidebar/index.js';
+import {
   createVscodeBundleRuntime,
   type BundleRuntimeContext,
   type BundleRuntimeSnapshot,
@@ -147,6 +155,10 @@ function uriArgument(value: unknown): vscode.Uri | undefined {
   return value instanceof vscode.Uri ? value : undefined;
 }
 
+function stringArgument(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
 export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptanceApi | undefined {
   const core = createLazyOkfCore(loadPackagedWasmOkfCore);
   const acceptanceSignals = createAcceptanceCompletionSignals(
@@ -203,6 +215,11 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
           onGraphRenderFailed: (revision: number, reason: GraphRenderFailureReason) =>
             acceptanceSignals.recordGraphRenderFailure(revision, reason),
         }),
+  });
+  const sidebar = new VscodeSidebarService({
+    onContextError: (error) => {
+      output.error(`sidebar.context failed=true error_type=${errorKind(error)}`);
+    },
   });
   const bundleContext = new BundleContextService(port, vscodeUriCodec, (inspection) =>
     inspectBundleRootIndex({
@@ -305,6 +322,7 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
 
   const onRuntimePublish = (snapshot: BundleRuntimeSnapshot<vscode.Uri>): void => {
     const root = snapshot.context.rootUriString;
+    sidebar.publish(snapshot);
     const pendingGraph = takePending('graph', root);
     const pendingValidation = takePending('validation', root);
     if (availabilityNotifications.recordPublication(root)) {
@@ -376,6 +394,7 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
     if (shouldNotify) {
       showBackgroundWarning(BUNDLE_UNAVAILABLE_NOTIFICATION);
     }
+    sidebar.unavailable(runtimeContext);
   };
   const runtime = createVscodeBundleRuntime({
     core,
@@ -383,6 +402,7 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
     onClear: () => {
       failAllAcceptanceRequests('runtime-cleared');
       graphPanels.closeCurrent();
+      sidebar.clear();
     },
     onError: onRuntimeError,
   });
@@ -407,6 +427,11 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
     };
     availabilityNotifications.select(candidate.rootUriString);
     runtime.select(candidate.rootUri, workspaceSafetyRootUri);
+    sidebar.select(
+      candidate.rootUri,
+      candidateLabel(candidate),
+      vscode.workspace.asRelativePath(candidate.rootUri, false),
+    );
     output.info('bundle.selection changed=true');
   };
 
@@ -487,6 +512,7 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
 
   const selectBundle = async (
     invokedResource?: vscode.Uri,
+    forceSelection = false,
   ): Promise<SelectedBundle<vscode.Uri> | undefined> => {
     const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
     if (workspaceFolders.length === 0) {
@@ -501,6 +527,7 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
 
     const current = bundleContext.current;
     if (
+      !forceSelection &&
       current !== undefined &&
       workspaceFolders.some((folder) => isUriContained(folder.uri, current.rootUri))
     ) {
@@ -694,10 +721,12 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
       return outcome;
     },
     'okfWorkbench.newConcept': async (arguments_, proposalLease) => {
+      const initialDestination = stringArgument(arguments_[1]);
       const command = createNewConceptCommand(
         {
           ...workflowDependencies,
           selectBundle: () => selectWritableBundle(uriArgument(arguments_[0])),
+          ...(initialDestination === undefined ? {} : { initialDestination }),
         },
         requireProposalLease(proposalLease),
       );
@@ -844,6 +873,7 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
     previewer,
     proposalDecisionController,
     graphPanels,
+    sidebar,
     runtime,
     workspaceFolderMembership,
   );
@@ -906,6 +936,103 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
       terminal.show();
       terminal.sendText('okf version', false);
     }),
+    vscode.commands.registerCommand(SELECT_BUNDLE_COMMAND, async () => {
+      output.info(`command.start id=${SELECT_BUNDLE_COMMAND}`);
+      try {
+        const previousRoot = selectedRuntimeSelection?.root;
+        await runReadCommand(async () => {
+          const selection = await selectBundle(undefined, true);
+          if (
+            selection !== undefined &&
+            previousRoot === vscodeUriCodec.serialize(selection.bundleRootUri)
+          ) {
+            runtime.requestFullRefresh();
+          }
+          return undefined;
+        });
+        output.info(`command.finish id=${SELECT_BUNDLE_COMMAND} outcome=completed`);
+      } catch (error: unknown) {
+        output.error(
+          `command.finish id=${SELECT_BUNDLE_COMMAND} outcome=failed error_type=${errorKind(error)}`,
+        );
+        showBackgroundError(
+          'OKF Workbench could not select that bundle. Check workspace availability and permissions, then retry.',
+        );
+      }
+    }),
+    vscode.commands.registerCommand(REFRESH_BUNDLE_COMMAND, async () => {
+      output.info(`command.start id=${REFRESH_BUNDLE_COMMAND}`);
+      try {
+        if (selectedRuntimeSelection === undefined) {
+          await runReadCommand(async () => {
+            await selectBundle();
+            return undefined;
+          });
+        } else {
+          runtime.requestFullRefresh();
+        }
+        output.info(`command.finish id=${REFRESH_BUNDLE_COMMAND} outcome=completed`);
+      } catch (error: unknown) {
+        output.error(
+          `command.finish id=${REFRESH_BUNDLE_COMMAND} outcome=failed error_type=${errorKind(error)}`,
+        );
+        showBackgroundError(
+          'OKF Workbench could not refresh the selected bundle. Check workspace availability and permissions, then retry.',
+        );
+      }
+    }),
+    vscode.commands.registerCommand(OPEN_RESOURCE_COMMAND, async (value: unknown) => {
+      output.info(`command.start id=${OPEN_RESOURCE_COMMAND}`);
+      const resource = sidebar.resolveCurrentResource(value, runtime.current);
+      if (resource === undefined || resource.kind === 'folder') {
+        output.warn(`command.finish id=${OPEN_RESOURCE_COMMAND} outcome=stale-resource`);
+        showBackgroundWarning(
+          'That OKF resource is no longer current. Refresh the bundle and select it again.',
+        );
+        return;
+      }
+      try {
+        const document = await vscode.workspace.openTextDocument(resource.uri);
+        await vscode.window.showTextDocument(document, {
+          preview: false,
+          preserveFocus: false,
+        });
+        output.info(`command.finish id=${OPEN_RESOURCE_COMMAND} outcome=completed`);
+      } catch (error: unknown) {
+        output.error(
+          `command.finish id=${OPEN_RESOURCE_COMMAND} outcome=failed error_type=${errorKind(error)}`,
+        );
+        showBackgroundError(
+          'OKF Workbench could not open that resource. It may have moved or become unavailable; refresh the bundle and try again.',
+        );
+      }
+    }),
+    vscode.commands.registerCommand(NEW_CONCEPT_IN_FOLDER_COMMAND, async (value: unknown) => {
+      output.info(`command.start id=${NEW_CONCEPT_IN_FOLDER_COMMAND}`);
+      const folder = sidebar.resolveCurrentResource(value, runtime.current, 'folder');
+      if (folder === undefined) {
+        output.warn(`command.finish id=${NEW_CONCEPT_IN_FOLDER_COMMAND} outcome=stale-resource`);
+        showBackgroundWarning(
+          'That OKF folder is no longer current. Refresh the bundle and select it again.',
+        );
+        return;
+      }
+      try {
+        await vscode.commands.executeCommand(
+          'okfWorkbench.newConcept',
+          folder.rootUri,
+          folder.resource.relativePath,
+        );
+        output.info(`command.finish id=${NEW_CONCEPT_IN_FOLDER_COMMAND} outcome=completed`);
+      } catch (error: unknown) {
+        output.error(
+          `command.finish id=${NEW_CONCEPT_IN_FOLDER_COMMAND} outcome=failed error_type=${errorKind(error)}`,
+        );
+        showBackgroundError(
+          'OKF Workbench could not start concept creation for that folder. Refresh the bundle and try again.',
+        );
+      }
+    }),
   );
 
   if (acceptanceSignals !== undefined) {
@@ -915,7 +1042,7 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
   }
 
   output.info(
-    `extension.activate commands=${String(OKF_COMMANDS.length + 3)} core_commands=${String(OKF_COMMANDS.length)}`,
+    `extension.activate commands=${String(OKF_COMMANDS.length + SIDEBAR_COMMANDS.length + 3)} core_commands=${String(OKF_COMMANDS.length)}`,
   );
   return acceptanceSignals?.api;
 }

@@ -56,11 +56,34 @@ const EXPECTED_CLI_COMMANDS = Object.freeze(
   ].map((command) => Object.freeze(command)),
 );
 const EXPECTED_CLI_COMMAND_IDS = Object.freeze(EXPECTED_CLI_COMMANDS.map(({ id }) => id));
+const EXPECTED_SIDEBAR_COMMANDS = Object.freeze(
+  [
+    {
+      id: 'okfWorkbench.selectBundle',
+      title: 'Select Bundle',
+    },
+    {
+      id: 'okfWorkbench.refreshBundle',
+      title: 'Refresh Bundle',
+    },
+    {
+      id: 'okfWorkbench.openResource',
+      title: 'Open Source',
+    },
+    {
+      id: 'okfWorkbench.newConceptInFolder',
+      title: 'New Concept in Folder',
+    },
+  ].map((command) => Object.freeze(command)),
+);
+const EXPECTED_SIDEBAR_COMMAND_IDS = Object.freeze(EXPECTED_SIDEBAR_COMMANDS.map(({ id }) => id));
 
 module.exports = {
   EXPECTED_CLI_COMMANDS,
   EXPECTED_CLI_COMMAND_IDS,
   EXPECTED_COMMAND_CATALOG,
   EXPECTED_COMMAND_IDS,
+  EXPECTED_SIDEBAR_COMMANDS,
+  EXPECTED_SIDEBAR_COMMAND_IDS,
   EXPECTED_WRITE_COMMAND_IDS,
 };

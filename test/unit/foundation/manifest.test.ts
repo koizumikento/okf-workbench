@@ -5,6 +5,7 @@ import { describe, expect, test } from 'vitest';
 import {
   EXPECTED_CLI_COMMANDS,
   EXPECTED_COMMAND_CATALOG,
+  EXPECTED_SIDEBAR_COMMANDS,
   EXPECTED_WRITE_COMMAND_IDS,
 } from '../../../scripts/compatibility/driver/command-catalog.cjs';
 import { PUBLIC_MANIFEST_RESOURCES } from '../../../scripts/package-check.mjs';
@@ -14,6 +15,17 @@ import {
   OPEN_CLI_TERMINAL_COMMAND,
   SHOW_CLI_STATUS_COMMAND,
 } from '../../../src/extension/cli/index.js';
+import {
+  ACTIONS_VIEW_ID,
+  BUNDLE_VIEW_ID,
+  NEW_CONCEPT_IN_FOLDER_COMMAND,
+  OPEN_RESOURCE_COMMAND,
+  REFRESH_BUNDLE_COMMAND,
+  RESOURCES_VIEW_ID,
+  SELECT_BUNDLE_COMMAND,
+  SIDEBAR_COMMANDS,
+  SIDEBAR_CONTAINER_ID,
+} from '../../../src/extension/sidebar/ids.js';
 
 const expectedCommands = EXPECTED_COMMAND_CATALOG.map(({ id, title }) => [id, title] as const);
 const recoveryCommand = {
@@ -22,11 +34,13 @@ const recoveryCommand = {
   when: 'okfWorkbench.hasPendingProposal',
 } as const;
 const cliCommands = EXPECTED_CLI_COMMANDS.map(({ id, title }) => [id, title] as const);
+const sidebarCommands = SIDEBAR_COMMANDS.map(({ id, title }) => [id, title] as const);
 
 interface ManifestCommand {
   readonly category?: unknown;
   readonly command?: unknown;
   readonly enablement?: unknown;
+  readonly icon?: unknown;
   readonly title?: unknown;
 }
 
@@ -56,7 +70,23 @@ interface ExtensionManifest {
     readonly menus?: {
       readonly commandPalette?: readonly ManifestMenuCommand[];
       readonly 'explorer/context'?: readonly ManifestMenuCommand[];
+      readonly 'view/item/context'?: readonly ManifestMenuCommand[];
+      readonly 'view/title'?: readonly ManifestMenuCommand[];
     };
+    readonly views?: Record<string, readonly { readonly id?: unknown; readonly name?: unknown }[]>;
+    readonly viewsContainers?: {
+      readonly activitybar?: readonly {
+        readonly icon?: unknown;
+        readonly id?: unknown;
+        readonly title?: unknown;
+      }[];
+    };
+    readonly viewsWelcome?: readonly {
+      readonly contents?: unknown;
+      readonly group?: unknown;
+      readonly view?: unknown;
+      readonly when?: unknown;
+    }[];
   };
   readonly engines?: {
     readonly vscode?: unknown;
@@ -102,10 +132,12 @@ describe('extension manifest', () => {
     }).toEqual(PUBLIC_MANIFEST_RESOURCES);
   });
 
-  test('contributes core, recovery, and bundled CLI commands', async () => {
+  test('contributes core, recovery, sidebar, and bundled CLI commands', async () => {
     const manifest = await readManifest();
     const commands = manifest.contributes?.commands ?? [];
-    expect(commands).toHaveLength(expectedCommands.length + 1 + cliCommands.length);
+    expect(commands).toHaveLength(
+      expectedCommands.length + 1 + sidebarCommands.length + cliCommands.length,
+    );
     expect(
       commands.slice(0, expectedCommands.length).map(({ command, title }) => [command, title]),
     ).toEqual(expectedCommands);
@@ -123,7 +155,12 @@ describe('extension manifest', () => {
     });
     expect(
       commands
-        .slice(expectedCommands.length + 1)
+        .slice(expectedCommands.length + 1, expectedCommands.length + 1 + sidebarCommands.length)
+        .map(({ command, title }) => [command, title]),
+    ).toEqual(sidebarCommands);
+    expect(
+      commands
+        .slice(expectedCommands.length + 1 + sidebarCommands.length)
         .map(({ command, title, category, enablement }) => ({
           command,
           title,
@@ -146,6 +183,7 @@ describe('extension manifest', () => {
       { id: SHOW_CLI_STATUS_COMMAND, title: 'Show CLI Status' },
       { id: OPEN_CLI_TERMINAL_COMMAND, title: 'Open CLI Terminal' },
     ]);
+    expect(SIDEBAR_COMMANDS).toEqual(EXPECTED_SIDEBAR_COMMANDS);
     expect(
       OKF_COMMANDS.filter(({ workspaceAccess }) => workspaceAccess === 'write').map(({ id }) => id),
     ).toEqual(EXPECTED_WRITE_COMMAND_IDS);
@@ -157,20 +195,62 @@ describe('extension manifest', () => {
     ]);
   });
 
-  test('activates and exposes the palette for core, recovery, and CLI commands', async () => {
+  test('activates and exposes the palette for core, recovery, sidebar, and CLI commands', async () => {
     const manifest = await readManifest();
     const commandIds = expectedCommands.map(([id]) => id);
     expect(manifest.activationEvents).toEqual([
       ...commandIds.map((id) => `onCommand:${id}`),
       `onCommand:${recoveryCommand.command}`,
+      ...sidebarCommands.map(([id]) => `onCommand:${id}`),
       ...cliCommands.map(([id]) => `onCommand:${id}`),
       'onStartupFinished',
     ]);
     expect(manifest.contributes?.menus?.commandPalette).toEqual([
       ...commandIds.map((command) => ({ command, when: 'workspaceFolderCount > 0' })),
       { command: recoveryCommand.command, when: recoveryCommand.when },
+      { command: SELECT_BUNDLE_COMMAND, when: 'workspaceFolderCount > 0' },
+      { command: REFRESH_BUNDLE_COMMAND, when: 'okfWorkbench.hasSelectedBundle' },
+      { command: OPEN_RESOURCE_COMMAND, when: 'false' },
+      { command: NEW_CONCEPT_IN_FOLDER_COMMAND, when: 'false' },
       ...cliCommands.map(([command]) => ({ command })),
     ]);
+  });
+
+  test('contributes the Activity Bar container, three native views, and bounded view actions', async () => {
+    const manifest = await readManifest();
+    expect(manifest.contributes?.viewsContainers?.activitybar).toEqual([
+      {
+        id: SIDEBAR_CONTAINER_ID,
+        title: 'OKF Workbench',
+        icon: 'assets/workbench.svg',
+      },
+    ]);
+    expect(manifest.contributes?.views?.[SIDEBAR_CONTAINER_ID]).toEqual([
+      { id: BUNDLE_VIEW_ID, name: 'Bundle' },
+      { id: RESOURCES_VIEW_ID, name: 'Resources' },
+      { id: ACTIONS_VIEW_ID, name: 'Actions' },
+    ]);
+
+    const titleCommands = manifest.contributes?.menus?.['view/title'] ?? [];
+    expect(titleCommands.map(({ command }) => command)).toEqual([
+      SELECT_BUNDLE_COMMAND,
+      'okfWorkbench.validateBundle',
+      'okfWorkbench.openGraph',
+      REFRESH_BUNDLE_COMMAND,
+      'okfWorkbench.newConcept',
+      REFRESH_BUNDLE_COMMAND,
+    ]);
+
+    const itemCommands = manifest.contributes?.menus?.['view/item/context'] ?? [];
+    expect(itemCommands.map(({ command }) => command)).toEqual([
+      OPEN_RESOURCE_COMMAND,
+      NEW_CONCEPT_IN_FOLDER_COMMAND,
+      'okfWorkbench.validateBundle',
+      'okfWorkbench.openGraph',
+    ]);
+    expect(manifest.contributes?.viewsWelcome?.some(({ view }) => view === ACTIONS_VIEW_ID)).toBe(
+      true,
+    );
   });
 
   test('exposes bundled CLI terminal integration as an opt-out setting', async () => {

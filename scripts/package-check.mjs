@@ -67,6 +67,7 @@ export const REQUIRED_VSIX_ENTRIES = Object.freeze([
   'extension/THIRD_PARTY_NOTICES.md',
   'extension/RUST_THIRD_PARTY_NOTICES.md',
   'extension/assets/icon.png',
+  'extension/assets/workbench.svg',
   'extension/changelog.md',
   'extension/readme.md',
   'extension/dist/extension.cjs',

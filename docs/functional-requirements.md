@@ -48,6 +48,13 @@ Markdown files are the source of truth. Diagnostics, indexes, and the graph are 
 | FR-006 | Initialization MUST detect every target-path collision before writing. | Any existing target refuses the complete initialization; no initialization path replaces an existing file. |
 | FR-007 | Generated paths MUST remain inside the selected bundle root. | Absolute paths, parent traversal, and equivalent encoded or normalized escapes are rejected with an actionable message. |
 
+### 1A. Workbench navigation
+
+| ID | Requirement | Acceptance condition |
+| --- | --- | --- |
+| FR-008 | Workbench MUST contribute one dedicated Activity Bar container with Bundle, Resources, and Actions views. | A user can discover the active bundle, its concept/conformance/curation/orphan summary, the ordered authoring actions, and the existing 3D Graph entry point without first knowing a Command Palette name. Empty states identify no-workspace, no-selection, loading, and unavailable conditions. |
+| FR-009 | The Resources view MUST derive a deterministic folder-first tree from the latest selected-bundle runtime snapshot and MUST remain presentation-only. | Canonical POSIX concept paths produce nested folders without graph nodes or edges; concepts, unknown non-empty types, partial concepts, and reserved documents remain visible; selecting a current document opens its URI; a stale revision/root action is refused. The view creates no parser or competing watcher, writes nothing when selecting or refreshing, and delegates authoring, validation, and graph actions to their existing command boundaries. |
+
 ### 2. Concept creation
 
 | ID | Requirement | Acceptance condition |
@@ -210,6 +217,7 @@ may present candidate-specific or partially evidenced results as generally achie
 | AC-006 | Live graph update | With the graph open, create, edit, rename, and delete concepts. The graph and details view converge to current workspace state without extension-host reload. |
 | AC-007 | Safe agent setup | Add both integration outputs to a repository with an existing unrelated `AGENTS.md`. Preview and apply; unrelated content remains unchanged and a second run is idempotent. Repeat with the bundle at the workspace root; neither generated output becomes a concept or diagnostic. |
 | AC-008 | Offline operation | Complete AC-001, AC-003, AC-004, AC-005, and AC-007 with network access disabled. No account, API key, or remote request is required. |
+| AC-009 | Workbench navigation | Open the OKF Workbench Activity Bar container, select a bundle, inspect summary counts, traverse nested resources with the keyboard, open source, validate, and launch the existing 3D Graph. Repeat in an untrusted and a provider-backed workspace; no sidebar-only action writes content or creates a second graph renderer. |
 
 ## Explicitly out of scope for the MVP
 
@@ -233,7 +241,7 @@ These items are resolved by [ADR 0005](decisions/0005-resolve-mvp-implementation
 | OQ-002 | Exact Minimal, Software Project, and Data & Analytics file sets are fixed in ADR 0005. | Initialization, fixtures |
 | OQ-003 | Exact `okf-workbench:index` markers and deterministic Markdown entries are fixed in ADR 0005. | Index generation, merging |
 | OQ-004 | Explicit-zone ISO date-time validation, five-minute future tolerance, and exact duplicate-resource comparison. | Curation validation |
-| OQ-005 | Six `okfWorkbench.*` command IDs, editor Webview graph, and a fixed 250 ms debounce. | Extension manifest, settings |
+| OQ-005 | Six core `okfWorkbench.*` workflow command IDs, editor Webview graph, and a fixed 250 ms debounce. Presentation-only sidebar command IDs remain outside the read/write acceptance catalog and delegate to those core workflows. | Extension manifest, settings |
 | OQ-006 | Broken links remain warnings/details owned by source nodes and never become graph nodes or edges. | Graph adapter, accessibility |
 | OQ-007 | VS Code floor/current, VSCodium, Ubuntu, macOS, and Windows evidence matrix fixed in ADR 0005. | Compatibility, release |
 | OQ-008 | Deterministic graph fixtures plus p95 update and interaction thresholds fixed in ADR 0005. | Performance benchmark |
@@ -245,6 +253,7 @@ These items are resolved by [ADR 0005](decisions/0005-resolve-mvp-implementation
 | Product boundary and workflows | [Product brief](product-brief.md), [MVP scope](mvp-scope.md) |
 | OKF parsing and validation | [OKF v0.1 compatibility contract](okf-v0.1-contract.md) |
 | Module and Webview constraints | [Architecture](architecture.md) |
+| Activity Bar and resource navigation | [MVP scope](mvp-scope.md), [Architecture](architecture.md) |
 | Agent outputs and merge safety | [Agent integration](agent-integration.md), [ADR 0002](decisions/0002-deterministic-local-first-core.md) |
 | 3D renderer choice | [ADR 0003](decisions/0003-use-3d-force-graph.md) |
 | Delivery order and release gates | [Roadmap](roadmap.md) |

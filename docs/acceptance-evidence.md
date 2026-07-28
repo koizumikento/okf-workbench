@@ -1,6 +1,6 @@
 # Acceptance evidence
 
-- Target: MVP acceptance scenarios AC-001 through AC-008
+- Target: MVP acceptance scenarios AC-001 through AC-009
 - Packaged extension ID: `straydog.okf-workbench`
 - Evidence date: 2026-07-27
 - Component harness: `test/acceptance/vitest.config.ts`
@@ -18,6 +18,10 @@
   candidate, so final-candidate headed performance/network evidence is unmeasured and assigned to
   post-publication verification.
 - Preserved predecessor-candidate local evidence: `docs/evidence/compatibility/`
+- The Activity Bar/sidebar implementation added after the retained `0.1.0` candidate changes the
+  manifest, Extension Host bundle, and packaged resource set. It currently has component/manifest
+  coverage only and inherits none of the hosted package, lifecycle, accessibility, or
+  provider-backed UI evidence below.
 
 ## Evidence semantics
 
@@ -45,7 +49,7 @@ packaged lifecycle automation, and full user-scenario evidence.
 - **Preserved local predecessor evidence** means the checked-in JSON files describe the earlier `581830`-byte candidate from commit `524eca3f36e1a1b3da935495d3fbbd0eb0d03f56` (SHA-256 `65c137822052aa7f90ef08cc1300020fec4adcd7cbcec6aec88ae98fae64dad0`) on local macOS arm64. They remain useful audit evidence but are not records for either the historical hosted candidate or the current candidate.
 - **Full scenario not evidenced** means the observable workflow has not yet been driven end to end through the actual editor UI and workspace provider. Component and lifecycle coverage can coexist without completing the scenario.
 
-All eight scenarios remain **Partial** because their remaining UI/provider clauses
+All nine scenarios remain **Partial** because their remaining UI/provider clauses
 are material. Here, **Partial describes evidence completeness, not implementation
 status**. The qualifiers in the table state whether the partial result has component
 evidence only or also packaged lifecycle evidence. Do not use this file to claim full
@@ -107,6 +111,7 @@ candidate.
 | AC-006 | Successive create, edit, rename, and delete graph revisions converge in presentation state; renamed/deleted selection clears; stale delivery is ignored. | Workspace file watchers, the 250 ms debounce, extension-to-Webview delivery, rendered details convergence, and extension-host continuity. | Partial — component |
 | AC-007 | The injectable agent command previews, approves, and applies both outputs in memory, preserves unrelated `AGENTS.md` text, and returns unchanged on its second run. A root-level bundle reload proves that the generated root `AGENTS.md` and `.agents/` Skill stay outside the concept and conformance inventory. The packaged lifecycle also preserves pre-existing `AGENTS.md` and Skill sentinels through upgrade and uninstall, but does not execute the authoring command. | Actual preview/confirmation UI, physical or remote workspace application, collision handling, and a differing-Skill replacement decision in a packaged editor. | Partial — component + lifecycle preservation |
 | AC-008 | Representative template, parse, validation, index, graph-state, and agent-plan components complete while the JavaScript `fetch` boundary is disabled. The predecessor headed VS Code record observed zero remote HTTP(S)/WS and other-scheme requests for its recorded identities, which do not match the final candidate. In all seven current hosted lanes, activation and request-correlated Validate/Open completion made zero calls through the listed CommonJS builtin export-owner/global hooks; the hooks remained installed until Extension Host exit, and all four write commands were refused in the untrusted-workspace probe. | Capture the final-candidate headed Webview and execute every trusted write-command flow under the hooks. ESM named bindings, cached references, raw/prototype bindings, `dns.promises`, child processes, and editor-owned traffic remain outside the Extension Host hook assertion. | Partial — component + current packaged CommonJS-owner/global hook window; final-candidate headed observation deferred |
+| AC-009 | Unit and dedicated acceptance-component coverage verify deterministic folder-first sidebar hierarchy, summary counts, unknown type visibility, reserved documents, orphan separation, and bounded text labels. Manifest coverage verifies the Activity Bar container, three native views, empty-state/actions content, command menus, and packaged SVG requirement. The New Concept command test verifies a validated folder-originated initial destination. | Actual Activity Bar rendering in light/dark/high-contrast themes, keyboard and screen-reader navigation, current/stale item source opening, watcher convergence, untrusted actions, provider-backed URIs, 3D Graph handoff, and packaged VS Code/VSCodium execution. | Partial — component only; no packaged sidebar evidence |
 
 ## Remaining release evidence
 

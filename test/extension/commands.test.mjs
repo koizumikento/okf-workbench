@@ -14,6 +14,12 @@ const expectedCommandIds = [
   'okfWorkbench.setupAgentIntegration',
 ];
 const recoveryCommandId = 'okfWorkbench.reviewPendingChanges';
+const sidebarCommandIds = [
+  'okfWorkbench.selectBundle',
+  'okfWorkbench.refreshBundle',
+  'okfWorkbench.openResource',
+  'okfWorkbench.newConceptInFolder',
+];
 
 async function withExtensionHostNetworkDenied(action) {
   const attempts = [];
@@ -64,7 +70,7 @@ async function withExtensionHostNetworkDenied(action) {
 }
 
 suite('OKF Workbench foundation', () => {
-  test('activates offline and registers the six stable IDs plus pending-review recovery', async () => {
+  test('activates offline and registers core, recovery, and sidebar command IDs', async () => {
     const extension = vscode.extensions.getExtension(extensionId);
     assert.ok(extension, `Extension ${extensionId} was not found.`);
     await withExtensionHostNetworkDenied(async () => extension.activate());
@@ -77,5 +83,8 @@ suite('OKF Workbench foundation', () => {
       registeredCommands.includes(recoveryCommandId),
       `${recoveryCommandId} was not registered.`,
     );
+    for (const commandId of sidebarCommandIds) {
+      assert.ok(registeredCommands.includes(commandId), `${commandId} was not registered.`);
+    }
   });
 });

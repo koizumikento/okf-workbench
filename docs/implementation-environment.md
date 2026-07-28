@@ -73,13 +73,13 @@ References:
 - [VSCodium releases](https://github.com/VSCodium/vscodium/releases)
 
 The current-stable test pin is refreshed for each release candidate. The current matrix is pinned
-to VS Code `1.129.1`. Revision `522fd5fcff02350aabaaf32c5f46407287a1493d` passed
-[Compatibility run 30325248296](https://github.com/koizumikento/okf-workbench/actions/runs/30325248296)
+to VS Code `1.129.1`. Revision `80ae7d560337cbe8d97af864c77aee410d5e5988` passed
+[Compatibility run 30335399539](https://github.com/koizumikento/okf-workbench/actions/runs/30335399539)
 across all seven VS Code/VSCodium lifecycle lanes and
-[Package smoke run 30325249515](https://github.com/koizumikento/okf-workbench/actions/runs/30325249515)
+[Package smoke run 30335400890](https://github.com/koizumikento/okf-workbench/actions/runs/30335400890)
 across all four target packages plus aggregate consistency. The retained VS Code `1.127.0` headed
-capture is historical after strengthening the schema-v3 evidence contract. The fresh `0.2.0`
-VS Code `1.129.1` headed capture passes QR-002 at `672 ms` p95 across 20 samples, QR-003 with `d3`
+capture is historical after strengthening the schema-v3 evidence contract. The fresh `0.2.1`
+VS Code `1.129.1` headed capture passes QR-002 at `677 ms` p95 across 20 samples, QR-003 with `d3`
 selected, and the strict zero-remote-request Webview network gate on its recorded hardware.
 
 ## Repository and package management

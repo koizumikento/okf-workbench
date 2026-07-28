@@ -3,8 +3,8 @@
 - Candidate: OKF Workbench `0.2.0`
 - Target identifier: `straydog.okf-workbench`
 - Registry: Open VSX
-- Current disposition: **Approved for the signed `v0.2.0` tag; the tagged workflow must still
-  validate live credentials and complete publication before the release is considered complete**
+- Current disposition: **Released on 2026-07-28; GitHub Release, Open VSX, target packages, and
+  post-publication VSCodium lifecycle verification passed**
 - Publication authority: a matching signed `v*` tag pushed for a reviewed commit contained in
   `main`
 
@@ -149,18 +149,18 @@ starts, inspect Open VSX before retrying because the external outcome may alread
 
 ## Post-publication verification
 
-- [ ] Confirm the signed `v0.2.0` tag and GitHub Release identify the tested revision.
-- [ ] Confirm the GitHub Release contains the universal and four target VSIX packages, all four
+- [x] Confirm the signed `v0.2.0` tag and GitHub Release identify the tested revision.
+- [x] Confirm the GitHub Release contains the universal and four target VSIX packages, all four
       native CLI archives, licenses/notices, and every corresponding checksum.
-- [ ] Confirm Open VSX reports `straydog.okf-workbench` version `0.2.0`, the verified publisher,
+- [x] Confirm Open VSX reports `straydog.okf-workbench` version `0.2.0`, the verified publisher,
       icon, README, changelog, license, privacy text, public contact route, and all target packages.
-- [ ] Download the published universal VSIX, inspect its metadata and contents, and compare its
+- [x] Download the published universal VSIX, inspect its metadata and contents, and compare its
       SHA-256 with the release checksum.
-- [ ] Install `0.2.0` from Open VSX in a clean supported VSCodium profile and run the minimal
+- [x] Install `0.2.0` from Open VSX in a clean supported VSCodium profile and run the minimal
       offline workflow without a development or preinstalled VSIX.
-- [ ] Confirm generated workspace files remain after uninstall and no extension-owned background
+- [x] Confirm generated workspace files remain after uninstall and no extension-owned background
       process remains.
-- [ ] Confirm `koizumikento/stray-tools` contains the `0.2.0` Homebrew formula and Scoop manifest
+- [x] Confirm `koizumikento/stray-tools` contains the `0.2.0` Homebrew formula and Scoop manifest
       with matching GitHub Release checksums.
 - [ ] Confirm clean Homebrew and Scoop installs run `okf version` successfully on their supported
       targets.
@@ -207,9 +207,11 @@ For a security, privacy, credential, or licensing incident:
 | Local universal VSIX | `978017` bytes; SHA-256 `6fcda0bb7da0237d6cef31d4476178611234df6201a059aec366ff057264361b` |
 | Hosted qualified universal VSIX | `978140` bytes; SHA-256 `d3c012c1f7bcacf3284fde8b810eb4c176b12c118290486ba31733dd064c3eeb` |
 | Node / npm / Rust | `24.18.0` / `11.16.0` / `1.92.0` |
-| Signed tag | Pending `v0.2.0` |
-| Release workflow | Pending |
+| Signed tag | `v0.2.0` on `888e27f982fa71d705a34cda4a8e4a85cfa3a758`; SSH signature verified with the maintainer's established signing key |
+| Release workflow | [Pass — run 30326024628](https://github.com/koizumikento/okf-workbench/actions/runs/30326024628); all eight publication jobs passed |
+| GitHub Release | [Published `v0.2.0`](https://github.com/koizumikento/okf-workbench/releases/tag/v0.2.0); 18 assets, with all release checksum files verified |
 | Open VSX listing | <https://open-vsx.org/extension/straydog/okf-workbench> |
+| Post-publication VSCodium lifecycle | Pass — VSCodium `1.121.03429` arm64; clean and untrusted installs, `0.1.2` to `0.2.0` upgrade, uninstall, and workspace preservation |
 | Homebrew / Scoop repository | <https://github.com/koizumikento/stray-tools> |
 
 ## Historical publication evidence

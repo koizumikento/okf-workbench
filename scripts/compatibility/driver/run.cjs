@@ -9,6 +9,7 @@ const path = require('node:path');
 
 const vscode = require('vscode');
 const {
+  deriveGeneratedViewCommandIds,
   EXPECTED_CLI_COMMANDS,
   EXPECTED_CLI_COMMAND_IDS,
   EXPECTED_COMMAND_CATALOG,
@@ -101,8 +102,9 @@ function assertInstalledCommands(extension, catalog, registeredCommands) {
     'The installed manifest command IDs or titles drifted from the acceptance catalog.',
   );
 
+  const generatedViewCommands = new Set(deriveGeneratedViewCommandIds(extension.packageJSON));
   const registeredOkfCommands = registeredCommands
-    .filter((command) => command.startsWith('okfWorkbench.'))
+    .filter((command) => command.startsWith('okfWorkbench.') && !generatedViewCommands.has(command))
     .sort();
   assert.deepEqual(
     registeredOkfCommands,

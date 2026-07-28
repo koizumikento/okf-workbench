@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, test } from 'vitest';
 
 import {
+  deriveGeneratedViewCommandIds,
   EXPECTED_CLI_COMMANDS,
   EXPECTED_COMMAND_CATALOG,
   EXPECTED_SIDEBAR_COMMANDS,
@@ -230,6 +231,15 @@ describe('extension manifest', () => {
       { id: RESOURCES_VIEW_ID, name: 'Resources' },
       { id: ACTIONS_VIEW_ID, name: 'Actions' },
     ]);
+    expect(deriveGeneratedViewCommandIds(manifest)).toEqual(
+      [BUNDLE_VIEW_ID, RESOURCES_VIEW_ID, ACTIONS_VIEW_ID]
+        .flatMap((viewId) =>
+          ['focus', 'open', 'removeView', 'resetViewLocation', 'toggleVisibility'].map(
+            (suffix) => `${viewId}.${suffix}`,
+          ),
+        )
+        .sort(),
+    );
 
     const titleCommands = manifest.contributes?.menus?.['view/title'] ?? [];
     expect(titleCommands.map(({ command }) => command)).toEqual([

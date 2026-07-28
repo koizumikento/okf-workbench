@@ -77,8 +77,34 @@ const EXPECTED_SIDEBAR_COMMANDS = Object.freeze(
   ].map((command) => Object.freeze(command)),
 );
 const EXPECTED_SIDEBAR_COMMAND_IDS = Object.freeze(EXPECTED_SIDEBAR_COMMANDS.map(({ id }) => id));
+const GENERATED_VIEW_COMMAND_SUFFIXES = Object.freeze([
+  'focus',
+  'open',
+  'removeView',
+  'resetViewLocation',
+  'toggleVisibility',
+]);
+
+function deriveGeneratedViewCommandIds(packageJSON) {
+  const viewGroups = packageJSON?.contributes?.views;
+  if (!viewGroups || typeof viewGroups !== 'object') return [];
+
+  const viewIds = Object.values(viewGroups)
+    .flatMap((views) => (Array.isArray(views) ? views : []))
+    .map((view) => view?.id)
+    .filter((id) => typeof id === 'string' && id.length > 0);
+
+  return [
+    ...new Set(
+      viewIds.flatMap((viewId) =>
+        GENERATED_VIEW_COMMAND_SUFFIXES.map((suffix) => `${viewId}.${suffix}`),
+      ),
+    ),
+  ].sort();
+}
 
 module.exports = {
+  deriveGeneratedViewCommandIds,
   EXPECTED_CLI_COMMANDS,
   EXPECTED_CLI_COMMAND_IDS,
   EXPECTED_COMMAND_CATALOG,

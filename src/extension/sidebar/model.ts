@@ -1,4 +1,5 @@
 import type { Finding, GraphPayload, ParsedBundle } from '../../core/model/index.js';
+import { ORPHAN_CONCEPT_FINDING_CODE } from '../diagnostics/findingCodes.js';
 
 const MAX_DISPLAY_CODE_POINTS = 160;
 
@@ -120,7 +121,7 @@ function findingCounts(findings: readonly Finding[]): SidebarFindingCounts {
   for (const finding of findings) {
     if (finding.category === 'conformance') {
       conformanceErrors += 1;
-    } else if (finding.category === 'curation' && finding.code !== 'orphan-concept') {
+    } else if (finding.category === 'curation' && finding.code !== ORPHAN_CONCEPT_FINDING_CODE) {
       curationWarnings += 1;
     }
   }

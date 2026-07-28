@@ -375,6 +375,12 @@ reference, backlink, statistics, and byte limits.
 
 The renderer is the standalone `3d-force-graph` package behind a repository-owned adapter, as recorded in [ADR 0003](decisions/0003-use-3d-force-graph.md). A repository-owned camera controller inside that adapter coordinates OrbitControls, toolbar commands, keyboard commands, search focus, and node focus. It classifies Chromium wheel input conservatively, owns the only custom wheel listener, prevents default scrolling only on the graph surface, and keeps library-specific control objects inside the adapter. It is locally bundled, exposes an accessible non-spatial navigation surface, resumes rendering only for bounded camera interaction windows, stops its animation loop after cooldown, and uses `d3` as the checked-in runtime fallback.
 
+The Extension Host retains the latest graph while the panel is hidden. Because the Webview uses
+`retainContextWhenHidden: false`, hiding the panel invalidates its ready state and any in-flight
+post without surfacing a user-interaction error. The recreated visible context announces readiness
+and receives the latest retained revision, so watcher and post-write refreshes do not race a
+destroyed hidden context.
+
 Folder hierarchy is derived inside the Webview from the canonical POSIX `GraphNode.id`; it is not
 added to the extension/Webview protocol or core semantic model. Folder selection is another
 presentation filter, while breadcrumbs provide the same action from selected-concept details. The

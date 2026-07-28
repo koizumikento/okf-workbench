@@ -80,22 +80,34 @@ function deferred<T>(): {
 
 class FakePanel implements GraphWebviewPanelPort {
   public readonly webview = new FakeWebview();
+  public visible = true;
   public revealCount = 0;
   public disposeCount = 0;
-  #listener: (() => void) | undefined;
+  #disposeListener: (() => void) | undefined;
+  #viewStateListener: (() => void) | undefined;
 
   public reveal(): void {
     this.revealCount += 1;
   }
 
+  public onDidChangeViewState(listener: () => void): { dispose(): void } {
+    this.#viewStateListener = listener;
+    return { dispose: () => (this.#viewStateListener = undefined) };
+  }
+
   public onDidDispose(listener: () => void): { dispose(): void } {
-    this.#listener = listener;
-    return { dispose: () => (this.#listener = undefined) };
+    this.#disposeListener = listener;
+    return { dispose: () => (this.#disposeListener = undefined) };
   }
 
   public dispose(): void {
     this.disposeCount += 1;
-    this.#listener?.();
+    this.#disposeListener?.();
+  }
+
+  public setVisible(visible: boolean): void {
+    this.visible = visible;
+    this.#viewStateListener?.();
   }
 }
 
@@ -415,6 +427,45 @@ describe('graph Webview host', () => {
 
     expect(rendered).toEqual([12]);
     expect(failures).toEqual([]);
+  });
+
+  it('queues a hidden-panel refresh until the recreated Webview announces ready', async () => {
+    const panel = new FakePanel();
+    const postErrors: unknown[] = [];
+    const controller = new GraphPanelController<string>({
+      panel,
+      assets: {
+        cspSource: 'vscode-resource://okf-workbench',
+        scriptUri: 'vscode-resource://okf-workbench/main.js',
+        styleUri: 'vscode-resource://okf-workbench/main.css',
+      },
+      navigator: { openSource: async () => undefined },
+      createNonce: () => 'fixed_nonce',
+      onPostError: (error) => postErrors.push(error),
+    });
+
+    controller.replaceGraph(graph(20), new Map());
+    await controller.handleWebviewMessage({ protocolVersion: PROTOCOL_VERSION, type: 'ready' });
+    expect(panel.webview.posted).toHaveLength(1);
+
+    panel.setVisible(false);
+    panel.webview.postMessageImplementation = () => {
+      throw new Error('hidden Webview was destroyed');
+    };
+    controller.replaceGraph(graph(21), new Map());
+
+    expect(panel.webview.posted).toHaveLength(1);
+    expect(postErrors).toEqual([]);
+
+    panel.setVisible(true);
+    panel.webview.postMessageImplementation = async () => true;
+    await controller.handleWebviewMessage({ protocolVersion: PROTOCOL_VERSION, type: 'ready' });
+
+    expect(panel.webview.posted).toHaveLength(2);
+    expect(panel.webview.posted.at(-1)).toEqual(
+      expect.objectContaining({ type: 'replaceGraph', revision: 21 }),
+    );
+    expect(postErrors).toEqual([]);
   });
 
   it('rejects an old-context ACK and still fails a dropped post to the recreated context', async () => {

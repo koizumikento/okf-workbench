@@ -3,8 +3,8 @@
 - Candidate: OKF Workbench `0.2.1`
 - Target identifier: `straydog.okf-workbench`
 - Registry: Open VSX
-- Current disposition: **Qualification in progress; do not tag or publish until every release
-  blocker below is checked**
+- Current disposition: **Approved for the signed `v0.2.1` tag after this documentation-only
+  evidence update is merged; the tagged workflow must still validate live credentials and publish**
 - Publication authority: a matching signed `v*` tag pushed for a reviewed commit contained in
   `main`
 
@@ -37,11 +37,14 @@ The completed `0.2.0` release record is archived at
       dark, light, and dark high-contrast themes. The sidebar exposed zero curation warnings and
       two separately identified orphan concepts, the restored graph reported current data without
       an interaction-error dialog, and keyboard focus traversed the Resources tree.
-- [ ] Record the immutable merged `main` candidate revision.
-- [ ] Run the hosted `Compatibility` workflow for that exact revision using published `v0.2.0` as
-      the verified upgrade predecessor; require acceptance and all seven editor/OS lifecycle lanes.
-- [ ] Run the hosted `Package smoke` workflow for the same revision; require the browser boundary,
-      all four target packages, and aggregate consistency.
+- [x] The immutable merged packaged candidate revision is
+      `80ae7d560337cbe8d97af864c77aee410d5e5988`; this evidence update changes documentation only.
+- [x] [Compatibility run 30335399539](https://github.com/koizumikento/okf-workbench/actions/runs/30335399539)
+      passed acceptance/Webview and all seven editor/OS lifecycle lanes for that revision, using
+      the published `v0.2.0` universal VSIX as the verified upgrade predecessor.
+- [x] [Package smoke run 30335400890](https://github.com/koizumikento/okf-workbench/actions/runs/30335400890)
+      passed the browser boundary, all four target packages, and aggregate package-set consistency
+      for the same revision.
 - [x] Repository secret names `OPEN_VSX_TOKEN`, `TAP_REPO`, and `STRAY_TOOLS_TOKEN` exist. Their
       values remain unreadable and must be validated only by the tagged workflow.
 - [x] On 2026-07-28, the maintainer requested this release. Publication remains fail-closed on
@@ -148,12 +151,13 @@ fallback. Open VSX versions are immutable; recover from a defective release with
 | --- | --- |
 | Extension ID | `straydog.okf-workbench` |
 | Packaged-input candidate commit | `aaef648754ce0bcef18bc0259966ae4875aa21a7` |
-| Immutable merged candidate revision | Pending |
-| Hosted CI | [PR #40 checks](https://github.com/koizumikento/okf-workbench/pull/40/checks) passed; release PR pending |
-| Hosted compatibility | Pending |
-| Hosted package smoke | Pending |
+| Immutable merged candidate revision | `80ae7d560337cbe8d97af864c77aee410d5e5988` |
+| Hosted CI | [PR #40 checks](https://github.com/koizumikento/okf-workbench/pull/40/checks) and [release PR #41 checks](https://github.com/koizumikento/okf-workbench/pull/41/checks) passed |
+| Hosted compatibility | [Pass — run 30335399539](https://github.com/koizumikento/okf-workbench/actions/runs/30335399539); acceptance/Webview and all seven editor/OS lifecycle lanes using published `v0.2.0` as the predecessor |
+| Hosted package smoke | [Pass — run 30335400890](https://github.com/koizumikento/okf-workbench/actions/runs/30335400890); browser boundary, four targets, and aggregate consistency |
 | Headed performance/network | Pass — VS Code `1.129.1`, QR-002 `677 ms` p95/20 samples, QR-003 `d3`, remote `0`, local packaged `2`, internal Webview `2`, other `0` |
 | Local universal VSIX | `978322` bytes; SHA-256 `7a88adb4091d2de5c5e5f99310257153f97cb829db8d9e2f6fd0d2d29e723073` |
+| Hosted qualified universal VSIX | `978168` bytes; SHA-256 `6c45cd00e620730d9c023764e822077a4444264ac1f3d4f88e8139a9df79dc32` |
 | Node / npm / Rust | `24.18.0` / `11.16.0` / `1.92.0` |
 | Signed tag | Pending |
 | Release workflow | Pending |

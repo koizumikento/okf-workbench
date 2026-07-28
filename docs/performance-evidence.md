@@ -2,7 +2,7 @@
 
 - Status: **current local headed evidence passes**; hosted compatibility and release gates remain
   separate
-- Date: 2026-07-23
+- Date: 2026-07-28
 - Governing decision:
   [ADR 0005, OQ-008](decisions/0005-resolve-mvp-implementation-questions.md#oq-008--performance-fixtures-and-thresholds)
 
@@ -10,15 +10,15 @@
 
 The tracked [current schema-v3 report](evidence/performance/vscode-1.129.1.md) and
 [current raw samples](evidence/performance/vscode-1.129.1.json) were captured in a genuine headed
-VS Code `1.129.1` session on 2026-07-23 and pass the strict current-input evaluator. The record is
+VS Code `1.129.1` session on 2026-07-28 and pass the strict current-input evaluator. The record is
 bound to the production runtime, build inputs, diagnostics observer, QR-003 harness inputs and
 definition, injected harness bytes, and editor/runtime metadata recorded in those files. Samples
 were captured in one run; none were copied or synthesized.
 
 | Target | Current status | Evidence |
 | --- | --- | --- |
-| QR-002 — update p95 at or below 1,000 ms | **Pass** | `832.00 ms` nearest-rank p95 across 20 create/change/rename/delete samples, with runtime-originated same-revision Problems and graph correlation. |
-| QR-003 — representative graph remains interactive | **Pass** | `d3` first-frame maximum `299.50 ms`, cooldown mean `2,872.70 ms`, interaction p95 values `7.80/15.60/1.10/0.60 ms`, and zero idle frames. |
+| QR-002 — update p95 at or below 1,000 ms | **Pass** | `677.00 ms` nearest-rank p95 across 20 create/change/rename/delete samples, with runtime-originated same-revision Problems and graph correlation. |
+| QR-003 — representative graph remains interactive | **Pass** | `d3` first-frame maximum `297.10 ms`, cooldown mean `2,744.80 ms`, interaction p95 values `9.10/16.60/2.10/0.80 ms`, and zero idle frames. |
 | Headed Webview network | **Pass** | Strict pre-navigation CDP observation recorded zero remote HTTP(S)/WS requests, two packaged-resource loads, two internal Webview navigations, and zero other-scheme requests. |
 | Release force-engine default | **`d3` selected** | Same-Electron comparison passed `d3`; `ngraph` recorded a structured WebGL draw timeout after 5,000 ms and was not selected. |
 

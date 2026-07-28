@@ -78,12 +78,12 @@ Markdown files are the source of truth. Diagnostics, indexes, and the graph are 
 
 | ID | Requirement | Acceptance condition |
 | --- | --- | --- |
-| FR-030 | `OKF: Validate Bundle` MUST publish findings through the Problems panel. | Invoking the command replaces stale findings for the selected bundle with current results. |
+| FR-030 | `OKF: Validate Bundle` MUST publish actionable source findings through the Problems panel and summarize orphan concepts without attaching editor diagnostics to their valid source text. | Invoking the command replaces stale Problems entries for the selected bundle with current editor-visible results and reports the current orphan count separately. |
 | FR-031 | Conformance errors MUST include missing or invalid YAML frontmatter, missing or empty concept `type`, invalid reserved-document structure, and unconsumable UTF-8 input. | A fixture for each case is reported as a conformance error. |
-| FR-032 | Curation warnings MUST include broken internal links, orphan concepts, missing recommended title or description, suspicious timestamps, and duplicate resource identifiers. | A fixture for each case is reported as a warning and not as an OKF conformance failure. |
+| FR-032 | Validation findings MUST include broken internal links, orphan concepts, missing recommended title or description, suspicious timestamps, and duplicate resource identifiers as curation rather than conformance. Problems MUST omit `orphan-concept` findings because isolation is valid source state; the graph and explicit validation summary retain that state. | A fixture for each case remains a curation finding; Problems publishes every listed source warning except orphan state, while the graph and explicit validation summary expose the current orphan count. |
 | FR-033 | Unknown concept types and additional frontmatter fields MUST NOT produce errors or warnings solely because they are unknown. | A valid custom-type fixture with custom fields has no unknown-schema finding. |
 | FR-034 | Every diagnostic SHOULD identify the narrowest useful URI and source range. | Frontmatter and link fixtures point to their field or Markdown link when a range is available. |
-| FR-035 | Diagnostic wording and severity MUST visibly distinguish conformance from curation. | A user can determine the category from the Problems panel without opening implementation logs. |
+| FR-035 | Editor diagnostic wording and severity MUST visibly distinguish conformance from actionable curation. | A user can determine the category from the Problems panel without opening implementation logs, and no orphan-only concept receives an editor decoration. |
 | FR-036 | Saving, creating, deleting, or renaming an affected Markdown file MUST refresh its diagnostics without reloading the extension host. | Watcher integration tests observe current findings after the debounced update completes. |
 
 ### 5. Index generation

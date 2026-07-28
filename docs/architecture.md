@@ -242,7 +242,10 @@ requirement.
 ## VS Code integration
 
 - Use commands and Explorer context menus as the primary entry points.
-- Use `DiagnosticCollection` for conformance and curation findings.
+- Use `DiagnosticCollection` for conformance and actionable source-level curation findings.
+  Keep `okf.curation.orphan-concept` in the complete deterministic validation result and graph
+  statistics, but do not publish it as an editor diagnostic: an intentionally isolated concept is
+  valid source and should not receive a warning decoration.
 - Use an editor Webview for the 3D graph.
 - Use `vscode.workspace.fs` for provider-backed workspace content. Route local `file:` reads through
   the URI-first port's native identity-bound handle implementation; do not silently fall back to

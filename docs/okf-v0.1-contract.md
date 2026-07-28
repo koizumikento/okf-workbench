@@ -99,7 +99,10 @@ Whether a bundle satisfies the hard interoperability contract of OKF v0.1.
 
 Whether a conformant bundle is easy to navigate and maintain. Examples include orphan concepts, missing recommended metadata, duplicate resources, and stale timestamps.
 
-The Problems panel must make this distinction visible through severity and wording.
+The Problems panel must make this distinction visible through severity and wording for findings
+that point to actionable source text. Orphan state remains a curation finding in deterministic
+validation output and a graph indicator, but the extension does not attach an editor diagnostic to
+a conformant concept merely because it is isolated.
 
 ## Versioning
 

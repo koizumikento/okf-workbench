@@ -5,6 +5,7 @@ export {
 } from './findingDiagnostic.js';
 export {
   FindingDiagnosticsPublisher,
+  isEditorDiagnosticFinding,
   type DiagnosticCollectionPort,
   type RuntimeDiagnosticsSink,
 } from './publisher.js';

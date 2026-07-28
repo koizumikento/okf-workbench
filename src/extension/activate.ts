@@ -55,6 +55,7 @@ import {
   type AcceptanceCommandTicket,
   type OkfWorkbenchAcceptanceApi,
 } from './runtime/acceptanceSignals.js';
+import { isEditorDiagnosticFinding } from './diagnostics/index.js';
 import { VscodeGraphPanelService, type GraphDeliveryFailureReason } from './webview/index.js';
 import {
   BundleContextService,
@@ -109,6 +110,9 @@ function findingCounts(snapshot: BundleRuntimeSnapshot<vscode.Uri>): {
   let warnings = 0;
   let information = 0;
   for (const finding of snapshot.findings) {
+    if (!isEditorDiagnosticFinding(finding)) {
+      continue;
+    }
     if (finding.severity === 'error') {
       errors += 1;
     } else if (finding.severity === 'warning') {
@@ -340,7 +344,7 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
     if (pendingValidation !== undefined) {
       const counts = findingCounts(snapshot);
       showBackgroundInformation(
-        `OKF validation complete: ${counts.errors} error(s), ${counts.warnings} warning(s), and ${counts.information} information item(s). Review OKF Conformance, Curation, and Compatibility entries in Problems.`,
+        `OKF validation complete: ${counts.errors} error(s), ${counts.warnings} warning(s), and ${counts.information} information item(s). ${snapshot.graph.statistics.orphanCount} orphan concept(s) are shown in the 3D Graph without editor diagnostics. Review actionable OKF Conformance, Curation, and Compatibility entries in Problems.`,
       );
     }
 

@@ -1,6 +1,8 @@
 import type { Finding } from '../../core/model/index.js';
 import { findingToDiagnostic, type FindingDiagnostic } from './findingDiagnostic.js';
 
+const ORPHAN_CONCEPT_FINDING_CODE = 'okf.curation.orphan-concept';
+
 export interface DiagnosticCollectionPort<TUri, TDiagnostic> {
   clear(): void;
   set(uri: TUri, diagnostics: readonly TDiagnostic[]): void;
@@ -11,6 +13,15 @@ export interface RuntimeDiagnosticsSink {
   replace(findings: readonly Finding[]): void;
   clear(): void;
   dispose?(): void;
+}
+
+/**
+ * Keeps intentionally isolated concepts out of editor decorations. Orphan state remains available
+ * in the complete runtime findings and graph, while Problems stays focused on actionable source
+ * diagnostics.
+ */
+export function isEditorDiagnosticFinding(finding: Finding): boolean {
+  return finding.code !== ORPHAN_CONCEPT_FINDING_CODE;
 }
 
 /** Replaces the complete contents of a dedicated diagnostic collection atomically by URI. */
@@ -32,6 +43,9 @@ export class FindingDiagnosticsPublisher<TUri, TDiagnostic> implements RuntimeDi
   public replace(findings: readonly Finding[]): void {
     const grouped = new Map<string, FindingDiagnostic[]>();
     for (const finding of findings) {
+      if (!isEditorDiagnosticFinding(finding)) {
+        continue;
+      }
       const diagnostic = findingToDiagnostic(finding);
       const current = grouped.get(diagnostic.uri);
       if (current === undefined) {

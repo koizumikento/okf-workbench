@@ -11,6 +11,7 @@ export interface ExpectedCliCommandMetadata {
   readonly title: string;
 }
 
+export function deriveGeneratedViewCommandIds(packageJSON: unknown): string[];
 export const EXPECTED_CLI_COMMANDS: readonly ExpectedCliCommandMetadata[];
 export const EXPECTED_CLI_COMMAND_IDS: readonly string[];
 export const EXPECTED_COMMAND_CATALOG: readonly ExpectedCommandMetadata[];

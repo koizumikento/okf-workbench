@@ -5,7 +5,16 @@ All notable changes to OKF Workbench are documented in this file.
 The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and intends to use
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) after the first public release.
 
-## Unreleased
+## 0.2.0 - 2026-07-28
+
+### Added
+
+- A dedicated OKF Workbench Activity Bar entry now exposes persistent Bundle, Resources, and
+  Actions views for selecting a bundle, reviewing its status, opening source Markdown, and
+  launching the existing 3D graph.
+- The Resources view presents deterministic folder and concept trees, preserves arbitrary
+  non-empty concept types, distinguishes conformance errors from curation findings, and can start
+  the existing guarded New Concept workflow in a selected folder.
 
 ### Changed
 

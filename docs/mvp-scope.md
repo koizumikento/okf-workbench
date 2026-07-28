@@ -18,6 +18,25 @@ The editor extension and native `okf` CLI share the deterministic Rust OKF core.
 loads it as capability-free `wasm32-unknown-unknown` inside the Extension Host; the CLI links it
 natively and owns only local-filesystem and terminal interaction.
 
+## Workbench sidebar
+
+The Activity Bar provides one **OKF Workbench** container with three native views:
+
+- **Bundle** shows the session-selected root, concept count, conformance errors, actionable
+  curation warnings, and orphan count.
+- **Resources** presents concepts and reserved Markdown documents in a folder tree derived from
+  canonical POSIX bundle paths. Selecting a document opens its current workspace URI.
+- **Actions** exposes the authoring loop in order and launches the existing guarded commands.
+
+The sidebar consumes the selected bundle runtime snapshot. It does not parse Markdown, create a
+second file watcher, add folder concepts, or render another graph. **Open 3D Graph** continues to
+open or reveal the editor Webview, where sufficient width and the existing security boundary are
+available.
+
+Bundle selection is session-local. Empty states guide users to open a workspace, initialize a
+bundle, or select an existing bundle. In untrusted workspaces, resource inspection, validation, and
+3D exploration remain available while authoring actions remain unavailable.
+
 ## Commands
 
 ### `OKF: Initialize Bundle`
@@ -169,6 +188,8 @@ Requirements:
 - File changes update diagnostics and the graph without reloading the extension host.
 - Diagnostics point to a specific file and useful source range where possible.
 - The graph can open the source file for any valid concept node.
+- The sidebar can select a bundle, browse nested Markdown resources, open source, run validation,
+  and launch the existing 3D graph without duplicating core or Webview behavior.
 - Existing unknown frontmatter fields are preserved by supported write operations.
 - VSCodium desktop is included in MVP compatibility testing.
 

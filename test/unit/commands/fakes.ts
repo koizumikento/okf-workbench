@@ -6,6 +6,7 @@ import type {
   ProposalPreviewIdentity,
   ProposalPreviewer,
   SelectionItem,
+  TextInputOptions,
 } from '../../../src/extension/commands/types.js';
 import type { WorkspaceFolderMembershipSession } from '../../../src/extension/workspace/workspaceFolderMembership.js';
 
@@ -32,6 +33,7 @@ export class FakeCommandUi implements CommandUi<string> {
   readonly inputs: (string | undefined)[] = [];
   readonly confirmations: boolean[] = [];
   readonly confirmationRequests: ConfirmationOptions[] = [];
+  readonly inputRequests: TextInputOptions[] = [];
   readonly information: string[] = [];
   readonly warnings: string[] = [];
   readonly errors: string[] = [];
@@ -47,7 +49,8 @@ export class FakeCommandUi implements CommandUi<string> {
     return items.find((item) => item.value === requested)?.value;
   }
 
-  async input(): Promise<string | undefined> {
+  async input(options: TextInputOptions): Promise<string | undefined> {
+    this.inputRequests.push(options);
     return this.inputs.shift();
   }
 

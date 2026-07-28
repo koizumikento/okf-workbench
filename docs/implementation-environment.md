@@ -19,6 +19,7 @@ separately downloadable native CLI archives:
 VS Code / VSCodium desktop
 ├── Node extension host
 │   ├── commands and diagnostics
+│   ├── Activity Bar Bundle, Resources, and Actions views
 │   ├── URI-first workspace adapter
 │   └── capability-free OKF core Wasm
 └── isolated editor Webview
@@ -120,6 +121,7 @@ src/
 │   ├── activate.ts
 │   ├── commands/
 │   ├── diagnostics/
+│   ├── sidebar/
 │   ├── workspace/
 │   └── webview/
 ├── shared/
@@ -410,6 +412,13 @@ Updates retain the SHA-256 of the original provider bytes, including an optional
 
 The extension maintains an in-memory parsed-bundle cache keyed by selected bundle and document revision. Markdown remains authoritative. No parsed concept body or frontmatter is stored in `globalState`, `workspaceState`, a database, or an external service.
 
+The Activity Bar sidebar is also in-memory and session-scoped. Native Tree View providers consume
+the latest runtime snapshot, compact user-controlled labels as text, and cache a bounded
+presentation tree for the current revision. Tree items retain current URI/root/revision identity;
+stale items cannot open or author against a replacement snapshot. The Actions view uses native
+welcome content and registered command links. No sidebar Webview, HTML renderer, persistence, or
+additional workspace watcher is introduced.
+
 ## Webview security and lifecycle
 
 The Webview HTML uses a per-render nonce and a CSP equivalent to:
@@ -447,6 +456,7 @@ The extension host owns:
 - Parsed bundle revision.
 - Diagnostics.
 - Graph payload and source-URI mapping.
+- Activity Bar Bundle/Resources/Actions presentation derived from the current snapshot.
 - File watcher and debounce lifecycle.
 
 The Webview owns presentation-only state:
@@ -528,12 +538,12 @@ retaining individual entries, and discovery uses `stat.size` to avoid avoidable 
 
 | Layer | Tool baseline | What it proves |
 | --- | --- | --- |
-| Core unit and fixture tests | Vitest `4.1.x`, Node environment | Parsing, preservation, resolution, validation, indexes, templates, graph model |
+| Core and presentation-model unit tests | Vitest `4.1.x`, Node environment | Parsing, preservation, resolution, validation, indexes, templates, graph model, and deterministic sidebar resource hierarchy |
 | Rust core and CLI | `cargo test --workspace` | Native semantics, deterministic generation, CLI no-write/apply/collision behavior |
 | Wasm parity | Vitest plus locked release Wasm build | ABI/import boundary and canonical Rust/TypeScript fixture and byte parity |
 | Webview state unit tests | Vitest `4.1.x`, Node environment | Pure search, type/tag/folder filtering, folder hierarchy, focus, presentation, color, custom-force, and message-decoding state without claiming browser DOM behavior |
 | Security boundaries | Dedicated Vitest and Playwright configs | Host/path/protocol boundaries plus hostile-content DOM execution and browser egress interception |
-| Extension integration | `@vscode/test-cli` `0.0.x` and `@vscode/test-electron` `3.1.x` with Mocha | Commands, workspace FS, diagnostics, watchers, URI behavior, source navigation, and the registered non-`file:` read boundary |
+| Extension integration | `@vscode/test-cli` `0.0.x` and `@vscode/test-electron` `3.1.x` with Mocha | Commands and Activity Bar views, workspace FS, diagnostics, watchers, URI behavior, source navigation, and the registered non-`file:` read boundary |
 | Webview browser harness | Playwright `1.62.x` on Chromium | Real DOM, WebGL smoke, CSP-compatible bundle loading, folder tree/filter/breadcrumb interaction, keyboard interaction, camera toolbar behavior, and wheel/pinch event boundaries |
 | Release smoke | Packaged VSIX in VS Code and VSCodium | Installation, activation, packaged resources, upgrade, uninstall |
 | Performance | Headed VS Code `1.129.1` release benchmark harness | QR-002 and QR-003 evidence on recorded hardware; VSCodium performance may be investigated separately but cannot satisfy the current strict release record |

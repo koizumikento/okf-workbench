@@ -11,6 +11,12 @@ This checklist prepares a release candidate; it does not authorize publication. 
 from retained evidence. A configured workflow, passing component test, or absent observation is
 not a substitute for its named manual or hosted check.
 
+The post-`0.1.0` Activity Bar/sidebar implementation changes the manifest, Extension Host bytes,
+and packaged resource inventory. The qualified `0.1.0` records below remain historical evidence
+for those exact published bytes only. A later release containing the sidebar requires fresh CI,
+hosted compatibility, package-smoke, clean install/upgrade/uninstall, theme/accessibility, and
+provider-backed resource-navigation evidence before making equivalent claims.
+
 ## Release blockers
 
 - [x] The maintainer selected MIT for the project on 2026-07-23, added the matching root

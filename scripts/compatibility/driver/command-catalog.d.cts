@@ -15,4 +15,6 @@ export const EXPECTED_CLI_COMMANDS: readonly ExpectedCliCommandMetadata[];
 export const EXPECTED_CLI_COMMAND_IDS: readonly string[];
 export const EXPECTED_COMMAND_CATALOG: readonly ExpectedCommandMetadata[];
 export const EXPECTED_COMMAND_IDS: readonly string[];
+export const EXPECTED_SIDEBAR_COMMANDS: readonly ExpectedCliCommandMetadata[];
+export const EXPECTED_SIDEBAR_COMMAND_IDS: readonly string[];
 export const EXPECTED_WRITE_COMMAND_IDS: readonly string[];

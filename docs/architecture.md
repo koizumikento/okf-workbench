@@ -23,6 +23,7 @@ src/
 ├── extension/
 │   ├── commands/
 │   ├── diagnostics/
+│   ├── sidebar/
 │   ├── workspace/
 │   └── webview/
 └── webview/
@@ -239,6 +240,26 @@ runs next. The first implementation may replace the full graph payload if profil
 sufficiently fast. Incremental rendering is a performance optimization, not a correctness
 requirement.
 
+### Workbench sidebar
+
+The Activity Bar container is an Extension Host presentation adapter over the selected
+`BundleRuntimeSnapshot`. Its Bundle provider derives bounded counts from the snapshot, and its
+Resources provider builds a deterministic folder-first tree from canonical POSIX concept and
+reserved-document paths. Folder items are presentation objects only: they never enter `okf-core`,
+the Wasm ABI, the graph protocol, or graph statistics.
+
+The sidebar owns no parser, workspace enumeration, Markdown watcher, diagnostic collection, or
+Webview. Selecting a bundle reuses URI-first discovery and changes only the session-scoped bundle
+context. A runtime publication atomically replaces the small sidebar model; clear or fatal refresh
+events remove stale resources. Tree commands carry the root and runtime revision that produced
+their item. Source opening and folder-originated concept creation accept the item only while both
+still match the current runtime snapshot.
+
+The Actions view and title/context menus invoke registered commands rather than command
+implementations. Validate and Open 3D Graph retain the read-command gate. Authoring retains
+Workspace Trust checks, the single proposal scheduler, preview recovery, path and collision
+guards, and URI-first application. The 3D renderer remains the single editor Webview.
+
 ## VS Code integration
 
 - Use commands and Explorer context menus as the primary entry points.
@@ -404,6 +425,7 @@ environment, authority rules, and candidate-binding limits.
 ### Extension integration tests
 
 - Command registration.
+- Activity Bar view registration, resource source navigation, and stale revision refusal.
 - Workspace file creation and diagnostics.
 - Watcher-driven updates.
 - Webview message validation.

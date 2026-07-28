@@ -44,6 +44,10 @@
     "onCommand:okfWorkbench.openGraph",
     "onCommand:okfWorkbench.setupAgentIntegration",
     "onCommand:okfWorkbench.reviewPendingChanges",
+    "onCommand:okfWorkbench.selectBundle",
+    "onCommand:okfWorkbench.refreshBundle",
+    "onCommand:okfWorkbench.openResource",
+    "onCommand:okfWorkbench.newConceptInFolder",
     "onCommand:okfWorkbench.showCliStatus",
     "onCommand:okfWorkbench.openCliTerminal",
     "onStartupFinished"
@@ -69,13 +73,15 @@
         "command": "okfWorkbench.newConcept",
         "title": "New Concept",
         "category": "OKF",
-        "enablement": "workspaceFolderCount > 0"
+        "enablement": "workspaceFolderCount > 0",
+        "icon": "$(new-file)"
       },
       {
         "command": "okfWorkbench.validateBundle",
         "title": "Validate Bundle",
         "category": "OKF",
-        "enablement": "workspaceFolderCount > 0"
+        "enablement": "workspaceFolderCount > 0",
+        "icon": "$(check)"
       },
       {
         "command": "okfWorkbench.regenerateIndexes",
@@ -87,7 +93,8 @@
         "command": "okfWorkbench.openGraph",
         "title": "Open 3D Graph",
         "category": "OKF",
-        "enablement": "workspaceFolderCount > 0"
+        "enablement": "workspaceFolderCount > 0",
+        "icon": "$(type-hierarchy-sub)"
       },
       {
         "command": "okfWorkbench.setupAgentIntegration",
@@ -100,6 +107,34 @@
         "title": "Review Pending Changes",
         "category": "OKF",
         "enablement": "okfWorkbench.hasPendingProposal"
+      },
+      {
+        "command": "okfWorkbench.selectBundle",
+        "title": "Select Bundle",
+        "category": "OKF",
+        "enablement": "workspaceFolderCount > 0",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "okfWorkbench.refreshBundle",
+        "title": "Refresh Bundle",
+        "category": "OKF",
+        "enablement": "workspaceFolderCount > 0",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "okfWorkbench.openResource",
+        "title": "Open Source",
+        "category": "OKF",
+        "enablement": "okfWorkbench.hasSelectedBundle",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "okfWorkbench.newConceptInFolder",
+        "title": "New Concept in Folder",
+        "category": "OKF",
+        "enablement": "okfWorkbench.hasSelectedBundle && workspaceFolderCount > 0",
+        "icon": "$(new-file)"
       },
       {
         "command": "okfWorkbench.showCliStatus",
@@ -143,6 +178,22 @@
           "when": "okfWorkbench.hasPendingProposal"
         },
         {
+          "command": "okfWorkbench.selectBundle",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "okfWorkbench.refreshBundle",
+          "when": "okfWorkbench.hasSelectedBundle"
+        },
+        {
+          "command": "okfWorkbench.openResource",
+          "when": "false"
+        },
+        {
+          "command": "okfWorkbench.newConceptInFolder",
+          "when": "false"
+        },
+        {
           "command": "okfWorkbench.showCliStatus"
         },
         {
@@ -180,8 +231,144 @@
           "when": "explorerResourceIsFolder && workspaceFolderCount > 0",
           "group": "navigation@15"
         }
+      ],
+      "view/title": [
+        {
+          "command": "okfWorkbench.selectBundle",
+          "when": "view == okfWorkbench.bundle && workspaceFolderCount > 0",
+          "group": "navigation@1"
+        },
+        {
+          "command": "okfWorkbench.validateBundle",
+          "when": "view == okfWorkbench.bundle && okfWorkbench.hasSelectedBundle",
+          "group": "navigation@2"
+        },
+        {
+          "command": "okfWorkbench.openGraph",
+          "when": "view == okfWorkbench.bundle && okfWorkbench.hasSelectedBundle",
+          "group": "navigation@3"
+        },
+        {
+          "command": "okfWorkbench.refreshBundle",
+          "when": "view == okfWorkbench.bundle && okfWorkbench.hasSelectedBundle",
+          "group": "navigation@4"
+        },
+        {
+          "command": "okfWorkbench.newConcept",
+          "when": "view == okfWorkbench.resources && okfWorkbench.hasSelectedBundle && isWorkspaceTrusted",
+          "group": "navigation@1"
+        },
+        {
+          "command": "okfWorkbench.refreshBundle",
+          "when": "view == okfWorkbench.resources && okfWorkbench.hasSelectedBundle",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "okfWorkbench.openResource",
+          "when": "view == okfWorkbench.resources && (viewItem == okfConcept || viewItem == okfReserved)",
+          "group": "navigation@1"
+        },
+        {
+          "command": "okfWorkbench.newConceptInFolder",
+          "when": "view == okfWorkbench.resources && viewItem == okfFolder && isWorkspaceTrusted",
+          "group": "navigation@2"
+        },
+        {
+          "command": "okfWorkbench.validateBundle",
+          "when": "view == okfWorkbench.resources && (viewItem == okfFolder || viewItem == okfConcept || viewItem == okfReserved)",
+          "group": "2_workbench@1"
+        },
+        {
+          "command": "okfWorkbench.openGraph",
+          "when": "view == okfWorkbench.resources && (viewItem == okfFolder || viewItem == okfConcept || viewItem == okfReserved)",
+          "group": "2_workbench@2"
+        }
       ]
     },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "okfWorkbench",
+          "title": "OKF Workbench",
+          "icon": "assets/workbench.svg"
+        }
+      ]
+    },
+    "views": {
+      "okfWorkbench": [
+        {
+          "id": "okfWorkbench.bundle",
+          "name": "Bundle"
+        },
+        {
+          "id": "okfWorkbench.resources",
+          "name": "Resources"
+        },
+        {
+          "id": "okfWorkbench.actions",
+          "name": "Actions"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "okfWorkbench.bundle",
+        "contents": "Open a workspace folder to use OKF Workbench.",
+        "when": "workspaceFolderCount == 0"
+      },
+      {
+        "view": "okfWorkbench.bundle",
+        "contents": "Choose the OKF bundle to inspect.\n\n[Select Bundle](command:okfWorkbench.selectBundle)\n\n[Initialize Bundle](command:okfWorkbench.initializeBundle)",
+        "when": "workspaceFolderCount > 0 && !okfWorkbench.hasSelectedBundle && isWorkspaceTrusted"
+      },
+      {
+        "view": "okfWorkbench.bundle",
+        "contents": "Choose the OKF bundle to inspect.\n\n[Select Bundle](command:okfWorkbench.selectBundle)\n\nAuthoring actions require Workspace Trust.",
+        "when": "workspaceFolderCount > 0 && !okfWorkbench.hasSelectedBundle && !isWorkspaceTrusted"
+      },
+      {
+        "view": "okfWorkbench.resources",
+        "contents": "Open a workspace folder to browse OKF resources.",
+        "when": "workspaceFolderCount == 0"
+      },
+      {
+        "view": "okfWorkbench.resources",
+        "contents": "Select a bundle to browse its Markdown resources.\n\n[Select Bundle](command:okfWorkbench.selectBundle)",
+        "when": "workspaceFolderCount > 0 && !okfWorkbench.hasSelectedBundle"
+      },
+      {
+        "view": "okfWorkbench.actions",
+        "contents": "Open a workspace folder to use OKF Workbench.",
+        "when": "workspaceFolderCount == 0"
+      },
+      {
+        "view": "okfWorkbench.actions",
+        "contents": "[Initialize Bundle](command:okfWorkbench.initializeBundle)\n\n[Select Existing Bundle](command:okfWorkbench.selectBundle)",
+        "when": "workspaceFolderCount > 0 && !okfWorkbench.hasSelectedBundle && isWorkspaceTrusted"
+      },
+      {
+        "view": "okfWorkbench.actions",
+        "contents": "[Select Existing Bundle](command:okfWorkbench.selectBundle)\n\nAuthoring actions require Workspace Trust.",
+        "when": "workspaceFolderCount > 0 && !okfWorkbench.hasSelectedBundle && !isWorkspaceTrusted"
+      },
+      {
+        "view": "okfWorkbench.actions",
+        "contents": "[New Concept](command:okfWorkbench.newConcept)\n\n[Validate Bundle](command:okfWorkbench.validateBundle)\n\n[Regenerate Indexes](command:okfWorkbench.regenerateIndexes)\n\n[Open 3D Graph](command:okfWorkbench.openGraph)\n\n[Set Up Agent Integration](command:okfWorkbench.setupAgentIntegration)",
+        "when": "okfWorkbench.hasSelectedBundle && isWorkspaceTrusted"
+      },
+      {
+        "view": "okfWorkbench.actions",
+        "contents": "[Validate Bundle](command:okfWorkbench.validateBundle)\n\n[Open 3D Graph](command:okfWorkbench.openGraph)\n\nAuthoring actions require Workspace Trust.",
+        "when": "okfWorkbench.hasSelectedBundle && !isWorkspaceTrusted"
+      },
+      {
+        "view": "okfWorkbench.actions",
+        "contents": "[Review Pending Changes](command:okfWorkbench.reviewPendingChanges)",
+        "when": "okfWorkbench.hasPendingProposal"
+      }
+    ],
     "configuration": {
       "title": "OKF Workbench",
       "properties": {

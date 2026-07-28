@@ -13,6 +13,8 @@ const {
   EXPECTED_CLI_COMMAND_IDS,
   EXPECTED_COMMAND_CATALOG,
   EXPECTED_COMMAND_IDS,
+  EXPECTED_SIDEBAR_COMMANDS,
+  EXPECTED_SIDEBAR_COMMAND_IDS,
   EXPECTED_WRITE_COMMAND_IDS,
 } = require('./command-catalog.cjs');
 const {
@@ -90,7 +92,12 @@ function assertInstalledCommands(extension, catalog, registeredCommands) {
   );
   assert.deepEqual(
     contributed.map((command) => ({ id: command.command, title: command.title })),
-    [...catalog.map(({ id, title }) => ({ id, title })), recoveryCommand, ...EXPECTED_CLI_COMMANDS],
+    [
+      ...catalog.map(({ id, title }) => ({ id, title })),
+      recoveryCommand,
+      ...EXPECTED_SIDEBAR_COMMANDS,
+      ...EXPECTED_CLI_COMMANDS,
+    ],
     'The installed manifest command IDs or titles drifted from the acceptance catalog.',
   );
 
@@ -99,7 +106,12 @@ function assertInstalledCommands(extension, catalog, registeredCommands) {
     .sort();
   assert.deepEqual(
     registeredOkfCommands,
-    [...EXPECTED_COMMAND_IDS, recoveryCommand.id, ...EXPECTED_CLI_COMMAND_IDS].sort(),
+    [
+      ...EXPECTED_COMMAND_IDS,
+      recoveryCommand.id,
+      ...EXPECTED_SIDEBAR_COMMAND_IDS,
+      ...EXPECTED_CLI_COMMAND_IDS,
+    ].sort(),
     'The packaged extension did not register exactly the stable command IDs.',
   );
 }

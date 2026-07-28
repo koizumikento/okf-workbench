@@ -1,7 +1,7 @@
 # Compatibility matrix
 
-- Status: prior universal candidate qualified; bundled-CLI candidate pending hosted qualification
-- Last matrix qualified: 2026-07-24
+- Status: `0.2.0` universal and target-platform candidates qualified
+- Last matrix qualified: 2026-07-28
 - Extension identifier expected by the gate: `straydog.okf-workbench`
 
 ## What this matrix proves
@@ -19,7 +19,29 @@ fixture with a fixed `SOURCE_DATE_EPOCH`, records its digest, and upgrades from
 that package. A same-version reinstall is recorded separately and is never
 counted as upgrade evidence.
 
-## Last universal-candidate qualification
+## Current 0.2.0 qualification
+
+The workflow requires VS Code `1.121.0` on Ubuntu, VS Code `1.129.1` on Ubuntu, macOS,
+and Windows, and VSCodium `1.121.03429` on Ubuntu, macOS, and Windows.
+[Compatibility run 30325248296](https://github.com/koizumikento/okf-workbench/actions/runs/30325248296)
+passed the candidate, acceptance/Webview, and all seven lifecycle jobs for revision
+`522fd5fcff02350aabaaf32c5f46407287a1493d`. Every lane installed and activated
+`straydog.okf-workbench@0.2.0`, completed the clean, untrusted, upgrade, and uninstall
+lifecycles, and retained its JSON evidence. The universal candidate was `978140` bytes with
+SHA-256 `d3c012c1f7bcacf3284fde8b810eb4c176b12c118290486ba31733dd064c3eeb`.
+
+The upgrade input was the published universal `v0.1.2` VSIX, verified before use with SHA-256
+`fcb512d9527ef4bcd2b22815669b1e710b8fc5ac88de7894ed16b9f8677b5a1b`. This is
+genuine published-version upgrade evidence rather than the deterministic `0.0.0` test
+predecessor.
+
+[Package smoke run 30325249515](https://github.com/koizumikento/okf-workbench/actions/runs/30325249515)
+passed the browser security boundary, macOS arm64, macOS x64, Linux x64, Windows x64, and the
+aggregate platform-set consistency job for the same revision. The aggregate gate required exactly
+one package for every supported target and one canonical Wasm core; each target lane also verified
+its native CLI/VSIX byte parity, package identity, license, notices, and reproducibility.
+
+## Preserved prior universal-candidate qualification
 
 The workflow requires VS Code `1.121.0` on Ubuntu, VS Code `1.129.1` on Ubuntu, macOS,
 and Windows, and VSCodium `1.121.03429` on Ubuntu, macOS, and Windows.
@@ -38,9 +60,9 @@ local candidate were byte-for-byte identical: `613637` bytes with the SHA-256 ab
 artifact-content revision is `e0c1f8895f3dc3391be3de47f1a517f82ae62f3c`; the later commits
 through `a5b2b75b7216d644f0d8d0f739db3a989bba7ca0` changed tests only.
 
-Those results predate ADR 0008 and do not qualify the current target-platform VSIX or integrated
-terminal CLI exposure. The current candidate requires fresh package-smoke evidence for all four
-targets and fresh packaged-editor lifecycle evidence before release.
+Those results predate ADR 0008 and do not qualify the current target-platform VSIX, integrated
+terminal CLI exposure, or Activity Bar/sidebar implementation. They remain historical evidence
+for their exact universal bytes only.
 
 ## Preserved historical hosted qualification
 

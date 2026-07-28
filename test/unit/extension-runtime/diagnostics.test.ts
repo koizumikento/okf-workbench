@@ -49,7 +49,7 @@ describe('finding diagnostics', () => {
     });
   });
 
-  it('clears stale collection entries before publishing the complete current finding set', () => {
+  it('clears stale entries and omits orphan state from editor diagnostics', () => {
     class FakeCollection implements DiagnosticCollectionPort<string, FindingDiagnostic> {
       public clearCount = 0;
       public readonly values = new Map<string, readonly FindingDiagnostic[]>();
@@ -83,16 +83,27 @@ describe('finding diagnostics', () => {
         category: 'curation',
         severity: 'warning',
         code: 'okf.curation.orphan-concept',
-        uri: 'memfs://bundle/concept.md',
+        uri: 'memfs://bundle/isolated.md',
         message: 'OKF curation: this concept is isolated.',
+      },
+      {
+        category: 'curation',
+        severity: 'warning',
+        code: 'okf.curation.missing-description',
+        uri: 'memfs://bundle/concept.md',
+        message: 'OKF curation: this concept is missing a description.',
       },
     ]);
 
     expect(collection.clearCount).toBe(1);
     expect(collection.values.has('memfs://bundle/stale.md')).toBe(false);
+    expect(collection.values.has('memfs://bundle/isolated.md')).toBe(false);
     expect([...collection.values.keys()]).toEqual([
       'memfs://bundle/concept.md',
       'memfs://bundle/index.md',
+    ]);
+    expect(collection.values.get('memfs://bundle/concept.md')).toEqual([
+      expect.objectContaining({ code: 'okf.curation.missing-description' }),
     ]);
   });
 });

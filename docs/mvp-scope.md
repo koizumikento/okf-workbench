@@ -61,7 +61,8 @@ Requirements:
 
 ### `OKF: Validate Bundle`
 
-Reports diagnostics through the VS Code Problems panel.
+Reports actionable source diagnostics through the VS Code Problems panel. Orphan concepts remain
+part of validation and graph state but do not decorate valid Markdown in the editor.
 
 Conformance errors:
 
@@ -73,10 +74,12 @@ Conformance errors:
 Curation warnings:
 
 - Broken internal link.
-- Orphan concept.
 - Missing recommended title or description.
 - Invalid or suspicious timestamp.
 - Duplicate resource identifier.
+
+The validation completion summary reports the orphan count separately, and the 3D graph provides
+the detailed orphan indicators.
 
 Unknown types and additional frontmatter fields are not errors.
 

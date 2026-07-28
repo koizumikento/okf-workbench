@@ -16,7 +16,8 @@ initialize -> create -> edit -> validate -> explore -> repair
   create-only writes.
 - Creates concepts from seven built-in templates while allowing arbitrary non-empty concept
   types.
-- Reports OKF conformance errors separately from curation warnings in the Problems panel.
+- Reports OKF conformance errors separately from actionable curation warnings in the Problems
+  panel, while keeping valid orphan concepts free of editor warning decorations.
 - Regenerates managed `index.md` regions without replacing unrelated content.
 - Builds a read-only, searchable 3D graph of concepts and directed internal Markdown links.
 - Shows details, backlinks, broken-link warnings, orphan state, type, tag, and folder-subtree

@@ -5,6 +5,13 @@ All notable changes to OKF Workbench are documented in this file.
 The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and intends to use
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) after the first public release.
 
+## Unreleased
+
+### Changed
+
+- Orphan concepts remain visible in validation summaries and the 3D graph, but no longer produce
+  editor warning decorations or Problems entries for otherwise valid Markdown.
+
 ## 0.1.2 - 2026-07-27
 
 ### Changed

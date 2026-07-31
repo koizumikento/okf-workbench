@@ -491,12 +491,20 @@ describe('Rust/Wasm core boundary', () => {
             'tagged_timestamp: !!timestamp "2026-07-22T12:00:00Z"',
             'tagged_offset_timestamp: !!timestamp "2026-07-22T12:00:00+09:00"',
             'tagged_date: !!timestamp 2026-07-22',
+            'tagged_space_offset: !!timestamp 2001-12-14 21:59:43.10 -05:00',
+            'tagged_space_local: !!timestamp 2001-12-15 2:59:43.10',
             'tagged_binary: !!binary |',
             '  SGVsbG8=',
             'tagged_wrapped_binary: !!binary |',
             '  SGVs',
             '  bG8=',
+            'tagged_loose_binary: !!binary not-base64!',
+            'tagged_narrow_binary: !!binary "SGVs bG8="',
+            'tagged_bom_binary: !!binary "SGVs﻿bG8="',
+            'tagged_zero_width_binary: !!binary "SGVs​bG8="',
             'tagged_float: !!float .inf',
+            'tagged_invalid_bool: !!bool nope',
+            'tagged_invalid_int: !!int nope',
             'semantic_set: !!set',
             '  ? true',
             '  ? [a, b]',
@@ -537,6 +545,11 @@ describe('Rust/Wasm core boundary', () => {
             '  - &sequence-reverse # comment',
             '    !!str "y"',
             'sequence_reverse_copy: *sequence-reverse',
+            'sequence_block_set:',
+            '  - !!set # comment',
+            '    ? true',
+            'flow_set_member: &flow-set-member alpha',
+            'tagged_flow_set: !!set { ? *flow-set-member }',
             'lookalike_nested:',
             '  $okf-workbench:yaml-tag:',
             '    tag: tag:yaml.org,2002:str',
@@ -926,6 +939,49 @@ describe('Rust/Wasm core boundary', () => {
         [
           'under-indented-direct-flow-map.md',
           ['---', 'type: reference', 'items:', '  - {a: 1,', 'b: 2}', '---', ''].join('\n'),
+        ],
+        [
+          'under-indented-deferred-flow.md',
+          ['---', 'type: reference', 'items:', '  -', '    [a,', 'b]', '---', ''].join('\n'),
+        ],
+        [
+          'under-indented-deferred-tagged-flow.md',
+          ['---', 'type: reference', 'items:', '  - !!seq', '    [a,', 'b]', '---', ''].join('\n'),
+        ],
+        [
+          'under-indented-mapping-tagged-flow.md',
+          ['---', 'type: reference', 'value: !!seq', '  [a,', 'b]', '---', ''].join('\n'),
+        ],
+        ['tight-quoted-comment.md', ['---', 'type: "reference"#bad', '---', ''].join('\n')],
+        [
+          'tight-flow-comment.md',
+          ['---', 'type: reference', 'tags: [a]#bad', '---', ''].join('\n'),
+        ],
+        [
+          'tight-flow-map-comment.md',
+          ['---', 'type: reference', 'map: {a: 1}#bad', '---', ''].join('\n'),
+        ],
+        [
+          'tight-block-comment.md',
+          ['---', 'type: reference', 'value: |#bad', '  content', '---', ''].join('\n'),
+        ],
+        [
+          'unsupported-shorthand-tag.md',
+          ['---', 'type: reference', 'value: !!evil payload', '---', ''].join('\n'),
+        ],
+        [
+          'unsupported-verbatim-tag.md',
+          ['---', 'type: reference', 'value: !<tag:yaml.org,2002:evil> payload', '---', ''].join(
+            '\n',
+          ),
+        ],
+        [
+          'unsupported-merge-tag.md',
+          ['---', 'type: reference', 'value: !!merge payload', '---', ''].join('\n'),
+        ],
+        [
+          'duplicate-bare-set-member.md',
+          ['---', 'type: reference', 'set: !!set', '  ?', '  ?', '---', ''].join('\n'),
         ],
         ['split-explicit-bool-key.md', ['---', '?', '  true', ': value', '---', ''].join('\n')],
         [

@@ -4,8 +4,7 @@ use crate::{
     ParseBundleInput, ParseFailure, ParseFailureReason, ParsedBundle, ParsedFrontmatter,
     ReservedDocument, SourceDocument, SourcePosition, SourceRange, UsageWindow, VerificationEvent,
 };
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use chrono::{DateTime, FixedOffset, NaiveDate, SecondsFormat};
+use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, SecondsFormat};
 use pulldown_cmark::{Event, Options, Parser, Tag};
 use serde_json::{Map, Number, Value};
 use std::collections::BTreeSet;
@@ -700,6 +699,26 @@ fn parse_frontmatter(
             resource_limit: true,
         });
     }
+    if let Some((relative_start, relative_end)) = invalid_comment_separator_range(yaml_source) {
+        return Err(FrontmatterError {
+            message: "Invalid YAML frontmatter: Comments must be separated from other tokens by white space characters".to_owned(),
+            range: Some(range_for(
+                text,
+                opening_end + relative_start,
+                opening_end + relative_end,
+            )),
+            resource_limit: false,
+        });
+    }
+    if let Some((_, _, tag)) = unsupported_yaml_2002_tag_range(yaml_source) {
+        return Err(FrontmatterError {
+            message: format!(
+                "YAML frontmatter is not JSON-safe: custom YAML tag is not supported: {tag}"
+            ),
+            range: yaml_range,
+            resource_limit: false,
+        });
+    }
     if let Some((relative_start, relative_end, closing)) = under_indented_flow_range(yaml_source) {
         return Err(FrontmatterError {
             message: format!(
@@ -726,8 +745,20 @@ fn parse_frontmatter(
             resource_limit: false,
         });
     }
+    if let Some((relative_start, relative_end)) = duplicate_bare_set_member_range(yaml_source) {
+        return Err(FrontmatterError {
+            message: "Invalid YAML frontmatter: Map keys must be unique".to_owned(),
+            range: Some(range_for(
+                text,
+                opening_end + relative_start,
+                opening_end + relative_end,
+            )),
+            resource_limit: false,
+        });
+    }
     let normalized_yaml = normalize_line_breaks(yaml_source);
-    let yaml: serde_yaml::Value = serde_yaml::from_str(&normalized_yaml).map_err(|error| {
+    let parser_yaml = mask_invalid_standard_scalar_tags(&normalized_yaml);
+    let yaml: serde_yaml::Value = serde_yaml::from_str(&parser_yaml).map_err(|error| {
         let error_text = error.to_string();
         let range = if error_text.contains("duplicate entry with key") {
             duplicate_mapping_key_range(yaml_source).map(|(relative_start, relative_end)| {
@@ -1192,8 +1223,25 @@ fn collect_yaml_explicit_tags(value: &serde_yaml::Value) -> Map<String, Value> {
 }
 
 fn canonical_timestamp(value: &str) -> Option<String> {
+    let value = value.trim();
     if let Ok(value) = DateTime::parse_from_rfc3339(value) {
         return Some(value.to_utc().to_rfc3339_opts(SecondsFormat::Millis, true));
+    }
+    if value.len() > 10 && value.as_bytes().get(10) == Some(&b' ') {
+        let mut normalized = format!("{}T{}", &value[..10], value[11..].trim_start());
+        if let Some(zone) = normalized[11..].rfind(' ').map(|offset| offset + 11)
+            && normalized[zone + 1..].starts_with(['+', '-'])
+        {
+            normalized.remove(zone);
+        }
+        if let Ok(value) = DateTime::parse_from_rfc3339(&normalized) {
+            return Some(value.to_utc().to_rfc3339_opts(SecondsFormat::Millis, true));
+        }
+    }
+    for format in ["%Y-%m-%d %H:%M:%S%.f", "%Y-%m-%dT%H:%M:%S%.f"] {
+        if let Ok(value) = NaiveDateTime::parse_from_str(value, format) {
+            return Some(value.and_utc().to_rfc3339_opts(SecondsFormat::Millis, true));
+        }
     }
     NaiveDate::parse_from_str(value, "%Y-%m-%d")
         .ok()?
@@ -1202,18 +1250,33 @@ fn canonical_timestamp(value: &str) -> Option<String> {
 }
 
 fn decoded_binary(value: &str) -> Option<Value> {
-    let compact = value
-        .chars()
-        .filter(|character| !character.is_whitespace())
-        .collect::<String>();
-    BASE64.decode(compact).ok().map(|bytes| {
-        Value::Array(
-            bytes
-                .into_iter()
-                .map(|byte| Value::Number(Number::from(byte)))
-                .collect(),
-        )
-    })
+    let mut accumulator = 0_u32;
+    let mut bits = 0_u8;
+    let mut bytes = Vec::new();
+    for character in value.chars() {
+        let byte = (u32::from(character) & 0xff) as u8;
+        let sextet = match byte {
+            b'A'..=b'Z' => byte - b'A',
+            b'a'..=b'z' => byte - b'a' + 26,
+            b'0'..=b'9' => byte - b'0' + 52,
+            b'+' | b'-' => 62,
+            b'/' | b'_' => 63,
+            b'=' => break,
+            _ => continue,
+        };
+        accumulator = (accumulator << 6) | u32::from(sextet);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            bytes.push(((accumulator >> bits) & 0xff) as u8);
+        }
+    }
+    Some(Value::Array(
+        bytes
+            .into_iter()
+            .map(|byte| Value::Number(Number::from(byte)))
+            .collect(),
+    ))
 }
 
 fn yaml_to_json(value: serde_yaml::Value) -> Result<Value, String> {
@@ -1403,6 +1466,237 @@ fn parsed_string_mapping_key(source: &str, tag_name: Option<&str>) -> Option<Str
         })
 }
 
+fn yaml_comment_start(source: &str) -> Option<usize> {
+    let mut quote = None;
+    let mut escaped = false;
+    let mut characters = source.char_indices().peekable();
+    while let Some((offset, character)) = characters.next() {
+        if let Some(active_quote) = quote {
+            if active_quote == '"' && character == '\\' && !escaped {
+                escaped = true;
+                continue;
+            }
+            if character == active_quote && !escaped {
+                if active_quote == '\'' && characters.peek().is_some_and(|(_, next)| *next == '\'')
+                {
+                    characters.next();
+                } else {
+                    quote = None;
+                }
+            }
+            escaped = false;
+            continue;
+        }
+        match character {
+            '"' | '\'' => quote = Some(character),
+            '#' if offset == 0
+                || source[..offset]
+                    .chars()
+                    .next_back()
+                    .is_some_and(char::is_whitespace) =>
+            {
+                return Some(offset);
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn invalid_comment_separator_range(source: &str) -> Option<(usize, usize)> {
+    let excluded_ranges = block_scalar_body_ranges(source);
+    let mut quote = None;
+    let mut escaped = false;
+    let mut valid_comment = false;
+    let mut characters = source.char_indices().peekable();
+    while let Some((offset, character)) = characters.next() {
+        if excluded_ranges
+            .iter()
+            .any(|(start, end)| *start <= offset && offset < *end)
+        {
+            continue;
+        }
+        if valid_comment {
+            if matches!(character, '\r' | '\n') {
+                valid_comment = false;
+            }
+            continue;
+        }
+        if let Some(active_quote) = quote {
+            if active_quote == '"' && character == '\\' && !escaped {
+                escaped = true;
+                continue;
+            }
+            if character == active_quote && !escaped {
+                if active_quote == '\'' && characters.peek().is_some_and(|(_, next)| *next == '\'')
+                {
+                    characters.next();
+                } else {
+                    quote = None;
+                }
+            }
+            escaped = false;
+            continue;
+        }
+        match character {
+            '"' | '\'' => quote = Some(character),
+            '#' => {
+                let previous = source[..offset].chars().next_back();
+                if offset == 0 || previous.is_some_and(char::is_whitespace) {
+                    valid_comment = true;
+                    continue;
+                }
+                let line_start = source[..offset]
+                    .rfind(['\r', '\n'])
+                    .map_or(0, |newline| newline + 1);
+                let token = source[line_start..offset]
+                    .rsplit_once(|character: char| character.is_whitespace() || character == ':')
+                    .map_or(&source[line_start..offset], |(_, token)| token);
+                if previous.is_some_and(|character| matches!(character, '"' | '\'' | ']' | '}'))
+                    || token.starts_with(['|', '>'])
+                {
+                    let end = offset
+                        + source[offset..]
+                            .find(['\r', '\n'])
+                            .unwrap_or(source.len() - offset);
+                    return Some((offset, end));
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn unsupported_yaml_2002_tag_range(source: &str) -> Option<(usize, usize, String)> {
+    let excluded_ranges = block_scalar_body_ranges(source);
+    let mut quote = None;
+    let mut escaped = false;
+    let mut comment = false;
+    for (offset, character) in source.char_indices() {
+        if excluded_ranges
+            .iter()
+            .any(|(start, end)| *start <= offset && offset < *end)
+        {
+            continue;
+        }
+        if comment {
+            if matches!(character, '\r' | '\n') {
+                comment = false;
+            }
+            continue;
+        }
+        if let Some(active_quote) = quote {
+            if active_quote == '"' && character == '\\' && !escaped {
+                escaped = true;
+                continue;
+            }
+            if character == active_quote && !escaped {
+                quote = None;
+            }
+            escaped = false;
+            continue;
+        }
+        match character {
+            '#' if offset == 0
+                || source[..offset]
+                    .chars()
+                    .next_back()
+                    .is_some_and(char::is_whitespace) =>
+            {
+                comment = true;
+            }
+            '"' | '\'' => quote = Some(character),
+            '!' => {
+                let previous = source[..offset].chars().next_back();
+                if previous.is_some_and(|character| {
+                    !character.is_whitespace() && !matches!(character, '[' | '{' | ',' | ':' | '?')
+                }) {
+                    continue;
+                }
+                if let Some(tag_source) = source[offset..].strip_prefix("!!") {
+                    let length = tag_source
+                        .find(|character: char| {
+                            character.is_whitespace() || matches!(character, ',' | ']' | '}' | '#')
+                        })
+                        .unwrap_or(tag_source.len());
+                    let name = &tag_source[..length];
+                    if standard_tag_uri(name).is_none() {
+                        let end = offset + 2 + length;
+                        return Some((offset, end, format!("tag:yaml.org,2002:{name}")));
+                    }
+                } else if let Some(tag_source) =
+                    source[offset..].strip_prefix("!<tag:yaml.org,2002:")
+                    && let Some(end) = tag_source.find('>')
+                {
+                    let name = &tag_source[..end];
+                    if standard_tag_uri(name).is_none() {
+                        let range_end = offset + "!<tag:yaml.org,2002:".len() + end + 1;
+                        return Some((offset, range_end, format!("tag:yaml.org,2002:{name}")));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn mask_invalid_standard_scalar_tags(source: &str) -> String {
+    let mut replacements = Vec::new();
+    for span in line_spans(source) {
+        let line = &source[span.start..span.content_end];
+        for (tag, replacement) in [("!!bool", "!!str "), ("!!int", "!!str")] {
+            let mut search_start = 0;
+            while let Some(relative) = line[search_start..].find(tag) {
+                let offset = search_start + relative;
+                let prefix = &line[..offset];
+                let quoted =
+                    prefix.matches('"').count() % 2 == 1 || prefix.matches('\'').count() % 2 == 1;
+                if quoted
+                    || yaml_comment_start(prefix).is_some()
+                    || prefix.chars().next_back().is_some_and(|character| {
+                        !character.is_whitespace() && !matches!(character, '[' | '{' | ',' | ':')
+                    })
+                {
+                    search_start = offset + tag.len();
+                    continue;
+                }
+                let remainder = line[offset + tag.len()..].trim_start();
+                let lexical = scalar_lexical_source(remainder);
+                let validation_lexical = lexical
+                    .split(|character: char| {
+                        character.is_whitespace() || matches!(character, ',' | ']' | '}')
+                    })
+                    .next()
+                    .unwrap_or(lexical);
+                let valid = match tag {
+                    "!!bool" => matches!(
+                        validation_lexical.to_ascii_lowercase().as_str(),
+                        "true" | "false"
+                    ),
+                    "!!int" => serde_yaml::from_str::<serde_yaml::Value>(validation_lexical)
+                        .is_ok_and(|value| matches!(value, serde_yaml::Value::Number(number) if number.as_i64().is_some() || number.as_u64().is_some())),
+                    _ => true,
+                };
+                if !lexical.is_empty() && !valid {
+                    replacements.push((
+                        span.start + offset,
+                        span.start + offset + tag.len(),
+                        replacement,
+                    ));
+                }
+                search_start = offset + tag.len();
+            }
+        }
+    }
+    let mut result = source.to_owned();
+    for (start, end, replacement) in replacements.into_iter().rev() {
+        result.replace_range(start..end, replacement);
+    }
+    result
+}
+
 fn under_indented_flow_range(source: &str) -> Option<(usize, usize, char)> {
     let spans = line_spans(source);
     let mut excluded_ranges = block_scalar_body_ranges(source);
@@ -1421,7 +1715,9 @@ fn under_indented_flow_range(source: &str) -> Option<(usize, usize, char)> {
             .strip_prefix("- ")
             .or_else(|| (trimmed == "-").then_some(""));
         let mapping_source = item.unwrap_or(trimmed);
-        let value_source = if item.is_some()
+        let value_source = if matches!(trimmed.chars().next(), Some('{' | '[')) {
+            trimmed
+        } else if item.is_some()
             && (matches!(mapping_source.chars().next(), Some('{' | '['))
                 || mapping_key_colon(mapping_source).is_none())
         {
@@ -1458,9 +1754,8 @@ fn under_indented_flow_range(source: &str) -> Option<(usize, usize, char)> {
                 continue;
             }
             let candidate_indent = candidate_body.len() - candidate_trimmed.len();
-            let candidate_syntax = candidate_trimmed
-                .split_once('#')
-                .map_or(candidate_trimmed, |(syntax, _)| syntax)
+            let candidate_syntax = yaml_comment_start(candidate_trimmed)
+                .map_or(candidate_trimmed, |comment| &candidate_trimmed[..comment])
                 .trim();
             if candidate_indent <= indent
                 && candidate_syntax.trim_end_matches(',').trim() != closing.to_string()
@@ -1621,12 +1916,16 @@ fn standard_set_body_ranges(source: &str) -> Vec<(usize, usize)> {
             let body = &source[span.start..span.content_end];
             let trimmed = body.trim_start_matches([' ', '\t']);
             let indent = body.len() - trimmed.len();
-            let mapping_source = trimmed
+            let item = trimmed
                 .strip_prefix("- ")
-                .or_else(|| (trimmed == "-").then_some(""))
-                .unwrap_or(trimmed);
-            let colon = mapping_key_colon(mapping_source)?;
-            let value_source = mapping_source[colon + 1..].trim_start();
+                .or_else(|| (trimmed == "-").then_some(""));
+            let mapping_source = item.unwrap_or(trimmed);
+            let value_source = if item.is_some() && mapping_key_colon(mapping_source).is_none() {
+                mapping_source
+            } else {
+                let colon = mapping_key_colon(mapping_source)?;
+                mapping_source[colon + 1..].trim_start()
+            };
             let (remainder, _, tag_name) = split_node_properties(value_source);
             (tag_name == Some("set") && (remainder.is_empty() || remainder.starts_with('#'))).then(
                 || {
@@ -1638,6 +1937,74 @@ fn standard_set_body_ranges(source: &str) -> Vec<(usize, usize)> {
             )
         })
         .collect()
+}
+
+fn duplicate_bare_set_member_range(source: &str) -> Option<(usize, usize)> {
+    for (start, end) in standard_set_body_ranges(source) {
+        let duplicates = line_spans(&source[start..end])
+            .into_iter()
+            .filter(|span| source[start + span.start..start + span.content_end].trim() == "?")
+            .take(2)
+            .count();
+        if duplicates == 2 {
+            return Some((end, end + 1));
+        }
+    }
+    None
+}
+
+fn inside_standard_flow_set(source: &str, offset: usize) -> bool {
+    let mut stack = Vec::new();
+    let mut quote = None;
+    let mut escaped = false;
+    let mut comment = false;
+    for (position, character) in source[..offset].char_indices() {
+        if comment {
+            if matches!(character, '\r' | '\n') {
+                comment = false;
+            }
+            continue;
+        }
+        if let Some(active_quote) = quote {
+            if active_quote == '"' && character == '\\' && !escaped {
+                escaped = true;
+                continue;
+            }
+            if character == active_quote && !escaped {
+                quote = None;
+            }
+            escaped = false;
+            continue;
+        }
+        match character {
+            '#' if position == 0
+                || source[..position]
+                    .chars()
+                    .next_back()
+                    .is_some_and(char::is_whitespace) =>
+            {
+                comment = true;
+            }
+            '"' | '\'' => quote = Some(character),
+            '{' => stack.push(('}', position)),
+            '[' => stack.push((']', position)),
+            '}' | ']'
+                if stack
+                    .last()
+                    .is_some_and(|(closing, _)| *closing == character) =>
+            {
+                stack.pop();
+            }
+            _ => {}
+        }
+    }
+    stack.iter().rev().any(|(closing, opening)| {
+        if *closing != '}' {
+            return false;
+        }
+        let prefix = source[..*opening].trim_end();
+        prefix.ends_with("!!set") || prefix.ends_with("!<tag:yaml.org,2002:set>")
+    })
 }
 
 fn alias_mapping_key_range(
@@ -1718,7 +2085,7 @@ fn alias_mapping_key_range(
                     cursor += next.len_utf8();
                 }
                 let alias_end = cursor;
-                if flow_explicit_key {
+                if flow_explicit_key && !inside_standard_flow_set(source, offset) {
                     return Some((alias_start, alias_end));
                 }
                 while source[cursor..].starts_with([' ', '\t']) {

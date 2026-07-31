@@ -1,6 +1,6 @@
 use crate::parser::{is_valid_actor, parse_explicit_zone_timestamp};
 use crate::{Finding, LinkClassification, ParseFailureReason, ParsedBundle};
-use chrono::{DateTime, Datelike, Days, FixedOffset, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, TimeZone, Utc};
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -39,12 +39,8 @@ pub fn parse_reference_time(now: &str) -> Option<DateTime<FixedOffset>> {
     }
     let year = date_source[..4].parse::<i32>().ok()?;
     let month = date_source[5..7].parse::<u32>().ok()?;
-    let day = date_source[8..10].parse::<u64>().ok()?;
-    if !(1..=31).contains(&day) {
-        return None;
-    }
-    let mut date = NaiveDate::from_ymd_opt(year, month, 1)?
-        .checked_add_days(Days::new(day.saturating_sub(1)))?;
+    let day = date_source[8..10].parse::<u32>().ok()?;
+    let mut date = NaiveDate::from_ymd_opt(year, month, day)?;
     if time_source.is_empty() {
         return (now.len() == 10).then(|| {
             FixedOffset::east_opt(0)?

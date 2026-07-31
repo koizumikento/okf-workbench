@@ -338,6 +338,8 @@ describe('Rust/Wasm core boundary', () => {
       './knowledge',
       'knowledge///',
       'x'.repeat(4096),
+      '%2e',
+      '%252e',
     ]) {
       expect(core.renderAgent('both', path)).toEqual(typescriptOkfCore.renderAgent('both', path));
     }
@@ -492,8 +494,6 @@ describe('Rust/Wasm core boundary', () => {
       '2026-07-31T24:00:00',
       '2026-07-31T24:00:00Z',
       '2026-07-31T24:00:00+00:00',
-      '2025-02-29T00:00Z',
-      '2025-04-31T00:00Z',
       '9999-12-31T24:00Z',
     ]) {
       expect(core.inspect(input, now), now).toEqual(typescriptOkfCore.inspect(input, now));
@@ -509,9 +509,17 @@ describe('Rust/Wasm core boundary', () => {
       '2026-07-31t00:00:00z',
       '2026-07-31 00:00:00Z',
       '2026-07-31T00:00:60Z',
+      '2025-02-29T00:00Z',
+      '2025-04-31T00:00Z',
+      '0001-13-01',
+      '0001-01-00',
     ]) {
       expect(() => core.inspect(input, invalid), invalid).toThrow(TypeError);
       expect(() => typescriptOkfCore.inspect(input, invalid), invalid).toThrow(TypeError);
+    }
+    for (const invalid of [new Date(Date.UTC(10_000, 0, 1)), new Date(Date.UTC(-1, 0, 1))]) {
+      expect(() => core.inspect(input, invalid)).toThrow(TypeError);
+      expect(() => typescriptOkfCore.inspect(input, invalid)).toThrow(TypeError);
     }
   });
 
@@ -593,11 +601,16 @@ describe('Rust/Wasm core boundary', () => {
       ['set-explicit-nonstring-int-key.md', 'set: !!set\n  ? !!int "1": one\n'],
       ['flow-explicit-timestamp-key.md', 'map: { !!timestamp "2001-12-15": one }\n'],
       ['nested-flow-set-mapping.md', 'outer: !!set\n  ? !!set { ? {value: one} }\n'],
+      ['set-nested-explicit-int-key.md', 'set: !!set\n  ? { !!int "1": one }\n'],
+      ['set-nested-explicit-timestamp-key.md', 'set: !!set\n  ? { !!timestamp 2001-2-3: one }\n'],
       [
         'nested-flow-set-cross-member-anchor.md',
         'outer: !!set\n  ? !!set { ? {value: &a !!str one} }\n  ? {copy: *a}\noutside: *a\n',
       ],
       ['explicit-indent-map-scalar.md', 'map:\n  value: !!str |2-\n    hello\n'],
+      ['explicit-indent-map-overindented.md', 'map:\n  value: !!str |2-\n      hello\n'],
+      ['explicit-indent-map-whitespace-line.md', 'map:\n  value: !!str |2+\n    hello\n    \n'],
+      ['deferred-explicit-indent-map-scalar.md', 'map:\n  value: !!str\n    |2-\n      hello\n'],
       ['explicit-indent-sequence-scalar.md', 'items:\n  - !!str >2-\n    hello\n    world\n'],
       ['explicit-indent-set-scalar.md', 'set: !!set\n  ? &a !!str |2-\n    hello\noutside: *a\n'],
       [
@@ -644,20 +657,39 @@ describe('Rust/Wasm core boundary', () => {
         'detached-comment-deferred-tagged-flow-member.md',
         'x: !!set\n  ?\n    # member\n    [!!timestamp "2001-12-15"]\n',
       ],
+      [
+        'property-comment-deferred-flow-member.md',
+        'x: !!set\n  ? &a # member\n    [!!timestamp "2001-12-15"]\ncopy: *a\n',
+      ],
+      [
+        'tag-comment-deferred-flow-member.md',
+        'x: !!set\n  ? !!seq # member\n    [!!timestamp "2001-12-15"]\n',
+      ],
+      [
+        'tag-comment-deferred-block-member.md',
+        'x: !!set\n  ? !!map # member\n    key: !!timestamp "2001-12-15"\n',
+      ],
       ['terminal-bare-set-markers.md', 'items:\n  - !!set\n    ?\n  - !!set\n    ?\n'],
       ['terminal-anchor-only-set-marker.md', 'set: !!set\n  ? &a\n'],
       ['terminal-commented-set-marker.md', 'set: !!set\n  ? # empty\n  # trailing\n'],
       ['nested-terminal-bare-set-marker.md', 'outer: !!set\n  ? !!set\n    ?\n'],
       ['terminal-bare-set-trailing-comment.md', 'set: !!set\n  ?\n# trailing\n'],
+      ['terminal-bare-set-comment-before-field.md', 'set: !!set\n  ?\n# trailing\nnext: value\n'],
       ['anchor-only-set-before-field.md', 'set: !!set\n  ? &a\nnext: value\n'],
       ['tag-only-set-before-field.md', 'set: !!set\n  ? !!str\nnext: value\n'],
       ['nested-set-tag-only-before-field.md', 'set: !!set\n  ? !!set\nnext: value\n'],
+      ['set-block-scalar-question.md', 'set: !!set\n  ? !!str |-\n      ?\n'],
       ['c1-control-type.md', 'type: "\\u0085"\n'],
       ['c1-control-resource.md', 'resource: "\\u0085urn:x"\n'],
       ['literal-c1-control-resource.md', 'resource: "\u0085urn:x"\n'],
       ['literal-c1-type-comment.md', 'type: reference # harmless\u0085comment\n'],
       ['literal-c1-resource-comment.md', 'resource: urn:x # harmless\u0085comment\n'],
       ['literal-c1-tags-comment.md', 'tags: # harmless\u0085comment\n  - safe\n'],
+      ['literal-c1-tag-member.md', 'tags:\n  - "unsafe\u0085tag"\n'],
+      ['literal-c1-tags-scalar.md', 'tags: "A\u0085B"\n'],
+      ['literal-c1-tags-flow-map.md', 'tags: {custom: "A\u0085B"}\n'],
+      ['literal-c1-tags-block-map.md', 'tags:\n  custom: "A\u0085B"\n'],
+      ['literal-c1-tags-block-scalar.md', 'tags: |-\n  A\u0085B\n'],
       ['bom-trim-type.md', 'type: "\\uFEFF"\n'],
     ] as const;
     for (const [path, fields] of cases) {

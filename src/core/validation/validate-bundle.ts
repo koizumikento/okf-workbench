@@ -112,7 +112,8 @@ export function validateBundle(
 function parseReferenceTime(now: Date | string): number {
   let value: number;
   if (now instanceof Date) {
-    value = now.getTime();
+    const year = now.getUTCFullYear();
+    value = year >= 0 && year <= 9999 ? now.getTime() : Number.NaN;
   } else {
     const normalized = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/u.test(now)
       ? `${now}Z`
@@ -121,12 +122,25 @@ function parseReferenceTime(now: Date | string): number {
       /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2}))?$/u.test(
         normalized,
       );
-    value = supported ? Date.parse(normalized) : Number.NaN;
+    value =
+      supported && isValidReferenceCalendarDate(normalized.slice(0, 10))
+        ? Date.parse(normalized)
+        : Number.NaN;
   }
   if (!Number.isFinite(value)) {
     throw new TypeError('ValidationOptions.now must be a valid Date or ISO date-time string.');
   }
   return value;
+}
+
+function isValidReferenceCalendarDate(value: string): boolean {
+  const year = Number.parseInt(value.slice(0, 4), 10);
+  const month = Number.parseInt(value.slice(5, 7), 10);
+  const day = Number.parseInt(value.slice(8, 10), 10);
+  if (month < 1 || month > 12 || day < 1) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= (days[month - 1] ?? 0);
 }
 
 function findingForParseFailure(failure: ParseFailure): Finding {

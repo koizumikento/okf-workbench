@@ -577,6 +577,9 @@ fn validate_bundle_directory(path: &str) -> Result<String, String> {
     if !bounded_relative_path(&decoded, false) {
         return Err("The path exceeds the supported relative-path limit.".to_owned());
     }
+    if decoded == "." {
+        return Ok(decoded);
+    }
     let has_scheme = decoded.find(':').is_some_and(|colon| {
         colon > 0
             && decoded[..colon]

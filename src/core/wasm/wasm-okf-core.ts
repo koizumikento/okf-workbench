@@ -96,7 +96,10 @@ export function createWasmOkfCore(bytes: Uint8Array): OkfCore {
       now: Date | string,
       failures: readonly ParseFailure[] = [],
     ): OkfCoreInspection => {
-      if (now instanceof Date && !Number.isFinite(now.getTime())) {
+      if (
+        now instanceof Date &&
+        (!Number.isFinite(now.getTime()) || now.getUTCFullYear() < 0 || now.getUTCFullYear() > 9999)
+      ) {
         throw new TypeError('ValidationOptions.now must be a valid Date or ISO date-time string.');
       }
       const result = callCore(exports, {

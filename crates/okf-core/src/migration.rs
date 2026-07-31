@@ -282,6 +282,20 @@ fn simple_field_range(
             }
             let start = frontmatter.range.start.offset + utf16_len(&source[..byte_start]);
             let end = frontmatter.range.start.offset + utf16_len(&source[..content_end]);
+            if has_following_indented_value_line(source, content_end) {
+                return Ok(None);
+            }
+            let Some(field_range) = frontmatter
+                .fields
+                .get(field)
+                .cloned()
+                .and_then(|value| serde_json::from_value::<crate::SourceRange>(value).ok())
+            else {
+                return Ok(None);
+            };
+            if field_range.end.offset > end {
+                return Ok(None);
+            }
             if slice_utf16(text, start, end)? != line {
                 return Err(format!(
                     "The {field} source range does not match the document."
@@ -300,6 +314,31 @@ fn simple_field_range(
             + 1;
     }
     Err(format!("The {field} source range is unavailable."))
+}
+
+fn has_following_indented_value_line(source: &str, mut offset: usize) -> bool {
+    while offset < source.len() {
+        if source.as_bytes()[offset] == b'\r' {
+            offset += 1;
+            if source.as_bytes().get(offset) == Some(&b'\n') {
+                offset += 1;
+            }
+        } else if source.as_bytes()[offset] == b'\n' {
+            offset += 1;
+        }
+        let line_end = source.as_bytes()[offset..]
+            .iter()
+            .position(|byte| matches!(byte, b'\r' | b'\n'))
+            .map_or(source.len(), |relative| offset + relative);
+        let line = &source[offset..line_end];
+        let trimmed = line.trim_start();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            offset = line_end;
+            continue;
+        }
+        return line.starts_with(char::is_whitespace);
+    }
+    false
 }
 
 fn is_single_line_unanchored_scalar(mut value: &str) -> bool {
@@ -800,6 +839,8 @@ mod tests {
         for source in [
             "---\nokf_version: !!str\n  0.1\n---\n# Root\n",
             "---\nokf_version: !<tag:yaml.org,2002:str> >-\n  0.1\n---\n# Root\n",
+            "---\nokf_version: !!str # retained\n  0.1\n---\n# Root\n",
+            "---\nokf_version: \"0.\\\n  1\"\n---\n# Root\n",
         ] {
             assert!(migration_result(&[("index.md", source)]).is_err());
         }
@@ -825,6 +866,14 @@ mod tests {
             (
                 "tagged-block.md",
                 "---\ntype: Reference\ntimestamp: !<tag:yaml.org,2002:str> >-\n  2026-07-22T10:00:00Z\n---\n# Tagged block\n",
+            ),
+            (
+                "comment-continuation.md",
+                "---\ntype: Reference\ntimestamp: !!str # retained\n  2026-07-22T10:00:00Z\n---\n# Comment continuation\n",
+            ),
+            (
+                "quoted-continuation.md",
+                "---\ntype: Reference\ntimestamp: \"2026-07-22T10:00:\\\n  00Z\"\n---\n# Quoted continuation\n",
             ),
         ]);
         assert_eq!(manual.files.len(), 1);

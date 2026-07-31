@@ -203,6 +203,8 @@ describe('OKF v0.2 migration', () => {
     for (const root of [
       ['---', 'okf_version: !!str', '  0.1', '---', '# Root', ''].join('\n'),
       ['---', 'okf_version: !<tag:yaml.org,2002:str> >-', '  0.1', '---', '# Root', ''].join('\n'),
+      ['---', 'okf_version: !!str # retained', '  0.1', '---', '# Root', ''].join('\n'),
+      ['---', 'okf_version: "0.' + '\\', '  1"', '---', '# Root', ''].join('\n'),
     ]) {
       expect(() =>
         planMigration({
@@ -290,6 +292,30 @@ describe('OKF v0.2 migration', () => {
             '  2026-07-22T10:00:00Z',
             '---',
             '# Tagged block',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'comment-continuation.md',
+          [
+            '---',
+            'type: Reference',
+            'timestamp: !!str # retained',
+            '  2026-07-22T10:00:00Z',
+            '---',
+            '# Comment continuation',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'quoted-continuation.md',
+          [
+            '---',
+            'type: Reference',
+            'timestamp: "2026-07-22T10:00:' + '\\',
+            '  00Z"',
+            '---',
+            '# Quoted continuation',
             '',
           ].join('\n'),
         ],

@@ -298,6 +298,30 @@ describe('Rust/Wasm core boundary', () => {
           ].join('\n'),
         ],
         [
+          'comment-continuation.md',
+          [
+            '---',
+            'type: Reference',
+            'timestamp: !!str # retained',
+            '  2026-07-22T10:00:00Z',
+            '---',
+            '# Comment continuation',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'quoted-continuation.md',
+          [
+            '---',
+            'type: Reference',
+            'timestamp: "2026-07-22T10:00:' + '\\',
+            '  00Z"',
+            '---',
+            '# Quoted continuation',
+            '',
+          ].join('\n'),
+        ],
+        [
           'indented.md',
           [
             '---',

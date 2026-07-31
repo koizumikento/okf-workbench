@@ -216,6 +216,10 @@ function simpleFieldRange(
       }
       const start = frontmatter.range.start.offset + offset;
       const end = start + line.length;
+      const fieldRange = frontmatter.fields[field];
+      if (fieldRange === undefined || fieldRange.end.offset > end) {
+        return undefined;
+      }
       if (text.slice(start, end) !== line) {
         throw new Error(`The ${field} source range does not match the document.`);
       }

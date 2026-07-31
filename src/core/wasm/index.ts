@@ -1,5 +1,6 @@
 export {
   createWasmOkfCore,
+  decodeMigrationPlanResult,
   loadPackagedWasmOkfCore,
   OkfCoreUnavailableError,
 } from './wasm-okf-core.js';

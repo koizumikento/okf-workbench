@@ -1,5 +1,6 @@
 import type { OperationProblem } from '../../core/model/index.js';
 import type { ParseBundleInput } from '../../core/parser/index.js';
+import { isValidActor } from '../../core/parser/index.js';
 import { loadBundle } from '../runtime/loadBundle.js';
 import { MAX_PROPOSAL_PREVIEW_CHANGES } from '../preview/proposal-preview-budget.js';
 import { providerMigrationPlanToProposal } from './proposals.js';
@@ -25,23 +26,7 @@ function problem(code: string, message: string, correctiveAction: string): Opera
 }
 
 function actorProblem(value: string): string | undefined {
-  const token = (candidate: string): boolean =>
-    candidate.length > 0 && candidate.length <= 256 && /^[A-Za-z0-9._/@:-]+$/u.test(candidate);
-  const prefix = value.startsWith('human:')
-    ? value.slice('human:'.length)
-    : value.startsWith('process:')
-      ? value.slice('process:'.length)
-      : undefined;
-  const slash = value.indexOf('/');
-  const valid =
-    (prefix !== undefined && token(prefix)) ||
-    (slash > 0 &&
-      slash === value.lastIndexOf('/') &&
-      token(value.slice(0, slash)) &&
-      token(value.slice(slash + 1)));
-  return valid && token(value)
-    ? undefined
-    : 'Use human:<id>, process:<id>, or <producer>/<version>.';
+  return isValidActor(value) ? undefined : 'Use human:<id>, process:<id>, or <producer>/<version>.';
 }
 
 export function createMigrateBundleCommand<TUri>(

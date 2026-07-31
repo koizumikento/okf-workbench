@@ -1,6 +1,5 @@
-use crate::{
-    DocumentContent, ParseBundleInput, ParsedFrontmatter, RenderedFile, SourceRange, parse_bundle,
-};
+use crate::parser::is_valid_actor;
+use crate::{DocumentContent, ParseBundleInput, ParsedFrontmatter, RenderedFile, parse_bundle};
 use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -81,15 +80,18 @@ pub fn migrate_bundle(input: MigrationInput) -> Result<MigrationPlan, String> {
             .frontmatter
             .as_ref()
             .ok_or_else(|| "The v0.1 root index has no frontmatter.".to_owned())?;
-        let range = field_range(frontmatter, "okf_version")?;
-        let field = slice_utf16(root_text, &range)?;
+        let range =
+            simple_field_range(root_text, frontmatter, "okf_version")?.ok_or_else(|| {
+                "Migration requires a single-line, unanchored okf_version declaration.".to_owned()
+            })?;
+        let field = slice_utf16(root_text, range.start, range.end)?;
         let comment = inline_comment(field);
         let replacement = format!("okf_version: \"0.2\"{comment}");
         let root_output = apply_edits(
             root_text,
             vec![Edit {
-                start: range.start.offset,
-                end: range.end.offset,
+                start: range.start,
+                end: range.end,
                 replacement,
             }],
         )?;
@@ -123,19 +125,22 @@ pub fn migrate_bundle(input: MigrationInput) -> Result<MigrationPlan, String> {
                 .as_deref()
                 .filter(|value| is_rfc3339(value))
             {
-                let range = field_range(&concept.frontmatter, "timestamp")?;
-                let field = slice_utf16(text, &range)?;
-                let comment = inline_comment(field);
-                edits.push(Edit {
-                    start: range.start.offset,
-                    end: range.end.offset,
-                    replacement: format!(
-                        "generated:{line_ending}  by: {}{line_ending}  at: {}{comment}",
-                        yaml_quote(&input.actor),
-                        yaml_quote(timestamp),
-                    ),
-                });
-                actions.push("timestamp-to-generated".to_owned());
+                if let Some(range) = simple_field_range(text, &concept.frontmatter, "timestamp")? {
+                    let field = slice_utf16(text, range.start, range.end)?;
+                    let comment = inline_comment(field);
+                    edits.push(Edit {
+                        start: range.start,
+                        end: range.end,
+                        replacement: format!(
+                            "generated:{line_ending}  by: {}{line_ending}  at: {}{comment}",
+                            yaml_quote(&input.actor),
+                            yaml_quote(timestamp),
+                        ),
+                    });
+                    actions.push("timestamp-to-generated".to_owned());
+                } else {
+                    manual_follow_up = true;
+                }
             } else {
                 manual_follow_up = true;
             }
@@ -178,7 +183,11 @@ pub fn migrate_bundle(input: MigrationInput) -> Result<MigrationPlan, String> {
         });
     }
 
-    files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+    files.sort_by(|left, right| {
+        (left.relative_path == "index.md")
+            .cmp(&(right.relative_path == "index.md"))
+            .then_with(|| left.relative_path.cmp(&right.relative_path))
+    });
     documents.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
     Ok(MigrationPlan {
         from_version,
@@ -231,23 +240,7 @@ fn decoded_documents(input: &ParseBundleInput) -> Result<BTreeMap<String, String
 }
 
 fn validate_actor(actor: &str) -> Result<(), String> {
-    let valid_token = |value: &str| {
-        !value.is_empty()
-            && value.len() <= 256
-            && value.chars().all(|character| {
-                character.is_ascii_alphanumeric()
-                    || matches!(character, '.' | '_' | '-' | '/' | ':' | '@')
-            })
-    };
-    let conventional = actor
-        .strip_prefix("human:")
-        .or_else(|| actor.strip_prefix("process:"))
-        .is_some_and(valid_token)
-        || (actor.matches('/').count() == 1
-            && actor
-                .split_once('/')
-                .is_some_and(|(producer, version)| valid_token(producer) && valid_token(version)));
-    if !conventional || !valid_token(actor) {
+    if !is_valid_actor(actor) {
         return Err(
             "Migration actor must use human:<id>, process:<id>, or <producer>/<version>."
                 .to_owned(),
@@ -256,16 +249,73 @@ fn validate_actor(actor: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn field_range(frontmatter: &ParsedFrontmatter, field: &str) -> Result<SourceRange, String> {
-    frontmatter
-        .fields
-        .get(field)
-        .cloned()
-        .ok_or_else(|| format!("The {field} source range is unavailable."))
-        .and_then(|value| {
-            serde_json::from_value(value)
-                .map_err(|_| format!("The {field} source range is invalid."))
-        })
+#[derive(Clone, Copy, Debug)]
+struct FieldRange {
+    start: usize,
+    end: usize,
+}
+
+fn simple_field_range(
+    text: &str,
+    frontmatter: &ParsedFrontmatter,
+    field: &str,
+) -> Result<Option<FieldRange>, String> {
+    let source = frontmatter.source.as_str();
+    let mut byte_start = 0usize;
+    while byte_start <= source.len() {
+        let content_end = source.as_bytes()[byte_start..]
+            .iter()
+            .position(|byte| matches!(byte, b'\r' | b'\n'))
+            .map_or(source.len(), |relative| byte_start + relative);
+        let line = &source[byte_start..content_end];
+        if let Some(value_start) = top_level_field_value_start(line, field) {
+            let value = line[value_start..].trim_start();
+            if value.is_empty()
+                || value.starts_with(['|', '>', '&', '*'])
+                || value.starts_with("!!") && value.contains(" &")
+            {
+                return Ok(None);
+            }
+            let start = frontmatter.range.start.offset + utf16_len(&source[..byte_start]);
+            let end = frontmatter.range.start.offset + utf16_len(&source[..content_end]);
+            if slice_utf16(text, start, end)? != line {
+                return Err(format!(
+                    "The {field} source range does not match the document."
+                ));
+            }
+            return Ok(Some(FieldRange { start, end }));
+        }
+        if content_end == source.len() {
+            break;
+        }
+        byte_start = content_end
+            + usize::from(
+                source.as_bytes()[content_end] == b'\r'
+                    && source.as_bytes().get(content_end + 1).copied() == Some(b'\n'),
+            )
+            + 1;
+    }
+    Err(format!("The {field} source range is unavailable."))
+}
+
+fn top_level_field_value_start(line: &str, field: &str) -> Option<usize> {
+    if line.starts_with(char::is_whitespace) {
+        return None;
+    }
+    for prefix in [
+        field.to_owned(),
+        format!("'{field}'"),
+        format!("\"{field}\""),
+    ] {
+        let Some(remainder) = line.strip_prefix(&prefix) else {
+            continue;
+        };
+        let whitespace = remainder.len() - remainder.trim_start_matches([' ', '\t']).len();
+        if remainder.as_bytes().get(whitespace).copied() == Some(b':') {
+            return Some(prefix.len() + whitespace + 1);
+        }
+    }
+    None
 }
 
 fn apply_edits(text: &str, mut edits: Vec<Edit>) -> Result<String, String> {
@@ -289,9 +339,9 @@ fn apply_edits(text: &str, mut edits: Vec<Edit>) -> Result<String, String> {
     Ok(output)
 }
 
-fn slice_utf16<'a>(text: &'a str, range: &SourceRange) -> Result<&'a str, String> {
-    let start = byte_offset_for_utf16(text, range.start.offset)?;
-    let end = byte_offset_for_utf16(text, range.end.offset)?;
+fn slice_utf16(text: &str, start: usize, end: usize) -> Result<&str, String> {
+    let start = byte_offset_for_utf16(text, start)?;
+    let end = byte_offset_for_utf16(text, end)?;
     text.get(start..end)
         .ok_or_else(|| "Migration source range is not a valid text boundary.".to_owned())
 }
@@ -383,7 +433,7 @@ fn analyze_citations(body: &str) -> Option<CitationAnalysis> {
             if in_citations {
                 break;
             }
-            let title = rest.trim().trim_end_matches('#').trim_end();
+            let title = atx_heading_title(rest);
             if title == "Citations" {
                 found = true;
                 in_citations = true;
@@ -391,6 +441,9 @@ fn analyze_citations(body: &str) -> Option<CitationAnalysis> {
             continue;
         }
         if !in_citations || line.trim().is_empty() {
+            continue;
+        }
+        if indent > 3 {
             continue;
         }
         let trimmed = line.trim();
@@ -411,6 +464,21 @@ fn analyze_citations(body: &str) -> Option<CitationAnalysis> {
         resources,
         ambiguous,
     })
+}
+
+fn atx_heading_title(rest: &str) -> &str {
+    let title = rest.trim();
+    let without_hashes = title.trim_end_matches('#');
+    if without_hashes.len() < title.len()
+        && without_hashes
+            .chars()
+            .next_back()
+            .is_some_and(char::is_whitespace)
+    {
+        without_hashes.trim_end()
+    } else {
+        title
+    }
 }
 
 fn fence_opening(line: &str) -> Option<(char, usize)> {
@@ -493,7 +561,7 @@ mod tests {
     use super::*;
     use crate::BundleDocumentInput;
 
-    fn migration(documents: &[(&str, &str)]) -> MigrationPlan {
+    fn migration_result(documents: &[(&str, &str)]) -> Result<MigrationPlan, String> {
         migrate_bundle(MigrationInput {
             bundle: ParseBundleInput {
                 root_uri: "fixture:/migration".to_owned(),
@@ -513,7 +581,10 @@ mod tests {
             },
             actor: "human:reviewer".to_owned(),
         })
-        .unwrap()
+    }
+
+    fn migration(documents: &[(&str, &str)]) -> MigrationPlan {
+        migration_result(documents).unwrap()
     }
 
     #[test]
@@ -636,5 +707,97 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["a.md", "index.md"]
         );
+    }
+
+    #[test]
+    fn quoted_keys_migrate_while_anchors_and_multiline_values_fail_closed() {
+        let quoted = migration(&[
+            ("index.md", "---\n\"okf_version\": \"0.1\"\n---\n# Root\n"),
+            (
+                "quoted.md",
+                "---\ntype: Reference\n'timestamp': \"2026-07-22T10:00:00Z\"\n---\n# Quoted\n",
+            ),
+        ]);
+        assert_eq!(
+            quoted
+                .files
+                .iter()
+                .map(|file| file.relative_path.as_str())
+                .collect::<Vec<_>>(),
+            vec!["quoted.md", "index.md"]
+        );
+        assert!(quoted.files.iter().all(|file| {
+            parse_bundle(ParseBundleInput {
+                root_uri: "fixture:/reparse".to_owned(),
+                invalid_root_uri_utf16: None,
+                revision: 1,
+                documents: vec![BundleDocumentInput {
+                    uri: format!("fixture:/reparse/{}", file.relative_path),
+                    bundle_path: file.relative_path.clone(),
+                    content: Some(DocumentContent::Text(file.content.clone())),
+                    content_hash: None,
+                    identity_only_failure: None,
+                    invalid_utf16_fields: None,
+                }],
+            })
+            .failures
+            .is_empty()
+        }));
+
+        let anchored_root = migration_result(&[(
+            "index.md",
+            "---\nokf_version: &version \"0.1\"\nproducer_version: *version\n---\n# Root\n",
+        )]);
+        assert!(anchored_root.is_err());
+
+        let manual = migration(&[
+            ("index.md", "---\nokf_version: \"0.1\"\n---\n# Root\n"),
+            (
+                "anchored.md",
+                "---\ntype: Reference\ntimestamp: &when \"2026-07-22T10:00:00Z\"\nproducer_time: *when\n---\n# Anchored\n",
+            ),
+            (
+                "multiline.md",
+                "---\ntype: Reference\ntimestamp: >-\n  2026-07-22T10:00:00Z\n---\n# Multiline\n",
+            ),
+        ]);
+        assert_eq!(manual.files.len(), 1);
+        assert!(
+            manual
+                .documents
+                .iter()
+                .filter(|document| document.relative_path != "index.md")
+                .all(|document| document.manual_follow_up && !document.changed)
+        );
+    }
+
+    #[test]
+    fn ignores_indented_code_and_requires_a_commonmark_atx_citations_heading() {
+        let plan = migration(&[
+            ("index.md", "---\nokf_version: \"0.1\"\n---\n# Root\n"),
+            (
+                "indented.md",
+                "---\ntype: Reference\n---\n# Citations\n\n    - https://example.com/code\n",
+            ),
+            (
+                "not-heading.md",
+                "---\ntype: Reference\n---\n# Citations#\n\n- https://example.com/not-a-citation\n",
+            ),
+        ]);
+        assert_eq!(plan.files.len(), 1);
+        let indented = plan
+            .documents
+            .iter()
+            .find(|document| document.relative_path == "indented.md")
+            .unwrap();
+        assert!(indented.manual_follow_up);
+        assert!(indented.citation_candidates.is_empty());
+        let not_heading = plan
+            .documents
+            .iter()
+            .find(|document| document.relative_path == "not-heading.md")
+            .unwrap();
+        assert!(!not_heading.manual_follow_up);
+        assert!(not_heading.citation_candidates.is_empty());
     }
 }

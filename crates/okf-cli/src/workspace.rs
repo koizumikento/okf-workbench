@@ -844,7 +844,9 @@ fn plan_files_with_expected(
             planned_parent,
         });
     }
-    plan.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+    if !matches!(mode, PlanMode::ReplaceExisting) {
+        plan.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+    }
     Ok(plan)
 }
 

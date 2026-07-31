@@ -169,16 +169,7 @@ export function createWasmOkfCore(bytes: Uint8Array): OkfCore {
         operation: 'migrate',
         input: { bundle: jsonBundleInput(input), actor },
       });
-      if (
-        !isObject(result) ||
-        typeof result['fromVersion'] !== 'string' ||
-        result['toVersion'] !== '0.2' ||
-        !Array.isArray(result['files']) ||
-        !Array.isArray(result['documents'])
-      ) {
-        throw new OkfCoreUnavailableError('The OKF core returned an invalid migration plan.');
-      }
-      return result as unknown as MigrationPlan;
+      return decodeMigrationPlanResult(result);
     },
   };
 }
@@ -392,6 +383,58 @@ function isRenderedFile(value: unknown): value is RenderedTemplateFile {
     typeof value['relativePath'] === 'string' &&
     value['encoding'] === 'utf8' &&
     typeof value['content'] === 'string'
+  );
+}
+
+export function decodeMigrationPlanResult(value: unknown): MigrationPlan {
+  if (
+    !isObject(value) ||
+    (value['fromVersion'] !== '0.1' && value['fromVersion'] !== '0.2') ||
+    value['toVersion'] !== '0.2' ||
+    !Array.isArray(value['files']) ||
+    !value['files'].every(isRenderedFile) ||
+    !Array.isArray(value['documents']) ||
+    !value['documents'].every(isMigrationDocumentResult)
+  ) {
+    throw new OkfCoreUnavailableError('The OKF core returned an invalid migration plan.');
+  }
+  const files = value['files'];
+  const documents = value['documents'];
+  if (
+    new Set(files.map((file) => file.relativePath)).size !== files.length ||
+    new Set(documents.map((document) => document.relativePath)).size !== documents.length ||
+    files.some(
+      (file, index) =>
+        file.relativePath.length === 0 ||
+        (file.relativePath === 'index.md' && index !== files.length - 1) ||
+        !documents.some(
+          (document) => document.relativePath === file.relativePath && document.changed,
+        ),
+    )
+  ) {
+    throw new OkfCoreUnavailableError('The OKF core returned an invalid migration plan.');
+  }
+  return value as unknown as MigrationPlan;
+}
+
+function isMigrationDocumentResult(value: unknown): boolean {
+  const actions = isObject(value) ? value['actions'] : undefined;
+  const citations = isObject(value) ? value['citationCandidates'] : undefined;
+  return (
+    isObject(value) &&
+    typeof value['relativePath'] === 'string' &&
+    value['relativePath'].length > 0 &&
+    typeof value['changed'] === 'boolean' &&
+    typeof value['manualFollowUp'] === 'boolean' &&
+    Array.isArray(actions) &&
+    actions.every(
+      (action) =>
+        action === 'root-version-to-0.2' ||
+        action === 'timestamp-to-generated' ||
+        action === 'citations-to-sources',
+    ) &&
+    Array.isArray(citations) &&
+    citations.every((candidate) => typeof candidate === 'string')
   );
 }
 

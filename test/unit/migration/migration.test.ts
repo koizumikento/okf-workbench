@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { planMigration } from '../../../src/core/migration/index.js';
-import type { ParseBundleInput } from '../../../src/core/parser/index.js';
+import { parseBundle, type ParseBundleInput } from '../../../src/core/parser/index.js';
 
 function input(documents: readonly (readonly [string, string])[]): ParseBundleInput {
   return {
@@ -43,7 +43,7 @@ describe('OKF v0.2 migration', () => {
     });
 
     expect(plan.fromVersion).toBe('0.1');
-    expect(plan.files.map((file) => file.relativePath)).toEqual(['index.md', 'provenance.md']);
+    expect(plan.files.map((file) => file.relativePath)).toEqual(['provenance.md', 'index.md']);
     const rootOutput = plan.files.find((file) => file.relativePath === 'index.md')?.content ?? '';
     const output = plan.files.find((file) => file.relativePath === 'provenance.md')?.content ?? '';
     expect(rootOutput).toContain('okf_version: "0.2"');
@@ -149,5 +149,135 @@ describe('OKF v0.2 migration', () => {
     expect(plan.files.find((file) => file.relativePath === 'a.md')?.content).toContain(
       'generated:\n  by: "human:reviewer"',
     );
+  });
+
+  it('migrates quoted keys and produces a parseable proposal', () => {
+    const plan = planMigration({
+      bundle: input([
+        ['index.md', ['---', '"okf_version": "0.1"', '---', '# Root', ''].join('\n')],
+        [
+          'quoted.md',
+          [
+            '---',
+            'type: Reference',
+            '\'timestamp\': "2026-07-22T10:00:00Z"',
+            '---',
+            '# Quoted',
+            '',
+          ].join('\n'),
+        ],
+      ]),
+      actor: 'human:reviewer',
+    });
+    expect(plan.files.map(({ relativePath }) => relativePath)).toEqual(['quoted.md', 'index.md']);
+    const migrated = parseBundle(
+      input(plan.files.map(({ relativePath, content }) => [relativePath, content] as const)),
+    );
+    expect(migrated.failures).toEqual([]);
+    expect(migrated.reservedDocuments[0]?.okfVersion).toBe('0.2');
+    expect(migrated.concepts[0]?.generated).toMatchObject({
+      by: 'human:reviewer',
+      at: '2026-07-22T10:00:00Z',
+    });
+  });
+
+  it('refuses anchored root versions and leaves anchored or multiline timestamps manual', () => {
+    expect(() =>
+      planMigration({
+        bundle: input([
+          [
+            'index.md',
+            [
+              '---',
+              'okf_version: &version "0.1"',
+              'producer_version: *version',
+              '---',
+              '# Root',
+              '',
+            ].join('\n'),
+          ],
+        ]),
+        actor: 'human:reviewer',
+      }),
+    ).toThrow(/single-line, unanchored/);
+
+    const plan = planMigration({
+      bundle: input([
+        ['index.md', ['---', 'okf_version: "0.1"', '---', '# Root', ''].join('\n')],
+        [
+          'anchored.md',
+          [
+            '---',
+            'type: Reference',
+            'timestamp: &when "2026-07-22T10:00:00Z"',
+            'producer_time: *when',
+            '---',
+            '# Anchored',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'multiline.md',
+          [
+            '---',
+            'type: Reference',
+            'timestamp: >-',
+            '  2026-07-22T10:00:00Z',
+            '---',
+            '# Multiline',
+            '',
+          ].join('\n'),
+        ],
+      ]),
+      actor: 'human:reviewer',
+    });
+    expect(plan.files.map(({ relativePath }) => relativePath)).toEqual(['index.md']);
+    expect(
+      plan.documents
+        .filter(({ relativePath }) => relativePath !== 'index.md')
+        .every(({ manualFollowUp, changed }) => manualFollowUp && !changed),
+    ).toBe(true);
+  });
+
+  it('does not convert indented code or a non-ATX Citations# heading', () => {
+    const plan = planMigration({
+      bundle: input([
+        ['index.md', ['---', 'okf_version: "0.1"', '---', '# Root', ''].join('\n')],
+        [
+          'indented.md',
+          [
+            '---',
+            'type: Reference',
+            '---',
+            '# Indented',
+            '',
+            '# Citations',
+            '',
+            '    - https://example.com/code',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'not-heading.md',
+          [
+            '---',
+            'type: Reference',
+            '---',
+            '# Citations#',
+            '',
+            '- https://example.com/not-a-citation',
+            '',
+          ].join('\n'),
+        ],
+      ]),
+      actor: 'human:reviewer',
+    });
+    expect(plan.files.map(({ relativePath }) => relativePath)).toEqual(['index.md']);
+    expect(plan.documents.find(({ relativePath }) => relativePath === 'indented.md')).toMatchObject(
+      { manualFollowUp: true, citationCandidates: [] },
+    );
+    expect(
+      plan.documents.find(({ relativePath }) => relativePath === 'not-heading.md'),
+    ).toMatchObject({ manualFollowUp: false, citationCandidates: [] });
   });
 });

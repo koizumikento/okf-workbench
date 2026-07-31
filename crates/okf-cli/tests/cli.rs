@@ -902,7 +902,7 @@ fn agent_outputs_stay_outside_bundle_validation() {
 }
 
 #[test]
-fn migrate_checks_applies_and_then_becomes_idempotent() {
+fn migrate_check_reports_plan_and_apply_fails_closed_without_replacement_cas() {
     let directory = tempdir().unwrap();
     let root = directory.path();
     fs::write(
@@ -943,6 +943,7 @@ fn migrate_checks_applies_and_then_becomes_idempotent() {
     assert_eq!(check_body["result"]["fromVersion"], "0.1");
     assert_eq!(check_body["result"]["changeCount"], 2);
 
+    let root_index = fs::read_to_string(root.join("index.md")).unwrap();
     let apply = okf()
         .args([
             "migrate",
@@ -953,24 +954,13 @@ fn migrate_checks_applies_and_then_becomes_idempotent() {
         ])
         .output()
         .unwrap();
-    assert!(apply.status.success(), "{apply:?}");
-    let migrated = fs::read_to_string(root.join("legacy.md")).unwrap();
-    assert!(migrated.contains("generated:\n  by: \"human:reviewer\""));
-    assert!(migrated.contains("custom_field: retained"));
-    assert!(migrated.contains("# Citations\n\n- https://example.com/source"));
-
-    let second = okf()
-        .args([
-            "migrate",
-            root.to_str().unwrap(),
-            "--actor",
-            "human:reviewer",
-            "--check",
-        ])
-        .output()
-        .unwrap();
-    assert!(second.status.success(), "{second:?}");
-    assert_eq!(json_stdout(&second)["result"]["changeCount"], 0);
+    assert_eq!(apply.status.code(), Some(2), "{apply:?}");
+    assert!(String::from_utf8_lossy(&apply.stderr).contains("generation-CAS"));
+    assert_eq!(
+        fs::read_to_string(root.join("index.md")).unwrap(),
+        root_index
+    );
+    assert_eq!(fs::read_to_string(root.join("legacy.md")).unwrap(), legacy);
 }
 
 #[test]

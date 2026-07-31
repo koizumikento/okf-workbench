@@ -7,6 +7,7 @@ import { beforeAll, describe, expect, test } from 'vitest';
 import { GraphResourceLimitError } from '../../../src/core/graph/index.js';
 import {
   createWasmOkfCore,
+  decodeMigrationPlanResult,
   typescriptOkfCore,
   type OkfCore,
 } from '../../../src/core/wasm/index.js';
@@ -94,6 +95,64 @@ describe('Rust/Wasm core boundary', () => {
     );
   });
 
+  test.each([
+    { fromVersion: '0.1', toVersion: '0.2', files: [{}], documents: [] },
+    {
+      fromVersion: '0.1',
+      toVersion: '0.2',
+      files: [],
+      documents: [
+        {
+          relativePath: 'index.md',
+          changed: 'yes',
+          manualFollowUp: false,
+          actions: [],
+          citationCandidates: [],
+        },
+      ],
+    },
+    {
+      fromVersion: '0.1',
+      toVersion: '0.2',
+      files: [
+        { relativePath: 'index.md', encoding: 'utf8', content: 'root' },
+        { relativePath: 'concept.md', encoding: 'utf8', content: 'concept' },
+      ],
+      documents: [
+        {
+          relativePath: 'index.md',
+          changed: true,
+          manualFollowUp: false,
+          actions: ['root-version-to-0.2'],
+          citationCandidates: [],
+        },
+        {
+          relativePath: 'concept.md',
+          changed: true,
+          manualFollowUp: false,
+          actions: ['timestamp-to-generated'],
+          citationCandidates: [],
+        },
+      ],
+    },
+    {
+      fromVersion: '0.1',
+      toVersion: '0.2',
+      files: [],
+      documents: [
+        {
+          relativePath: 'concept.md',
+          changed: false,
+          manualFollowUp: false,
+          actions: [42],
+          citationCandidates: [],
+        },
+      ],
+    },
+  ])('rejects malformed migration result %#', (result) => {
+    expect(() => decodeMigrationPlanResult(result)).toThrow('invalid migration plan');
+  });
+
   test('keeps migration parity for ordinal paths, fences, CR-only text, and RFC3339 variants', () => {
     const rootUri = 'fixture:/migration-adversarial';
     const migrationInput = inputFor(
@@ -159,8 +218,79 @@ describe('Rust/Wasm core boundary', () => {
             '',
           ].join('\n'),
         ],
+        [
+          'anchored.md',
+          [
+            '---',
+            'type: Reference',
+            'timestamp: &when "2026-07-22T10:00:00Z"',
+            'producer_time: *when',
+            '---',
+            '# Anchored',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'multiline.md',
+          [
+            '---',
+            'type: Reference',
+            'timestamp: >-',
+            '  2026-07-22T10:00:00Z',
+            '---',
+            '# Multiline',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'indented.md',
+          [
+            '---',
+            'type: Reference',
+            '---',
+            '# Citations',
+            '',
+            '    - https://example.com/code',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'not-heading.md',
+          [
+            '---',
+            'type: Reference',
+            '---',
+            '# Citations#',
+            '',
+            '- https://example.com/not-a-citation',
+            '',
+          ].join('\n'),
+        ],
       ],
       rootUri,
+    );
+    expect(core.migrate(migrationInput, 'human:reviewer')).toEqual(
+      typescriptOkfCore.migrate(migrationInput, 'human:reviewer'),
+    );
+  });
+
+  test('keeps migration parity for quoted root and timestamp keys', () => {
+    const migrationInput = inputFor(
+      [
+        ['index.md', ['---', '"okf_version": "0.1"', '---', '# Root', ''].join('\n')],
+        [
+          'quoted.md',
+          [
+            '---',
+            'type: Reference',
+            '\'timestamp\': "2026-07-22T10:00:00Z"',
+            '---',
+            '# Quoted',
+            '',
+          ].join('\n'),
+        ],
+      ],
+      'fixture:/migration-quoted',
     );
     expect(core.migrate(migrationInput, 'human:reviewer')).toEqual(
       typescriptOkfCore.migrate(migrationInput, 'human:reviewer'),

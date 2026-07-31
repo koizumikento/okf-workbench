@@ -22,7 +22,8 @@ Provide an optional migration planner in the shared deterministic core, exposed 
 - Report ambiguous fields and citation forms for manual follow-up without deleting or rewriting
   them.
 - Preserve unknown frontmatter and Markdown content.
-- Update the root version inside the same complete guarded plan and make subsequent runs empty.
+- Update the root version inside the same complete guarded plan, write that root change last, and
+  make subsequent runs empty.
 - Preview every extension migration because it updates existing files; keep CLI `--check`
   non-mutating and require explicit `--apply` for non-interactive mutation.
 - Never infer verification, computation, execution, receipt, or attestation claims.

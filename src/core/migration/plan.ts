@@ -1,5 +1,5 @@
-import { parseBundle } from '../parser/index.js';
-import type { ParsedFrontmatter, SourceRange } from '../model/index.js';
+import { isValidActor, parseBundle } from '../parser/index.js';
+import type { ParsedFrontmatter } from '../model/index.js';
 import type { RenderedTemplateFile } from '../templates/index.js';
 import type { MigrationDocumentResult, MigrationInput, MigrationPlan } from './types.js';
 
@@ -28,6 +28,15 @@ function compareRelativePath(
     if (difference !== 0) return difference;
   }
   return leftBytes.length - rightBytes.length;
+}
+
+function compareMigrationPath(
+  left: { readonly relativePath: string },
+  right: { readonly relativePath: string },
+): number {
+  if (left.relativePath === 'index.md') return right.relativePath === 'index.md' ? 0 : 1;
+  if (right.relativePath === 'index.md') return -1;
+  return compareRelativePath(left, right);
 }
 
 const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
@@ -62,12 +71,15 @@ export function planMigration(input: MigrationInput): MigrationPlan {
   if (fromVersion === '0.1') {
     if (rootIndex.frontmatter === undefined)
       throw new Error('The v0.1 root index has no frontmatter.');
-    const range = fieldRange(rootIndex.frontmatter, 'okf_version');
-    const field = rootText.slice(range.start.offset, range.end.offset);
+    const range = simpleFieldRange(rootText, rootIndex.frontmatter, 'okf_version');
+    if (range === undefined) {
+      throw new Error('Migration requires a single-line, unanchored okf_version declaration.');
+    }
+    const field = rootText.slice(range.start, range.end);
     const output = applyEdits(rootText, [
       {
-        start: range.start.offset,
-        end: range.end.offset,
+        start: range.start,
+        end: range.end,
         replacement: `okf_version: "0.2"${inlineComment(field)}`,
       },
     ]);
@@ -96,14 +108,18 @@ export function planMigration(input: MigrationInput): MigrationPlan {
       !Object.hasOwn(concept.frontmatter.raw, 'generated')
     ) {
       if (concept.timestamp !== undefined && isRfc3339(concept.timestamp)) {
-        const range = fieldRange(concept.frontmatter, 'timestamp');
-        const field = text.slice(range.start.offset, range.end.offset);
-        edits.push({
-          start: range.start.offset,
-          end: range.end.offset,
-          replacement: `generated:${eol}  by: ${yamlQuote(input.actor)}${eol}  at: ${yamlQuote(concept.timestamp)}${inlineComment(field)}`,
-        });
-        actions.push('timestamp-to-generated');
+        const range = simpleFieldRange(text, concept.frontmatter, 'timestamp');
+        if (range === undefined) {
+          manualFollowUp = true;
+        } else {
+          const field = text.slice(range.start, range.end);
+          edits.push({
+            start: range.start,
+            end: range.end,
+            replacement: `generated:${eol}  by: ${yamlQuote(input.actor)}${eol}  at: ${yamlQuote(concept.timestamp)}${inlineComment(field)}`,
+          });
+          actions.push('timestamp-to-generated');
+        }
       } else {
         manualFollowUp = true;
       }
@@ -137,7 +153,7 @@ export function planMigration(input: MigrationInput): MigrationPlan {
     });
   }
 
-  files.sort(compareRelativePath);
+  files.sort(compareMigrationPath);
   documents.sort(compareRelativePath);
   return { fromVersion, toVersion: '0.2', files, documents };
 }
@@ -170,29 +186,44 @@ function requiredText(texts: ReadonlyMap<string, string>, path: string): string 
 }
 
 function validateActor(actor: string): void {
-  const token = (value: string): boolean =>
-    value.length > 0 && value.length <= 256 && /^[A-Za-z0-9._/@:-]+$/u.test(value);
-  const prefix = actor.startsWith('human:')
-    ? actor.slice('human:'.length)
-    : actor.startsWith('process:')
-      ? actor.slice('process:'.length)
-      : undefined;
-  const slash = actor.indexOf('/');
-  const conventional =
-    (prefix !== undefined && token(prefix)) ||
-    (slash > 0 &&
-      slash === actor.lastIndexOf('/') &&
-      token(actor.slice(0, slash)) &&
-      token(actor.slice(slash + 1)));
-  if (!conventional || !token(actor)) {
+  if (!isValidActor(actor)) {
     throw new Error('Migration actor must use human:<id>, process:<id>, or <producer>/<version>.');
   }
 }
 
-function fieldRange(frontmatter: ParsedFrontmatter, field: string): SourceRange {
-  const range = frontmatter.fields[field];
-  if (range === undefined) throw new Error(`The ${field} source range is unavailable.`);
-  return range;
+function simpleFieldRange(
+  text: string,
+  frontmatter: ParsedFrontmatter,
+  field: string,
+): { readonly start: number; readonly end: number } | undefined {
+  let offset = 0;
+  for (const line of frontmatter.source.split(/\r\n?|\n/gu)) {
+    const prefixes = [field, `'${field}'`, `"${field}"`];
+    const prefix = prefixes.find(
+      (candidate) => line.startsWith(candidate) && /^[ \t]*:/u.test(line.slice(candidate.length)),
+    );
+    if (prefix !== undefined) {
+      const colon = prefix.length + (/^[ \t]*/u.exec(line.slice(prefix.length))?.[0].length ?? 0);
+      const value = line.slice(colon + 1).trimStart();
+      if (
+        value.length === 0 ||
+        /^[|>&*]/u.test(value) ||
+        (value.startsWith('!!') && value.includes(' &'))
+      ) {
+        return undefined;
+      }
+      const start = frontmatter.range.start.offset + offset;
+      const end = start + line.length;
+      if (text.slice(start, end) !== line) {
+        throw new Error(`The ${field} source range does not match the document.`);
+      }
+      return { start, end };
+    }
+    offset += line.length;
+    const separator = frontmatter.source.slice(offset).match(/^(?:\r\n?|\n)/u)?.[0];
+    if (separator !== undefined) offset += separator.length;
+  }
+  throw new Error(`The ${field} source range is unavailable.`);
 }
 
 function applyEdits(text: string, edits: readonly Edit[]): string {
@@ -265,6 +296,7 @@ function analyzeCitations(body: string): CitationAnalysis | undefined {
       continue;
     }
     if (!inCitations || line.trim().length === 0) continue;
+    if (rawLine.startsWith('    ')) continue;
     const candidate = /^(?:-|\*) (.+)$/u.exec(line.trim())?.[1];
     if (candidate !== undefined && isSimpleUrl(candidate)) {
       if (!seen.has(candidate)) {

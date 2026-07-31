@@ -30,10 +30,14 @@ opening, validating, editing, or indexing a v0.1 bundle.
 - The caller supplies `generated.by` as `human:<id>`, `process:<id>`, or
   `<producer>/<version>`; Workbench never infers an actor.
 - A valid legacy `timestamp` becomes `generated.at` only when `generated` is absent.
+- Anchored or multiline target scalars are left for manual follow-up so aliases and complete YAML
+  nodes cannot be damaged.
 - Simple URL bullets under `# Citations` may produce `sources`, while the original Citations body
   remains unchanged. Named links, prose, empty sections, and other ambiguous forms are reported for
-  manual follow-up.
+  manual follow-up; indented code is never treated as a citation bullet.
 - Unknown frontmatter and Markdown body content remain source-preserved.
+- In a multi-file apply, `index.md` is written last so a later target failure cannot advertise v0.2
+  before the preceding concept changes have completed.
 - The complete existing-file proposal is previewed in the extension. CLI `--check` writes nothing,
   and `--apply` uses guarded atomic local replacements.
 - The root `okf_version` update is part of the same complete plan, and a second run is idempotent.

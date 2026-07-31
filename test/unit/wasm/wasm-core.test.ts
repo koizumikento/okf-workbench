@@ -793,6 +793,14 @@ describe('Rust/Wasm core boundary', () => {
       ['literal-nel-flow-map-key-before-colon.md', 'custom: {prefix\u0085:suffix}\n'],
       ['literal-nel-block-scalar-before-colon.md', 'custom: |-\n  prefix\u0085:suffix\n'],
       ['literal-nel-nested-plain-continuation.md', 'custom:\n  child:\u0085 value\n'],
+      ['literal-nel-inline-plain-continuation.md', 'custom: head\n  child:\u0085 value\n'],
+      ['literal-nel-later-plain-continuation.md', 'custom:\n  first line\n  child:\u0085 value\n'],
+      ['literal-nel-before-colon-continuation.md', 'tags:\n  key\u0085:value\n'],
+      [
+        'literal-nel-sequence-anchor-continuation.md',
+        'custom:\n  - &a child:\u0085 value\ncopy: *a\n',
+      ],
+      ['literal-nel-block-sequence-plain-colon.md', 'outer:\n  - prefix:\u0085suffix\n'],
       [
         'literal-nel-set-explicit-mapping-key.md',
         'set: !!set\n  ?\n    ? !!str "A\u0085B"\n    : value\n',
@@ -804,6 +812,10 @@ describe('Rust/Wasm core boundary', () => {
       [
         'literal-nel-deferred-map-multiline-duplicate-key.md',
         'set: !!set\n  ? !!map\n    "A\u0085B": one\n    ? !!str\n      "A\u0085B"\n    : two\n',
+      ],
+      [
+        'deferred-map-mixed-duplicate-key.md',
+        'set: !!set\n  ? !!map\n    key: one\n    ? !!str key\n    : two\n',
       ],
       [
         'tagged-block-scalar-shallow-comment.md',
@@ -836,10 +848,15 @@ describe('Rust/Wasm core boundary', () => {
         'outer:\n  x: !!set\n    ? &a !!seq [!!str one]\n  # parent comment\n    ? *a\n',
       ],
       [
+        'nested-set-parent-comment-nested-set-source.md',
+        'outer:\n  x: !!set\n    ? !!set\n      ? !!str inner\n  # parent comment\n    ? !!str outer\n  next: value\n',
+      ],
+      [
         'deferred-map-comment-colon.md',
         'x: !!set\n  ? !!map\n    # note: not a key\n    safe: value\n',
       ],
       ['deferred-map-explicit-key.md', 'x: !!set\n  ? !!map\n    ? !!str "1"\n    : value\n'],
+      ['deferred-map-bare-explicit-key.md', 'custom: !!map\n  ?\n  : one\n'],
       ['empty-flow-set-comment.md', 'set: !!set { # only\n }\n'],
       ['flow-set-member-trailing-comment.md', 'set: !!set { ? x # trailing: colon\n }\n'],
       ['flow-set-between-members-comment.md', 'set: !!set { ? !!str one, # c\n ? !!int "2" }\n'],
@@ -924,9 +941,13 @@ describe('Rust/Wasm core boundary', () => {
     for (const [path, fields] of cases) {
       const rootUri = `fixture:/yaml-parity/${path}`;
       const input = inputFor([[path, concept('', fields)]], rootUri);
-      expect(core.inspect(input, '2026-07-22T12:00:00Z'), path).toEqual(
-        typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'),
-      );
+      let actual;
+      try {
+        actual = core.inspect(input, '2026-07-22T12:00:00Z');
+      } catch (error) {
+        throw new Error(`${path}: Wasm inspection trapped`, { cause: error });
+      }
+      expect(actual, path).toEqual(typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'));
     }
 
     const literalNelBeforeMarkdownLink = inputFor(

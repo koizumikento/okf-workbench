@@ -546,6 +546,27 @@ describe('Rust/Wasm core boundary', () => {
           ),
         ],
         [
+          'tagged-lexical-ranges.md',
+          concept(
+            '',
+            [
+              'executor:',
+              '  receipt:',
+              '    - !!str "job_id"',
+              'producer_map: !!map',
+              '  key: value',
+              'notes: !!str |-',
+              '  first',
+              '  second',
+              'items: !!seq',
+              '  - one',
+              '  - two',
+              '',
+            ].join('\n'),
+            'Reference',
+          ),
+        ],
+        [
           'invalid-generated-at.md',
           concept('', 'generated: { by: process:test, at: null }\n', 'Reference'),
         ],

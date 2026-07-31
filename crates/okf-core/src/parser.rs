@@ -1353,7 +1353,8 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
     let mut containers: Vec<(usize, String)> = Vec::new();
     let mut sequence_indices: std::collections::BTreeMap<String, usize> =
         std::collections::BTreeMap::new();
-    for line in line_spans(source) {
+    let spans = line_spans(source);
+    for (line_index, line) in spans.iter().enumerate() {
         let body = &source[line.start..line.content_end];
         let indent = body
             .chars()
@@ -1386,6 +1387,19 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
         } else {
             trimmed
         };
+        if item.is_some()
+            && let Some(tag_source) = mapping_source.strip_prefix("!!")
+        {
+            let (tag_name, remainder) = split_tag_source(tag_source);
+            let path = containers
+                .iter()
+                .map(|(_, segment)| segment.as_str())
+                .collect::<Vec<_>>();
+            let lexical =
+                tagged_lexical_source(source, &spans, line_index, indent, body, remainder);
+            preserve_tagged_value(raw, &path, tag_name, &lexical, &mut explicit_tags);
+            continue;
+        }
         let Some((key, value_source)) = mapping_source.split_once(':') else {
             continue;
         };
@@ -1422,30 +1436,179 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
         let Some(tag_source) = remainder.strip_prefix("!!") else {
             continue;
         };
-        let (tag_name, source_value) = tag_source
-            .split_once(char::is_whitespace)
-            .map_or((tag_source, ""), |(tag, value)| (tag, value.trim()));
-        let Some(tag_uri) = standard_tag_uri(tag_name) else {
-            continue;
-        };
-        let Some(existing) = value_at_path(raw, &path).cloned() else {
-            continue;
-        };
-        let semantic = standard_tag_semantic(tag_name, source_value, existing);
-        let mut body = Map::new();
-        body.insert("tag".to_owned(), Value::String(tag_uri.to_owned()));
-        body.insert("value".to_owned(), semantic);
-        body.insert("source".to_owned(), Value::String(source_value.to_owned()));
-        let mut wrapper = Map::new();
-        wrapper.insert(TAGGED_KEY.to_owned(), Value::Object(body));
-        let wrapped = Value::Object(wrapper);
-        set_value_at_path(raw, &path, wrapped.clone());
-        explicit_tags.insert(explicit_tag_path(&path), Value::String(tag_uri.to_owned()));
-        if let Some(anchor_name) = anchor_name {
-            anchors.insert(anchor_name, (wrapped, tag_uri.to_owned()));
+        let (tag_name, remainder) = split_tag_source(tag_source);
+        let lexical = tagged_lexical_source(source, &spans, line_index, indent, body, remainder);
+        if let Some((wrapped, tag_uri)) =
+            preserve_tagged_value(raw, &path, tag_name, &lexical, &mut explicit_tags)
+            && let Some(anchor_name) = anchor_name
+        {
+            anchors.insert(anchor_name, (wrapped, tag_uri));
         }
     }
     explicit_tags
+}
+
+fn split_tag_source(source: &str) -> (&str, &str) {
+    source
+        .split_once(char::is_whitespace)
+        .map_or((source, ""), |(tag, value)| (tag, value.trim_start()))
+}
+
+fn preserve_tagged_value(
+    raw: &mut Map<String, Value>,
+    path: &[&str],
+    tag_name: &str,
+    lexical: &str,
+    explicit_tags: &mut Map<String, Value>,
+) -> Option<(Value, String)> {
+    let tag_uri = standard_tag_uri(tag_name)?.to_owned();
+    let existing = value_at_path(raw, path)?.clone();
+    let semantic = standard_tag_semantic(tag_name, lexical, existing);
+    let mut body = Map::new();
+    body.insert("tag".to_owned(), Value::String(tag_uri.clone()));
+    body.insert("value".to_owned(), semantic);
+    body.insert("source".to_owned(), Value::String(lexical.to_owned()));
+    let mut wrapper = Map::new();
+    wrapper.insert(TAGGED_KEY.to_owned(), Value::Object(body));
+    let wrapped = Value::Object(wrapper);
+    set_value_at_path(raw, path, wrapped.clone());
+    explicit_tags.insert(explicit_tag_path(path), Value::String(tag_uri.clone()));
+    Some((wrapped, tag_uri))
+}
+
+fn tagged_lexical_source(
+    source: &str,
+    spans: &[LineSpan],
+    line_index: usize,
+    parent_indent: usize,
+    body: &str,
+    remainder: &str,
+) -> String {
+    if remainder.is_empty() {
+        return following_indented_source(source, spans, line_index, parent_indent);
+    }
+    let relative_start = body
+        .find(remainder)
+        .unwrap_or_else(|| body.len().saturating_sub(remainder.len()));
+    let absolute_start = spans[line_index].start + relative_start;
+    if remainder.starts_with('|') || remainder.starts_with('>') {
+        let end = following_block_end(source, spans, line_index, parent_indent);
+        return source[absolute_start..end].to_owned();
+    }
+    if matches!(remainder.chars().next(), Some('{' | '[')) {
+        let end = flow_value_end(source, absolute_start);
+        return source[absolute_start..end].to_owned();
+    }
+    scalar_lexical_source(remainder).to_owned()
+}
+
+fn following_indented_source(
+    source: &str,
+    spans: &[LineSpan],
+    line_index: usize,
+    parent_indent: usize,
+) -> String {
+    let Some(first_index) = ((line_index + 1)..spans.len()).find(|index| {
+        let body = &source[spans[*index].start..spans[*index].content_end];
+        !body.trim().is_empty()
+    }) else {
+        return String::new();
+    };
+    let first = &spans[first_index];
+    let first_body = &source[first.start..first.content_end];
+    let first_indent = first_body
+        .chars()
+        .take_while(|character| *character == ' ')
+        .count();
+    if first_indent <= parent_indent {
+        return String::new();
+    }
+    let start = first.start + first_indent;
+    let end = following_block_end(source, spans, first_index, parent_indent);
+    source[start..end].to_owned()
+}
+
+fn following_block_end(
+    source: &str,
+    spans: &[LineSpan],
+    first_index: usize,
+    parent_indent: usize,
+) -> usize {
+    let mut end = spans[first_index].end;
+    for span in &spans[first_index + 1..] {
+        let body = &source[span.start..span.content_end];
+        let indent = body
+            .chars()
+            .take_while(|character| *character == ' ')
+            .count();
+        if !body.trim().is_empty() && indent <= parent_indent {
+            break;
+        }
+        end = span.end;
+    }
+    end
+}
+
+fn scalar_lexical_source(source: &str) -> &str {
+    let source = source.trim_end();
+    let Some(quote) = source
+        .chars()
+        .next()
+        .filter(|quote| matches!(quote, '"' | '\''))
+    else {
+        return source
+            .find(" #")
+            .map_or(source, |offset| source[..offset].trim_end());
+    };
+    let mut escaped = false;
+    for (offset, character) in source.char_indices().skip(1) {
+        if quote == '"' && character == '\\' && !escaped {
+            escaped = true;
+            continue;
+        }
+        if character == quote && !escaped {
+            let end = offset + character.len_utf8();
+            if quote == '\'' && source[end..].starts_with('\'') {
+                escaped = false;
+                continue;
+            }
+            return &source[..end];
+        }
+        escaped = false;
+    }
+    source
+}
+
+fn flow_value_end(source: &str, start: usize) -> usize {
+    let mut stack = Vec::new();
+    let mut quote = None;
+    let mut escaped = false;
+    for (relative, character) in source[start..].char_indices() {
+        if let Some(active_quote) = quote {
+            if active_quote == '"' && character == '\\' && !escaped {
+                escaped = true;
+                continue;
+            }
+            if character == active_quote && !escaped {
+                quote = None;
+            }
+            escaped = false;
+            continue;
+        }
+        match character {
+            '"' | '\'' => quote = Some(character),
+            '{' => stack.push('}'),
+            '[' => stack.push(']'),
+            '}' | ']' if stack.last() == Some(&character) => {
+                stack.pop();
+                if stack.is_empty() {
+                    return start + relative + character.len_utf8();
+                }
+            }
+            _ => {}
+        }
+    }
+    source.len()
 }
 
 fn standard_tag_semantic(tag_name: &str, source_value: &str, existing: Value) -> Value {
@@ -1774,7 +1937,7 @@ fn top_level_field_ranges(text: &str, start: usize, end: usize) -> Map<String, V
                     name.to_owned(),
                     start + line.start,
                     start + line.content_end,
-                    !body[colon + 1..].trim().is_empty(),
+                    inline_field_value_is_complete(body[colon + 1..].trim()),
                 ));
             }
         }
@@ -1794,6 +1957,28 @@ fn top_level_field_ranges(text: &str, start: usize, end: usize) -> Map<String, V
         );
     }
     fields
+}
+
+fn inline_field_value_is_complete(source: &str) -> bool {
+    let mut value = source;
+    if let Some(anchor) = value.strip_prefix('&') {
+        let Some((_, remainder)) = anchor.split_once(char::is_whitespace) else {
+            return false;
+        };
+        value = remainder.trim_start();
+    }
+    if let Some(tag) = value.strip_prefix("!!") {
+        let (_, remainder) = split_tag_source(tag);
+        value = remainder;
+    }
+    if value.is_empty() || matches!(value.chars().next(), Some('|' | '>')) {
+        return false;
+    }
+    if matches!(value.chars().next(), Some('{' | '[')) {
+        let end = flow_value_end(value, 0);
+        return end < value.len() || matches!(value.chars().last(), Some('}' | ']'));
+    }
+    true
 }
 
 fn fallback_content_hash(bytes: &[u8]) -> String {

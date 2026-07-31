@@ -670,6 +670,17 @@ describe('OKF bundle parser', () => {
             '  text: !!str 001',
             '  infinite: !!float .inf',
             '  safe_mapping: !!map {__proto__: retained, constructor: retained}',
+            'executor:',
+            '  receipt:',
+            '    - !!str "job_id"',
+            'producer_map: !!map',
+            '  key: value',
+            'notes: !!str |-',
+            '  first',
+            '  second',
+            'items: !!seq',
+            '  - one',
+            '  - two',
             '---',
             '# Tagged values',
             '',
@@ -722,6 +733,20 @@ describe('OKF bundle parser', () => {
       ),
     });
     expect(Object.getPrototypeOf(concept?.frontmatter.raw)).toBeNull();
+    expect(concept?.frontmatter.raw).toMatchObject({
+      executor: {
+        receipt: [tagged('tag:yaml.org,2002:str', 'job_id', '"job_id"')],
+      },
+      producer_map: tagged('tag:yaml.org,2002:map', { key: 'value' }, 'key: value\n'),
+      notes: tagged('tag:yaml.org,2002:str', 'first\nsecond', '|-\n  first\n  second\n'),
+      items: tagged('tag:yaml.org,2002:seq', ['one', 'two'], '- one\n  - two\n'),
+    });
+    expect(concept?.frontmatter.explicitTags).toMatchObject({
+      '/executor/receipt/0': 'tag:yaml.org,2002:str',
+      producer_map: 'tag:yaml.org,2002:map',
+      notes: 'tag:yaml.org,2002:str',
+      items: 'tag:yaml.org,2002:seq',
+    });
     expect(({} as { readonly polluted?: unknown }).polluted).toBeUndefined();
     expect(JSON.parse(JSON.stringify(bundle))).toEqual(bundle);
 

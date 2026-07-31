@@ -2002,10 +2002,8 @@ fn inline_field_value_end(text: &str, mut start: usize, line_end: usize) -> Opti
                     .split_once(char::is_whitespace)
                     .map_or("", |(_, remainder)| remainder.trim_start()),
             )
-        } else if let Some(tag) = value.strip_prefix("!!") {
-            Some(split_tag_source(tag).1)
         } else {
-            None
+            value.strip_prefix("!!").map(|tag| split_tag_source(tag).1)
         };
         let Some(remainder) = remainder else {
             break;

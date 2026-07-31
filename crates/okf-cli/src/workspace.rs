@@ -177,34 +177,110 @@ pub fn plan_files(
 }
 
 fn insert_root_version(existing: &str) -> Result<String, String> {
-    let bom = existing.strip_prefix('\u{feff}').map_or("", |_| "\u{feff}");
-    let content = existing.strip_prefix('\u{feff}').unwrap_or(existing);
-    let (candidate, eol) = if let Some(after_opening) = content.strip_prefix("---\r\n") {
-        (
-            format!("{bom}---\r\nokf_version: \"0.2\"\r\n{after_opening}"),
-            "\r\n",
-        )
-    } else if let Some(after_opening) = content.strip_prefix("---\n") {
-        (
-            format!("{bom}---\nokf_version: \"0.2\"\n{after_opening}"),
-            "\n",
-        )
-    } else if let Some(after_opening) = content.strip_prefix("---\r") {
-        (
-            format!("{bom}---\rokf_version: \"0.2\"\r{after_opening}"),
-            "\r",
-        )
+    let bom_len = if existing.starts_with('\u{feff}') {
+        3
     } else {
-        let eol = preferred_line_ending(content);
-        (
-            format!("{bom}---{eol}okf_version: \"0.2\"{eol}---{eol}{content}"),
-            eol,
-        )
+        0
     };
-    validate_root_version_insertion(existing, &candidate).map_err(|error| {
-        format!("cannot add `okf_version` safely to index.md using {eol:?} line endings: {error}")
-    })?;
-    Ok(candidate)
+    let content = &existing[bom_len..];
+    let Some((opening_end, source_end, eol)) = frontmatter_source_bounds(existing, bom_len) else {
+        let eol = preferred_line_ending(content);
+        let candidate = format!(
+            "{}---{eol}okf_version: \"0.2\"{eol}---{eol}{content}",
+            &existing[..bom_len]
+        );
+        validate_root_version_insertion(existing, &candidate).map_err(|error| {
+            format!(
+                "cannot add `okf_version` safely to index.md using {eol:?} line endings: {error}"
+            )
+        })?;
+        return Ok(candidate);
+    };
+
+    let mut insertions = vec![(opening_end, format!("okf_version: \"0.2\"{eol}"))];
+    for (relative, character) in existing[opening_end..source_end].char_indices() {
+        if character != '{' {
+            continue;
+        }
+        let offset = opening_end + relative + character.len_utf8();
+        let separator = if existing[offset..source_end].trim_start().starts_with('}') {
+            ""
+        } else {
+            ","
+        };
+        insertions.push((offset, format!("okf_version: \"0.2\"{separator}")));
+    }
+    for (line_start, content_end, line_end) in line_bounds(existing, opening_end, source_end) {
+        let line = &existing[line_start..content_end];
+        let trimmed = line.trim_start();
+        if trimmed.is_empty() || trimmed.starts_with('#') || !trimmed.contains(':') {
+            continue;
+        }
+        let indent = &line[..line.len() - trimmed.len()];
+        let line_eol = &existing[content_end..line_end];
+        insertions.push((
+            line_start,
+            format!("{indent}okf_version: \"0.2\"{line_eol}"),
+        ));
+    }
+
+    let mut last_error = "the frontmatter mapping style is not safely editable".to_owned();
+    for (offset, insertion) in insertions {
+        let candidate = format!("{}{insertion}{}", &existing[..offset], &existing[offset..]);
+        match validate_root_version_insertion(existing, &candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(error) => last_error = error,
+        }
+    }
+    Err(format!(
+        "cannot add `okf_version` safely to index.md using {eol:?} line endings: {last_error}"
+    ))
+}
+
+fn frontmatter_source_bounds(content: &str, start: usize) -> Option<(usize, usize, &'static str)> {
+    let opening_end = if content[start..].starts_with("---\r\n") {
+        start + 5
+    } else if content[start..].starts_with("---\n") || content[start..].starts_with("---\r") {
+        start + 4
+    } else {
+        return None;
+    };
+    let eol = if content[start + 3..].starts_with("\r\n") {
+        "\r\n"
+    } else if content.as_bytes().get(start + 3) == Some(&b'\r') {
+        "\r"
+    } else {
+        "\n"
+    };
+    let source_end = line_bounds(content, opening_end, content.len())
+        .into_iter()
+        .find_map(|(line_start, content_end, _)| {
+            (content[line_start..content_end].trim() == "---").then_some(line_start)
+        })?;
+    Some((opening_end, source_end, eol))
+}
+
+fn line_bounds(content: &str, start: usize, end: usize) -> Vec<(usize, usize, usize)> {
+    let mut lines = Vec::new();
+    let mut line_start = start;
+    while line_start < end {
+        let mut content_end = line_start;
+        while content_end < end && !matches!(content.as_bytes()[content_end], b'\r' | b'\n') {
+            content_end += 1;
+        }
+        let line_end = if content.as_bytes().get(content_end) == Some(&b'\r')
+            && content.as_bytes().get(content_end + 1) == Some(&b'\n')
+        {
+            content_end + 2
+        } else if content_end < end {
+            content_end + 1
+        } else {
+            content_end
+        };
+        lines.push((line_start, content_end, line_end));
+        line_start = line_end;
+    }
+    lines
 }
 
 fn preferred_line_ending(content: &str) -> &'static str {
@@ -578,13 +654,28 @@ mod tests {
     }
 
     #[test]
-    fn root_version_insertion_refuses_unsafe_yaml_shapes() {
-        for source in [
-            "---\n{ title: Knowledge }\n---\n# Knowledge\n",
-            "---\n&metadata\n title: Knowledge\n---\n# Knowledge\n",
-            "---\n  title: Knowledge\n---\n# Knowledge\n",
+    fn root_version_insertion_supports_complex_yaml_shapes() {
+        for (source, insertion) in [
+            (
+                "---\n{ title: Knowledge }\n---\n# Knowledge\n",
+                "okf_version: \"0.2\",",
+            ),
+            (
+                "---\n&metadata\n title: Knowledge\n---\n# Knowledge\n",
+                " okf_version: \"0.2\"\n",
+            ),
+            (
+                "---\n  title: Knowledge\n---\n# Knowledge\n",
+                "  okf_version: \"0.2\"\n",
+            ),
         ] {
-            assert!(insert_root_version(source).is_err(), "{source:?}");
+            let updated = insert_root_version(source).unwrap();
+            assert_eq!(
+                root_frontmatter(&updated).unwrap().get("okf_version"),
+                Some(&serde_json::Value::String("0.2".to_owned())),
+                "{source:?}"
+            );
+            assert_eq!(updated.replacen(insertion, "", 1), source, "{source:?}");
         }
     }
 }

@@ -628,8 +628,13 @@ describe('Rust/Wasm core boundary', () => {
       ['trailing-comment-field-range.md', 'sets:\n  - !!set\n    ? x\n  # trailing\n'],
       ['terminal-sequence-blank-line.md', 'custom:\n  - child value\n\n'],
       ['terminal-deep-mapping-blank-line.md', 'custom:\n  child:\n    grandchild: value\n\n'],
+      [
+        'terminal-deep-mapping-indented-comment.md',
+        'custom:\n  child:\n    grandchild: value\n    # deep comment\n',
+      ],
       ['terminal-sequence-crlf-blank-line.md', 'custom:\r\n  - child value\r\n\r\n'],
       ['terminal-sequence-of-set-blank-line.md', 'sets:\n  - !!set\n    ? x\n\n'],
+      ['terminal-sequence-of-set-crlf-blank-line.md', 'sets:\r\n  - !!set\r\n    ? x\r\n\r\n'],
       ['terminal-sequence-indented-comment.md', 'items:\n  - one\n\n  # trailing comment\n'],
       [
         'deferred-map-parent-sibling.md',
@@ -828,7 +833,14 @@ describe('Rust/Wasm core boundary', () => {
         'literal-nel-invalid-implicit-key-with-sibling.md',
         'custom:\n  child:\u0085 value\n  sibling: ok\n',
       ],
+      ['literal-nel-multiple-continuation-lines.md', 'custom:\n  a:\u0085 b\n  c:\u0085 d\n'],
+      ['literal-nel-anchored-deferred-scalar.md', 'custom:\n  &a child:\u0085 value\ncopy: *a\n'],
+      [
+        'literal-nel-tagged-anchored-deferred-scalar.md',
+        'custom:\n  &a !!str child:\u0085 value\ncopy: *a\n',
+      ],
       ['literal-nel-explicit-map-key.md', 'outer:\n  ? prefix:\u0085suffix\n  : value\n'],
+      ['literal-nel-explicit-map-key-space.md', 'outer:\n  ? prefix:\u0085 suffix\n  : value\n'],
       [
         'literal-nel-deferred-scalar-before-root-sibling.md',
         'custom:\n  child:\u0085 value\nnext: ok\n',
@@ -890,6 +902,14 @@ describe('Rust/Wasm core boundary', () => {
       ['nested-set-anchored-empty-map-key.md', 'x: !!set\n  ? !!map\n    ? &a\n    : one\n'],
       ['deferred-empty-string-map-key.md', 'custom: !!map\n  ? !!str\n  : one\n'],
       ['root-empty-string-map-key.md', '? !!str\n: one\n'],
+      ['multiline-empty-string-map-key.md', '?\n  !!str\n: one\n'],
+      [
+        'split-anchor-empty-string-map-key.md',
+        'custom: !!map\n  ? !!str\n    &a\n  : one\ncopy: *a\n',
+      ],
+      ['flow-empty-string-map-key.md', 'custom: { ? !!str : one }\n'],
+      ['flow-empty-string-map-key-duplicate.md', 'custom: { ? !!str : one, "": two }\n'],
+      ['compact-sequence-empty-string-map-key.md', 'items:\n  - ? !!str\n    : one\n'],
       ['tag-anchor-empty-string-map-key.md', 'custom: !!map\n  ? !!str &a\n  : one\ncopy: *a\n'],
       ['anchor-tag-empty-string-map-key.md', 'custom: !!map\n  ? &a !!str\n  : one\ncopy: *a\n'],
       [
@@ -900,6 +920,16 @@ describe('Rust/Wasm core boundary', () => {
         'empty-string-map-key-duplicate-quoted.md',
         'custom: !!map\n  ? !!str\n  : one\n  "": two\n',
       ],
+      [
+        'empty-string-map-key-duplicate-tagged.md',
+        'custom: !!map\n  ? !!str\n  : one\n  ? !!str\n  : two\n',
+      ],
+      ['empty-string-map-key-duplicate-inline-tagged.md', '? !!str\n: one\n? !!str ""\n: two\n'],
+      [
+        'block-scalar-set-lookalike-parent-comment.md',
+        'outer:\n  custom: |-\n    !!set\n    ? x\n  # parent comment\n',
+      ],
+      ['deferred-tagged-quoted-scalar.md', 'custom:\n  !!str "quoted value"\nnext: value\n'],
       [
         'nested-set-deferred-empty-string-map-key.md',
         'x: !!set\n  ? !!map\n    ? !!str\n    : one\n',

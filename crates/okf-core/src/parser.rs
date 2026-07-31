@@ -853,6 +853,19 @@ fn parse_frontmatter(
             resource_limit: false,
         });
     }
+    if rewrite_empty_standard_string_keys(yaml_source).is_some()
+        && let Some((relative_start, relative_end)) = duplicate_mapping_key_range(yaml_source)
+    {
+        return Err(FrontmatterError {
+            message: "Invalid YAML frontmatter: Map keys must be unique".to_owned(),
+            range: Some(range_for(
+                text,
+                opening_end + relative_start,
+                opening_end + relative_end,
+            )),
+            resource_limit: false,
+        });
+    }
     if let Some((relative_start, relative_end)) = non_string_mapping_key_range(yaml_source) {
         return Err(FrontmatterError {
             message: "YAML frontmatter mappings must use string field names at every level."
@@ -2618,25 +2631,32 @@ fn multiline_implicit_key_range(source: &str) -> Option<(usize, usize)> {
         if !continued {
             continue;
         }
-        let sibling = spans
-            .iter()
-            .skip(line_index + 1)
-            .find(|candidate| {
-                let candidate_body = &source[candidate.start..candidate.content_end];
-                let candidate_trimmed = candidate_body.trim_start_matches([' ', '\t']);
-                !candidate_trimmed.is_empty()
-                    && !candidate_trimmed.starts_with('#')
-                    && candidate_body.len() - candidate_trimmed.len() <= indent
-            })
-            .and_then(|candidate| {
-                let candidate_body = &source[candidate.start..candidate.content_end];
-                let candidate_trimmed = candidate_body.trim_start_matches([' ', '\t']);
-                let candidate_indent = candidate_body.len() - candidate_trimmed.len();
-                (candidate_indent == indent).then(|| {
-                    let candidate_colon = mapping_key_colon(candidate_trimmed)?;
-                    Some(candidate.start + candidate_indent + candidate_colon)
-                })?
-            });
+        let mut sibling = None;
+        for candidate in spans.iter().skip(line_index + 1) {
+            let candidate_body = &source[candidate.start..candidate.content_end];
+            let candidate_trimmed = candidate_body.trim_start_matches([' ', '\t']);
+            if candidate_trimmed.is_empty() || candidate_trimmed.starts_with('#') {
+                continue;
+            }
+            let candidate_indent = candidate_body.len() - candidate_trimmed.len();
+            if candidate_indent > indent {
+                continue;
+            }
+            if candidate_indent < indent {
+                break;
+            }
+            let Some(candidate_colon) = mapping_key_colon(candidate_trimmed) else {
+                break;
+            };
+            let candidate_continues = candidate_trimmed[candidate_colon + 1..]
+                .strip_prefix('\u{0085}')
+                .is_some_and(|suffix| !suffix.trim().is_empty());
+            if candidate_continues {
+                continue;
+            }
+            sibling = Some(candidate.start + candidate_indent + candidate_colon);
+            break;
+        }
         if let Some(end) = sibling {
             return Some((span.start + indent, end));
         }
@@ -3729,6 +3749,11 @@ fn non_string_key_source_range(key_source: &str, key_start: usize) -> Option<(us
         return None;
     };
     if key_tag == Some("str") {
+        return None;
+    }
+    if plain_key_source.contains('\u{0085}')
+        && parsed_string_mapping_key(plain_key_source, key_tag).is_some()
+    {
         return None;
     }
     let non_string = key_tag.is_some()
@@ -4969,6 +4994,10 @@ fn duplicate_mapping_key_range(source: &str) -> Option<(usize, usize)> {
                 .map(|(_, segment, _)| segment.clone())
                 .collect::<Vec<_>>();
             if !keys.insert((scope, key)) {
+                if scalar.is_empty() {
+                    let marker = key_end + expected_value_indent;
+                    return Some((marker, one_character_end(source, marker, source.len())));
+                }
                 let scalar_start = key_start + scalar_relative;
                 return Some((
                     scalar_start,
@@ -5642,7 +5671,7 @@ fn preserve_standard_yaml_tags(
                     || continued.starts_with("- ")
                     || continued == "?"
                     || continued.starts_with("? ")
-                    || mapping_key_colon(continued).is_some();
+                    || structural_mapping_key_colon(continued).is_some();
                 if !continued_is_block_collection {
                     let current = mapping_source
                         .split_once('#')
@@ -5706,11 +5735,9 @@ fn preserve_standard_yaml_tags(
             mapping_source = &compact_mapping_source;
         }
         if item.is_none()
-            && mapping_key_colon(mapping_source).is_none()
+            && structural_mapping_key_colon(mapping_source).is_none()
             && !mapping_source.starts_with(['?', ':'])
-            && containers
-                .last()
-                .is_some_and(|(_, _, sequence_item)| *sequence_item)
+            && !containers.is_empty()
         {
             let item_path = containers
                 .iter()
@@ -5864,7 +5891,7 @@ fn preserve_standard_yaml_tags(
                 || continued.starts_with("- ")
                 || continued == "?"
                 || continued.starts_with("? ")
-                || mapping_key_colon(continued).is_some();
+                || structural_mapping_key_colon(continued).is_some();
             if !continued_is_block_collection {
                 let current = value_source
                     .split_once('#')
@@ -6598,7 +6625,9 @@ fn rewrite_empty_standard_string_keys(source: &str) -> Option<String> {
         let body = &source[line.start..line.content_end];
         let trimmed = body.trim_start_matches([' ', '\t']);
         let indent = body.len() - trimmed.len();
-        let Some(member) = trimmed.strip_prefix('?').and_then(|remainder| {
+        let sequence_item = trimmed.strip_prefix("- ");
+        let node = sequence_item.unwrap_or(trimmed);
+        let Some(member) = node.strip_prefix('?').and_then(|remainder| {
             (remainder.is_empty() || remainder.chars().next().is_some_and(char::is_whitespace))
                 .then(|| remainder.trim_start())
         }) else {
@@ -6606,42 +6635,139 @@ fn rewrite_empty_standard_string_keys(source: &str) -> Option<String> {
         };
         let syntax = yaml_comment_start(member).map_or(member, |comment| &member[..comment]);
         let syntax = syntax.trim_end_matches([' ', '\t']);
+        let member_offset = body.len() - trimmed.len() + trimmed.len() - member.len();
+        let mut properties = Vec::new();
         let (remainder, anchor, tag) = split_node_properties(syntax);
-        if !remainder.is_empty() || tag != Some("str") {
+        let property_length = syntax.len().saturating_sub(remainder.len());
+        if property_length > 0 {
+            let start = line.start + member_offset;
+            properties.push((
+                start,
+                start + property_length,
+                anchor,
+                tag.map(str::to_owned),
+            ));
+        }
+        let inline_value = remainder.strip_prefix(':').is_some_and(|rest| {
+            rest.is_empty() || rest.chars().next().is_some_and(char::is_whitespace)
+        });
+        if !remainder.is_empty() && !inline_value {
             continue;
         }
-        let Some(candidate) = spans.iter().skip(line_index + 1).find(|candidate| {
-            let body = &source[candidate.start..candidate.content_end];
-            let trimmed = body.trim_start_matches([' ', '\t']);
-            !trimmed.is_empty() && !trimmed.starts_with('#')
-        }) else {
+        let expected_value_indent = indent + if sequence_item.is_some() { 2 } else { 0 };
+        let mut value_line = inline_value.then_some((line, expected_value_indent));
+        for candidate in spans.iter().skip(line_index + 1) {
+            if value_line.is_some() {
+                break;
+            }
+            let candidate_body = &source[candidate.start..candidate.content_end];
+            let candidate_trimmed = candidate_body.trim_start_matches([' ', '\t']);
+            if candidate_trimmed.is_empty() || candidate_trimmed.starts_with('#') {
+                continue;
+            }
+            if candidate_trimmed.strip_prefix(':').is_some_and(|rest| {
+                rest.is_empty() || rest.chars().next().is_some_and(char::is_whitespace)
+            }) {
+                let candidate_indent = candidate_body.len() - candidate_trimmed.len();
+                if candidate_indent >= expected_value_indent {
+                    value_line = Some((candidate, candidate_indent));
+                }
+                break;
+            }
+            let candidate_syntax = yaml_comment_start(candidate_trimmed)
+                .map_or(candidate_trimmed, |comment| &candidate_trimmed[..comment])
+                .trim_end_matches([' ', '\t']);
+            let (candidate_remainder, candidate_anchor, candidate_tag) =
+                split_node_properties(candidate_syntax);
+            if !candidate_remainder.is_empty()
+                || (candidate_anchor.is_none() && candidate_tag.is_none())
+            {
+                break;
+            }
+            let property_start = candidate.start + candidate_body.len() - candidate_trimmed.len();
+            properties.push((
+                property_start,
+                property_start + candidate_syntax.len(),
+                candidate_anchor,
+                candidate_tag.map(str::to_owned),
+            ));
+        }
+        let Some((candidate, candidate_indent)) = value_line else {
             continue;
         };
-        let candidate_body = &source[candidate.start..candidate.content_end];
-        let candidate_trimmed = candidate_body.trim_start_matches([' ', '\t']);
-        let candidate_indent = candidate_body.len() - candidate_trimmed.len();
-        if !candidate_trimmed.strip_prefix(':').is_some_and(|rest| {
-            rest.is_empty() || rest.chars().next().is_some_and(char::is_whitespace)
-        }) {
+        let tag_index = properties
+            .iter()
+            .position(|(_, _, _, tag)| tag.as_deref() == Some("str"));
+        let Some(tag_index) = tag_index else {
             continue;
-        }
-        let member_offset = body.len() - trimmed.len() + trimmed.len() - member.len();
-        let start = line.start + member_offset;
+        };
+        let anchor = properties
+            .iter()
+            .find_map(|(_, _, anchor, _)| anchor.clone());
         let replacement = anchor.map_or_else(|| "\"\"".to_owned(), |name| format!("&{name} \"\""));
-        replacements.push((start, start + syntax.len(), replacement));
-        if candidate_indent > indent {
+        for (index, (start, end, _, _)) in properties.into_iter().enumerate() {
+            let width = end - start;
+            let value = if index == tag_index {
+                if replacement.len() < width {
+                    format!("{replacement}{}", " ".repeat(width - replacement.len()))
+                } else {
+                    replacement.clone()
+                }
+            } else {
+                " ".repeat(width)
+            };
+            replacements.push((start, end, value));
+        }
+        if candidate.start != line.start && candidate_indent > expected_value_indent {
             replacements.push((
-                candidate.start + indent,
+                candidate.start + expected_value_indent,
                 candidate.start + candidate_indent,
                 String::new(),
             ));
         }
     }
+    for (flow_start, _) in source
+        .char_indices()
+        .filter(|(_, character)| *character == '{')
+    {
+        let flow_end = flow_value_end(source, flow_start);
+        for (entry_start, entry_end) in top_level_flow_entries(source, flow_start, flow_end) {
+            let entry = &source[entry_start..entry_end];
+            let leading = entry.len() - entry.trim_start().len();
+            let Some(key_source) = entry.trim_start().strip_prefix('?').and_then(|remainder| {
+                (remainder.is_empty() || remainder.chars().next().is_some_and(char::is_whitespace))
+                    .then(|| remainder.trim_start())
+            }) else {
+                continue;
+            };
+            let Some(colon) = flow_top_level_mapping_colon(key_source, 0, key_source.len()) else {
+                continue;
+            };
+            let syntax = key_source[..colon].trim_end();
+            let (remainder, anchor, tag) = split_node_properties(syntax);
+            if !remainder.is_empty() || tag != Some("str") {
+                continue;
+            }
+            let start = entry_start + leading + entry.trim_start().len() - key_source.len();
+            let replacement =
+                anchor.map_or_else(|| "\"\"".to_owned(), |name| format!("&{name} \"\""));
+            let value = if replacement.len() < syntax.len() {
+                format!(
+                    "{replacement}{}",
+                    " ".repeat(syntax.len() - replacement.len())
+                )
+            } else {
+                replacement
+            };
+            replacements.push((start, start + syntax.len(), value));
+        }
+    }
     if replacements.is_empty() {
         return None;
     }
+    replacements.sort_by_key(|(start, end, _)| (*start, *end));
+    replacements.dedup_by(|left, right| left.0 == right.0 && left.1 == right.1);
     let mut rewritten = source.to_owned();
-    replacements.sort_by_key(|(start, _, _)| *start);
     for (start, end, replacement) in replacements.into_iter().rev() {
         rewritten.replace_range(start..end, &replacement);
     }
@@ -6662,24 +6788,40 @@ fn empty_standard_string_key_anchors(source: &str) -> Vec<String> {
                     .then(|| remainder.trim_start())
             })?;
             let syntax = yaml_comment_start(member).map_or(member, |comment| &member[..comment]);
-            let (remainder, anchor, tag) = split_node_properties(syntax.trim_end());
+            let (remainder, mut anchor, tag) = split_node_properties(syntax.trim_end());
             if !remainder.is_empty() || tag != Some("str") {
                 return None;
             }
-            let has_value = spans.iter().skip(line_index + 1).find_map(|candidate| {
+            let mut has_value = false;
+            for candidate in spans.iter().skip(line_index + 1) {
                 let candidate_body = &source[candidate.start..candidate.content_end];
                 let candidate_trimmed = candidate_body.trim_start_matches([' ', '\t']);
                 if candidate_trimmed.is_empty() || candidate_trimmed.starts_with('#') {
-                    return None;
+                    continue;
                 }
                 let candidate_indent = candidate_body.len() - candidate_trimmed.len();
-                Some(
-                    candidate_indent == indent
-                        && candidate_trimmed.strip_prefix(':').is_some_and(|rest| {
-                            rest.is_empty() || rest.chars().next().is_some_and(char::is_whitespace)
-                        }),
-                )
-            }) == Some(true);
+                if candidate_indent == indent
+                    && candidate_trimmed.strip_prefix(':').is_some_and(|rest| {
+                        rest.is_empty() || rest.chars().next().is_some_and(char::is_whitespace)
+                    })
+                {
+                    has_value = true;
+                    break;
+                }
+                let candidate_syntax = yaml_comment_start(candidate_trimmed)
+                    .map_or(candidate_trimmed, |comment| &candidate_trimmed[..comment])
+                    .trim_end();
+                let (candidate_remainder, candidate_anchor, candidate_tag) =
+                    split_node_properties(candidate_syntax);
+                if !candidate_remainder.is_empty()
+                    || (candidate_anchor.is_none() && candidate_tag.is_none())
+                {
+                    break;
+                }
+                if anchor.is_none() {
+                    anchor = candidate_anchor;
+                }
+            }
             has_value.then_some(anchor).flatten()
         })
         .collect()
@@ -7137,6 +7279,9 @@ fn restore_collection_set_member_provenance(
         restore_deferred_map_member_source(member_source, member);
         return restored;
     }
+    if member.is_object() && standard_set_member_tag_is_mapping_key(member_source) {
+        return Vec::new();
+    }
     if !matches!(member, Value::Array(_) | Value::Object(_))
         || member.get(TAGGED_KEY).is_some()
         || !(member_source.contains(['&', '*']) || contains_standard_tag_property(member_source))
@@ -7415,7 +7560,10 @@ fn restore_direct_standard_set_member_source(member_source: &str, value: &mut Va
         }
         return;
     }
-    if value.is_object() && standard_set_member_tag_is_mapping_key(member_source) {
+    if value.is_object()
+        && !matches!(tag_name.as_deref(), Some("map" | "seq" | "omap" | "pairs"))
+        && standard_set_member_tag_is_mapping_key(member_source)
+    {
         // In `? !!str key: value`, the scalar tag belongs to the mapping key. The set member is
         // the mapping itself, so wrapping the whole object would change its semantics.
         return;
@@ -7447,7 +7595,8 @@ fn restore_direct_standard_set_member_source(member_source: &str, value: &mut Va
 
 fn standard_set_member_tag_is_mapping_key(member_source: &str) -> bool {
     let block_scalar_ranges = block_scalar_body_ranges(member_source);
-    line_spans(member_source).into_iter().any(|line| {
+    let spans = line_spans(member_source);
+    spans.iter().enumerate().any(|(line_index, line)| {
         if block_scalar_ranges
             .iter()
             .any(|(start, end)| *start <= line.start && line.start < *end)
@@ -7459,10 +7608,49 @@ fn standard_set_member_tag_is_mapping_key(member_source: &str) -> bool {
         if trimmed.is_empty() || trimmed.starts_with('#') {
             return false;
         }
+        let indent = body.len() - trimmed.len();
         let (remainder, _, tag) = split_node_properties(trimmed);
-        tag.is_some()
-            && !remainder.starts_with(['{', '['])
-            && mapping_key_colon(remainder).is_some()
+        if tag.is_none() || remainder.starts_with(['{', '[']) {
+            return false;
+        }
+        if mapping_key_colon(remainder).is_some() {
+            return true;
+        }
+        let explicit_key_indent = spans[..line_index]
+            .iter()
+            .rev()
+            .filter_map(|candidate| {
+                let candidate_body = &member_source[candidate.start..candidate.content_end];
+                let candidate_trimmed = candidate_body.trim_start_matches([' ', '\t']);
+                if candidate_trimmed.is_empty() || candidate_trimmed.starts_with('#') {
+                    return None;
+                }
+                let candidate_indent = candidate_body.len() - candidate_trimmed.len();
+                (candidate_indent < indent
+                    && candidate_trimmed.strip_prefix('?').is_some_and(|rest| {
+                        rest.is_empty() || rest.chars().next().is_some_and(char::is_whitespace)
+                    }))
+                .then_some(candidate_indent)
+            })
+            .next();
+        explicit_key_indent.is_some_and(|key_indent| {
+            spans[line_index + 1..].iter().find_map(|candidate| {
+                let candidate_body = &member_source[candidate.start..candidate.content_end];
+                let candidate_trimmed = candidate_body.trim_start_matches([' ', '\t']);
+                if candidate_trimmed.is_empty() || candidate_trimmed.starts_with('#') {
+                    return None;
+                }
+                let candidate_indent = candidate_body.len() - candidate_trimmed.len();
+                if candidate_indent < key_indent {
+                    return Some(false);
+                }
+                (candidate_indent == key_indent).then(|| {
+                    candidate_trimmed.strip_prefix(':').is_some_and(|rest| {
+                        rest.is_empty() || rest.chars().next().is_some_and(char::is_whitespace)
+                    })
+                })
+            }) == Some(true)
+        })
     })
 }
 
@@ -8768,10 +8956,17 @@ fn block_field_value_end(
                 .unwrap_or(nested);
             block_scalar_indicator(nested_value).is_some_and(|value| value.contains('+'))
         });
+    let nested_set_excluded_ranges = block_scalar_body_ranges(&text[content_start..boundary]);
     let nested_set_collection =
         line_spans(&text[content_start..boundary])
             .into_iter()
             .any(|line| {
+                if nested_set_excluded_ranges
+                    .iter()
+                    .any(|(start, end)| *start <= line.start && line.start < *end)
+                {
+                    return false;
+                }
                 let body = &text[content_start + line.start..content_start + line.content_end];
                 let trimmed = body.trim_start_matches([' ', '\t']);
                 if trimmed.is_empty() || trimmed.starts_with('#') {
@@ -8994,8 +9189,32 @@ fn block_field_value_end(
         if !set_field
             && !nested_keep_chomp
             && !nested_set_collection
-            && let Some((_, line_end)) = last_nonblank
+            && let Some((content_end, line_end)) = last_nonblank
         {
+            let line_start = text[..content_end]
+                .rfind(['\r', '\n'])
+                .map_or(0, |newline| newline + 1);
+            let terminal_line = &text[line_start..content_end];
+            let terminal_trimmed = terminal_line.trim_start_matches([' ', '\t']);
+            let terminal_indent = terminal_line.len() - terminal_trimmed.len();
+            let trailing_lines = line_spans(&text[line_end..boundary])
+                .into_iter()
+                .filter_map(|line| {
+                    let body = &text[line_end + line.start..line_end + line.content_end];
+                    let trimmed = body.trim_start_matches([' ', '\t']);
+                    if trimmed.is_empty() {
+                        return None;
+                    }
+                    let indent = body.len() - trimmed.len();
+                    Some(trimmed.starts_with('#') && indent >= terminal_indent)
+                })
+                .collect::<Vec<_>>();
+            let trailing_deep_comment = structural_mapping_key_colon(terminal_trimmed).is_some()
+                && !trailing_lines.is_empty()
+                && trailing_lines.into_iter().all(|comment| comment);
+            if trailing_deep_comment && line_end < boundary {
+                return boundary;
+            }
             return line_end;
         }
         return boundary;
@@ -10022,7 +10241,76 @@ mod tests {
         let source = "? !!str\n: one\n";
         assert_eq!(
             rewrite_empty_standard_string_keys(source).as_deref(),
-            Some("? \"\"\n: one\n")
+            Some("? \"\"   \n: one\n")
+        );
+        let duplicate = "? !!str\n: one\n? !!str \"\"\n: two\n";
+        let duplicate_start = duplicate.find("\"\"").unwrap();
+        assert_eq!(
+            duplicate_mapping_key_range(duplicate),
+            Some((duplicate_start, duplicate_start + 1))
+        );
+        assert!(standard_set_member_tag_is_mapping_key(
+            "\n    ? # key\n      !!str \"1\"\n    : value\n"
+        ));
+        let set_source = "\n  ?\n    ? # key\n      !!str \"1\"\n    : value\n";
+        let members = direct_standard_set_member_sources(set_source, 1);
+        assert_eq!(members.len(), 1, "{members:#?}");
+        assert!(
+            standard_set_member_tag_is_mapping_key(&members[0]),
+            "{members:#?}"
+        );
+        assert_eq!(
+            standard_set_member_properties(&members[0]).2,
+            None,
+            "{members:#?}"
+        );
+        let mut deferred_member = serde_json::json!({"1": "value"});
+        restore_collection_set_member_provenance(
+            &members[0],
+            &mut deferred_member,
+            &std::collections::BTreeMap::new(),
+            0,
+        );
+        assert_eq!(
+            deferred_member,
+            serde_json::json!({"1": "value"}),
+            "{members:#?}"
+        );
+        let mut deferred_set = serde_json::json!({
+            TAGGED_KEY: {
+                "tag": "tag:yaml.org,2002:set",
+                "value": [{"1": "value"}],
+                "source": set_source,
+            }
+        });
+        restore_nested_standard_set_member_sources(
+            &mut deferred_set,
+            &mut std::collections::BTreeMap::new(),
+            &mut Vec::new(),
+            true,
+        );
+        assert_eq!(
+            deferred_set[TAGGED_KEY]["value"],
+            serde_json::json!([{"1": "value"}])
+        );
+        let deferred_key_source = concat!(
+            "---\n",
+            "type: reference\n",
+            "x: !!set\n",
+            "  ?\n",
+            "    ? # key\n",
+            "      !!str \"1\"\n",
+            "    : value\n",
+            "---\n",
+        );
+        let deferred_key_bundle = parse_bundle(ParseBundleInput {
+            root_uri: "file:///bundle".to_owned(),
+            revision: 1,
+            documents: vec![document("deferred-key.md", deferred_key_source)],
+        });
+        assert_eq!(
+            deferred_key_bundle.concepts[0].frontmatter.raw["x"][TAGGED_KEY]["value"],
+            serde_json::json!([{"1": "value"}])
         );
         assert_eq!(
             standard_tag_semantic("map", source, serde_json::json!({"null": "one"})),

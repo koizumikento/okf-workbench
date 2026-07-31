@@ -65,7 +65,8 @@ Markdown remains the source of truth. The graph is a derived view and must never
 
 ### Permissive consumption
 
-The extension must tolerate unknown types, extra frontmatter fields, missing optional metadata, and broken links in accordance with OKF v0.1.
+The extension must tolerate unknown types, extra frontmatter fields, missing optional metadata, and
+broken links in accordance with OKF v0.2, while retaining guarded compatibility for v0.1 bundles.
 
 ### Safe generation
 

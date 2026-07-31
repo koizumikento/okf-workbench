@@ -648,6 +648,18 @@ export function parseBundle(input: ParseBundleInput): ParsedBundle {
         ...(normalized.resource === undefined ? {} : { resource: normalized.resource }),
         tags: normalized.tags,
         ...(normalized.timestamp === undefined ? {} : { timestamp: normalized.timestamp }),
+        ...(normalized.generated === undefined ? {} : { generated: normalized.generated }),
+        verified: normalized.verified ?? [],
+        trustTier: normalized.trustTier ?? 'unverified',
+        ...(normalized.status === undefined ? {} : { status: normalized.status }),
+        ...(normalized.staleAfter === undefined ? {} : { staleAfter: normalized.staleAfter }),
+        sources: normalized.sources ?? [],
+        ...(normalized.usageWindow === undefined ? {} : { usageWindow: normalized.usageWindow }),
+        ...(normalized.runtime === undefined ? {} : { runtime: normalized.runtime }),
+        parameters: normalized.parameters ?? [],
+        ...(normalized.computation === undefined ? {} : { computation: normalized.computation }),
+        ...(normalized.executor === undefined ? {} : { executor: normalized.executor }),
+        ...(normalized.attester === undefined ? {} : { attester: normalized.attester }),
         body: parsed.body,
         bodyRange: ranges.range(parsed.bodyStart, text.length),
       },
@@ -832,10 +844,20 @@ function partialPendingConcept(
         source: '',
         range: emptyRange,
         fields: {},
-        normalized: { tags: [] },
+        normalized: {
+          tags: [],
+          verified: [],
+          trustTier: 'unverified',
+          sources: [],
+          parameters: [],
+        },
       },
       type: '',
       tags: [],
+      verified: [],
+      trustTier: 'unverified',
+      sources: [],
+      parameters: [],
       body: '',
       bodyRange: emptyRange,
     },
@@ -902,6 +924,12 @@ function conceptMetadataFailure(metadata: NormalizedFrontmatter): string | undef
     metadata.description,
     metadata.resource,
     metadata.timestamp,
+    metadata.generated?.by,
+    metadata.generated?.at,
+    metadata.status,
+    metadata.staleAfter,
+    metadata.runtime,
+    metadata.computation,
     ...metadata.tags,
   ];
   if (unicodeValues.some((value) => value !== undefined && hasUnpairedUtf16Surrogate(value))) {
@@ -942,6 +970,12 @@ function conceptMetadataFailure(metadata: NormalizedFrontmatter): string | undef
     ['Concept description', metadata.description, OKF_SEMANTIC_LIMITS.maxDescriptionCodeUnits],
     ['Concept resource', metadata.resource, OKF_SEMANTIC_LIMITS.maxResourceCodeUnits],
     ['Concept timestamp', metadata.timestamp, OKF_SEMANTIC_LIMITS.maxTimestampCodeUnits],
+    ['Concept generator actor', metadata.generated?.by, OKF_SEMANTIC_LIMITS.maxResourceCodeUnits],
+    ['Concept generation time', metadata.generated?.at, OKF_SEMANTIC_LIMITS.maxTimestampCodeUnits],
+    ['Concept lifecycle status', metadata.status, OKF_SEMANTIC_LIMITS.maxTypeCodeUnits],
+    ['Concept stale-after date', metadata.staleAfter, OKF_SEMANTIC_LIMITS.maxTimestampCodeUnits],
+    ['Concept computation runtime', metadata.runtime, OKF_SEMANTIC_LIMITS.maxTypeCodeUnits],
+    ['Concept computation path', metadata.computation, OKF_SEMANTIC_LIMITS.maxResourceCodeUnits],
   ];
   for (const [subject, value, limit] of boundedFields) {
     if (value !== undefined && value.length > limit) {
@@ -950,9 +984,15 @@ function conceptMetadataFailure(metadata: NormalizedFrontmatter): string | undef
   }
   if (
     (metadata.resource !== undefined && hasGraphIdentityControl(metadata.resource)) ||
-    (metadata.timestamp !== undefined && hasGraphIdentityControl(metadata.timestamp))
+    (metadata.timestamp !== undefined && hasGraphIdentityControl(metadata.timestamp)) ||
+    (metadata.generated?.by !== undefined && hasGraphIdentityControl(metadata.generated.by)) ||
+    (metadata.generated?.at !== undefined && hasGraphIdentityControl(metadata.generated.at)) ||
+    (metadata.status !== undefined && hasGraphIdentityControl(metadata.status)) ||
+    (metadata.staleAfter !== undefined && hasGraphIdentityControl(metadata.staleAfter)) ||
+    (metadata.runtime !== undefined && hasGraphIdentityControl(metadata.runtime)) ||
+    (metadata.computation !== undefined && hasGraphIdentityControl(metadata.computation))
   ) {
-    return 'Concept resource or timestamp contains a control character that is unsafe for graph metadata.';
+    return 'Concept scalar metadata contains a control character that is unsafe for graph metadata.';
   }
   return undefined;
 }

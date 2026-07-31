@@ -26,6 +26,76 @@ pub struct SourceDocument {
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GeneratedMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub at: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerificationEvent {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub at: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageWindow {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnowledgeSource {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_modified: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage_window: Option<UsageWindow>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComputationParameter {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub r#type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required: Option<bool>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComputationEndpoint {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource: Option<String>,
+    #[serde(default)]
+    pub receipt: Vec<String>,
+}
+
+fn default_trust_tier() -> String {
+    "unverified".to_owned()
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NormalizedFrontmatter {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub r#type: Option<String>,
@@ -38,6 +108,30 @@ pub struct NormalizedFrontmatter {
     pub tags: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generated: Option<GeneratedMetadata>,
+    #[serde(default)]
+    pub verified: Vec<VerificationEvent>,
+    #[serde(default = "default_trust_tier")]
+    pub trust_tier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stale_after: Option<String>,
+    #[serde(default)]
+    pub sources: Vec<KnowledgeSource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage_window: Option<UsageWindow>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<String>,
+    #[serde(default)]
+    pub parameters: Vec<ComputationParameter>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub computation: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub executor: Option<ComputationEndpoint>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attester: Option<ComputationEndpoint>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -96,6 +190,30 @@ pub struct Concept {
     pub tags: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generated: Option<GeneratedMetadata>,
+    #[serde(default)]
+    pub verified: Vec<VerificationEvent>,
+    #[serde(default = "default_trust_tier")]
+    pub trust_tier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stale_after: Option<String>,
+    #[serde(default)]
+    pub sources: Vec<KnowledgeSource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage_window: Option<UsageWindow>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<String>,
+    #[serde(default)]
+    pub parameters: Vec<ComputationParameter>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub computation: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub executor: Option<ComputationEndpoint>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attester: Option<ComputationEndpoint>,
     pub body: String,
     pub body_range: SourceRange,
     pub links: Vec<ConceptLink>,
@@ -215,6 +333,22 @@ pub struct GraphNode {
     pub tags: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generated_by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generated_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trust_tier: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stale_after: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub computation: Option<String>,
     pub orphan: bool,
     pub broken_link_count: usize,
 }

@@ -85,7 +85,10 @@ describe('generated concept semantic limits', () => {
       tags: Array.from({ length: OKF_SEMANTIC_LIMITS.maxTagsPerConcept }, () =>
         'g'.repeat(OKF_SEMANTIC_LIMITS.maxTagCodeUnits),
       ),
-      timestamp: 'z'.repeat(OKF_SEMANTIC_LIMITS.maxTimestampCodeUnits),
+      generated: {
+        by: 'process:okf-workbench',
+        at: 'z'.repeat(OKF_SEMANTIC_LIMITS.maxTimestampCodeUnits),
+      },
     });
   });
 

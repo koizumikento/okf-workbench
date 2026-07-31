@@ -53,7 +53,9 @@ Requirements:
 
 - Apply immediately after the final input when every generated target is absent.
 - Refuse the complete initialization when any target already exists; never overwrite it.
-- Create a root `index.md` declaring `okf_version: "0.1"`.
+- Create a root `index.md` declaring `okf_version: "0.2"`.
+- Continue to read and safely author existing bundles declaring `okf_version: "0.1"` without
+  silently rewriting their version.
 - Allow users to change the suggested bundle directory.
 
 ### `OKF: New Concept`
@@ -69,6 +71,7 @@ Initial templates:
 - Data Table
 - Playbook
 - Reference
+- Attested Computation
 
 Requirements:
 
@@ -94,7 +97,8 @@ Curation warnings:
 
 - Broken internal link.
 - Missing recommended title or description.
-- Invalid or suspicious timestamp.
+- Invalid or suspicious generation or verification metadata, including a legacy timestamp fallback.
+- Invalid lifecycle, provenance, staleness, or Attested Computation metadata.
 - Duplicate resource identifier.
 
 The validation completion summary reports the orphan count separately, and the 3D graph provides

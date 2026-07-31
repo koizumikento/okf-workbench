@@ -99,7 +99,33 @@ pub fn build_graph_payload(bundle: &ParsedBundle) -> GraphPayload {
             description: concept.description.clone(),
             resource: concept.resource.clone(),
             tags: concept.tags.clone(),
-            timestamp: concept.timestamp.clone(),
+            timestamp: (!concept.frontmatter.raw.contains_key("generated"))
+                .then(|| concept.timestamp.clone())
+                .flatten(),
+            generated_by: concept
+                .generated
+                .as_ref()
+                .and_then(|generated| generated.by.clone()),
+            generated_at: concept
+                .generated
+                .as_ref()
+                .and_then(|generated| generated.at.clone()),
+            trust_tier: (!failed_paths.contains(concept.source.bundle_path.as_str()))
+                .then(|| concept.trust_tier.clone()),
+            status: if failed_paths.contains(concept.source.bundle_path.as_str()) {
+                None
+            } else if let Some(status) = concept.status.clone() {
+                Some(status)
+            } else if concept.frontmatter.raw.contains_key("status") {
+                None
+            } else {
+                Some("stable".to_owned())
+            },
+            stale_after: concept.stale_after.clone(),
+            source_count: (!failed_paths.contains(concept.source.bundle_path.as_str()))
+                .then_some(concept.sources.len()),
+            runtime: concept.runtime.clone(),
+            computation: concept.computation.clone(),
             orphan: !connected.contains(concept.id.as_str())
                 && !failed_paths.contains(concept.source.bundle_path.as_str()),
             broken_link_count: *broken_count.get(&concept.id).unwrap_or(&0),

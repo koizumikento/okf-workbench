@@ -1,7 +1,8 @@
 use crate::{
-    BundleDocumentInput, Concept, ConceptLink, DocumentContent, LinkClassification,
-    NormalizedFrontmatter, ParseBundleInput, ParseFailure, ParseFailureReason, ParsedBundle,
-    ParsedFrontmatter, ReservedDocument, SourceDocument, SourcePosition, SourceRange,
+    BundleDocumentInput, ComputationEndpoint, ComputationParameter, Concept, ConceptLink,
+    DocumentContent, GeneratedMetadata, KnowledgeSource, LinkClassification, NormalizedFrontmatter,
+    ParseBundleInput, ParseFailure, ParseFailureReason, ParsedBundle, ParsedFrontmatter,
+    ReservedDocument, SourceDocument, SourcePosition, SourceRange, UsageWindow, VerificationEvent,
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use chrono::{DateTime, SecondsFormat};
@@ -403,6 +404,18 @@ pub fn parse_bundle(mut input: ParseBundleInput) -> ParsedBundle {
                 resource: normalized.resource.clone(),
                 tags: normalized.tags.clone(),
                 timestamp: normalized.timestamp.clone(),
+                generated: normalized.generated.clone(),
+                verified: normalized.verified.clone(),
+                trust_tier: normalized.trust_tier.clone(),
+                status: normalized.status.clone(),
+                stale_after: normalized.stale_after.clone(),
+                sources: normalized.sources.clone(),
+                usage_window: normalized.usage_window.clone(),
+                runtime: normalized.runtime.clone(),
+                parameters: normalized.parameters.clone(),
+                computation: normalized.computation.clone(),
+                executor: normalized.executor.clone(),
+                attester: normalized.attester.clone(),
                 body,
                 body_range,
                 links: Vec::new(),
@@ -605,13 +618,31 @@ fn partial_concept(document: &DecodedDocument) -> Concept {
         kind: "concept".to_owned(),
         id: document.path.trim_end_matches(".md").to_owned(),
         source: source_document(document),
-        frontmatter: ParsedFrontmatter::default(),
+        frontmatter: ParsedFrontmatter {
+            normalized: NormalizedFrontmatter {
+                trust_tier: "unverified".to_owned(),
+                ..NormalizedFrontmatter::default()
+            },
+            ..ParsedFrontmatter::default()
+        },
         r#type: String::new(),
         title: None,
         description: None,
         resource: None,
         tags: Vec::new(),
         timestamp: None,
+        generated: None,
+        verified: Vec::new(),
+        trust_tier: "unverified".to_owned(),
+        status: None,
+        stale_after: None,
+        sources: Vec::new(),
+        usage_window: None,
+        runtime: None,
+        parameters: Vec::new(),
+        computation: None,
+        executor: None,
+        attester: None,
         body: String::new(),
         body_range: SourceRange::default(),
         links: Vec::new(),
@@ -732,6 +763,7 @@ fn parse_frontmatter(
     };
     let explicit_tags = preserve_standard_yaml_tags(yaml_source, &mut raw);
     let fields = top_level_field_ranges(text, opening_end, closing_start);
+    let verified = normalized_verifications(raw.get("verified"));
     let normalized = NormalizedFrontmatter {
         r#type: normalized_string(&raw, &explicit_tags, "type").map(str::to_owned),
         title: normalized_string(&raw, &explicit_tags, "title").map(str::to_owned),
@@ -755,6 +787,18 @@ fn parse_frontmatter(
             })
             .unwrap_or_default(),
         timestamp: normalized_string(&raw, &explicit_tags, "timestamp").map(str::to_owned),
+        generated: normalized_generated(raw.get("generated")),
+        trust_tier: trust_tier(&verified).to_owned(),
+        verified,
+        status: normalized_string(&raw, &explicit_tags, "status").map(str::to_owned),
+        stale_after: normalized_string(&raw, &explicit_tags, "stale_after").map(str::to_owned),
+        sources: normalized_sources(raw.get("sources")),
+        usage_window: normalized_usage_window(raw.get("usage_window")),
+        runtime: normalized_string(&raw, &explicit_tags, "runtime").map(str::to_owned),
+        parameters: normalized_parameters(raw.get("parameters")),
+        computation: normalized_string(&raw, &explicit_tags, "computation").map(str::to_owned),
+        executor: normalized_endpoint(raw.get("executor")),
+        attester: normalized_endpoint(raw.get("attester")),
     };
     let frontmatter = ParsedFrontmatter {
         raw,
@@ -769,6 +813,112 @@ fn parse_frontmatter(
         text[closing_line_end..].to_owned(),
         range_for(text, closing_line_end, text.len()),
     ))
+}
+
+fn object_string(object: &Map<String, Value>, key: &str) -> Option<String> {
+    object.get(key).and_then(Value::as_str).map(str::to_owned)
+}
+
+fn normalized_generated(value: Option<&Value>) -> Option<GeneratedMetadata> {
+    let object = value?.as_object()?;
+    Some(GeneratedMetadata {
+        by: object_string(object, "by"),
+        at: object_string(object, "at"),
+    })
+}
+
+fn normalized_verifications(value: Option<&Value>) -> Vec<VerificationEvent> {
+    let values = match value {
+        Some(Value::Array(values)) => values.iter().collect::<Vec<_>>(),
+        Some(value @ Value::Object(_)) => vec![value],
+        _ => Vec::new(),
+    };
+    values
+        .into_iter()
+        .filter_map(Value::as_object)
+        .map(|object| VerificationEvent {
+            by: object_string(object, "by"),
+            at: object_string(object, "at"),
+        })
+        .collect()
+}
+
+fn trust_tier(events: &[VerificationEvent]) -> &'static str {
+    let valid_events = events.iter().filter(|event| {
+        event.by.as_deref().is_some_and(|by| !by.trim().is_empty())
+            && event
+                .at
+                .as_deref()
+                .is_some_and(|at| DateTime::parse_from_rfc3339(at).is_ok())
+    });
+    if valid_events.clone().any(|event| {
+        event
+            .by
+            .as_deref()
+            .is_some_and(|by| by.starts_with("human:"))
+    }) {
+        "human-reviewed"
+    } else if valid_events.count() > 0 {
+        "machine-confirmed"
+    } else {
+        "unverified"
+    }
+}
+
+fn normalized_usage_window(value: Option<&Value>) -> Option<UsageWindow> {
+    let object = value?.as_object()?;
+    Some(UsageWindow {
+        from: object_string(object, "from"),
+        to: object_string(object, "to"),
+    })
+}
+
+fn normalized_sources(value: Option<&Value>) -> Vec<KnowledgeSource> {
+    value
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_object)
+        .map(|object| KnowledgeSource {
+            id: object_string(object, "id"),
+            resource: object_string(object, "resource"),
+            title: object_string(object, "title"),
+            author: object_string(object, "author"),
+            usage_count: object.get("usage_count").and_then(Value::as_u64),
+            last_modified: object_string(object, "last_modified"),
+            usage_window: normalized_usage_window(object.get("usage_window")),
+        })
+        .collect()
+}
+
+fn normalized_parameters(value: Option<&Value>) -> Vec<ComputationParameter> {
+    value
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_object)
+        .map(|object| ComputationParameter {
+            name: object_string(object, "name"),
+            r#type: object_string(object, "type"),
+            required: object.get("required").and_then(Value::as_bool),
+        })
+        .collect()
+}
+
+fn normalized_endpoint(value: Option<&Value>) -> Option<ComputationEndpoint> {
+    let object = value?.as_object()?;
+    let receipt = object
+        .get("receipt")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect();
+    Some(ComputationEndpoint {
+        resource: object_string(object, "resource"),
+        receipt,
+    })
 }
 
 fn yaml_to_json(value: serde_yaml::Value) -> Result<Value, String> {
@@ -1232,6 +1382,42 @@ fn concept_metadata_failure(metadata: &NormalizedFrontmatter) -> Option<String> 
             metadata.timestamp.as_deref(),
             MAX_TIMESTAMP_CODE_UNITS,
         ),
+        (
+            "Concept generator actor",
+            metadata
+                .generated
+                .as_ref()
+                .and_then(|value| value.by.as_deref()),
+            MAX_RESOURCE_CODE_UNITS,
+        ),
+        (
+            "Concept generation time",
+            metadata
+                .generated
+                .as_ref()
+                .and_then(|value| value.at.as_deref()),
+            MAX_TIMESTAMP_CODE_UNITS,
+        ),
+        (
+            "Concept lifecycle status",
+            metadata.status.as_deref(),
+            MAX_TYPE_CODE_UNITS,
+        ),
+        (
+            "Concept stale-after date",
+            metadata.stale_after.as_deref(),
+            MAX_TIMESTAMP_CODE_UNITS,
+        ),
+        (
+            "Concept computation runtime",
+            metadata.runtime.as_deref(),
+            MAX_TYPE_CODE_UNITS,
+        ),
+        (
+            "Concept computation path",
+            metadata.computation.as_deref(),
+            MAX_RESOURCE_CODE_UNITS,
+        ),
     ] {
         if value.is_some_and(|value| value.encode_utf16().count() > limit) {
             return Some(format!(
@@ -1247,9 +1433,35 @@ fn concept_metadata_failure(metadata: &NormalizedFrontmatter) -> Option<String> 
             .timestamp
             .as_deref()
             .is_some_and(has_control_character)
+        || metadata
+            .generated
+            .as_ref()
+            .and_then(|value| value.by.as_deref())
+            .is_some_and(has_control_character)
+        || metadata
+            .generated
+            .as_ref()
+            .and_then(|value| value.at.as_deref())
+            .is_some_and(has_control_character)
+        || metadata
+            .status
+            .as_deref()
+            .is_some_and(has_control_character)
+        || metadata
+            .stale_after
+            .as_deref()
+            .is_some_and(has_control_character)
+        || metadata
+            .runtime
+            .as_deref()
+            .is_some_and(has_control_character)
+        || metadata
+            .computation
+            .as_deref()
+            .is_some_and(has_control_character)
     {
         return Some(
-            "Concept resource or timestamp contains a control character that is unsafe for graph metadata."
+            "Concept scalar metadata contains a control character that is unsafe for graph metadata."
                 .to_owned(),
         );
     }

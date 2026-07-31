@@ -219,7 +219,7 @@ describe('validateBundle', () => {
 
     const findings = validateBundle(
       bundle([orphan, beta, alpha], {
-        reservedDocuments: [rootIndex('0.2')],
+        reservedDocuments: [rootIndex('0.3')],
         failures: [decodeFailure],
       }),
       { now: '2026-07-22T00:00:00Z' },
@@ -273,7 +273,7 @@ describe('validateBundle', () => {
 
     const reordered = validateBundle(
       bundle([alpha, beta, orphan], {
-        reservedDocuments: [rootIndex('0.2')],
+        reservedDocuments: [rootIndex('0.3')],
         failures: [decodeFailure],
       }),
       { now: '2026-07-22T00:00:00Z' },
@@ -542,6 +542,114 @@ describe('validateBundle', () => {
     expect(invalidTimestampUris).not.toContain(`${rootUri}/explicit-timestamp.md`);
     expect(JSON.parse(JSON.stringify(parsed))).toEqual(parsed);
     expect(JSON.parse(JSON.stringify(findings))).toEqual(findings);
+  });
+
+  it('keeps malformed optional v0.2 families in curation and prefers generated over legacy timestamp', () => {
+    const parsed = parseBundle({
+      rootUri,
+      revision: 2,
+      documents: [
+        document('index.md', '---\nokf_version: "0.2"\n---\n# Root\n'),
+        document(
+          'malformed.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Malformed optional metadata',
+            'description: Remains conformant while curation reports repairs.',
+            'timestamp: not-a-date',
+            'generated: { at: not-a-date }',
+            'verified: [{ by: "", at: not-a-date }]',
+            'status: archived',
+            'stale_after: 2026-02-30',
+            'sources: [{ title: Missing resource }]',
+            'parameters: [{ name: year, type: integer, required: yes }]',
+            '---',
+            '# Computation',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'stale.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Stale concept',
+            'description: Explicitly stale.',
+            'stale_after: 2026-07-30',
+            'generated: { by: process:future, at: 2026-08-01T00:10:00Z }',
+            'verified: { by: process:future, at: 2026-08-01T00:10:00Z }',
+            '---',
+            '# Details',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'invalid-provenance.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Invalid provenance signals',
+            'description: Optional credibility signals need repair.',
+            'usage_window: { from: 2026-08-01, to: 2026-07-01 }',
+            'sources:',
+            '  - resource: https://example.com/source',
+            '    usage_count: -1',
+            '    last_modified: 2026-02-30',
+            '    usage_window: { from: 2026-07-31, to: 2026-07-01 }',
+            '---',
+            '# Reference',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'incomplete-computation.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Incomplete computation',
+            'description: Has no sanctioned computation.',
+            'runtime: bigquery',
+            'executor: invalid',
+            'attester: { resource: "" }',
+            '---',
+            '# Notes',
+            '',
+          ].join('\n'),
+        ),
+      ],
+    });
+    const findings = validateBundle(parsed, { now: '2026-07-31T00:00:00Z' });
+
+    expect(findings.filter(({ category }) => category === 'conformance')).toEqual([]);
+    expect(codes(findings)).toEqual(
+      expect.arrayContaining([
+        VALIDATION_CODES.invalidGenerated,
+        VALIDATION_CODES.invalidVerified,
+        VALIDATION_CODES.invalidStatus,
+        VALIDATION_CODES.invalidStaleAfter,
+        VALIDATION_CODES.invalidSources,
+        VALIDATION_CODES.invalidUsageWindow,
+        VALIDATION_CODES.invalidAttestedComputation,
+        VALIDATION_CODES.staleConcept,
+        VALIDATION_CODES.futureGeneratedAt,
+        VALIDATION_CODES.futureVerifiedAt,
+      ]),
+    );
+    expect(codes(findings)).not.toContain(VALIDATION_CODES.invalidTimestamp);
+    expect(
+      findings.find(
+        ({ code, uri }) =>
+          code === VALIDATION_CODES.invalidSources && uri === `${rootUri}/invalid-provenance.md`,
+      ),
+    ).toBeDefined();
+    expect(
+      findings.find(
+        ({ code, uri }) =>
+          code === VALIDATION_CODES.invalidAttestedComputation &&
+          uri === `${rootUri}/incomplete-computation.md`,
+      ),
+    ).toBeDefined();
   });
 
   it('recognizes CommonMark Setext headings in reserved index and log documents', () => {

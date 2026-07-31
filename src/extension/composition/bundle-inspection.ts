@@ -155,12 +155,12 @@ function inspectOkfVersion(value: string): OkfVersionInspection | undefined {
     return undefined;
   }
   const declared = JSON.stringify(value);
-  if (value === '0.1') {
+  if (value === '0.1' || value === '0.2') {
     return { declared, compatibility: 'supported' };
   }
   const major = match[1];
   const minor = match[2];
-  if (major !== undefined && minor !== undefined && BigInt(major) === 0n && BigInt(minor) > 1n) {
+  if (major !== undefined && minor !== undefined && BigInt(major) === 0n && BigInt(minor) > 2n) {
     return { declared, compatibility: 'future-minor' };
   }
   return { declared, compatibility: 'unsupported' };
@@ -363,7 +363,7 @@ export async function inspectBundleWriteAccess<TUri>(
       ok: false,
       problem: {
         code: 'unsupported-okf-version-write',
-        message: `The selected bundle declares unsupported OKF version ${decision.version.declared}; OKF Workbench writes only OKF 0.1-compatible bundles.`,
+        message: `The selected bundle declares unsupported OKF version ${decision.version.declared}; OKF Workbench writes only OKF 0.1- and 0.2-compatible bundles.`,
         correctiveAction:
           'No files were written. Validate or graph the bundle read-only, then migrate it or review support before editing.',
       },

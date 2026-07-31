@@ -2,14 +2,14 @@
 
 - Status: Approved
 - Target: MVP
-- Version: 0.1
-- Date: 2026-07-22
+- Version: 0.2
+- Date: 2026-07-31
 
 ## Purpose
 
 This document consolidates the user-visible and system behavior required for the initial OKF Workbench release. It turns the product brief, MVP scope, compatibility contract, agent integration design, architecture, and accepted decisions into testable requirements.
 
-The canonical OKF v0.1 specification and accepted architecture decisions take precedence if this summary conflicts with them. Requirements use **MUST**, **SHOULD**, and **MAY** in their ordinary normative sense.
+The canonical OKF v0.2 specification and accepted architecture decisions take precedence if this summary conflicts with them. Requirements use **MUST**, **SHOULD**, and **MAY** in their ordinary normative sense.
 
 ## Product boundary
 
@@ -30,7 +30,7 @@ Markdown files are the source of truth. Diagnostics, indexes, and the graph are 
 | Concept | A non-reserved Markdown file with YAML frontmatter and a required non-empty `type` |
 | Concept ID | The bundle-relative POSIX path of a concept without the `.md` extension |
 | Reserved document | An `index.md` or `log.md` at any directory level |
-| Conformance error | A violation of a hard OKF v0.1 interoperability rule |
+| Conformance error | A violation of a hard OKF v0.2 interoperability rule |
 | Curation warning | A maintainability problem that does not make the bundle non-conformant |
 | Managed region | A marker-delimited section that Workbench may update without replacing unrelated content |
 
@@ -44,7 +44,7 @@ Markdown files are the source of truth. Diagnostics, indexes, and the graph are 
 | FR-002 | `OKF: Initialize Bundle` MUST let the user choose the workspace target, suggested bundle directory, and preset. | The command inputs identify all three values before writing. |
 | FR-003 | Initialization MUST provide the `Minimal`, `Software Project`, and `Data & Analytics` presets. | Each preset can be selected and produces its documented file set. |
 | FR-004 | Initialization MUST apply a create-only proposal without a separate preview or approval when every generated target is absent. | Completing the final input creates the selected preset directly, opens its root index, and produces no proposal preview or confirmation request. |
-| FR-005 | A generated bundle MUST contain a UTF-8 root `index.md` declaring `okf_version: "0.1"`. | The generated minimal bundle passes the Workbench conformance validator. |
+| FR-005 | A generated bundle MUST contain a UTF-8 root `index.md` declaring `okf_version: "0.2"`. Existing declared v0.1 bundles MUST remain eligible for guarded authoring without an implicit version rewrite. | The generated minimal bundle passes the Workbench conformance validator, and an existing v0.1 fixture remains writable without changing its declaration. |
 | FR-006 | Initialization MUST detect every target-path collision before writing. | Any existing target refuses the complete initialization; no initialization path replaces an existing file. |
 | FR-007 | Generated paths MUST remain inside the selected bundle root. | Absolute paths, parent traversal, and equivalent encoded or normalized escapes are rejected with an actionable message. |
 
@@ -59,7 +59,7 @@ Markdown files are the source of truth. Diagnostics, indexes, and the graph are 
 
 | ID | Requirement | Acceptance condition |
 | --- | --- | --- |
-| FR-010 | `OKF: New Concept` MUST offer `Generic Concept`, `Decision`, `Metric`, `API Endpoint`, `Data Table`, `Playbook`, and `Reference` templates. Generated metadata and the complete YAML/Markdown output MUST remain inside the parser's shared deterministic resource envelope. The frontmatter `title` and `description` MUST remain metadata rather than being duplicated as raw body Markdown, so the metadata title remains the single document title. | Each listed template can generate a concept with valid YAML frontmatter and no duplicate top-level heading, including when the description contains Markdown heading syntax. Inclusive-boundary and one-over tests cover a 256-code-unit/byte type, 4,096-code-unit title, 16,384-code-unit description, 128 tags of at most 256 code units/bytes each, and a 256-code-unit timestamp; every successful render parses and validates without a conformance or resource-limit failure. |
+| FR-010 | `OKF: New Concept` MUST offer `Generic Concept`, `Decision`, `Metric`, `API Endpoint`, `Data Table`, `Playbook`, `Reference`, and `Attested Computation` templates. Generated metadata and the complete YAML/Markdown output MUST remain inside the parser's shared deterministic resource envelope. The frontmatter `title` and `description` MUST remain metadata rather than being duplicated as raw body Markdown, so the metadata title remains the single document title. | Each listed template can generate a concept with valid YAML frontmatter and no duplicate top-level heading, including when the description contains Markdown heading syntax. Inclusive-boundary and one-over tests cover a 256-code-unit/byte type, 4,096-code-unit title, 16,384-code-unit description, 128 tags of at most 256 code units/bytes each, and a 256-code-unit injected generation time; every successful render parses and validates without a conformance or resource-limit failure. |
 | FR-011 | Concept creation MUST collect destination, type, title, description, tags, and filename. | The proposed output path and frontmatter reflect the submitted values. |
 | FR-012 | Concept creation MUST accept any non-empty `type` inside the shared identity-safety envelope; built-in templates MUST NOT form a closed type enumeration. Only malformed Unicode, parser-unsafe control characters, and deterministic code-unit/UTF-8 bounds constrain the otherwise arbitrary vocabulary. | A custom type such as `experiment-result` can be created and validated without an unknown-type error; a boundary-sized custom type remains eligible, while an unpaired surrogate, control character, or first over-limit value is refused with corrective guidance before proposal construction. |
 | FR-013 | Concept creation MUST reject output paths outside the selected bundle and detect filename collisions before writing. A valid create-only concept proposal MUST apply without a separate preview or approval. | Rejected input leaves the workspace unchanged and identifies the conflicting or invalid path; an absent target is created directly, while a target that exists initially or appears after preflight is never overwritten. |
@@ -87,7 +87,7 @@ Markdown files are the source of truth. Diagnostics, indexes, and the graph are 
 | --- | --- | --- |
 | FR-030 | `OKF: Validate Bundle` MUST publish actionable source findings through the Problems panel and summarize orphan concepts without attaching editor diagnostics to their valid source text. | Invoking the command replaces stale Problems entries for the selected bundle with current editor-visible results and reports the current orphan count separately. |
 | FR-031 | Conformance errors MUST include missing or invalid YAML frontmatter, missing or empty concept `type`, invalid reserved-document structure, and unconsumable UTF-8 input. | A fixture for each case is reported as a conformance error. |
-| FR-032 | Validation findings MUST include broken internal links, orphan concepts, missing recommended title or description, suspicious timestamps, and duplicate resource identifiers as curation rather than conformance. Problems MUST omit `orphan-concept` findings because isolation is valid source state; the graph and explicit validation summary retain that state. | A fixture for each case remains a curation finding; Problems publishes every listed source warning except orphan state, while the graph and explicit validation summary expose the current orphan count. |
+| FR-032 | Validation findings MUST include broken internal links, orphan concepts, missing recommended title or description, suspicious generation or verification times, malformed optional v0.2 metadata, stale concepts, and duplicate resource identifiers as curation rather than conformance. A legacy `timestamp` MUST be consulted only when `generated` is absent. Problems MUST omit `orphan-concept` findings because isolation is valid source state; the graph and explicit validation summary retain that state. | A fixture for each case remains a curation finding; malformed optional `generated`, `verified`, `status`, `stale_after`, `sources`, and Attested Computation families never become conformance errors; Problems publishes every listed source warning except orphan state, while the graph and explicit validation summary expose the current orphan count. |
 | FR-033 | Unknown concept types and additional frontmatter fields MUST NOT produce errors or warnings solely because they are unknown. | A valid custom-type fixture with custom fields has no unknown-schema finding. |
 | FR-034 | Every diagnostic SHOULD identify the narrowest useful URI and source range. | Frontmatter and link fixtures point to their field or Markdown link when a range is available. |
 | FR-035 | Editor diagnostic wording and severity MUST visibly distinguish conformance from actionable curation. | A user can determine the category from the Problems panel without opening implementation logs, and no orphan-only concept receives an editor decoration. |
@@ -162,6 +162,7 @@ Markdown files are the source of truth. Diagnostics, indexes, and the graph are 
 | ID | Requirement | Acceptance condition |
 | --- | --- | --- |
 | FR-100 | Production extension semantics and the native CLI MUST use the same Rust `okf-core` implementation for parsing, validation, graph construction, indexes, bundle/concept templates, and agent templates. | Canonical fixtures and generated bytes pass parity tests through native Rust and the packaged Wasm ABI; the production activation loads the packaged Wasm core once and does not silently fall back after a load, ABI, trap, or response failure. |
+| FR-100A | The shared model MUST normalize OKF v0.2 `generated`, `verified`, `sources`, `usage_window`, `status`, `stale_after`, `runtime`, `parameters`, `computation`, `executor`, and `attester` families while preserving unknown fields. Trust tier MUST be derived from valid verifier actors, and producer-supplied computation or attestation resources MUST remain inert data. | Native and Wasm parity fixtures cover bare and list-form verification, trust-tier derivation, lifecycle and provenance fields, Attested Computation metadata, and v0.1 timestamp fallback without executing or fetching any referenced resource. |
 | FR-101 | The extension Wasm adapter MUST be capability-free and remain outside the Webview. | The module targets `wasm32-unknown-unknown`, has no imports or WASI dependency, exposes only the versioned raw ABI, and is instantiated by the Extension Host. |
 | FR-102 | The native `okf` CLI MUST provide `init`, `new`, `validate`, `index`, `graph`, `agent`, and `version`. | CLI integration tests exercise each command family and machine-readable output uses a `schemaVersion: 1` envelope. |
 | FR-103 | CLI read commands MUST NOT write, and CLI write commands MUST plan before mutation. | `validate`, `graph`, and every `--check` path leave the filesystem unchanged; a non-TTY write refuses without `--apply`; collisions and unsafe paths fail before any target is changed. |
@@ -251,7 +252,7 @@ These items are resolved by [ADR 0005](decisions/0005-resolve-mvp-implementation
 | Requirement area | Primary repository sources |
 | --- | --- |
 | Product boundary and workflows | [Product brief](product-brief.md), [MVP scope](mvp-scope.md) |
-| OKF parsing and validation | [OKF v0.1 compatibility contract](okf-v0.1-contract.md) |
+| OKF parsing and validation | [OKF v0.2 compatibility contract](okf-v0.2-contract.md), [historical v0.1 compatibility contract](okf-v0.1-contract.md) |
 | Module and Webview constraints | [Architecture](architecture.md) |
 | Activity Bar and resource navigation | [MVP scope](mvp-scope.md), [Architecture](architecture.md) |
 | Agent outputs and merge safety | [Agent integration](agent-integration.md), [ADR 0002](decisions/0002-deterministic-local-first-core.md) |

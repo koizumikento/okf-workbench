@@ -509,6 +509,7 @@ function normalizeFrontmatter(
   explicitTags: Readonly<Record<string, string>>,
 ): NormalizedFrontmatter {
   const tags = semanticValue(raw.tags, explicitTags.tags);
+  const verified = normalizeVerifications(raw.verified);
   return {
     ...optionalString('type', raw.type, explicitTags.type),
     ...optionalString('title', raw.title, explicitTags.title),
@@ -516,16 +517,210 @@ function normalizeFrontmatter(
     ...optionalString('resource', raw.resource, explicitTags.resource),
     tags: Array.isArray(tags) && tags.every((tag) => typeof tag === 'string') ? [...tags] : [],
     ...optionalString('timestamp', raw.timestamp, explicitTags.timestamp),
+    ...optionalObject('generated', normalizeGenerated(raw.generated)),
+    verified,
+    trustTier: trustTier(verified),
+    ...optionalString('status', raw.status, explicitTags.status),
+    ...optionalString('staleAfter', raw.stale_after, explicitTags.stale_after),
+    sources: normalizeSources(raw.sources),
+    ...optionalObject('usageWindow', normalizeUsageWindow(raw.usage_window)),
+    ...optionalString('runtime', raw.runtime, explicitTags.runtime),
+    parameters: normalizeParameters(raw.parameters),
+    ...optionalString('computation', raw.computation, explicitTags.computation),
+    ...optionalObject('executor', normalizeEndpoint(raw.executor)),
+    ...optionalObject('attester', normalizeEndpoint(raw.attester)),
   };
 }
 
-function optionalString<Key extends 'type' | 'title' | 'description' | 'resource' | 'timestamp'>(
+function optionalString<
+  Key extends
+    | 'type'
+    | 'title'
+    | 'description'
+    | 'resource'
+    | 'timestamp'
+    | 'status'
+    | 'staleAfter'
+    | 'runtime'
+    | 'computation',
+>(
   key: Key,
   value: JsonValue | undefined,
   explicitTag: string | undefined,
 ): Partial<Record<Key, string>> {
   const semantic = semanticValue(value, explicitTag);
   return typeof semantic === 'string' ? ({ [key]: semantic } as Record<Key, string>) : {};
+}
+
+function optionalObject<Key extends string, Value>(
+  key: Key,
+  value: Value | undefined,
+): Partial<Record<Key, Value>> {
+  return value === undefined ? {} : ({ [key]: value } as Record<Key, Value>);
+}
+
+function jsonObject(value: JsonValue | undefined): JsonObject | undefined {
+  if (value === null || value === undefined || Array.isArray(value) || typeof value !== 'object') {
+    return undefined;
+  }
+  return value as JsonObject;
+}
+
+function objectString(value: JsonObject, key: string): string | undefined {
+  const candidate = value[key];
+  return typeof candidate === 'string' ? candidate : undefined;
+}
+
+function normalizeGenerated(
+  value: JsonValue | undefined,
+): NormalizedFrontmatter['generated'] | undefined {
+  const object = jsonObject(value);
+  if (object === undefined) return undefined;
+  const by = objectString(object, 'by');
+  const at = objectString(object, 'at');
+  return {
+    ...(by === undefined ? {} : { by }),
+    ...(at === undefined ? {} : { at }),
+  };
+}
+
+function normalizeVerifications(
+  value: JsonValue | undefined,
+): NonNullable<NormalizedFrontmatter['verified']> {
+  const values = Array.isArray(value) ? value : jsonObject(value) === undefined ? [] : [value];
+  return values.flatMap((entry) => {
+    const object = jsonObject(entry);
+    if (object === undefined) return [];
+    const by = objectString(object, 'by');
+    const at = objectString(object, 'at');
+    return [
+      {
+        ...(by === undefined ? {} : { by }),
+        ...(at === undefined ? {} : { at }),
+      },
+    ];
+  });
+}
+
+function trustTier(
+  events: NonNullable<NormalizedFrontmatter['verified']>,
+): NonNullable<NormalizedFrontmatter['trustTier']> {
+  const validEvents = events.filter(
+    (event) =>
+      event.by !== undefined &&
+      event.by.trim().length > 0 &&
+      event.at !== undefined &&
+      isRfc3339DateTime(event.at),
+  );
+  if (validEvents.some((event) => event.by?.startsWith('human:') === true)) return 'human-reviewed';
+  if (validEvents.length > 0) return 'machine-confirmed';
+  return 'unverified';
+}
+
+function isRfc3339DateTime(value: string): boolean {
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/u.exec(value);
+  if (match === null) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const zone = match[8] ?? '';
+  const daysInMonth =
+    month === 2
+      ? year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+        ? 29
+        : 28
+      : [4, 6, 9, 11].includes(month)
+        ? 30
+        : 31;
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > daysInMonth ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59
+  ) {
+    return false;
+  }
+  if (zone !== 'Z' && (Number(zone.slice(1, 3)) > 23 || Number(zone.slice(4, 6)) > 59)) {
+    return false;
+  }
+  return Number.isFinite(Date.parse(value));
+}
+
+function normalizeUsageWindow(
+  value: JsonValue | undefined,
+): NormalizedFrontmatter['usageWindow'] | undefined {
+  const object = jsonObject(value);
+  if (object === undefined) return undefined;
+  const from = objectString(object, 'from');
+  const to = objectString(object, 'to');
+  return {
+    ...(from === undefined ? {} : { from }),
+    ...(to === undefined ? {} : { to }),
+  };
+}
+
+function normalizeSources(
+  value: JsonValue | undefined,
+): NonNullable<NormalizedFrontmatter['sources']> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    const object = jsonObject(entry);
+    if (object === undefined) return [];
+    const usageCount = object.usage_count;
+    return [
+      {
+        ...optionalObject('id', objectString(object, 'id')),
+        ...optionalObject('resource', objectString(object, 'resource')),
+        ...optionalObject('title', objectString(object, 'title')),
+        ...optionalObject('author', objectString(object, 'author')),
+        ...(typeof usageCount === 'number' && Number.isSafeInteger(usageCount) && usageCount >= 0
+          ? { usageCount }
+          : {}),
+        ...optionalObject('lastModified', objectString(object, 'last_modified')),
+        ...optionalObject('usageWindow', normalizeUsageWindow(object.usage_window)),
+      },
+    ];
+  });
+}
+
+function normalizeParameters(
+  value: JsonValue | undefined,
+): NonNullable<NormalizedFrontmatter['parameters']> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    const object = jsonObject(entry);
+    if (object === undefined) return [];
+    const required = object.required;
+    return [
+      {
+        ...optionalObject('name', objectString(object, 'name')),
+        ...optionalObject('type', objectString(object, 'type')),
+        ...(typeof required === 'boolean' ? { required } : {}),
+      },
+    ];
+  });
+}
+
+function normalizeEndpoint(
+  value: JsonValue | undefined,
+): NormalizedFrontmatter['executor'] | undefined {
+  const object = jsonObject(value);
+  if (object === undefined) return undefined;
+  const receipt = object.receipt;
+  return {
+    ...optionalObject('resource', objectString(object, 'resource')),
+    receipt:
+      Array.isArray(receipt) && receipt.every((entry) => typeof entry === 'string')
+        ? [...receipt]
+        : [],
+  };
 }
 
 function semanticValue(

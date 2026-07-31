@@ -26,6 +26,7 @@ const CONCEPT_TEMPLATES: &[&str] = &[
     "data-table",
     "playbook",
     "reference",
+    "attested-computation",
 ];
 
 #[derive(Debug, Parser)]

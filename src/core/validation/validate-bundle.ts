@@ -13,7 +13,7 @@ import { extractMarkdownHeadings } from '../parser/markdown.js';
 import { SourceRangeIndex } from '../parser/source-range.js';
 
 export interface ValidationOptions {
-  /** Reference time for future-timestamp checks. Every caller must inject it. */
+  /** Reference time for future-time and staleness checks. Every caller must inject it. */
   readonly now: Date | string;
 }
 
@@ -36,6 +36,16 @@ export const VALIDATION_CODES = {
   missingDescription: 'okf.curation.missing-description',
   invalidTimestamp: 'okf.curation.invalid-timestamp',
   futureTimestamp: 'okf.curation.future-timestamp',
+  invalidGenerated: 'okf.curation.invalid-generated',
+  futureGeneratedAt: 'okf.curation.future-generated-at',
+  invalidVerified: 'okf.curation.invalid-verified',
+  futureVerifiedAt: 'okf.curation.future-verified-at',
+  invalidStatus: 'okf.curation.invalid-status',
+  invalidStaleAfter: 'okf.curation.invalid-stale-after',
+  staleConcept: 'okf.curation.stale-concept',
+  invalidSources: 'okf.curation.invalid-sources',
+  invalidUsageWindow: 'okf.curation.invalid-usage-window',
+  invalidAttestedComputation: 'okf.curation.invalid-attested-computation',
   duplicateResource: 'okf.curation.duplicate-resource',
   futureMinorVersion: 'okf.compatibility.future-minor-version',
   unsupportedVersion: 'okf.compatibility.unsupported-version',
@@ -53,7 +63,7 @@ const categoryOrder: Readonly<Record<FindingCategory, number>> = {
  * Validates a parsed bundle without mutating it.
  *
  * Parser findings are retained, then de-duplicated with findings derived here.
- * The required `options.now` keeps timestamp evaluation deterministic.
+ * The required `options.now` keeps time and staleness evaluation deterministic.
  */
 export function validateBundle(
   bundle: ParsedBundle,
@@ -85,6 +95,7 @@ export function validateBundle(
     validateConceptConformance(concept, findings);
     validateConceptLinks(concept, findings);
     validateRecommendedMetadata(concept, nowMs, findings);
+    validateV02Metadata(concept, nowMs, findings);
   }
 
   validateOrphans(concepts, failedConceptIds, findings);
@@ -243,7 +254,10 @@ function validateRecommendedMetadata(concept: Concept, nowMs: number, findings: 
     });
   }
 
-  if (!Object.hasOwn(concept.frontmatter.raw, 'timestamp')) {
+  if (
+    !Object.hasOwn(concept.frontmatter.raw, 'timestamp') ||
+    Object.hasOwn(concept.frontmatter.raw, 'generated')
+  ) {
     return;
   }
 
@@ -279,6 +293,289 @@ function validateRecommendedMetadata(concept: Concept, nowMs: number, findings: 
         'Correct the timestamp or the system clock, then validate the bundle again.',
     });
   }
+}
+
+function validateV02Metadata(concept: Concept, nowMs: number, findings: Finding[]): void {
+  const raw = concept.frontmatter.raw;
+  const generated = raw.generated;
+  if (generated !== undefined) {
+    const object = asRecord(generated);
+    const by = object?.by;
+    const at = object?.at;
+    const atMs = typeof at === 'string' ? parseExplicitZoneTimestamp(at) : undefined;
+    if (
+      object === undefined ||
+      typeof by !== 'string' ||
+      by.trim().length === 0 ||
+      (at !== undefined && atMs === undefined)
+    ) {
+      findings.push(
+        metadataCuration(
+          concept,
+          VALIDATION_CODES.invalidGenerated,
+          'generated',
+          'OKF curation: `generated` must be a mapping with non-empty `by` and an optional explicit-zone `at` date-time.',
+          'Use `generated: { by: process:producer, at: 2026-07-31T00:00:00Z }` or remove the malformed optional family.',
+        ),
+      );
+    } else if (atMs !== undefined && atMs > nowMs + FUTURE_TOLERANCE_MS) {
+      findings.push(
+        metadataCuration(
+          concept,
+          VALIDATION_CODES.futureGeneratedAt,
+          'generated',
+          'OKF curation: `generated.at` is more than five minutes after the validation reference time.',
+          'Correct the generation time or the system clock, then validate the bundle again.',
+        ),
+      );
+    }
+  }
+
+  if (Object.hasOwn(raw, 'verified')) {
+    const values = Array.isArray(raw.verified) ? raw.verified : [raw.verified];
+    let invalid = values.length === 0;
+    let future = false;
+    for (const value of values) {
+      const event = asRecord(value);
+      const by = event?.by;
+      const at = event?.at;
+      const atMs = typeof at === 'string' ? parseExplicitZoneTimestamp(at) : undefined;
+      if (
+        event === undefined ||
+        typeof by !== 'string' ||
+        by.trim().length === 0 ||
+        atMs === undefined
+      ) {
+        invalid = true;
+      } else if (atMs > nowMs + FUTURE_TOLERANCE_MS) {
+        future = true;
+      }
+    }
+    if (invalid) {
+      findings.push(
+        metadataCuration(
+          concept,
+          VALIDATION_CODES.invalidVerified,
+          'verified',
+          'OKF curation: `verified` must be one verification mapping or a list of mappings with non-empty `by` and explicit-zone `at`.',
+          'Record each verification as `{ by: <actor>, at: <ISO 8601 date-time> }`.',
+        ),
+      );
+    } else if (future) {
+      findings.push(
+        metadataCuration(
+          concept,
+          VALIDATION_CODES.futureVerifiedAt,
+          'verified',
+          'OKF curation: a `verified.at` value is more than five minutes after the validation reference time.',
+          'Correct the verification time or the system clock, then validate the bundle again.',
+        ),
+      );
+    }
+  }
+
+  if (
+    Object.hasOwn(raw, 'status') &&
+    raw.status !== 'draft' &&
+    raw.status !== 'stable' &&
+    raw.status !== 'deprecated'
+  ) {
+    findings.push(
+      metadataCuration(
+        concept,
+        VALIDATION_CODES.invalidStatus,
+        'status',
+        'OKF curation: `status` must be `draft`, `stable`, or `deprecated`.',
+        'Choose a defined lifecycle status or remove the optional field.',
+      ),
+    );
+  }
+
+  if (Object.hasOwn(raw, 'stale_after')) {
+    const staleAfter = raw.stale_after;
+    if (typeof staleAfter !== 'string' || !isIsoDate(staleAfter)) {
+      findings.push(
+        metadataCuration(
+          concept,
+          VALIDATION_CODES.invalidStaleAfter,
+          'stale_after',
+          'OKF curation: `stale_after` must be an absolute `YYYY-MM-DD` date.',
+          'Use a valid absolute date such as `2026-09-23`.',
+        ),
+      );
+    } else if (staleAfter <= new Date(nowMs).toISOString().slice(0, 10)) {
+      findings.push(
+        metadataCuration(
+          concept,
+          VALIDATION_CODES.staleConcept,
+          'stale_after',
+          `OKF curation: concept is stale on or after ${quote(staleAfter)}.`,
+          'Review and regenerate or re-verify the concept, then move `stale_after` forward when justified.',
+        ),
+      );
+    }
+  }
+
+  if (Object.hasOwn(raw, 'sources')) {
+    const sources = raw.sources;
+    const valid =
+      Array.isArray(sources) &&
+      sources.every((source) => {
+        const object = asRecord(source);
+        return (
+          typeof object?.resource === 'string' &&
+          object.resource.trim().length > 0 &&
+          optionalStringField(object, 'id') &&
+          optionalStringField(object, 'title') &&
+          optionalStringField(object, 'author') &&
+          (!Object.hasOwn(object, 'usage_count') ||
+            (typeof object.usage_count === 'number' &&
+              Number.isSafeInteger(object.usage_count) &&
+              object.usage_count >= 0)) &&
+          (!Object.hasOwn(object, 'last_modified') ||
+            (typeof object.last_modified === 'string' && isIsoDate(object.last_modified))) &&
+          (!Object.hasOwn(object, 'usage_window') || isUsageWindow(object.usage_window))
+        );
+      });
+    if (!valid) {
+      findings.push(
+        metadataCuration(
+          concept,
+          VALIDATION_CODES.invalidSources,
+          'sources',
+          'OKF curation: `sources` must be a list whose entries each contain a non-empty `resource`.',
+          'Repair the source entries or remove the malformed optional provenance family.',
+        ),
+      );
+    }
+  }
+
+  if (Object.hasOwn(raw, 'usage_window') && !isUsageWindow(raw.usage_window)) {
+    findings.push(
+      metadataCuration(
+        concept,
+        VALIDATION_CODES.invalidUsageWindow,
+        'usage_window',
+        'OKF curation: `usage_window` must contain valid `from` and `to` dates in ascending order.',
+        'Use `{ from: YYYY-MM-DD, to: YYYY-MM-DD }`, or remove the malformed optional window.',
+      ),
+    );
+  }
+
+  if (concept.type === 'Attested Computation') {
+    const parameters = raw.parameters;
+    const parametersValid =
+      parameters === undefined ||
+      (Array.isArray(parameters) &&
+        parameters.every((parameter) => {
+          const object = asRecord(parameter);
+          return (
+            typeof object?.name === 'string' &&
+            object.name.trim().length > 0 &&
+            typeof object.type === 'string' &&
+            object.type.trim().length > 0 &&
+            typeof object.required === 'boolean'
+          );
+        }));
+    const computationValid =
+      raw.computation === undefined
+        ? hasInlineComputation(concept.body)
+        : typeof raw.computation === 'string' && raw.computation.trim().length > 0;
+    const executorValid = optionalComputationEndpoint(raw.executor, true);
+    const attesterValid = optionalComputationEndpoint(raw.attester, false);
+    if (
+      !hasNonEmptyText(concept.runtime) ||
+      !parametersValid ||
+      !computationValid ||
+      !executorValid ||
+      !attesterValid
+    ) {
+      const field = !hasNonEmptyText(concept.runtime)
+        ? 'runtime'
+        : !parametersValid
+          ? 'parameters'
+          : !computationValid
+            ? 'computation'
+            : !executorValid
+              ? 'executor'
+              : 'attester';
+      findings.push(
+        metadataCuration(
+          concept,
+          VALIDATION_CODES.invalidAttestedComputation,
+          field,
+          'OKF curation: an Attested Computation needs a runtime, a file or inline fenced computation, valid typed parameters, and well-formed optional executor and attester mappings.',
+          'Repair the declarative computation contract before relying on attestation.',
+        ),
+      );
+    }
+  }
+}
+
+function asRecord(value: unknown): Readonly<Record<string, unknown>> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Readonly<Record<string, unknown>>)
+    : undefined;
+}
+
+function optionalStringField(object: Readonly<Record<string, unknown>>, key: string): boolean {
+  return !Object.hasOwn(object, key) || typeof object[key] === 'string';
+}
+
+function isUsageWindow(value: unknown): boolean {
+  const object = asRecord(value);
+  return (
+    typeof object?.from === 'string' &&
+    isIsoDate(object.from) &&
+    typeof object.to === 'string' &&
+    isIsoDate(object.to) &&
+    object.from <= object.to
+  );
+}
+
+function optionalComputationEndpoint(value: unknown, allowReceipt: boolean): boolean {
+  if (value === undefined) return true;
+  const object = asRecord(value);
+  if (typeof object?.resource !== 'string' || object.resource.trim().length === 0) return false;
+  if (!allowReceipt) return true;
+  return (
+    !Object.hasOwn(object, 'receipt') ||
+    (Array.isArray(object.receipt) &&
+      object.receipt.every((field) => typeof field === 'string' && field.trim().length > 0))
+  );
+}
+
+function hasInlineComputation(body: string): boolean {
+  let inComputation = false;
+  for (const rawLine of body.replace(/\r\n?/gu, '\n').split('\n')) {
+    const line = rawLine.replace(/^ {0,3}/u, '');
+    const heading = /^#(?:[ \t]+|$)(.*)$/u.exec(line);
+    if (heading !== null) {
+      const text = (heading[1] ?? '').replace(/[ \t]+#+[ \t]*$/u, '').trim();
+      inComputation = text === 'Computation';
+      continue;
+    }
+    if (inComputation && /^(?:`{3,}|~{3,})/u.test(line)) return true;
+  }
+  return false;
+}
+
+function metadataCuration(
+  concept: Concept,
+  code: string,
+  field: string,
+  message: string,
+  correctiveAction: string,
+): Finding {
+  return {
+    code,
+    category: 'curation',
+    severity: 'warning',
+    uri: concept.source.uri,
+    range: concept.frontmatter.fields[field] ?? concept.frontmatter.range,
+    message,
+    correctiveAction,
+  };
 }
 
 function validateOrphans(
@@ -460,17 +757,17 @@ function validateDeclaredVersion(reserved: ReservedDocument, findings: Finding[]
       uri: reserved.source.uri,
       ...(range === undefined ? {} : { range }),
       message: `OKF compatibility: bundle declares a non-string \`okf_version\` (${jsonValueKind(declaredValue)}); reading continues on a best-effort basis.`,
-      correctiveAction: 'Declare the supported version as the string `okf_version: "0.1"`.',
+      correctiveAction: 'Declare a supported version as the string `okf_version: "0.2"`.',
     });
     return;
   }
 
-  if (declared === '0.1') {
+  if (declared === '0.1' || declared === '0.2') {
     return;
   }
 
   const match = /^(\d+)\.(\d+)$/.exec(declared);
-  if (match !== null && Number(match[1]) === 0 && Number(match[2]) > 1) {
+  if (match !== null && Number(match[1]) === 0 && Number(match[2]) > 2) {
     findings.push({
       code: VALIDATION_CODES.futureMinorVersion,
       category: 'compatibility',
@@ -479,7 +776,7 @@ function validateDeclaredVersion(reserved: ReservedDocument, findings: Finding[]
       ...(range === undefined ? {} : { range }),
       message: `OKF compatibility: bundle declares future minor version ${quote(declared)}; reading continues on a best-effort basis.`,
       correctiveAction:
-        'Review producer changes before relying on fields introduced after OKF 0.1.',
+        'Review producer changes before relying on fields introduced after OKF 0.2.',
     });
     return;
   }
@@ -537,9 +834,7 @@ function findingKey(finding: Finding): string {
 
 function parseExplicitZoneTimestamp(value: string): number | undefined {
   const match =
-    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|[+-]\d{2}:\d{2})$/.exec(
-      value,
-    );
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/.exec(value);
   if (match === null) {
     return undefined;
   }
@@ -549,7 +844,7 @@ function parseExplicitZoneTimestamp(value: string): number | undefined {
   const day = Number(match[3]);
   const hour = Number(match[4]);
   const minute = Number(match[5]);
-  const second = Number(match[6] ?? '0');
+  const second = Number(match[6]);
   const zone = match[8] ?? '';
   if (
     month < 1 ||

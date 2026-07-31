@@ -105,6 +105,124 @@ describe('OKF bundle parser', () => {
     expect(nestedIndex?.body).toBe('# Metadata\n');
   });
 
+  it('normalizes OKF v0.2 trust, lifecycle, provenance, and computation metadata', () => {
+    const bundle = parseBundle({
+      rootUri,
+      revision: 2,
+      documents: [
+        document('index.md', '---\nokf_version: "0.2"\n---\n# Root\n'),
+        document(
+          'revenue.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Revenue',
+            'description: Sanctioned revenue computation.',
+            'generated: { by: process:okf-workbench, at: 2026-07-30T01:00:00Z }',
+            'verified: { by: human:reviewer, at: 2026-07-30T02:00:00Z }',
+            'status: stable',
+            'stale_after: 2026-09-23',
+            'usage_window: { from: 2026-07-01, to: 2026-07-31 }',
+            'sources:',
+            '  - id: policy',
+            '    resource: https://example.com/policy',
+            '    title: Revenue policy',
+            '    author: team:finance',
+            '    usage_count: 42',
+            '    last_modified: 2026-07-29',
+            'runtime: bigquery',
+            'parameters:',
+            '  - { name: year, type: integer, required: true }',
+            'computation: references/revenue.sql',
+            'executor:',
+            '  resource: references/run.md',
+            '  receipt: [job_id, executed_sql, result]',
+            'attester:',
+            '  resource: references/attest.py',
+            '---',
+            '# Computation',
+            '',
+          ].join('\n'),
+        ),
+      ],
+    });
+
+    expect(bundle.failures).toEqual([]);
+    expect(bundle.reservedDocuments[0]?.okfVersion).toBe('0.2');
+    expect(bundle.concepts[0]).toMatchObject({
+      generated: { by: 'process:okf-workbench', at: '2026-07-30T01:00:00Z' },
+      verified: [{ by: 'human:reviewer', at: '2026-07-30T02:00:00Z' }],
+      trustTier: 'human-reviewed',
+      status: 'stable',
+      staleAfter: '2026-09-23',
+      usageWindow: { from: '2026-07-01', to: '2026-07-31' },
+      sources: [
+        {
+          id: 'policy',
+          resource: 'https://example.com/policy',
+          title: 'Revenue policy',
+          author: 'team:finance',
+          usageCount: 42,
+          lastModified: '2026-07-29',
+        },
+      ],
+      runtime: 'bigquery',
+      parameters: [{ name: 'year', type: 'integer', required: true }],
+      computation: 'references/revenue.sql',
+      executor: {
+        resource: 'references/run.md',
+        receipt: ['job_id', 'executed_sql', 'result'],
+      },
+      attester: { resource: 'references/attest.py', receipt: [] },
+    });
+    expect(
+      validateBundle(bundle, { now: '2026-07-31T00:00:00Z' }).filter(
+        ({ category }) => category === 'conformance',
+      ),
+    ).toEqual([]);
+    expect(buildGraphPayload(bundle).nodes[0]).toMatchObject({
+      generatedBy: 'process:okf-workbench',
+      generatedAt: '2026-07-30T01:00:00Z',
+      trustTier: 'human-reviewed',
+      status: 'stable',
+      staleAfter: '2026-09-23',
+      sourceCount: 1,
+      runtime: 'bigquery',
+      computation: 'references/revenue.sql',
+    });
+  });
+
+  it('does not derive trust from malformed verification events', () => {
+    const bundle = parseBundle({
+      rootUri,
+      revision: 3,
+      documents: [
+        document(
+          'invalid-trust.md',
+          [
+            '---',
+            'type: Reference',
+            'verified:',
+            '  - { by: human:spoofed, at: 2026-02-30T00:00:00Z }',
+            '  - { by: process:valid, at: 2026-07-30T00:00:00Z }',
+            '---',
+            '# Invalid trust',
+            '',
+          ].join('\n'),
+        ),
+      ],
+    });
+
+    expect(bundle.failures).toEqual([]);
+    expect(bundle.concepts[0]).toMatchObject({
+      verified: [
+        { by: 'human:spoofed', at: '2026-02-30T00:00:00Z' },
+        { by: 'process:valid', at: '2026-07-30T00:00:00Z' },
+      ],
+      trustTier: 'machine-confirmed',
+    });
+  });
+
   it('strictly decodes UTF-8 and continues after decode and YAML failures', () => {
     const invalidYaml = '---\ntype: [unterminated\n---\n# Broken\n';
     const bundle = parseBundle({

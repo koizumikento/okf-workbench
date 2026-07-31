@@ -69,5 +69,5 @@ export function renderNewIndexDocument(
     return region;
   }
 
-  return `---\nokf_version: "0.1"\n---\n${region}`;
+  return `---\nokf_version: "0.2"\n---\n${region}`;
 }

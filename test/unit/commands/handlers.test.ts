@@ -347,7 +347,7 @@ describe('authoring command handlers', () => {
       const result = await command();
 
       expect(result.kind).toBe('applied');
-      expect(port.text(`${bundleRoot}/index.md`)).toContain('okf_version: "0.1"');
+      expect(port.text(`${bundleRoot}/index.md`)).toContain('okf_version: "0.2"');
       expect(selected).toEqual([bundleRoot]);
       expect(ui.opened).toEqual([`${bundleRoot}/index.md`]);
       expect(previewer.shown).toEqual([]);
@@ -569,7 +569,7 @@ describe('authoring command handlers', () => {
     const result = await command();
 
     expect(result.kind).toBe('applied');
-    expect(port.text(`${bundleRoot}/index.md`)).toContain('okf_version: "0.1"');
+    expect(port.text(`${bundleRoot}/index.md`)).toContain('okf_version: "0.2"');
     expect(selected).toEqual([bundleRoot]);
     expect(ui.opened).toEqual([]);
     expect(ui.errors).toEqual([
@@ -957,7 +957,7 @@ describe('authoring command handlers', () => {
     const result = await command();
 
     expect(result.kind).toBe('applied');
-    expect(port.text(`${bundleRoot}/index.md`)).toContain('okf_version: "0.1"');
+    expect(port.text(`${bundleRoot}/index.md`)).toContain('okf_version: "0.2"');
     expect(port.text(`${bundleRoot}/index.md`)).toContain('[Alpha](./alpha.md)');
   });
 
@@ -996,7 +996,7 @@ describe('authoring command handlers', () => {
     const previewed = previewer.shown[0]?.proposal.changes.find(
       ({ relativePath }) => relativePath === 'index.md',
     )?.proposedText;
-    expect(previewed).toContain('okf_version: "0.1"\n');
+    expect(previewed).toContain('okf_version: "0.2"\n');
     expect(previewed).toContain('# preserve this producer comment\n');
     expect(previewed).toContain('custom: {owner: "knowledge-team", priority: 2}\n');
     expect(previewed).toContain('# Human introduction\n\nKeep this body exactly.\n');

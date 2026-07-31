@@ -261,6 +261,36 @@ function assertBoundedGraphInput(bundle: ParsedBundle): FailedSourceIndex {
       OKF_SEMANTIC_LIMITS.maxTimestampCodeUnits,
       'Concept timestamp',
     );
+    assertOptionalMetadata(
+      concept.generated?.by,
+      OKF_SEMANTIC_LIMITS.maxResourceCodeUnits,
+      'Concept generator actor',
+    );
+    assertOptionalMetadata(
+      concept.generated?.at,
+      OKF_SEMANTIC_LIMITS.maxTimestampCodeUnits,
+      'Concept generation time',
+    );
+    assertOptionalMetadata(
+      concept.status,
+      OKF_SEMANTIC_LIMITS.maxTypeCodeUnits,
+      'Concept lifecycle status',
+    );
+    assertOptionalMetadata(
+      concept.staleAfter,
+      OKF_SEMANTIC_LIMITS.maxTimestampCodeUnits,
+      'Concept stale-after date',
+    );
+    assertOptionalMetadata(
+      concept.runtime,
+      OKF_SEMANTIC_LIMITS.maxTypeCodeUnits,
+      'Concept computation runtime',
+    );
+    assertOptionalMetadata(
+      concept.computation,
+      OKF_SEMANTIC_LIMITS.maxResourceCodeUnits,
+      'Concept computation path',
+    );
     if (concept.tags.length > OKF_SEMANTIC_LIMITS.maxTagsPerConcept) {
       throw graphLimit(
         `A concept exceeds the ${String(OKF_SEMANTIC_LIMITS.maxTagsPerConcept)}-tag limit.`,
@@ -466,7 +496,21 @@ function graphNode(
     ...(concept.description === undefined ? {} : { description: concept.description }),
     ...(concept.resource === undefined ? {} : { resource: concept.resource }),
     tags: [...concept.tags],
-    ...(concept.timestamp === undefined ? {} : { timestamp: concept.timestamp }),
+    ...(concept.timestamp === undefined || Object.hasOwn(concept.frontmatter.raw, 'generated')
+      ? {}
+      : { timestamp: concept.timestamp }),
+    ...(concept.generated?.by === undefined ? {} : { generatedBy: concept.generated.by }),
+    ...(concept.generated?.at === undefined ? {} : { generatedAt: concept.generated.at }),
+    trustTier: concept.trustTier ?? 'unverified',
+    ...(concept.status !== undefined
+      ? { status: concept.status }
+      : Object.hasOwn(concept.frontmatter.raw, 'status')
+        ? {}
+        : { status: 'stable' }),
+    ...(concept.staleAfter === undefined ? {} : { staleAfter: concept.staleAfter }),
+    sourceCount: concept.sources?.length ?? 0,
+    ...(concept.runtime === undefined ? {} : { runtime: concept.runtime }),
+    ...(concept.computation === undefined ? {} : { computation: concept.computation }),
     orphan,
     brokenLinkCount,
   };

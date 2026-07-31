@@ -26,6 +26,11 @@ export const CONCEPT_TEMPLATE_DEFINITIONS: readonly ConceptTemplateDefinition[] 
   { id: 'data-table', title: 'Data Table', suggestedType: 'data-table' },
   { id: 'playbook', title: 'Playbook', suggestedType: 'playbook' },
   { id: 'reference', title: 'Reference', suggestedType: 'reference' },
+  {
+    id: 'attested-computation',
+    title: 'Attested Computation',
+    suggestedType: 'Attested Computation',
+  },
 ];
 
 const BODY_SECTIONS: Readonly<Record<ConceptTemplate, readonly string[]>> = {
@@ -115,6 +120,17 @@ const BODY_SECTIONS: Readonly<Record<ConceptTemplate, readonly string[]>> = {
     '## Relevance',
     '',
     'Explain when and why maintainers should consult it.',
+  ],
+  'attested-computation': [
+    '# Computation',
+    '',
+    '```text',
+    'Replace this fence with the sanctioned computation.',
+    '```',
+    '',
+    '## Contract notes',
+    '',
+    'Document the runtime, typed parameters, executor receipt, and deterministic attester.',
   ],
 };
 
@@ -481,6 +497,7 @@ export function renderConceptTemplate(
     tags,
     ...(description === undefined ? {} : { description }),
     ...(input.timestamp === undefined ? {} : { timestamp: input.timestamp }),
+    ...(input.template === 'attested-computation' ? { runtime: 'replace-with-runtime' } : {}),
   });
   const body = renderBody(input.template);
   const consumabilityProblem = generatedConceptProblem(frontmatter, body);

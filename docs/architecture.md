@@ -113,6 +113,18 @@ interface Concept {
   description?: string;
   resource?: string;
   tags: readonly string[];
+  generated?: GeneratedMetadata;
+  verified: readonly VerificationEvent[];
+  trustTier: 'unverified' | 'machine-confirmed' | 'human-reviewed';
+  status?: string;
+  staleAfter?: string;
+  sources: readonly KnowledgeSource[];
+  runtime?: string;
+  parameters: readonly ComputationParameter[];
+  computation?: string;
+  executor?: ComputationEndpoint;
+  attester?: ComputationEndpoint;
+  // Legacy v0.1 fallback only when generated is absent.
   timestamp?: string;
   body: string;
   bodyRange: SourceRange;
@@ -143,7 +155,11 @@ checks accept a plain string or an AST-proven `!!str` scalar, including its alia
 lookalike mappings, sequences, and values tagged with anything other than `!!str`. The exact
 frontmatter source remains separately available for source-preserving writes. Null-prototype
 mappings and a closed standard-tag converter prevent prototype pollution and fail closed on custom
-runtime objects. The normalized fields are conveniences, not a closed schema.
+runtime objects. The normalized fields are conveniences, not a closed schema. OKF v0.2 provenance,
+production, verification, lifecycle, and computation families remain inert JSON-safe data. Trust
+tier is derived from valid verifier actors. `generated.at` supersedes the legacy `timestamp`, which
+is consulted only when `generated` is absent. The deterministic core and Webview never execute or
+fetch producer-supplied computation, executor, or attester resources.
 Link state is represented by the explicit `LinkClassification` union rather than overlapping
 boolean flags.
 
@@ -363,6 +379,8 @@ guards, and URI-first application. The 3D renderer remains the single editor Web
 - Broken links may be represented as warnings or optional placeholder targets.
 - Directory hierarchy is optional presentation metadata and must not be confused with an OKF semantic relationship.
 - External citations are excluded from the main graph by default.
+- Node details may expose bounded v0.2 generator, trust, lifecycle, source-count, runtime, and
+  computation metadata without changing graph topology.
 
 Graph construction admits at most 2,000 nodes, 10,000 retained internal/broken relationships, 128
 tags per concept, 20,000 tag assignments, 512 unique types, and 4,096 unique tags. Edge identities

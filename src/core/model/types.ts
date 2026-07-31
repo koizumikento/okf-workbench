@@ -25,6 +25,42 @@ export interface SourceDocument {
   readonly contentHash: string;
 }
 
+export interface GeneratedMetadata {
+  readonly by?: string;
+  readonly at?: string;
+}
+
+export interface VerificationEvent {
+  readonly by?: string;
+  readonly at?: string;
+}
+
+export interface UsageWindow {
+  readonly from?: string;
+  readonly to?: string;
+}
+
+export interface KnowledgeSource {
+  readonly id?: string;
+  readonly resource?: string;
+  readonly title?: string;
+  readonly author?: string;
+  readonly usageCount?: number;
+  readonly lastModified?: string;
+  readonly usageWindow?: UsageWindow;
+}
+
+export interface ComputationParameter {
+  readonly name?: string;
+  readonly type?: string;
+  readonly required?: boolean;
+}
+
+export interface ComputationEndpoint {
+  readonly resource?: string;
+  readonly receipt: readonly string[];
+}
+
 export interface NormalizedFrontmatter {
   readonly type?: string;
   readonly title?: string;
@@ -32,6 +68,18 @@ export interface NormalizedFrontmatter {
   readonly resource?: string;
   readonly tags: readonly string[];
   readonly timestamp?: string;
+  readonly generated?: GeneratedMetadata;
+  readonly verified?: readonly VerificationEvent[];
+  readonly trustTier?: 'unverified' | 'machine-confirmed' | 'human-reviewed';
+  readonly status?: string;
+  readonly staleAfter?: string;
+  readonly sources?: readonly KnowledgeSource[];
+  readonly usageWindow?: UsageWindow;
+  readonly runtime?: string;
+  readonly parameters?: readonly ComputationParameter[];
+  readonly computation?: string;
+  readonly executor?: ComputationEndpoint;
+  readonly attester?: ComputationEndpoint;
 }
 
 export interface ParsedFrontmatter {
@@ -72,6 +120,18 @@ export interface Concept {
   readonly resource?: string;
   readonly tags: readonly string[];
   readonly timestamp?: string;
+  readonly generated?: GeneratedMetadata;
+  readonly verified?: readonly VerificationEvent[];
+  readonly trustTier?: 'unverified' | 'machine-confirmed' | 'human-reviewed';
+  readonly status?: string;
+  readonly staleAfter?: string;
+  readonly sources?: readonly KnowledgeSource[];
+  readonly usageWindow?: UsageWindow;
+  readonly runtime?: string;
+  readonly parameters?: readonly ComputationParameter[];
+  readonly computation?: string;
+  readonly executor?: ComputationEndpoint;
+  readonly attester?: ComputationEndpoint;
   readonly body: string;
   readonly bodyRange: SourceRange;
   readonly links: readonly ConceptLink[];
@@ -148,6 +208,14 @@ export interface GraphNode {
   readonly resource?: string;
   readonly tags: readonly string[];
   readonly timestamp?: string;
+  readonly generatedBy?: string;
+  readonly generatedAt?: string;
+  readonly trustTier?: 'unverified' | 'machine-confirmed' | 'human-reviewed';
+  readonly status?: string;
+  readonly staleAfter?: string;
+  readonly sourceCount?: number;
+  readonly runtime?: string;
+  readonly computation?: string;
   readonly orphan: boolean;
   readonly brokenLinkCount: number;
 }

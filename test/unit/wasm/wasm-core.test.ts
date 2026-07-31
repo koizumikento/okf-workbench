@@ -460,6 +460,68 @@ describe('Rust/Wasm core boundary', () => {
       ],
     },
     {
+      name: 'OKF v0.2 trust, lifecycle, provenance, and attested computation',
+      documents: [
+        ['index.md', ['---', 'okf_version: "0.2"', '---', '# Root', ''].join('\n')],
+        [
+          'revenue.md',
+          concept(
+            '# Computation\n\n```sql\nSELECT @year\n```\n',
+            [
+              'title: Revenue',
+              'description: Sanctioned revenue computation',
+              'generated: { by: process:okf-workbench, at: 2026-07-22T11:00:00Z }',
+              'verified: { by: human:reviewer, at: 2026-07-22T11:30:00Z }',
+              'status: stable',
+              'stale_after: 2026-09-23',
+              'sources: [{ id: policy, resource: https://example.com/policy }]',
+              'runtime: bigquery',
+              'parameters: [{ name: year, type: integer, required: true }]',
+              'executor: { resource: references/run.md, receipt: [job_id, result] }',
+              'attester: { resource: references/attest.py }',
+              '',
+            ].join('\n'),
+            'Attested Computation',
+          ),
+        ],
+        ['invalid-trust.md', concept('', 'verified: { by: human:spoofed }\n', 'Reference')],
+        ['legacy-only.md', concept('', 'timestamp: 2026-07-22T10:00:00Z\n', 'Reference')],
+        [
+          'generated-wins.md',
+          concept(
+            '',
+            ['timestamp: not-a-date', 'generated: { by: process:test }', 'status: true', ''].join(
+              '\n',
+            ),
+            'Reference',
+          ),
+        ],
+        [
+          'invalid-provenance.md',
+          concept(
+            '',
+            [
+              'usage_window: { from: 2026-08-01, to: 2026-07-01 }',
+              'sources:',
+              '  - resource: https://example.com/source',
+              '    usage_count: -1',
+              '    last_modified: 2026-02-30',
+              '',
+            ].join('\n'),
+            'Reference',
+          ),
+        ],
+        [
+          'incomplete-computation.md',
+          concept(
+            '# Notes\n',
+            'runtime: bigquery\nexecutor: invalid\nattester: { resource: "" }\n',
+            'Attested Computation',
+          ),
+        ],
+      ],
+    },
+    {
       name: 'duplicate resources are deterministic and peer lists are bounded',
       documents: [
         ['index.md', ['---', 'okf_version: "0.1"', '---', '# Root', ''].join('\n')],
@@ -729,8 +791,8 @@ describe('Rust/Wasm core boundary', () => {
   }, 60_000);
 });
 
-function concept(body: string, additional = ''): string {
-  return `---\ntype: reference\n${additional}---\n${body}`;
+function concept(body: string, additional = '', type = 'reference'): string {
+  return `---\ntype: ${type}\n${additional}---\n${body}`;
 }
 
 function inputFor(

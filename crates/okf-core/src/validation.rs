@@ -1,5 +1,5 @@
 use crate::{Finding, LinkClassification, ParseFailureReason, ParsedBundle};
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -72,7 +72,7 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
         };
         let range = frontmatter_field_range(frontmatter, "okf_version");
         match reserved.okf_version.as_deref() {
-            Some("0.1") => {}
+            Some("0.1" | "0.2") => {}
             Some(declared) if future_minor_version(declared) => findings.push(Finding {
                 code: "okf.compatibility.future-minor-version".to_owned(),
                 category: "compatibility".to_owned(),
@@ -82,7 +82,7 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
                     "OKF compatibility: bundle declares future minor version {declared:?}; reading continues on a best-effort basis."
                 ),
                 corrective_action: Some(
-                    "Review producer changes before relying on fields introduced after OKF 0.1."
+                    "Review producer changes before relying on fields introduced after OKF 0.2."
                         .to_owned(),
                 ),
                 range,
@@ -111,7 +111,7 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
                     json_value_kind(declared_value)
                 ),
                 corrective_action: Some(
-                    "Declare the supported version as the string `okf_version: \"0.1\"`.".to_owned(),
+                    "Declare a supported version as the string `okf_version: \"0.2\"`.".to_owned(),
                 ),
                 range,
             }),
@@ -207,7 +207,9 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
                 Some(concept_field_range(concept, "description")),
             ));
         }
-        if concept.frontmatter.raw.contains_key("timestamp") {
+        if concept.frontmatter.raw.contains_key("timestamp")
+            && !concept.frontmatter.raw.contains_key("generated")
+        {
             let timestamp = concept
                 .timestamp
                 .as_deref()
@@ -232,6 +234,7 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
                 ));
             }
         }
+        validate_v02_metadata(concept, now.as_ref(), &mut findings);
         if let Some(resource) = concept
             .resource
             .as_deref()
@@ -340,6 +343,316 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
             && left.corrective_action == right.corrective_action
     });
     findings
+}
+
+fn validate_v02_metadata(
+    concept: &crate::Concept,
+    now: Option<&DateTime<FixedOffset>>,
+    findings: &mut Vec<Finding>,
+) {
+    let raw = &concept.frontmatter.raw;
+    if let Some(generated) = raw.get("generated") {
+        let object = generated.as_object();
+        let by = object
+            .and_then(|value| value.get("by"))
+            .and_then(serde_json::Value::as_str);
+        let at = object
+            .and_then(|value| value.get("at"))
+            .and_then(serde_json::Value::as_str);
+        let parsed_at =
+            at.and_then(|value| DateTime::<FixedOffset>::parse_from_rfc3339(value).ok());
+        if object.is_none()
+            || by.is_none_or(|value| value.trim().is_empty())
+            || at.is_some() && parsed_at.is_none()
+        {
+            findings.push(curation(
+                "okf.curation.invalid-generated",
+                &concept.source.uri,
+                "OKF curation: `generated` must be a mapping with non-empty `by` and an optional explicit-zone `at` date-time.",
+                "Use `generated: { by: process:producer, at: 2026-07-31T00:00:00Z }` or remove the malformed optional family.",
+                Some(concept_field_range(concept, "generated")),
+            ));
+        } else if let (Some(at), Some(now)) = (parsed_at, now)
+            && at.timestamp_millis() > now.timestamp_millis() + 300_000
+        {
+            findings.push(curation(
+                "okf.curation.future-generated-at",
+                &concept.source.uri,
+                "OKF curation: `generated.at` is more than five minutes after the validation reference time.",
+                "Correct the generation time or the system clock, then validate the bundle again.",
+                Some(concept_field_range(concept, "generated")),
+            ));
+        }
+    }
+
+    if let Some(verified) = raw.get("verified") {
+        let values = match verified {
+            serde_json::Value::Array(values) => values.iter().collect::<Vec<_>>(),
+            value => vec![value],
+        };
+        let mut invalid = values.is_empty();
+        let mut future = false;
+        for value in values {
+            let object = value.as_object();
+            let by = object
+                .and_then(|value| value.get("by"))
+                .and_then(serde_json::Value::as_str);
+            let at = object
+                .and_then(|value| value.get("at"))
+                .and_then(serde_json::Value::as_str);
+            let parsed_at =
+                at.and_then(|value| DateTime::<FixedOffset>::parse_from_rfc3339(value).ok());
+            if object.is_none()
+                || by.is_none_or(|value| value.trim().is_empty())
+                || parsed_at.is_none()
+            {
+                invalid = true;
+            } else if let (Some(at), Some(now)) = (parsed_at, now)
+                && at.timestamp_millis() > now.timestamp_millis() + 300_000
+            {
+                future = true;
+            }
+        }
+        if invalid {
+            findings.push(curation(
+                "okf.curation.invalid-verified",
+                &concept.source.uri,
+                "OKF curation: `verified` must be one verification mapping or a list of mappings with non-empty `by` and explicit-zone `at`.",
+                "Record each verification as `{ by: <actor>, at: <ISO 8601 date-time> }`.",
+                Some(concept_field_range(concept, "verified")),
+            ));
+        } else if future {
+            findings.push(curation(
+                "okf.curation.future-verified-at",
+                &concept.source.uri,
+                "OKF curation: a `verified.at` value is more than five minutes after the validation reference time.",
+                "Correct the verification time or the system clock, then validate the bundle again.",
+                Some(concept_field_range(concept, "verified")),
+            ));
+        }
+    }
+
+    if let Some(status) = raw.get("status")
+        && !matches!(status.as_str(), Some("draft" | "stable" | "deprecated"))
+    {
+        findings.push(curation(
+            "okf.curation.invalid-status",
+            &concept.source.uri,
+            "OKF curation: `status` must be `draft`, `stable`, or `deprecated`.",
+            "Choose a defined lifecycle status or remove the optional field.",
+            Some(concept_field_range(concept, "status")),
+        ));
+    }
+
+    if let Some(stale_after) = raw.get("stale_after") {
+        let parsed = stale_after
+            .as_str()
+            .and_then(|value| NaiveDate::parse_from_str(value, "%Y-%m-%d").ok());
+        if parsed.is_none() {
+            findings.push(curation(
+                "okf.curation.invalid-stale-after",
+                &concept.source.uri,
+                "OKF curation: `stale_after` must be an absolute `YYYY-MM-DD` date.",
+                "Use a valid absolute date such as `2026-09-23`.",
+                Some(concept_field_range(concept, "stale_after")),
+            ));
+        } else if let (Some(stale_after), Some(now)) = (parsed, now)
+            && stale_after <= now.with_timezone(&Utc).date_naive()
+        {
+            findings.push(curation(
+                "okf.curation.stale-concept",
+                &concept.source.uri,
+                &format!(
+                    "OKF curation: concept is stale on or after {:?}.",
+                    stale_after.format("%Y-%m-%d").to_string()
+                ),
+                "Review and regenerate or re-verify the concept, then move `stale_after` forward when justified.",
+                Some(concept_field_range(concept, "stale_after")),
+            ));
+        }
+    }
+
+    if let Some(sources) = raw.get("sources") {
+        let valid = sources.as_array().is_some_and(|values| {
+            values.iter().all(|value| {
+                let Some(object) = value.as_object() else {
+                    return false;
+                };
+                object
+                    .get("resource")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|resource| !resource.trim().is_empty())
+                    && optional_string_field(object, "id")
+                    && optional_string_field(object, "title")
+                    && optional_string_field(object, "author")
+                    && object
+                        .get("usage_count")
+                        .is_none_or(|value| value.as_u64().is_some())
+                    && object
+                        .get("last_modified")
+                        .is_none_or(|value| value.as_str().is_some_and(is_iso_date))
+                    && object.get("usage_window").is_none_or(valid_usage_window)
+            })
+        });
+        if !valid {
+            findings.push(curation(
+                "okf.curation.invalid-sources",
+                &concept.source.uri,
+                "OKF curation: `sources` must be a list whose entries each contain a non-empty `resource`.",
+                "Repair the source entries or remove the malformed optional provenance family.",
+                Some(concept_field_range(concept, "sources")),
+            ));
+        }
+    }
+
+    if let Some(usage_window) = raw.get("usage_window")
+        && !valid_usage_window(usage_window)
+    {
+        findings.push(curation(
+            "okf.curation.invalid-usage-window",
+            &concept.source.uri,
+            "OKF curation: `usage_window` must contain valid `from` and `to` dates in ascending order.",
+            "Use `{ from: YYYY-MM-DD, to: YYYY-MM-DD }`, or remove the malformed optional window.",
+            Some(concept_field_range(concept, "usage_window")),
+        ));
+    }
+
+    if concept.r#type == "Attested Computation" {
+        let parameters_valid = raw.get("parameters").is_none_or(|parameters| {
+            parameters.as_array().is_some_and(|values| {
+                values.iter().all(|value| {
+                    let Some(object) = value.as_object() else {
+                        return false;
+                    };
+                    object
+                        .get("name")
+                        .and_then(serde_json::Value::as_str)
+                        .is_some_and(|name| !name.trim().is_empty())
+                        && object
+                            .get("type")
+                            .and_then(serde_json::Value::as_str)
+                            .is_some_and(|kind| !kind.trim().is_empty())
+                        && object
+                            .get("required")
+                            .and_then(serde_json::Value::as_bool)
+                            .is_some()
+                })
+            })
+        });
+        let computation_valid = raw.get("computation").map_or_else(
+            || has_inline_computation(&concept.body),
+            |value| {
+                value
+                    .as_str()
+                    .is_some_and(|computation| !computation.trim().is_empty())
+            },
+        );
+        let executor_valid = raw
+            .get("executor")
+            .is_none_or(|value| valid_computation_endpoint(value, true));
+        let attester_valid = raw
+            .get("attester")
+            .is_none_or(|value| valid_computation_endpoint(value, false));
+        if concept
+            .runtime
+            .as_deref()
+            .is_none_or(|runtime| runtime.trim().is_empty())
+            || !parameters_valid
+            || !computation_valid
+            || !executor_valid
+            || !attester_valid
+        {
+            let field = if concept
+                .runtime
+                .as_deref()
+                .is_none_or(|runtime| runtime.trim().is_empty())
+            {
+                "runtime"
+            } else if !parameters_valid {
+                "parameters"
+            } else if !computation_valid {
+                "computation"
+            } else if !executor_valid {
+                "executor"
+            } else {
+                "attester"
+            };
+            findings.push(curation(
+                "okf.curation.invalid-attested-computation",
+                &concept.source.uri,
+                "OKF curation: an Attested Computation needs a runtime, a file or inline fenced computation, valid typed parameters, and well-formed optional executor and attester mappings.",
+                "Repair the declarative computation contract before relying on attestation.",
+                Some(concept_field_range(concept, field)),
+            ));
+        }
+    }
+}
+
+fn optional_string_field(object: &serde_json::Map<String, serde_json::Value>, key: &str) -> bool {
+    object.get(key).is_none_or(|value| value.as_str().is_some())
+}
+
+fn valid_usage_window(value: &serde_json::Value) -> bool {
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+    let Some(from) = object.get("from").and_then(serde_json::Value::as_str) else {
+        return false;
+    };
+    let Some(to) = object.get("to").and_then(serde_json::Value::as_str) else {
+        return false;
+    };
+    is_iso_date(from) && is_iso_date(to) && from <= to
+}
+
+fn valid_computation_endpoint(value: &serde_json::Value, allow_receipt: bool) -> bool {
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+    if object
+        .get("resource")
+        .and_then(serde_json::Value::as_str)
+        .is_none_or(|resource| resource.trim().is_empty())
+    {
+        return false;
+    }
+    !allow_receipt
+        || object.get("receipt").is_none_or(|receipt| {
+            receipt.as_array().is_some_and(|fields| {
+                fields
+                    .iter()
+                    .all(|field| field.as_str().is_some_and(|field| !field.trim().is_empty()))
+            })
+        })
+}
+
+fn has_inline_computation(body: &str) -> bool {
+    let mut in_computation = false;
+    for raw_line in body.split('\n') {
+        let line_without_carriage_return = raw_line.strip_suffix('\r').unwrap_or(raw_line);
+        let indent = line_without_carriage_return
+            .chars()
+            .take_while(|character| *character == ' ')
+            .count();
+        if indent > 3 {
+            continue;
+        }
+        let line = &line_without_carriage_return[indent..];
+        if let Some(rest) = line.strip_prefix('#')
+            && rest
+                .chars()
+                .next()
+                .is_none_or(|character| character == ' ' || character == '\t')
+        {
+            let text = rest.trim().trim_end_matches('#').trim_end().to_owned();
+            in_computation = text == "Computation";
+            continue;
+        }
+        if in_computation && (line.starts_with("```") || line.starts_with("~~~")) {
+            return true;
+        }
+    }
+    false
 }
 
 fn bounded_diagnostic_text(value: &str) -> String {
@@ -559,7 +872,7 @@ fn future_minor_version(value: &str) -> bool {
     let Some((major, minor)) = value.split_once('.') else {
         return false;
     };
-    major == "0" && minor.parse::<u64>().is_ok_and(|minor| minor > 1)
+    major == "0" && minor.parse::<u64>().is_ok_and(|minor| minor > 2)
 }
 
 fn concept_field_range(concept: &crate::Concept, field: &str) -> crate::SourceRange {

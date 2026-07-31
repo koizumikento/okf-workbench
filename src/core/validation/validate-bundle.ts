@@ -667,7 +667,15 @@ function validateDuplicateResources(concepts: readonly Concept[], findings: Find
 
 function boundedDiagnosticText(value: string): string {
   const maximumCodeUnits = 160;
-  return value.length <= maximumCodeUnits ? value : `${value.slice(0, maximumCodeUnits - 1)}…`;
+  if (value.length <= maximumCodeUnits) {
+    return value;
+  }
+  let end = maximumCodeUnits - 1;
+  const finalUnit = value.charCodeAt(end - 1);
+  if (finalUnit >= 0xd800 && finalUnit <= 0xdbff) {
+    end -= 1;
+  }
+  return `${value.slice(0, end)}…`;
 }
 
 function validateReservedDocument(reserved: ReservedDocument, findings: Finding[]): void {

@@ -4,13 +4,43 @@ use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use std::collections::{BTreeMap, BTreeSet};
 
+fn is_ecmascript_whitespace(character: char) -> bool {
+    matches!(
+        character,
+        '\u{0009}'
+            ..='\u{000d}'
+                | '\u{0020}'
+                | '\u{00a0}'
+                | '\u{1680}'
+                | '\u{2000}'..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
+    )
+}
+
+fn ecmascript_trim(value: &str) -> &str {
+    value.trim_matches(is_ecmascript_whitespace)
+}
+
+pub fn parse_reference_time(now: &str) -> Option<DateTime<FixedOffset>> {
+    DateTime::parse_from_rfc3339(now)
+        .ok()
+        .or_else(|| DateTime::parse_from_str(now, "%Y-%m-%dT%H:%M:%S%.f%z").ok())
+        .or_else(|| DateTime::parse_from_str(now, "%Y-%m-%dT%H:%M:%S%z").ok())
+        .or_else(|| {
+            NaiveDate::parse_from_str(now, "%Y-%m-%d")
+                .ok()?
+                .and_hms_opt(0, 0, 0)
+                .map(|value| value.and_utc().fixed_offset())
+        })
+}
+
 pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
-    let now = DateTime::parse_from_rfc3339(now).ok().or_else(|| {
-        NaiveDate::parse_from_str(now, "%Y-%m-%d")
-            .ok()?
-            .and_hms_opt(0, 0, 0)
-            .map(|value| value.and_utc().fixed_offset())
-    });
+    let now = parse_reference_time(now);
     let mut findings = bundle.findings.clone();
     for failure in &bundle.failures {
         let (code, action) = match failure.reason {
@@ -126,7 +156,7 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
         )) {
             continue;
         }
-        if concept.r#type.trim().is_empty() {
+        if ecmascript_trim(&concept.r#type).is_empty() {
             findings.push(Finding {
                 code: "okf.conformance.concept-type".to_owned(),
                 category: "conformance".to_owned(),
@@ -181,7 +211,7 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
         if concept
             .title
             .as_deref()
-            .is_none_or(|value| value.trim().is_empty())
+            .is_none_or(|value| ecmascript_trim(value).is_empty())
         {
             findings.push(curation(
                 "okf.curation.missing-title",
@@ -194,7 +224,7 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
         if concept
             .description
             .as_deref()
-            .is_none_or(|value| value.trim().is_empty())
+            .is_none_or(|value| ecmascript_trim(value).is_empty())
         {
             findings.push(curation(
                 "okf.curation.missing-description",
@@ -235,7 +265,7 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
         if let Some(resource) = concept
             .resource
             .as_deref()
-            .map(str::trim)
+            .map(ecmascript_trim)
             .filter(|value| !value.is_empty())
         {
             resource_owners
@@ -498,7 +528,7 @@ fn validate_v02_metadata(
                     source
                         .resource
                         .as_deref()
-                        .is_some_and(|resource| !resource.trim().is_empty())
+                        .is_some_and(|resource| !ecmascript_trim(resource).is_empty())
                         && (!object.contains_key("id") || source.id.is_some())
                         && (!object.contains_key("title") || source.title.is_some())
                         && (!object.contains_key("author")
@@ -569,11 +599,11 @@ fn validate_v02_metadata(
                         parameter
                             .name
                             .as_deref()
-                            .is_some_and(|name| !name.trim().is_empty())
+                            .is_some_and(|name| !ecmascript_trim(name).is_empty())
                             && parameter
                                 .r#type
                                 .as_deref()
-                                .is_some_and(|kind| !kind.trim().is_empty())
+                                .is_some_and(|kind| !ecmascript_trim(kind).is_empty())
                             && object.contains_key("required")
                             && parameter.required.is_some()
                     })
@@ -583,7 +613,7 @@ fn validate_v02_metadata(
             && concept
                 .computation
                 .as_deref()
-                .is_some_and(|computation| !computation.trim().is_empty());
+                .is_some_and(|computation| !ecmascript_trim(computation).is_empty());
         let inline_computations = inline_computation_count(&concept.body);
         let computation_valid = if raw.contains_key("computation") {
             file_computation && inline_computations == 0
@@ -599,7 +629,7 @@ fn validate_v02_metadata(
         if concept
             .runtime
             .as_deref()
-            .is_none_or(|runtime| runtime.trim().is_empty())
+            .is_none_or(|runtime| ecmascript_trim(runtime).is_empty())
             || !parameters_valid
             || !computation_valid
             || !executor_valid
@@ -608,7 +638,7 @@ fn validate_v02_metadata(
             let field = if concept
                 .runtime
                 .as_deref()
-                .is_none_or(|runtime| runtime.trim().is_empty())
+                .is_none_or(|runtime| ecmascript_trim(runtime).is_empty())
             {
                 "runtime"
             } else if !parameters_valid {
@@ -651,7 +681,7 @@ fn valid_computation_endpoint(
     if normalized
         .resource
         .as_deref()
-        .is_none_or(|resource| resource.trim().is_empty())
+        .is_none_or(|resource| ecmascript_trim(resource).is_empty())
     {
         return false;
     }
@@ -662,7 +692,7 @@ fn valid_computation_endpoint(
                     && normalized
                         .receipt
                         .iter()
-                        .all(|field| !field.trim().is_empty())
+                        .all(|field| !ecmascript_trim(field).is_empty())
             })
         })
 }
@@ -693,7 +723,7 @@ fn inline_computation_count(body: &str) -> usize {
             }
             Event::End(TagEnd::Heading(HeadingLevel::H1)) => {
                 if let Some(heading) = heading_text.take() {
-                    in_computation = heading.trim() == "Computation";
+                    in_computation = ecmascript_trim(&heading) == "Computation";
                 }
             }
             Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(_))) if in_computation => {

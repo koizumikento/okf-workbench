@@ -232,6 +232,42 @@ describe('Rust/Wasm core boundary', () => {
     },
   );
 
+  test('concept template whitespace and unsafe paths match the TypeScript oracle', () => {
+    const input = {
+      template: 'generic-concept' as const,
+      relativePath: 'nested/example.md',
+      type: ' custom-type ',
+      title: 'Example\r\nconcept',
+      description: ' first\rsecond ',
+      tags: [' one ', '日本語'],
+      timestamp: '2026-07-24T12:34:56Z',
+    };
+    const oracle = renderConceptTemplate(input);
+    if (!oracle.ok) throw new Error('TypeScript oracle refused valid template metadata.');
+    expect(core.renderConcept(input)).toEqual(oracle.value);
+
+    for (const relativePath of [
+      '../escape.md',
+      '%2e%2e/escape.md',
+      'safe/%252e%252e/escape.md',
+      '/absolute.md',
+      'https://example.test/concept.md',
+      'index.md',
+      '.md',
+      'bad%ZZ.md',
+      'empty//segment.md',
+      'control\u0085.md',
+    ]) {
+      const unsafe = { ...input, relativePath };
+      expect(() => core.renderConcept(unsafe), relativePath).toThrow();
+      expect(renderConceptTemplate(unsafe).ok, relativePath).toBe(false);
+    }
+    const encoded = { ...input, relativePath: 'nested/hello%20world.md' };
+    const encodedOracle = renderConceptTemplate(encoded);
+    if (!encodedOracle.ok) throw new Error('TypeScript oracle refused a valid encoded path.');
+    expect(core.renderConcept(encoded)).toEqual(encodedOracle.value);
+  });
+
   test('agent templates are byte-identical to the migration oracle', () => {
     const agents = renderAgentsManagedBlock('knowledge');
     const skill = renderAgentSkill('knowledge');
@@ -275,6 +311,18 @@ describe('Rust/Wasm core boundary', () => {
     expect(core.renderIndexes(input, 'missing')).toEqual(
       typescriptOkfCore.renderIndexes(input, 'missing'),
     );
+  });
+
+  test('index ordering uses JavaScript UTF-16 code-unit order', () => {
+    const rootUri = 'fixture:/index-order';
+    const input = inputFor(
+      [
+        ['😀.md', concept('')],
+        ['\uE000.md', concept('')],
+      ],
+      rootUri,
+    );
+    expect(core.renderIndexes(input, 'all')).toEqual(typescriptOkfCore.renderIndexes(input, 'all'));
   });
 
   test('failed graph sources and duplicate tag statistics match the TypeScript oracle', () => {
@@ -322,18 +370,28 @@ describe('Rust/Wasm core boundary', () => {
 
   test('validation quoting, ordering, trimming, and date-only reference times match', () => {
     const rootUri = 'fixture:/validation-edge-parity';
+    const longId = `${'a'.repeat(158)}😀b`;
     const input = inputFor(
       [
         ['index.md', ['---', 'okf_version: "\\0"', '---', '# Root', ''].join('\n')],
         ['z.md', concept('', 'resource: " urn:shared "\nstale_after: 2026-07-31\n')],
         ['😀.md', concept('', 'resource: urn:shared\n')],
         ['\uE000.md', concept('', 'resource: urn:shared\n')],
+        ['feff-a.md', concept('', 'resource: "\\uFEFFurn:feff"\n')],
+        ['feff-b.md', concept('', 'resource: urn:feff\n')],
+        [`${longId}.md`, concept('', 'resource: urn:long\n')],
+        ['long-peer.md', concept('', 'resource: urn:long\n')],
       ],
       rootUri,
     );
     expect(core.inspect(input, '2026-07-31')).toEqual(
       typescriptOkfCore.inspect(input, '2026-07-31'),
     );
+    expect(core.inspect(input, '2026-07-31T00:00:00+0000')).toEqual(
+      typescriptOkfCore.inspect(input, '2026-07-31T00:00:00+0000'),
+    );
+    expect(() => core.inspect(input, 'not-a-date')).toThrow();
+    expect(() => typescriptOkfCore.inspect(input, 'not-a-date')).toThrow();
   });
 
   test('usage counts require a valid local or shared usage window', () => {
@@ -380,12 +438,46 @@ describe('Rust/Wasm core boundary', () => {
       ['block-flow-shape.md', 'literal: |-\n  [|]\n'],
       ['plain-fake-anchor.md', 'literal: prefix &a suffix\nbefore: *a\n'],
       ['quoted-fake-set.md', 'literal: "!!set { ? a: b }"\n'],
+      ['escaped-quoted-fake-duplicate-set.md', 'literal: "x \\" y: !!set { ? x, ? x }"\n'],
+      ['escaped-quoted-fake-mapping-set.md', 'literal: "x \\" y: !!set { ? a: b }"\n'],
       ['block-fake-set.md', 'literal: |-\n  !!set { ? x, ? x }\n'],
       ['quoted-nested-tag.md', 'x: !!set { ? &a [!!int "1"] }\ncopy: *a\n'],
       [
         'cross-member-nested-set.md',
         'outer: !!set\n  ? {value: &a !!str one}\n  ? !!set\n    ? {copy: *a}\noutside: *a\n',
       ],
+      [
+        'deep-cross-member-nested-set.md',
+        'outer: !!set\n  ? {value: &a !!str one}\n  ? !!set\n    ? !!set\n      ? {copy: *a}\noutside: *a\n',
+      ],
+      [
+        'anchored-mapping-nested-timestamp.md',
+        'set: !!set\n  ? &m {outer: {time: !!timestamp 2001-2-3T4:5:6Z}}\ncopy: *m\n',
+      ],
+      [
+        'anchored-nested-set-copy.md',
+        'outer: !!set\n  ? &s !!set\n    ? {key: !!str one}\ncopy: *s\n',
+      ],
+      [
+        'shadowed-sequence-anchor-in-set.md',
+        'first: &a [!!str old]\nset: !!set\n  ? &a {key: !!int "2"}\nafter: *a\n',
+      ],
+      ['trailing-comment-field-range.md', 'sets:\n  - !!set\n    ? x\n  # trailing\n'],
+      ['invalid-deferred-block-in-flow.md', 'outer: [!!set\n  ? {key: &a !!str one}\n]\n'],
+      ['explicit-tagged-string-key.md', '? !!str key\n: value\n'],
+      ['deep-block-set-tag-source.md', 'x: !!set\n  ? [nested: { key: !!int &a "1" }]\ncopy: *a\n'],
+      [
+        'deep-block-set-reversed-tag-source.md',
+        'x: !!set\n  ? [nested: { key: &a !!int "1" }]\ncopy: *a\n',
+      ],
+      [
+        'block-set-parent-sibling-boundary.md',
+        'items:\n  - value: !!set\n      ?\n        - a\n      ?\n        - a\n    sibling: yes\n',
+      ],
+      ['single-deferred-collection-member.md', 'x: !!set\n  ?\n    nested:\n      key: value\n'],
+      ['c1-control-type.md', 'type: "\\u0085"\n'],
+      ['c1-control-resource.md', 'resource: "\\u0085urn:x"\n'],
+      ['bom-trim-type.md', 'type: "\\uFEFF"\n'],
     ] as const;
     for (const [path, fields] of cases) {
       const rootUri = `fixture:/yaml-parity/${path}`;

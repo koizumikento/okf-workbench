@@ -1,4 +1,8 @@
 use crate::ParsedBundle;
+use crate::parser::{
+    MAX_PROVIDER_PATH_BYTES, MAX_PROVIDER_PATH_CODE_UNITS, MAX_PROVIDER_PATH_SEGMENTS,
+    has_control_character, percent_decode,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -223,16 +227,18 @@ pub fn bundle_preset_files(preset: BundlePreset, timestamp: &str) -> Vec<Rendere
 pub fn concept_template_file(input: &ConceptTemplateInput) -> RenderedFile {
     let path = normalize_concept_path(&input.relative_path);
     let title = one_line(&input.title);
-    let mut frontmatter = vec![
-        "---".to_owned(),
-        format!("type: {}", yaml_string(input.r#type.trim())),
-        format!("title: {}", yaml_string(&title)),
-    ];
-    if let Some(description) = input
+    let description = input
         .description
         .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
+        .map(|value| value.replace("\r\n", "\n").replace('\r', "\n"));
+    let mut frontmatter = vec![
+        "---".to_owned(),
+        format!("type: {}", yaml_string(&input.r#type)),
+        format!("title: {}", yaml_string(&title)),
+    ];
+    if let Some(description) = description
+        .as_deref()
+        .filter(|value| !ecmascript_trim(value).is_empty())
     {
         frontmatter.push(format!("description: {}", yaml_string(description)));
     }
@@ -242,7 +248,7 @@ pub fn concept_template_file(input: &ConceptTemplateInput) -> RenderedFile {
             input
                 .tags
                 .iter()
-                .map(|tag| format!("  - {}", yaml_string(tag.trim()))),
+                .map(|tag| format!("  - {}", yaml_string(tag))),
         );
     }
     if let Some(timestamp) = input.timestamp.as_deref() {
@@ -265,6 +271,12 @@ pub fn concept_template_file(input: &ConceptTemplateInput) -> RenderedFile {
         encoding: "utf8",
         content: format!("{}\n", frontmatter.join("\n")),
     }
+}
+
+pub fn concept_template_file_checked(input: &ConceptTemplateInput) -> Result<RenderedFile, String> {
+    let mut normalized = input.clone();
+    normalized.relative_path = validate_concept_path(&input.relative_path)?;
+    Ok(concept_template_file(&normalized))
 }
 
 pub fn index_files(bundle: &ParsedBundle, mode: IndexMode) -> Vec<RenderedFile> {
@@ -294,6 +306,8 @@ pub fn index_files(bundle: &ParsedBundle, mode: IndexMode) -> Vec<RenderedFile> 
         .iter()
         .map(|concept| (concept.source.bundle_path.as_str(), concept))
         .collect::<BTreeMap<_, _>>();
+    let mut directories = directories.into_iter().collect::<Vec<_>>();
+    directories.sort_by(|left, right| compare_utf16(left, right));
     directories
         .into_iter()
         .filter_map(|directory| {
@@ -521,7 +535,14 @@ fn index_entries_for(directory: &str, files: &[RenderedFile]) -> Vec<IndexEntry>
             );
         }
     }
-    entries.into_values().collect()
+    let mut entries = entries.into_values().collect::<Vec<_>>();
+    entries.sort_by(|left, right| {
+        left.path
+            .ends_with('/')
+            .cmp(&right.path.ends_with('/'))
+            .then_with(|| compare_utf16(&left.path, &right.path))
+    });
+    entries
 }
 
 fn index_entries_for_starters(directory: &str, starters: &[Starter]) -> Vec<IndexEntry> {
@@ -589,6 +610,113 @@ fn normalize_concept_path(path: &str) -> String {
         value.push_str(".md");
     }
     value
+}
+
+fn validate_concept_path(path: &str) -> Result<String, String> {
+    fn bounded(value: &str, backslash_is_separator: bool) -> bool {
+        value.encode_utf16().count() <= MAX_PROVIDER_PATH_CODE_UNITS
+            && value.len() <= MAX_PROVIDER_PATH_BYTES
+            && value
+                .chars()
+                .filter(|character| {
+                    *character == '/' || (backslash_is_separator && *character == '\\')
+                })
+                .count()
+                < MAX_PROVIDER_PATH_SEGMENTS
+    }
+
+    if !bounded(path, true) {
+        return Err("The path exceeds the supported relative-path limit.".to_owned());
+    }
+    if ecmascript_trim(path).is_empty() {
+        return Err("A non-empty relative path is required.".to_owned());
+    }
+    let mut candidate = path.replace('\\', "/");
+    for _ in 0..16 {
+        if has_control_character(&candidate) {
+            return Err(format!("The path {path:?} contains a control character."));
+        }
+        let decoded = percent_decode(&candidate)
+            .ok_or_else(|| format!("The path {path:?} contains invalid percent encoding."))?;
+        if decoded == candidate {
+            break;
+        }
+        candidate = decoded.replace('\\', "/");
+    }
+    if percent_decode(&candidate).is_some_and(|decoded| decoded != candidate) {
+        return Err(format!(
+            "The path {path:?} contains excessive nested percent encoding."
+        ));
+    }
+    if !bounded(&candidate, false) {
+        return Err("The path exceeds the supported relative-path limit.".to_owned());
+    }
+    let has_scheme = candidate.find(':').is_some_and(|colon| {
+        colon > 0
+            && candidate[..colon]
+                .chars()
+                .next()
+                .is_some_and(|character| character.is_ascii_alphabetic())
+            && candidate[..colon].chars().all(|character| {
+                character.is_ascii_alphanumeric() || matches!(character, '+' | '-' | '.')
+            })
+    });
+    if candidate.starts_with('/') || has_scheme {
+        return Err(format!("The path {path:?} is absolute or URI-like."));
+    }
+    if candidate
+        .split('/')
+        .any(|segment| segment.is_empty() || matches!(segment, "." | ".."))
+    {
+        return Err(format!(
+            "The path {path:?} contains an empty, current, or parent segment."
+        ));
+    }
+    let file_name = candidate
+        .rsplit('/')
+        .next()
+        .unwrap_or_default()
+        .trim_end_matches(".md");
+    if matches!(file_name.to_ascii_lowercase().as_str(), "index" | "log") {
+        return Err(format!(
+            "{path:?} is reserved by OKF and cannot be a concept path."
+        ));
+    }
+    if !candidate.ends_with(".md") {
+        return Err(format!("The path {path:?} must end with .md."));
+    }
+    if file_name.is_empty() {
+        return Err(format!(
+            "The concept path {path:?} must include a filename before the .md extension."
+        ));
+    }
+    Ok(candidate)
+}
+
+fn is_ecmascript_whitespace(character: char) -> bool {
+    matches!(
+        character,
+        '\u{0009}'
+            ..='\u{000d}'
+                | '\u{0020}'
+                | '\u{00a0}'
+                | '\u{1680}'
+                | '\u{2000}'..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
+    )
+}
+
+fn ecmascript_trim(value: &str) -> &str {
+    value.trim_matches(is_ecmascript_whitespace)
+}
+
+fn compare_utf16(left: &str, right: &str) -> std::cmp::Ordering {
+    left.encode_utf16().cmp(right.encode_utf16())
 }
 
 fn one_line(value: &str) -> String {

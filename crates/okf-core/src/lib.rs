@@ -14,7 +14,7 @@ pub use model::*;
 pub use parser::parse_bundle;
 pub use templates::{
     AgentTarget, BundlePreset, ConceptTemplateInput, IndexMode, RenderedFile, agent_files,
-    bundle_preset_files, concept_template_file, index_files,
+    bundle_preset_files, concept_template_file, concept_template_file_checked, index_files,
 };
 pub use validation::{is_future_minor_version, validate_bundle};
 
@@ -167,6 +167,12 @@ pub fn dispatch_json(request_json: &str) -> String {
             ],
         }),
         CoreRequest::Inspect(input) => {
+            if validation::parse_reference_time(&input.now).is_none() {
+                return serialize_response(CoreResponse::failure(
+                    "invalid-request",
+                    "ValidationOptions.now must be a valid Date or ISO date-time string.",
+                ));
+            }
             let mut bundle = parse_bundle(input.bundle);
             bundle.failures.extend(input.failures);
             bundle.failures.sort_by(|left, right| {
@@ -185,7 +191,14 @@ pub fn dispatch_json(request_json: &str) -> String {
         }
         CoreRequest::Parse(input) => CoreResponse::success(parse_bundle(input)),
         CoreRequest::Validate(input) => {
-            CoreResponse::success(validate_bundle(&input.bundle, &input.now))
+            if validation::parse_reference_time(&input.now).is_none() {
+                CoreResponse::failure(
+                    "invalid-request",
+                    "ValidationOptions.now must be a valid Date or ISO date-time string.",
+                )
+            } else {
+                CoreResponse::success(validate_bundle(&input.bundle, &input.now))
+            }
         }
         CoreRequest::Graph(input) => {
             let bundle = parse_bundle(input);
@@ -194,7 +207,10 @@ pub fn dispatch_json(request_json: &str) -> String {
         CoreRequest::RenderBundle(input) => {
             CoreResponse::success(bundle_preset_files(input.preset, &input.timestamp))
         }
-        CoreRequest::RenderConcept(input) => CoreResponse::success(concept_template_file(&input)),
+        CoreRequest::RenderConcept(input) => match concept_template_file_checked(&input) {
+            Ok(file) => CoreResponse::success(file),
+            Err(message) => CoreResponse::failure("unsafe-relative-path", message),
+        },
         CoreRequest::RenderIndexes(input) => {
             let mut bundle = parse_bundle(input.bundle);
             if matches!(input.mode, IndexMode::Missing) {

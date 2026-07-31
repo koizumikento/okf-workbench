@@ -750,6 +750,19 @@ describe('Rust/Wasm core boundary', () => {
       ['literal-nel-single-quoted-key.md', "'A\u0085B': value\n"],
       ['literal-nel-tagged-key.md', '!!str "A\u0085B": value\n'],
       ['literal-nel-explicit-tagged-key.md', '? !!str "A\u0085B"\n: !!str value\n'],
+      ['literal-nel-semantic-duplicate-key.md', '"A\\NB": one\n"A\u0085B": two\n'],
+      [
+        'literal-nel-nested-tagged-key.md',
+        '"A\u0085B":\n  nested: !!str "value"\n  binary: !!binary "SGVsbG8="\n',
+      ],
+      ['literal-nel-flow-tagged-key.md', 'custom: {!!str "A\u0085B": !!str "V\u0085W"}\n'],
+      ['literal-nel-binary.md', 'custom: !!binary "SGVs\u0085bG8="\n'],
+      ['literal-nel-block-binary.md', 'custom: !!binary |-\n  SGVs\u0085bG8=\n'],
+      ['literal-nel-structural-colon.md', 'custom:\u0085value\n'],
+      [
+        'tagged-block-scalar-shallow-comment.md',
+        'custom: !!str |-\n  one\n # between\nnext: value\n',
+      ],
       ['set-block-scalar-sibling.md', 'x: !!set\n  ? !!str |-\n    one\n  ? two\n'],
       ['set-keep-block-scalar-sibling.md', 'x: !!set\n  ? !!str |+\n    one\n\n  ? two\n'],
       [
@@ -763,6 +776,14 @@ describe('Rust/Wasm core boundary', () => {
       [
         'set-block-scalar-alias-sibling.md',
         'x: !!set\n  ? !!timestamp &a |-\n    2001-12-15\n  ? *a\n',
+      ],
+      [
+        'set-block-scalar-comment-sibling.md',
+        'x: !!set\n  ? !!str &a |-\n    one\n  # between\n  ? *a\n',
+      ],
+      [
+        'nested-set-parent-comment-sibling.md',
+        'outer:\n  x: !!set\n    ? !!timestamp &a |-\n      2001-12-15\n  # parent comment\n    ? *a\n',
       ],
       [
         'deferred-map-comment-colon.md',
@@ -801,6 +822,18 @@ describe('Rust/Wasm core boundary', () => {
       [
         'deferred-explicit-string-key-comment.md',
         'set: !!set\n  ?\n    ? # key\n      !!str "1"\n    : value\n',
+      ],
+      [
+        'deferred-explicit-multiline-tag-key.md',
+        'set: !!set\n  ?\n    ? !!int # tag\n      "1"\n    : value\n',
+      ],
+      [
+        'deferred-explicit-multiline-tag-anchor-key.md',
+        'set: !!set\n  ?\n    ? !!int # tag\n      &key\n      "1"\n    : value\n',
+      ],
+      [
+        'deferred-explicit-multiline-anchor-tag-key.md',
+        'set: !!set\n  ?\n    ? &key # anchor\n      !!int\n      "1"\n    : value\n',
       ],
       ['c1-control-type.md', 'type: "\\u0085"\n'],
       ['c1-control-resource.md', 'resource: "\\u0085urn:x"\n'],

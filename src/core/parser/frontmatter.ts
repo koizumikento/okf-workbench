@@ -47,9 +47,9 @@ export type FrontmatterResult =
 export const EXACT_YAML_INTEGER_KEY = '$okf-workbench:yaml-integer' as const;
 
 /**
- * JSON object key used for an explicitly tagged top-level YAML value. Nested standard-tag values
- * are normalized to JSON-safe semantic values; their complete lexical form remains available on
- * `ParsedFrontmatter.source`.
+ * JSON object key used for an explicitly tagged YAML value. The nested object retains the
+ * canonical tag name, a JSON-safe semantic value, and the exact lexical value source following
+ * the tag. The complete frontmatter source remains available on `ParsedFrontmatter.source`.
  */
 export const YAML_TAGGED_VALUE_KEY = '$okf-workbench:yaml-tag' as const;
 
@@ -215,11 +215,7 @@ export function parseFrontmatter(text: string, ranges: SourceRangeIndex): Frontm
       };
     }
 
-    const observedTags = collectExplicitTags(document.contents, document);
-    unwrapObservedNestedTags(converted.value, observedTags);
-    const explicitTags = Object.fromEntries(
-      Object.entries(observedTags).filter(([path]) => !path.startsWith('/')),
-    );
+    const explicitTags = collectExplicitTags(document.contents, document);
 
     const fields: Record<string, SourceRange> = Object.create(null) as Record<string, SourceRange>;
     for (const pair of document.contents.items) {
@@ -864,32 +860,6 @@ function collectExplicitTags(
   };
   visit(mapping, []);
   return tags;
-}
-
-function unwrapObservedNestedTags(
-  raw: JsonObject,
-  observedTags: Readonly<Record<string, string>>,
-): void {
-  const visit = (value: JsonValue, path: readonly (string | number)[]): JsonValue => {
-    const tag = observedTags[tagPath(path)];
-    if (path.length > 1 && tag !== undefined) {
-      return semanticValue(value, tag) ?? value;
-    }
-    if (Array.isArray(value)) {
-      return value.map((entry, index) => visit(entry, [...path, index]));
-    }
-    const object = jsonObject(value);
-    if (object === undefined) return value;
-    const mutable = object as Record<string, JsonValue>;
-    for (const [key, entry] of Object.entries(object)) {
-      mutable[key] = visit(entry, [...path, key]);
-    }
-    return object;
-  };
-  const mutableRaw = raw as Record<string, JsonValue>;
-  for (const [key, value] of Object.entries(raw)) {
-    mutableRaw[key] = visit(value, [key]);
-  }
 }
 
 function resolvedNode(value: unknown, document: Document): Node | undefined {

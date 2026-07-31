@@ -42,24 +42,20 @@ Workbench implications:
 - Validation cannot use a closed enumeration of concept types.
 - Write operations must preserve fields they do not understand.
 - Templates are authoring presets, not schemas.
-- `ParsedFrontmatter.raw` is always JSON-safe. Explicit standard YAML tags on top-level fields use
-  the reserved shape `{ "$okf-workbench:yaml-tag": { "tag": <canonical tag>, "value":
-  <JSON-safe semantic value>, "source": <original lexical value> } }`; nested tagged values use
-  their JSON-safe semantic value. Timestamp values use an ISO string, binary values use an octet
-  array, and sets use an ordered member array. `ParsedFrontmatter.source` remains the exact
-  full-source authority, preserving nested lexical forms without allowing `Date`, `Buffer`, `Set`,
-  or `Map` instances to cross a core or Webview boundary.
+- `ParsedFrontmatter.raw` is always JSON-safe. Explicit standard YAML tags use the reserved shape
+  `{ "$okf-workbench:yaml-tag": { "tag": <canonical tag>, "value": <JSON-safe semantic value>,
+  "source": <original lexical value> } }`. Timestamp values use an ISO string, binary values use an
+  octet array, and sets use an ordered member array; `ParsedFrontmatter.source` remains the exact
+  full-source authority. This prevents `Date`, `Buffer`, `Set`, or `Map` instances from crossing a
+  core or Webview boundary without discarding producer intent.
 - The reserved `$okf-workbench:yaml-tag` shape is a Workbench serialization detail, never
-  authoritative producer syntax. `ParsedFrontmatter.explicitTags` records top-level provenance
-  obtained from the parsed YAML AST; only a real explicit tag on the field node, or an alias that
-  resolves to that tagged node, grants top-level explicit-tag semantics. Nested known fields are
-  normalized from parser-observed tags before this sidecar is exposed. A producer mapping or
-  sequence that merely resembles the reserved shape remains ordinary data and cannot spoof this
-  provenance.
+  authoritative producer syntax. `ParsedFrontmatter.explicitTags` records provenance obtained from
+  the parsed YAML AST; only a real explicit tag on the field node, or an alias that resolves to that
+  tagged node, grants explicit-tag semantics. A producer mapping or sequence that merely resembles
+  the reserved shape remains ordinary data and cannot spoof this provenance.
 - Ordinary string metadata, including an explicit-zone `timestamp`, keeps its existing string
-  semantics. Supported scalar tags may supply normalized known fields, while exact tagged syntax
-  remains available in the full frontmatter source for lossless inventory and source-preserving
-  writes.
+  semantics. Supported scalar tags may supply normalized known fields, while their raw tagged
+  representation remains available for lossless inventory and supported source-preserving writes.
 - Unknown custom tags, custom runtime object prototypes, recursive aliases, and excessive alias
   expansion fail closed as source-scoped frontmatter failures. Mapping conversion uses
   null-prototype records, so producer keys such as `__proto__` remain data and cannot mutate a

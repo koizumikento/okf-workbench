@@ -763,7 +763,6 @@ fn parse_frontmatter(
             });
         }
     };
-    unwrap_observed_nested_tags(&mut raw, &mut explicit_tags);
     for (key, value) in preserve_standard_yaml_tags(yaml_source, &mut raw) {
         explicit_tags.insert(key, value);
     }
@@ -1171,28 +1170,6 @@ fn collect_yaml_explicit_tags(value: &serde_yaml::Value) -> Map<String, Value> {
     tags
 }
 
-fn unwrap_observed_nested_tags(raw: &mut Map<String, Value>, tags: &mut Map<String, Value>) {
-    let nested = tags
-        .keys()
-        .filter(|path| path.starts_with('/'))
-        .cloned()
-        .collect::<Vec<_>>();
-    for path in &nested {
-        let segments = path
-            .trim_start_matches('/')
-            .split('/')
-            .map(|segment| segment.replace("~1", "/").replace("~0", "~"))
-            .collect::<Vec<_>>();
-        let borrowed = segments.iter().map(String::as_str).collect::<Vec<_>>();
-        if let Some(existing) = value_at_path(raw, &borrowed).cloned() {
-            set_value_at_path(raw, &borrowed, semantic_value(&existing).clone());
-        }
-    }
-    for path in nested {
-        tags.remove(&path);
-    }
-}
-
 fn yaml_to_json(value: serde_yaml::Value) -> Result<Value, String> {
     Ok(match value {
         serde_yaml::Value::Null => Value::Null,
@@ -1423,6 +1400,9 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
             .map(|(_, segment)| segment.as_str())
             .chain(std::iter::once(key.as_str()))
             .collect::<Vec<_>>();
+        if matches!(value_source.chars().next(), Some('{' | '[')) && value_source.contains("!!") {
+            preserve_flow_standard_yaml_tags(value_source, &path, raw, &mut explicit_tags);
+        }
         let mut remainder = value_source;
         let mut anchor_name = None;
         if let Some(anchor) = remainder.strip_prefix('&')
@@ -1434,10 +1414,6 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
         if let Some(alias) = remainder.strip_prefix('*').map(str::trim)
             && let Some((wrapped, tag)) = anchors.get(alias).cloned()
         {
-            if path.len() > 1 {
-                set_value_at_path(raw, &path, semantic_value(&wrapped).clone());
-                continue;
-            }
             set_value_at_path(raw, &path, wrapped);
             explicit_tags.insert(explicit_tag_path(&path), Value::String(tag));
             continue;
@@ -1455,31 +1431,7 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
         let Some(existing) = value_at_path(raw, &path).cloned() else {
             continue;
         };
-        let semantic = match tag_name {
-            "timestamp" => DateTime::parse_from_rfc3339(source_value)
-                .map(|value| Value::String(value.to_rfc3339_opts(SecondsFormat::Millis, true)))
-                .unwrap_or(existing),
-            "binary" => BASE64
-                .decode(source_value)
-                .map(|bytes| {
-                    Value::Array(
-                        bytes
-                            .into_iter()
-                            .map(|byte| Value::Number(Number::from(byte)))
-                            .collect(),
-                    )
-                })
-                .unwrap_or(existing),
-            "set" => existing
-                .as_object()
-                .map(|set| Value::Array(set.keys().cloned().map(Value::String).collect::<Vec<_>>()))
-                .unwrap_or(existing),
-            _ => semantic_value(&existing).clone(),
-        };
-        if path.len() > 1 {
-            set_value_at_path(raw, &path, semantic);
-            continue;
-        }
+        let semantic = standard_tag_semantic(tag_name, source_value, existing);
         let mut body = Map::new();
         body.insert("tag".to_owned(), Value::String(tag_uri.to_owned()));
         body.insert("value".to_owned(), semantic);
@@ -1494,6 +1446,219 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
         }
     }
     explicit_tags
+}
+
+fn standard_tag_semantic(tag_name: &str, source_value: &str, existing: Value) -> Value {
+    match tag_name {
+        "timestamp" => DateTime::parse_from_rfc3339(source_value)
+            .map(|value| Value::String(value.to_rfc3339_opts(SecondsFormat::Millis, true)))
+            .unwrap_or(existing),
+        "binary" => BASE64
+            .decode(source_value)
+            .map(|bytes| {
+                Value::Array(
+                    bytes
+                        .into_iter()
+                        .map(|byte| Value::Number(Number::from(byte)))
+                        .collect(),
+                )
+            })
+            .unwrap_or(existing),
+        "set" => existing
+            .as_object()
+            .map(|set| Value::Array(set.keys().cloned().map(Value::String).collect::<Vec<_>>()))
+            .unwrap_or(existing),
+        _ => semantic_value(&existing).clone(),
+    }
+}
+
+fn preserve_flow_standard_yaml_tags(
+    source: &str,
+    base_path: &[&str],
+    raw: &mut Map<String, Value>,
+    explicit_tags: &mut Map<String, Value>,
+) {
+    let mut scanner = FlowTagScanner {
+        source,
+        cursor: 0,
+        raw,
+        explicit_tags,
+    };
+    let mut path = base_path
+        .iter()
+        .map(|segment| (*segment).to_owned())
+        .collect::<Vec<_>>();
+    scanner.parse_value(&mut path);
+}
+
+struct FlowTagScanner<'source, 'model> {
+    source: &'source str,
+    cursor: usize,
+    raw: &'model mut Map<String, Value>,
+    explicit_tags: &'model mut Map<String, Value>,
+}
+
+impl FlowTagScanner<'_, '_> {
+    fn parse_value(&mut self, path: &mut Vec<String>) {
+        self.skip_whitespace();
+        if self.remaining().starts_with("!!") {
+            self.cursor += 2;
+            let tag_start = self.cursor;
+            self.consume_while(|character| {
+                !character.is_whitespace() && !matches!(character, ',' | '}' | ']')
+            });
+            let tag_name = self.source[tag_start..self.cursor].to_owned();
+            self.skip_whitespace();
+            let value_start = self.cursor;
+            self.parse_untagged_value(path);
+            let source_value = self.source[value_start..self.cursor].trim().to_owned();
+            let borrowed = path.iter().map(String::as_str).collect::<Vec<_>>();
+            let Some(existing) = value_at_path(self.raw, &borrowed).cloned() else {
+                return;
+            };
+            let Some(tag_uri) = standard_tag_uri(&tag_name) else {
+                return;
+            };
+            let semantic = standard_tag_semantic(&tag_name, &source_value, existing);
+            let mut body = Map::new();
+            body.insert("tag".to_owned(), Value::String(tag_uri.to_owned()));
+            body.insert("value".to_owned(), semantic);
+            body.insert("source".to_owned(), Value::String(source_value));
+            let mut wrapper = Map::new();
+            wrapper.insert(TAGGED_KEY.to_owned(), Value::Object(body));
+            set_value_at_path(self.raw, &borrowed, Value::Object(wrapper));
+            self.explicit_tags.insert(
+                explicit_tag_path(&borrowed),
+                Value::String(tag_uri.to_owned()),
+            );
+            return;
+        }
+        self.parse_untagged_value(path);
+    }
+
+    fn parse_untagged_value(&mut self, path: &mut Vec<String>) {
+        self.skip_whitespace();
+        match self.peek() {
+            Some('{') => self.parse_mapping(path),
+            Some('[') => self.parse_sequence(path),
+            Some('"' | '\'') => self.consume_quoted(),
+            Some(_) => self.consume_while(|character| !matches!(character, ',' | '}' | ']')),
+            None => {}
+        }
+    }
+
+    fn parse_mapping(&mut self, path: &mut Vec<String>) {
+        self.advance();
+        loop {
+            self.skip_whitespace();
+            if self.peek() == Some('}') {
+                self.advance();
+                return;
+            }
+            let key_start = self.cursor;
+            if matches!(self.peek(), Some('"' | '\'')) {
+                self.consume_quoted();
+            } else {
+                self.consume_while(|character| character != ':');
+            }
+            let key_source = self.source[key_start..self.cursor].trim();
+            let key = serde_yaml::from_str::<String>(key_source)
+                .unwrap_or_else(|_| key_source.trim_matches(['\'', '"']).to_owned());
+            if self.peek() != Some(':') {
+                return;
+            }
+            self.advance();
+            path.push(key);
+            self.parse_value(path);
+            path.pop();
+            self.skip_whitespace();
+            match self.peek() {
+                Some(',') => {
+                    self.advance();
+                }
+                Some('}') => {
+                    self.advance();
+                    return;
+                }
+                _ => return,
+            }
+        }
+    }
+
+    fn parse_sequence(&mut self, path: &mut Vec<String>) {
+        self.advance();
+        let mut index = 0usize;
+        loop {
+            self.skip_whitespace();
+            if self.peek() == Some(']') {
+                self.advance();
+                return;
+            }
+            path.push(index.to_string());
+            self.parse_value(path);
+            path.pop();
+            index += 1;
+            self.skip_whitespace();
+            match self.peek() {
+                Some(',') => {
+                    self.advance();
+                }
+                Some(']') => {
+                    self.advance();
+                    return;
+                }
+                _ => return,
+            }
+        }
+    }
+
+    fn consume_quoted(&mut self) {
+        let Some(quote) = self.advance() else {
+            return;
+        };
+        let mut escaped = false;
+        while let Some(character) = self.advance() {
+            if quote == '"' && character == '\\' && !escaped {
+                escaped = true;
+                continue;
+            }
+            if character == quote && !escaped {
+                if quote == '\'' && self.peek() == Some('\'') {
+                    self.advance();
+                    continue;
+                }
+                return;
+            }
+            escaped = false;
+        }
+    }
+
+    fn consume_while(&mut self, predicate: impl Fn(char) -> bool) {
+        while let Some(character) = self.peek() {
+            if !predicate(character) {
+                break;
+            }
+            self.advance();
+        }
+    }
+
+    fn skip_whitespace(&mut self) {
+        self.consume_while(char::is_whitespace);
+    }
+
+    fn remaining(&self) -> &str {
+        &self.source[self.cursor..]
+    }
+
+    fn peek(&self) -> Option<char> {
+        self.remaining().chars().next()
+    }
+
+    fn advance(&mut self) -> Option<char> {
+        let character = self.peek()?;
+        self.cursor += character.len_utf8();
+        Some(character)
+    }
 }
 
 fn explicit_tag_path(path: &[&str]) -> String {

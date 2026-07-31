@@ -605,6 +605,53 @@ describe('validateBundle', () => {
             '',
           ].join('\r'),
         ),
+        document(
+          'quoted-inline-heading.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Quoted computation',
+            'description: A quoted sample is not a root computation section.',
+            'runtime: local',
+            '---',
+            '> # Computation',
+            '>',
+            '> ```sh',
+            '> true',
+            '> ```',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'listed-inline-heading.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Listed computation',
+            'description: A listed sample is not a root computation section.',
+            'runtime: local',
+            '---',
+            '- # Computation',
+            '',
+            '  ```sh',
+            '  true',
+            '  ```',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'unpadded-stale-after.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Unpadded stale date',
+            'description: Lifecycle dates use exact YYYY-MM-DD.',
+            'stale_after: 2026-7-1',
+            '---',
+            '# Unpadded stale date',
+            '',
+          ].join('\n'),
+        ),
       ],
     });
 
@@ -650,6 +697,13 @@ describe('validateBundle', () => {
     expect(findingsFor('cr-only-inline')).not.toContain(
       VALIDATION_CODES.invalidAttestedComputation,
     );
+    expect(findingsFor('quoted-inline-heading')).toContain(
+      VALIDATION_CODES.invalidAttestedComputation,
+    );
+    expect(findingsFor('listed-inline-heading')).toContain(
+      VALIDATION_CODES.invalidAttestedComputation,
+    );
+    expect(findingsFor('unpadded-stale-after')).toContain(VALIDATION_CODES.invalidStaleAfter);
   });
 
   it('reports present non-string timestamp and okf_version values deterministically', () => {

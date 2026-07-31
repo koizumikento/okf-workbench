@@ -1,4 +1,6 @@
-use okf_core::{BundleDocumentInput, DocumentContent, ParseBundleInput, RenderedFile};
+use okf_core::{
+    BundleDocumentInput, DocumentContent, ParseBundleInput, RenderedFile, parse_bundle,
+};
 use serde::Serialize;
 use std::{
     fs::{self, OpenOptions},
@@ -139,7 +141,7 @@ pub fn plan_files(
                     "<!-- okf-workbench:index:end -->",
                 )?;
                 if path == "index.md" && ensure_root_version {
-                    insert_root_version(&merged)
+                    insert_root_version(&merged)?
                 } else {
                     merged
                 }
@@ -174,21 +176,85 @@ pub fn plan_files(
     Ok(plan)
 }
 
-fn insert_root_version(existing: &str) -> String {
-    let eol = if existing.contains("\r\n") {
-        "\r\n"
-    } else if existing.contains('\r') && !existing.contains('\n') {
-        "\r"
-    } else {
-        "\n"
-    };
+fn insert_root_version(existing: &str) -> Result<String, String> {
     let bom = existing.strip_prefix('\u{feff}').map_or("", |_| "\u{feff}");
     let content = existing.strip_prefix('\u{feff}').unwrap_or(existing);
-    if let Some(after_opening) = content.strip_prefix(&format!("---{eol}")) {
-        format!("{bom}---{eol}okf_version: \"0.2\"{eol}{after_opening}")
+    let (candidate, eol) = if let Some(after_opening) = content.strip_prefix("---\r\n") {
+        (
+            format!("{bom}---\r\nokf_version: \"0.2\"\r\n{after_opening}"),
+            "\r\n",
+        )
+    } else if let Some(after_opening) = content.strip_prefix("---\n") {
+        (
+            format!("{bom}---\nokf_version: \"0.2\"\n{after_opening}"),
+            "\n",
+        )
+    } else if let Some(after_opening) = content.strip_prefix("---\r") {
+        (
+            format!("{bom}---\rokf_version: \"0.2\"\r{after_opening}"),
+            "\r",
+        )
     } else {
-        format!("{bom}---{eol}okf_version: \"0.2\"{eol}---{eol}{content}")
+        let eol = preferred_line_ending(content);
+        (
+            format!("{bom}---{eol}okf_version: \"0.2\"{eol}---{eol}{content}"),
+            eol,
+        )
+    };
+    validate_root_version_insertion(existing, &candidate).map_err(|error| {
+        format!("cannot add `okf_version` safely to index.md using {eol:?} line endings: {error}")
+    })?;
+    Ok(candidate)
+}
+
+fn preferred_line_ending(content: &str) -> &'static str {
+    for (index, byte) in content.bytes().enumerate() {
+        match byte {
+            b'\r' if content.as_bytes().get(index + 1) == Some(&b'\n') => return "\r\n",
+            b'\r' => return "\r",
+            b'\n' => return "\n",
+            _ => {}
+        }
     }
+    "\n"
+}
+
+fn validate_root_version_insertion(existing: &str, candidate: &str) -> Result<(), String> {
+    let before = root_frontmatter(existing)?;
+    let mut after = root_frontmatter(candidate)?;
+    if after.remove("okf_version") != Some(serde_json::Value::String("0.2".to_owned())) {
+        return Err(
+            "the proposed root does not declare the exact string version \"0.2\"".to_owned(),
+        );
+    }
+    if after != before {
+        return Err("the proposed root changes existing frontmatter fields".to_owned());
+    }
+    Ok(())
+}
+
+fn root_frontmatter(content: &str) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+    let bundle = parse_bundle(ParseBundleInput {
+        root_uri: "file:///okf-version-proposal".to_owned(),
+        revision: 1,
+        documents: vec![BundleDocumentInput {
+            uri: "file:///okf-version-proposal/index.md".to_owned(),
+            bundle_path: "index.md".to_owned(),
+            content: Some(DocumentContent::Text(content.to_owned())),
+            content_hash: None,
+            identity_only_failure: None,
+        }],
+    });
+    if let Some(failure) = bundle.failures.first() {
+        return Err(failure.message.clone());
+    }
+    Ok(bundle
+        .reserved_documents
+        .iter()
+        .find(|document| document.source.bundle_path == "index.md")
+        .and_then(|document| document.frontmatter.as_ref())
+        .map(|frontmatter| frontmatter.raw.clone())
+        .unwrap_or_default())
 }
 
 pub fn apply_plan(root: &Path, plan: &[PlannedChange]) -> Result<(), String> {
@@ -493,5 +559,32 @@ mod tests {
     fn file_uri_percent_encodes_non_ascii_and_spaces() {
         let uri = file_uri(Path::new("/tmp/日本 語.md"));
         assert_eq!(uri, "file:///tmp/%E6%97%A5%E6%9C%AC%20%E8%AA%9E.md");
+    }
+
+    #[test]
+    fn root_version_insertion_reparses_and_preserves_frontmatter() {
+        let mixed = "---\ntitle: Knowledge\r\ncustom: retained\r\n---\r\n# Knowledge\r\n";
+        let updated = insert_root_version(mixed).unwrap();
+        assert!(updated.starts_with("---\nokf_version: \"0.2\"\n"));
+        assert_eq!(
+            root_frontmatter(&updated).unwrap().get("custom"),
+            Some(&serde_json::Value::String("retained".to_owned()))
+        );
+
+        let plain = "# Knowledge\r";
+        let updated = insert_root_version(plain).unwrap();
+        assert!(updated.starts_with("---\rokf_version: \"0.2\"\r---\r"));
+        assert!(updated.ends_with(plain));
+    }
+
+    #[test]
+    fn root_version_insertion_refuses_unsafe_yaml_shapes() {
+        for source in [
+            "---\n{ title: Knowledge }\n---\n# Knowledge\n",
+            "---\n&metadata\n title: Knowledge\n---\n# Knowledge\n",
+            "---\n  title: Knowledge\n---\n# Knowledge\n",
+        ] {
+            assert!(insert_root_version(source).is_err(), "{source:?}");
+        }
     }
 }

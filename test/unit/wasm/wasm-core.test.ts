@@ -599,6 +599,23 @@ describe('Rust/Wasm core boundary', () => {
           ),
         ],
         [
+          'quoted-inline-heading.md',
+          concept(
+            '> # Computation\n>\n> ```sh\n> true\n> ```\n',
+            'runtime: local\n',
+            'Attested Computation',
+          ),
+        ],
+        [
+          'listed-inline-heading.md',
+          concept(
+            '- # Computation\n\n  ```sh\n  true\n  ```\n',
+            'runtime: local\n',
+            'Attested Computation',
+          ),
+        ],
+        ['unpadded-stale-after.md', concept('', 'stale_after: 2026-7-1\n', 'Reference')],
+        [
           'invalid-actors.md',
           concept(
             '',

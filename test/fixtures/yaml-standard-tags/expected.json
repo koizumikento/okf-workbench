@@ -23,10 +23,34 @@
         "description": "Standard YAML tags remain portable through the Workbench model.",
         "timestamp": "2026-07-22T09:30:00Z",
         "producer": {
-          "captured_at": "2001-12-15T02:59:43.100Z",
-          "payload": [72, 101, 108, 108, 111],
-          "labels": ["alpha", "beta"],
-          "ordered": [{"first": 1}, {"second": 2}]
+          "captured_at": {
+            "$okf-workbench:yaml-tag": {
+              "tag": "tag:yaml.org,2002:timestamp",
+              "value": "2001-12-15T02:59:43.100Z",
+              "source": "2001-12-15T02:59:43.1Z"
+            }
+          },
+          "payload": {
+            "$okf-workbench:yaml-tag": {
+              "tag": "tag:yaml.org,2002:binary",
+              "value": [72, 101, 108, 108, 111],
+              "source": "SGVsbG8="
+            }
+          },
+          "labels": {
+            "$okf-workbench:yaml-tag": {
+              "tag": "tag:yaml.org,2002:set",
+              "value": ["alpha", "beta"],
+              "source": "{alpha: null, beta: null}"
+            }
+          },
+          "ordered": {
+            "$okf-workbench:yaml-tag": {
+              "tag": "tag:yaml.org,2002:omap",
+              "value": [{"first": 1}, {"second": 2}],
+              "source": "[{first: 1}, {second: 2}]"
+            }
+          }
         }
       }
     }

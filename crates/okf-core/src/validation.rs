@@ -434,6 +434,7 @@ fn validate_v02_metadata(
         let parsed = concept
             .stale_after
             .as_deref()
+            .filter(|value| is_iso_date(value))
             .and_then(|value| NaiveDate::parse_from_str(value, "%Y-%m-%d").ok());
         if parsed.is_none() {
             findings.push(curation(
@@ -632,13 +633,20 @@ fn valid_computation_endpoint(
 fn inline_computation_count(body: &str) -> usize {
     let mut in_computation = false;
     let mut heading_text: Option<String> = None;
+    let mut container_depth = 0usize;
     let mut count = 0usize;
     for event in Parser::new_ext(body, Options::empty()) {
         match event {
+            Event::Start(Tag::BlockQuote(_) | Tag::List(_) | Tag::Item) => {
+                container_depth += 1;
+            }
+            Event::End(TagEnd::BlockQuote(_) | TagEnd::List(_) | TagEnd::Item) => {
+                container_depth = container_depth.saturating_sub(1);
+            }
             Event::Start(Tag::Heading {
                 level: HeadingLevel::H1,
                 ..
-            }) => {
+            }) if container_depth == 0 => {
                 heading_text = Some(String::new());
             }
             Event::Text(text) | Event::Code(text) if heading_text.is_some() => {
@@ -647,9 +655,9 @@ fn inline_computation_count(body: &str) -> usize {
                 }
             }
             Event::End(TagEnd::Heading(HeadingLevel::H1)) => {
-                in_computation = heading_text
-                    .take()
-                    .is_some_and(|heading| heading.trim() == "Computation");
+                if let Some(heading) = heading_text.take() {
+                    in_computation = heading.trim() == "Computation";
+                }
             }
             Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(_))) if in_computation => {
                 count += 1;
@@ -1005,6 +1013,14 @@ mod tests {
         assert_eq!(
             inline_computation_count("# Computation\n\n```sh\ntrue\n```\n\n```sh\nfalse\n```\n"),
             2
+        );
+        assert_eq!(
+            inline_computation_count("> # Computation\n>\n> ```sh\n> true\n> ```\n"),
+            0
+        );
+        assert_eq!(
+            inline_computation_count("- # Computation\n\n  ```sh\n  true\n  ```\n"),
+            0
         );
     }
 }

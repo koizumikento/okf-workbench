@@ -224,6 +224,13 @@ describe('OKF bundle parser', () => {
   });
 
   it('normalizes parser-proven nested string tags without allowing lookalike wrappers', () => {
+    const tagged = (value: string, source = value) => ({
+      [YAML_TAGGED_VALUE_KEY]: {
+        tag: 'tag:yaml.org,2002:str',
+        value,
+        source,
+      },
+    });
     const bundle = parseBundle({
       rootUri,
       revision: 5,
@@ -302,15 +309,31 @@ describe('OKF bundle parser', () => {
       ],
     });
     expect(nested?.frontmatter.raw).toMatchObject({
-      generated: { by: 'process:builder', at: '2026-07-30T01:00:00Z' },
-      verified: [{ by: 'human:reviewer', at: '2026-07-30T02:00:00Z' }],
+      generated: {
+        by: tagged('process:builder'),
+        at: tagged('2026-07-30T01:00:00Z'),
+      },
+      verified: [
+        {
+          by: tagged('human:reviewer'),
+          at: tagged('2026-07-30T02:00:00Z'),
+        },
+      ],
       sources: [
         {
-          resource: 'https://example.com/policy',
-          author: 'process:catalog',
+          resource: tagged('https://example.com/policy'),
+          author: tagged('process:catalog'),
           usage_count: 42,
         },
       ],
+    });
+    expect(nested?.frontmatter.explicitTags).toMatchObject({
+      '/generated/by': 'tag:yaml.org,2002:str',
+      '/generated/at': 'tag:yaml.org,2002:str',
+      '/verified/0/by': 'tag:yaml.org,2002:str',
+      '/verified/0/at': 'tag:yaml.org,2002:str',
+      '/sources/0/resource': 'tag:yaml.org,2002:str',
+      '/sources/0/author': 'tag:yaml.org,2002:str',
     });
     expect(lookalike).toMatchObject({
       verified: [{ at: '2026-07-30T02:00:00Z' }],
@@ -662,19 +685,41 @@ describe('OKF bundle parser', () => {
     expect(concept?.frontmatter.raw.type).toEqual(
       tagged('tag:yaml.org,2002:str', 'producer-extension', 'producer-extension'),
     );
-    expect(concept?.frontmatter.explicitTags).toEqual({
+    expect(concept?.frontmatter.explicitTags).toMatchObject({
       type: 'tag:yaml.org,2002:str',
+      '/producer/text': 'tag:yaml.org,2002:str',
+      '/producer/captured_at': 'tag:yaml.org,2002:timestamp',
     });
     expect(concept?.frontmatter.raw.producer).toEqual({
-      captured_at: '2001-12-15T02:59:43.100Z',
-      payload: [72, 101, 108, 108, 111],
-      labels: ['alpha', 'beta'],
-      ordered: [{ first: 1 }, { second: 2 }],
-      pairs: [{ left: 'one' }, { right: 'two' }],
-      exact: { [EXACT_YAML_INTEGER_KEY]: '9007199254740993' },
-      text: '001',
-      infinite: 'Infinity',
-      safe_mapping: { ['__proto__']: 'retained', constructor: 'retained' },
+      captured_at: tagged(
+        'tag:yaml.org,2002:timestamp',
+        '2001-12-15T02:59:43.100Z',
+        '2001-12-15T02:59:43.1Z',
+      ),
+      payload: tagged('tag:yaml.org,2002:binary', [72, 101, 108, 108, 111], 'SGVsbG8='),
+      labels: tagged('tag:yaml.org,2002:set', ['alpha', 'beta'], '{alpha: null, beta: null}'),
+      ordered: tagged(
+        'tag:yaml.org,2002:omap',
+        [{ first: 1 }, { second: 2 }],
+        '[{first: 1}, {second: 2}]',
+      ),
+      pairs: tagged(
+        'tag:yaml.org,2002:pairs',
+        [{ left: 'one' }, { right: 'two' }],
+        '[{left: one}, {right: two}]',
+      ),
+      exact: tagged(
+        'tag:yaml.org,2002:int',
+        { [EXACT_YAML_INTEGER_KEY]: '9007199254740993' },
+        '9007199254740993',
+      ),
+      text: tagged('tag:yaml.org,2002:str', '001', '001'),
+      infinite: tagged('tag:yaml.org,2002:float', 'Infinity', '.inf'),
+      safe_mapping: tagged(
+        'tag:yaml.org,2002:map',
+        { ['__proto__']: 'retained', constructor: 'retained' },
+        '{__proto__: retained, constructor: retained}',
+      ),
     });
     expect(Object.getPrototypeOf(concept?.frontmatter.raw)).toBeNull();
     expect(({} as { readonly polluted?: unknown }).polluted).toBeUndefined();

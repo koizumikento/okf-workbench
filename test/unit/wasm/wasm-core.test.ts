@@ -632,6 +632,19 @@ describe('Rust/Wasm core boundary', () => {
         'terminal-deep-mapping-indented-comment.md',
         'custom:\n  child:\n    grandchild: value\n    # deep comment\n',
       ],
+      [
+        'terminal-direct-mapping-parent-comment.md',
+        'outer:\n  custom: value\n  # parent comment\n',
+      ],
+      [
+        'terminal-deep-mapping-comment-chain.md',
+        'outer:\n  custom:\n    child: value\n    # child comment\n  # parent comment\n',
+      ],
+      ['terminal-deep-sequence-comment.md', 'custom:\n  outer:\n    - value\n    # deep comment\n'],
+      [
+        'nested-set-crlf-followed-by-sibling-and-blank.md',
+        'outer:\r\n  set: !!set\r\n    ? !!str |-\r\n      alpha\r\n  # parent separator\r\n    ? beta\r\n  next: value\r\n\n',
+      ],
       ['terminal-sequence-crlf-blank-line.md', 'custom:\r\n  - child value\r\n\r\n'],
       ['terminal-sequence-of-set-blank-line.md', 'sets:\n  - !!set\n    ? x\n\n'],
       ['terminal-sequence-of-set-crlf-blank-line.md', 'sets:\r\n  - !!set\r\n    ? x\r\n\r\n'],
@@ -893,6 +906,10 @@ describe('Rust/Wasm core boundary', () => {
         'nested-set-sequence-empty-map-key.md',
         'set: !!set\n  ? !!map\n    items:\n      - ?\n        : one\n',
       ],
+      [
+        'nested-set-sequence-duplicate-empty-map-key.md',
+        'set: !!set\n  ? !!map\n    items:\n      - ?\n        : one\n      - ?\n        : two\n',
+      ],
       ['commented-empty-map-key.md', '? # key\n: one\n'],
       ['spaced-commented-empty-map-key.md', '?  # key\n: one\n'],
       ['anchored-empty-map-key.md', '? &a\n: one\n'],
@@ -903,13 +920,41 @@ describe('Rust/Wasm core boundary', () => {
       ['deferred-empty-string-map-key.md', 'custom: !!map\n  ? !!str\n  : one\n'],
       ['root-empty-string-map-key.md', '? !!str\n: one\n'],
       ['multiline-empty-string-map-key.md', '?\n  !!str\n: one\n'],
+      ['nested-multiline-empty-string-map-key.md', 'custom:\n  ?\n    !!str\n  : one\n'],
+      ['nested-multiline-string-map-key.md', 'custom:\n  ?\n    !!str key\n  : one\n'],
+      [
+        'nested-multiline-anchored-empty-string-map-key.md',
+        'custom: !!map\n  ? &a\n    !!str\n  : one\ncopy: *a\n',
+      ],
       [
         'split-anchor-empty-string-map-key.md',
         'custom: !!map\n  ? !!str\n    &a\n  : one\ncopy: *a\n',
       ],
       ['flow-empty-string-map-key.md', 'custom: { ? !!str : one }\n'],
+      ['implicit-flow-empty-string-map-key.md', 'custom: {!!str : one}\n'],
+      ['implicit-flow-empty-string-map-key-duplicate.md', 'custom: {!!str : one, "": two}\n'],
       ['flow-empty-string-map-key-duplicate.md', 'custom: { ? !!str : one, "": two }\n'],
+      [
+        'tagged-flow-empty-string-map-key-duplicate.md',
+        'custom: !!map { "": one, ? !!str : two }\n',
+      ],
+      [
+        'reverse-tagged-flow-empty-string-map-key-duplicate.md',
+        'custom: { ? !!str "" : one, ? !!str : two }\n',
+      ],
+      ['tab-commented-empty-map-key.md', 'custom: !!map\n  ?\t# empty\n  : one\n'],
+      ['bare-implicit-empty-map-key.md', ': one\n'],
+      ['nested-bare-implicit-empty-map-key.md', 'outer:\n  : one\n'],
+      ['commented-explicit-empty-string-map-key.md', '? !!str # key\n: one\n'],
+      [
+        'split-commented-explicit-empty-string-map-key.md',
+        '? !!str # tag\n  # note\n  &a # anchor\n: one\ncopy: *a\n',
+      ],
       ['compact-sequence-empty-string-map-key.md', 'items:\n  - ? !!str\n    : one\n'],
+      ['compact-sequence-implicit-empty-string-map-key.md', 'custom:\n  - !!str : one\n'],
+      ['nested-implicit-empty-string-map-key.md', 'custom:\n  !!str : one\n'],
+      ['root-implicit-empty-string-map-key.md', '!!str : one\n'],
+      ['double-tagged-implicit-empty-string-map-key.md', 'custom: !!map\n  !!str : one\n'],
       ['tag-anchor-empty-string-map-key.md', 'custom: !!map\n  ? !!str &a\n  : one\ncopy: *a\n'],
       ['anchor-tag-empty-string-map-key.md', 'custom: !!map\n  ? &a !!str\n  : one\ncopy: *a\n'],
       [
@@ -934,6 +979,17 @@ describe('Rust/Wasm core boundary', () => {
         'nested-set-deferred-empty-string-map-key.md',
         'x: !!set\n  ? !!map\n    ? !!str\n    : one\n',
       ],
+      [
+        'nested-anchor-tag-block-set.md',
+        'outer:\n  seed: &s # anchor\n    !!set # tag\n    ? x\n  copy: *s\n',
+      ],
+      ['deferred-anchor-tag-quoted-scalar.md', 'custom: &a\n  !!str\n  "quoted"\ncopy: *a\n'],
+      [
+        'nested-set-nel-tagged-key-value.md',
+        'x: !!set\n  ? !!map\n    outer:\n      !!str "A\u0085B": !!str "V\u0085W"\n',
+      ],
+      ['flow-set-empty-string-member-duplicate.md', 'custom: !!set { ? !!str, ? "" }\n'],
+      ['block-set-empty-string-member-duplicate.md', 'custom: !!set\n  ? !!str\n  ? ""\n'],
       [
         'set-block-scalar-separator-comment.md',
         'x: !!set\n  ? !!str &a |2-\n      one\n  # between\n  ? *a\n',
@@ -1082,6 +1138,8 @@ describe('Rust/Wasm core boundary', () => {
       ['literal-c1-status-flow-map.md', 'status: {custom: "A\u0085B"}\n'],
       ['literal-c1-status-flow-sequence.md', 'status: ["A\u0085B"]\n'],
       ['bom-trim-type.md', 'type: "\\uFEFF"\n'],
+      ['literal-nel-compact-mapping.md', 'custom: prefix\u0085: suffix\n'],
+      ['literal-nel-nested-mapping.md', 'outer:\n  child: ok\n  bad:\u0085value\n'],
     ] as const;
     for (const [path, fields] of cases) {
       const rootUri = `fixture:/yaml-parity/${path}`;
@@ -1094,6 +1152,15 @@ describe('Rust/Wasm core boundary', () => {
       }
       expect(actual, path).toEqual(typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'));
     }
+
+    const literalNelTypeInput = inputFor(
+      [['literal-nel-type.md', '---\ntype:\u0085 reference\n---\n']],
+      'fixture:/yaml-parity/literal-nel-type.md',
+    );
+    expect(
+      core.inspect(literalNelTypeInput, '2026-07-22T12:00:00Z'),
+      'literal-nel-type.md',
+    ).toEqual(typescriptOkfCore.inspect(literalNelTypeInput, '2026-07-22T12:00:00Z'));
 
     const literalNelBeforeMarkdownLink = inputFor(
       [['literal-nel-link-range.md', concept('[missing](missing.md)\n', 'custom: "A\u0085B"\n')]],

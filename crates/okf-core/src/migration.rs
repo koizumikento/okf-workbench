@@ -585,7 +585,9 @@ fn fence_run(line: &str, marker: char) -> Option<usize> {
 
 fn is_simple_url(value: &str) -> bool {
     (value.starts_with("https://") || value.starts_with("http://"))
-        && !value.chars().any(char::is_whitespace)
+        && !value
+            .chars()
+            .any(|character| character.is_whitespace() || character.is_control())
 }
 
 fn is_rfc3339(value: &str) -> bool {
@@ -623,7 +625,7 @@ fn line_ending(text: &str) -> &'static str {
 }
 
 fn yaml_quote(value: &str) -> String {
-    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+    serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_owned())
 }
 
 fn utf16_len(value: &str) -> usize {
@@ -734,18 +736,24 @@ mod tests {
                     "- [Named source](https://example.com/source)\n",
                 ),
             ),
+            (
+                "control.md",
+                "---\ntype: Reference\n---\n# Citations\n\n- https://example.com/\u{1}\n",
+            ),
         ]);
-        let notes = plan
-            .documents
-            .iter()
-            .find(|document| document.relative_path == "notes.md")
-            .unwrap();
-        assert!(notes.manual_follow_up);
-        assert!(!notes.changed);
+        for path in ["notes.md", "control.md"] {
+            let document = plan
+                .documents
+                .iter()
+                .find(|document| document.relative_path == path)
+                .unwrap();
+            assert!(document.manual_follow_up);
+            assert!(!document.changed);
+        }
         assert!(
             plan.files
                 .iter()
-                .all(|file| file.relative_path != "notes.md")
+                .all(|file| !matches!(file.relative_path.as_str(), "notes.md" | "control.md"))
         );
     }
 

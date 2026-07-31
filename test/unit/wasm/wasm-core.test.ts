@@ -346,6 +346,18 @@ describe('Rust/Wasm core boundary', () => {
           ].join('\n'),
         ],
         [
+          'control-url.md',
+          [
+            '---',
+            'type: Reference',
+            '---',
+            '# Citations',
+            '',
+            '- https://example.com/\u0001',
+            '',
+          ].join('\n'),
+        ],
+        [
           'tabbed.md',
           [
             '---',

@@ -353,7 +353,7 @@ function markdownIndent(line: string): { readonly columns: number; readonly cont
 }
 
 function isSimpleUrl(value: string): boolean {
-  return /^(?:https?):\/\/\S+$/u.test(value);
+  return /^(?:https?):\/\/[^\s\p{Cc}]+$/u.test(value);
 }
 
 function isRfc3339(value: string): boolean {
@@ -403,7 +403,7 @@ function lineEnding(text: string): '\r\n' | '\r' | '\n' {
 }
 
 function yamlQuote(value: string): string {
-  return `"${value.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"')}"`;
+  return JSON.stringify(value);
 }
 
 function rendered(relativePath: string, content: string): RenderedTemplateFile {

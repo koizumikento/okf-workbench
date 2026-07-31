@@ -979,6 +979,27 @@ fn parse_frontmatter(
             return true;
         }
         let segments = explicit_tag_segments(key);
+        if (1..segments.len()).any(|length| {
+            let borrowed = segments[..length]
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>();
+            value_at_path(&raw, &borrowed, &explicit_tag_snapshot)
+                .and_then(|value| value.get(TAGGED_KEY))
+                .and_then(Value::as_object)
+                .and_then(|tagged| tagged.get("tag"))
+                .and_then(Value::as_str)
+                .is_some_and(|tag| {
+                    matches!(
+                        tag,
+                        "tag:yaml.org,2002:set"
+                            | "tag:yaml.org,2002:omap"
+                            | "tag:yaml.org,2002:pairs"
+                    )
+                })
+        }) {
+            return false;
+        }
         let borrowed = segments.iter().map(String::as_str).collect::<Vec<_>>();
         value_at_path(&raw, &borrowed, &explicit_tag_snapshot).is_some()
     });
@@ -3191,22 +3212,11 @@ fn non_string_mapping_key_range(source: &str) -> Option<(usize, usize)> {
         let inside_standard_set = standard_set_ranges
             .iter()
             .any(|(start, end)| *start <= line.start && line.start < *end);
-        let direct_set_member_indent = standard_set_ranges
+        let inside_scalar = scalar_ranges
             .iter()
-            .filter(|(start, end)| *start <= line.start && line.start < *end)
-            .max_by_key(|(start, _)| *start)
-            .and_then(|(set_start, set_end)| {
-                spans.iter().find_map(|candidate| {
-                    if candidate.start < *set_start || candidate.start >= *set_end {
-                        return None;
-                    }
-                    let candidate_body = &source[candidate.start..candidate.content_end];
-                    let candidate_trimmed = candidate_body.trim_start_matches([' ', '\t']);
-                    (!candidate_trimmed.is_empty() && !candidate_trimmed.starts_with('#'))
-                        .then_some(candidate_body.len() - candidate_trimmed.len())
-                })
-            });
+            .any(|(start, end)| *start <= line.start && line.start < *end);
         if inside_standard_set
+            && !inside_scalar
             && let Some(member) = trimmed.strip_prefix('?').map(str::trim_start)
             && let Some(colon) = flow_top_level_mapping_colon(member, 0, member.len())
         {
@@ -3217,32 +3227,49 @@ fn non_string_mapping_key_range(source: &str) -> Option<(usize, usize)> {
                 return Some(range);
             }
         }
+        let explicit_mapping_value_follows = inside_standard_set
+            && trimmed
+                .strip_prefix('?')
+                .is_some_and(|key| !key.trim().is_empty())
+            && spans.iter().skip(line_index + 1).find_map(|candidate| {
+                let candidate_body = &source[candidate.start..candidate.content_end];
+                let candidate_trimmed = candidate_body.trim_start_matches([' ', '\t']);
+                if candidate_trimmed.is_empty() || candidate_trimmed.starts_with('#') {
+                    return None;
+                }
+                let candidate_indent = candidate_body.len() - candidate_trimmed.len();
+                if candidate_indent < indent {
+                    return Some(false);
+                }
+                if candidate_indent == indent {
+                    return Some(candidate_trimmed.strip_prefix(':').is_some_and(|rest| {
+                        rest.is_empty() || rest.chars().next().is_some_and(char::is_whitespace)
+                    }));
+                }
+                None
+            }) == Some(true);
         if inside_standard_set
-            && direct_set_member_indent.is_some_and(|member_indent| indent > member_indent)
+            && !inside_scalar
+            && explicit_mapping_value_follows
             && let Some(key_source) = trimmed.strip_prefix('?').map(str::trim_start)
             && !key_source.is_empty()
             && !key_source.starts_with('#')
-            && split_node_properties(key_source)
-                .2
-                .is_some_and(|tag| tag != "set")
         {
             let key_start = line.start + indent + trimmed.len().saturating_sub(key_source.len());
             if let Some(range) = non_string_key_source_range(key_source, key_start) {
                 return Some(range);
             }
         }
-        if inside_standard_set
-            && !trimmed.starts_with('?')
-            && !scalar_ranges
-                .iter()
-                .any(|(start, end)| *start <= line.start && line.start < *end)
-        {
+        if inside_standard_set && !inside_scalar && !trimmed.starts_with(['?', '#', ':']) {
             let mapping_source = trimmed
                 .strip_prefix("- ")
                 .or_else(|| (trimmed == "-").then_some(""))
                 .unwrap_or(trimmed);
             if let Some(colon) = mapping_key_colon(mapping_source) {
                 let key_source = mapping_source[..colon].trim_end();
+                if key_source.is_empty() {
+                    continue;
+                }
                 let key_start = line.start
                     + body.len().saturating_sub(trimmed.len())
                     + trimmed.len().saturating_sub(mapping_source.len());
@@ -5513,16 +5540,35 @@ fn apply_tagged_alias(
             let Some(value) = value_at_path(raw, &anchor, explicit_tags).cloned() else {
                 return;
             };
+            let suppress_descendant_tags = value
+                .get(TAGGED_KEY)
+                .and_then(Value::as_object)
+                .and_then(|tagged| tagged.get("tag"))
+                .and_then(Value::as_str)
+                .is_some_and(|tag| {
+                    matches!(
+                        tag,
+                        "tag:yaml.org,2002:set"
+                            | "tag:yaml.org,2002:omap"
+                            | "tag:yaml.org,2002:pairs"
+                    )
+                });
             let copied = explicit_tags
                 .iter()
                 .filter_map(|(key, tag)| {
                     let segments = explicit_tag_segments(key);
-                    segments.strip_prefix(anchor_path.as_slice()).map(|suffix| {
-                        let mut translated = target_path.to_vec();
-                        translated.extend_from_slice(suffix);
-                        let borrowed = translated.iter().map(String::as_str).collect::<Vec<_>>();
-                        (explicit_tag_path(&borrowed), tag.clone())
-                    })
+                    segments
+                        .strip_prefix(anchor_path.as_slice())
+                        .and_then(|suffix| {
+                            if suppress_descendant_tags && !suffix.is_empty() {
+                                return None;
+                            }
+                            let mut translated = target_path.to_vec();
+                            translated.extend_from_slice(suffix);
+                            let borrowed =
+                                translated.iter().map(String::as_str).collect::<Vec<_>>();
+                            Some((explicit_tag_path(&borrowed), tag.clone()))
+                        })
                 })
                 .collect::<Vec<_>>();
             let root_tag = (anchor_path.len() == 1)
@@ -5543,7 +5589,10 @@ fn apply_tagged_alias(
         } => {
             remove_explicit_tags_at_or_below(explicit_tags, target_path);
             set_value_at_path(raw, &target, value.clone(), explicit_tags);
-            if explicit_tag.as_deref() != Some("tag:yaml.org,2002:set") {
+            if explicit_tag
+                .as_deref()
+                .is_none_or(|tag| matches!(tag, "tag:yaml.org,2002:map" | "tag:yaml.org,2002:seq"))
+            {
                 let mut copied = Vec::new();
                 collect_value_explicit_tags(value, &mut target_path.to_vec(), &mut copied);
                 for (key, tag) in copied {
@@ -5911,7 +5960,8 @@ fn standard_tag_semantic(tag_name: &str, source_value: &str, existing: Value) ->
         {
             return value.to_owned();
         }
-        serde_yaml::from_str::<serde_yaml::Value>(source_value)
+        let (parser_source, literal_nel_marker) = mask_literal_nel(source_value);
+        let mut scalar = serde_yaml::from_str::<serde_yaml::Value>(&parser_source)
             .ok()
             .and_then(|value| match value {
                 serde_yaml::Value::String(value) => Some(value),
@@ -5920,7 +5970,11 @@ fn standard_tag_semantic(tag_name: &str, source_value: &str, existing: Value) ->
                 serde_yaml::Value::Null => Some("null".to_owned()),
                 _ => None,
             })
-            .unwrap_or_else(|| source_value.trim().to_owned())
+            .unwrap_or_else(|| source_value.trim().to_owned());
+        if let Some(marker) = literal_nel_marker {
+            scalar = scalar.replace(&marker, "\u{0085}");
+        }
+        scalar
     };
     match tag_name {
         "str" => Value::String(if source_value.trim().is_empty() {
@@ -6042,10 +6096,17 @@ fn direct_standard_set_member_sources(source: &str, expected_members: usize) -> 
             .collect();
     }
     let spans = line_spans(source);
+    let block_scalar_ranges = block_scalar_body_ranges(source);
     let mut members = spans
         .iter()
         .enumerate()
         .filter_map(|(index, span)| {
+            if block_scalar_ranges
+                .iter()
+                .any(|(start, end)| *start <= span.start && span.start < *end)
+            {
+                return None;
+            }
             let body = &source[span.start..span.content_end];
             let trimmed = body.trim_start_matches([' ', '\t']);
             let indent = body.len() - trimmed.len();
@@ -6099,7 +6160,14 @@ fn direct_standard_set_member_sources(source: &str, expected_members: usize) -> 
 fn standard_set_member_properties(member_source: &str) -> (String, Option<String>, Option<String>) {
     let mut anchor_name = None;
     let mut tag_name = None;
+    let block_scalar_ranges = block_scalar_body_ranges(member_source);
     for line in line_spans(member_source) {
+        if block_scalar_ranges
+            .iter()
+            .any(|(start, end)| *start <= line.start && line.start < *end)
+        {
+            continue;
+        }
         let body = &member_source[line.start..line.content_end];
         let trimmed = body.trim_start_matches([' ', '\t']);
         if trimmed.is_empty() || trimmed.starts_with('#') {
@@ -6231,7 +6299,7 @@ fn tagged_collection_node_location(member_source: &str) -> (usize, usize) {
                 return None;
             }
             Some((
-                line.start + body.len() - trimmed.len() + trimmed.len() - node.len() + node.len()
+                line.start + body.len() - trimmed.len() + trimmed.len() - node.len() + syntax.len()
                     - remainder.len(),
                 body.len() - trimmed.len(),
             ))
@@ -6586,7 +6654,14 @@ fn restore_direct_standard_set_member_source(member_source: &str, value: &mut Va
 }
 
 fn standard_set_member_tag_is_mapping_key(member_source: &str) -> bool {
+    let block_scalar_ranges = block_scalar_body_ranges(member_source);
     line_spans(member_source).into_iter().any(|line| {
+        if block_scalar_ranges
+            .iter()
+            .any(|(start, end)| *start <= line.start && line.start < *end)
+        {
+            return false;
+        }
         let body = &member_source[line.start..line.content_end];
         let trimmed = body.trim_start_matches([' ', '\t']);
         if trimmed.is_empty() || trimmed.starts_with('#') {
@@ -9118,6 +9193,47 @@ mod tests {
             documents: vec![document("boundaries.md", &source)],
         });
         assert!(bundle.failures.is_empty(), "{:#?}", bundle.failures);
+    }
+
+    #[test]
+    fn preserves_tagged_block_scalar_set_member_source() {
+        let source = "? !!str |2-\n      !!int \"1\": not a key\n";
+        let members = direct_standard_set_member_sources(source, 1);
+        assert_eq!(members, vec!["!!str |2-\n      !!int \"1\": not a key\n"]);
+        let (lexical, _, tag) = standard_set_member_properties(&members[0]);
+        assert_eq!(tag.as_deref(), Some("str"));
+        assert_eq!(lexical, "|2-\n      !!int \"1\": not a key\n");
+        let mut set = serde_json::json!({
+            "$okf-workbench:yaml-tag": {
+                "tag": "tag:yaml.org,2002:set",
+                "value": [{
+                    "$okf-workbench:yaml-tag": {
+                        "tag": "tag:yaml.org,2002:str",
+                        "value": "  !!int \"1\": not a key",
+                        "source": "  !!int \"1\": not a key"
+                    }
+                }],
+                "source": source
+            }
+        });
+        restore_nested_standard_set_member_sources(
+            &mut set,
+            &mut std::collections::BTreeMap::new(),
+            &mut Vec::new(),
+            false,
+        );
+        assert_eq!(
+            set.get(TAGGED_KEY)
+                .and_then(Value::as_object)
+                .and_then(|set| set.get("value"))
+                .and_then(Value::as_array)
+                .and_then(|members| members.first())
+                .and_then(|member| member.get(TAGGED_KEY))
+                .and_then(Value::as_object)
+                .and_then(|tagged| tagged.get("source"))
+                .and_then(Value::as_str),
+            Some("|2-\n      !!int \"1\": not a key\n")
+        );
     }
 
     #[test]

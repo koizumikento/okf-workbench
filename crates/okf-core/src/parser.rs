@@ -364,7 +364,8 @@ pub fn parse_bundle(mut input: ParseBundleInput) -> ParsedBundle {
             });
             continue;
         }
-        let candidates = match markdown_links(&body, body_range.start.offset, &document.text) {
+        let body_start = document.text.len().saturating_sub(body.len());
+        let candidates = match markdown_links(&body, body_start, &document.text) {
             Ok(candidates) => candidates,
             Err(message) => {
                 let mut item = failure(
@@ -2160,8 +2161,9 @@ fn invalid_structural_literal_nel_range(source: &str) -> Option<(usize, usize)> 
         }
         let body = &source[line.start..line.content_end];
         let trimmed = body.trim_start_matches([' ', '\t']);
-        let block_mapping_line = !trimmed.starts_with(['-', '{', '[']);
-        let mapping_colon = block_mapping_line
+        let top_level_mapping_line =
+            body.len() == trimmed.len() && !trimmed.starts_with(['-', '{', '[']);
+        let mapping_colon = top_level_mapping_line
             .then(|| mapping_key_colon(body))
             .flatten();
         let mut quote = None;
@@ -2195,7 +2197,7 @@ fn invalid_structural_literal_nel_range(source: &str) -> Option<(usize, usize)> 
                     return Some((line.start, line.content_end));
                 }
                 '\u{0085}'
-                    if block_mapping_line
+                    if top_level_mapping_line
                         && mapping_colon.is_none()
                         && body[offset + character.len_utf8()..].starts_with(':')
                         && !body[offset + character.len_utf8() + 1..]
@@ -3632,7 +3634,10 @@ fn multiline_quoted_scalar_ranges(source: &str) -> Vec<(usize, usize)> {
                     .unwrap_or_else(|| body.len().saturating_sub(node_source.len()))
                     + node_source.len().saturating_sub(remainder.len());
                 (span.start + relative, remainder)
-            } else if (remainder.is_empty() || remainder.starts_with('#')) && tag_name.is_some() {
+            } else if (remainder.is_empty() || remainder.starts_with('#'))
+                && tag_name
+                    .is_some_and(|tag| !matches!(tag, "map" | "seq" | "set" | "omap" | "pairs"))
+            {
                 let (first_index, first) =
                     spans
                         .iter()
@@ -5362,7 +5367,9 @@ fn preserve_standard_yaml_tags(
             {
                 let continued_body = &source[continued_span.start..continued_span.content_end];
                 let continued = continued_body.trim_start_matches([' ', '\t']);
-                let continued_is_block_collection = continued.starts_with("- ")
+                let continued_is_block_collection = continued == "-"
+                    || continued.starts_with("- ")
+                    || continued == "?"
                     || continued.starts_with("? ")
                     || mapping_key_colon(continued).is_some();
                 if !continued_is_block_collection {
@@ -5582,7 +5589,9 @@ fn preserve_standard_yaml_tags(
         {
             let continued_body = &source[continued_span.start..continued_span.content_end];
             let continued = continued_body.trim_start_matches([' ', '\t']);
-            let continued_is_block_collection = continued.starts_with("- ")
+            let continued_is_block_collection = continued == "-"
+                || continued.starts_with("- ")
+                || continued == "?"
                 || continued.starts_with("? ")
                 || mapping_key_colon(continued).is_some();
             if !continued_is_block_collection {
@@ -6046,11 +6055,15 @@ fn following_indented_source(
         return source[start..end].to_owned();
     }
     if matches!(tag_name, "map" | "seq" | "set" | "omap" | "pairs")
-        && (value_source.starts_with("- ")
+        && (value_source == "-"
+            || value_source.starts_with("- ")
+            || value_source == "?"
             || value_source.starts_with("? ")
             || mapping_key_colon(value_source).is_some())
     {
-        let boundary_end = direct_block_node_end(source, spans, first_index, parent_indent);
+        let collection_parent_indent = parent_indent.max(first_indent.saturating_sub(2));
+        let boundary_end =
+            direct_block_node_end(source, spans, first_index, collection_parent_indent);
         let end = spans
             .iter()
             .skip(first_index)
@@ -8337,6 +8350,21 @@ fn block_field_value_end(
         });
     let tagged_scalar =
         effective_tag.is_some_and(|tag| !matches!(tag, "map" | "seq" | "set" | "omap" | "pairs"));
+    let deferred_literal_nel_scalar = value_source.is_empty()
+        && line_spans(&text[content_start..boundary])
+            .into_iter()
+            .find_map(|line| {
+                let body = &text[content_start + line.start..content_start + line.content_end];
+                let trimmed = body.trim_start_matches([' ', '\t']);
+                (!trimmed.is_empty() && !trimmed.starts_with('#')).then_some(trimmed)
+            })
+            .is_some_and(|trimmed| {
+                trimmed.char_indices().any(|(offset, character)| {
+                    character == '\u{0085}'
+                        && mapping_key_colon(trimmed) == offset.checked_sub(1)
+                        && !trimmed[offset + character.len_utf8()..].trim().is_empty()
+                })
+            });
     let deferred_marker_has_nested_value = {
         let mut marker_indent = None;
         line_spans(&text[content_start..boundary])
@@ -8373,7 +8401,8 @@ fn block_field_value_end(
         && !deferred_block_collection
         && deferred_value.is_some();
     let inline_node = !remainder.is_empty() && !remainder.starts_with('#');
-    let non_block_scalar = tagged_scalar || inline_node || deferred_non_block_node;
+    let non_block_scalar =
+        tagged_scalar || inline_node || deferred_non_block_node || deferred_literal_nel_scalar;
     let indentationless_sequence = value_source.is_empty();
     let set_field = effective_tag == Some("set")
         || value_source.trim_start().starts_with("!!set")

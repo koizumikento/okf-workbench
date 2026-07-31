@@ -792,9 +792,18 @@ describe('Rust/Wasm core boundary', () => {
       ['literal-nel-flow-plain-scalar-before-colon.md', 'outer: [prefix\u0085:suffix]\n'],
       ['literal-nel-flow-map-key-before-colon.md', 'custom: {prefix\u0085:suffix}\n'],
       ['literal-nel-block-scalar-before-colon.md', 'custom: |-\n  prefix\u0085:suffix\n'],
+      ['literal-nel-nested-plain-continuation.md', 'custom:\n  child:\u0085 value\n'],
       [
         'literal-nel-set-explicit-mapping-key.md',
         'set: !!set\n  ?\n    ? !!str "A\u0085B"\n    : value\n',
+      ],
+      [
+        'literal-nel-set-commented-explicit-mapping-key.md',
+        'set: !!set\n  ?\n    ? !!str # tag\n      "A\u0085B"\n    : value\n',
+      ],
+      [
+        'literal-nel-deferred-map-multiline-duplicate-key.md',
+        'set: !!set\n  ? !!map\n    "A\u0085B": one\n    ? !!str\n      "A\u0085B"\n    : two\n',
       ],
       [
         'tagged-block-scalar-shallow-comment.md',
@@ -919,6 +928,14 @@ describe('Rust/Wasm core boundary', () => {
         typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'),
       );
     }
+
+    const literalNelBeforeMarkdownLink = inputFor(
+      [['literal-nel-link-range.md', concept('[missing](missing.md)\n', 'custom: "A\u0085B"\n')]],
+      'fixture:/yaml-parity/literal-nel-link-range.md',
+    );
+    expect(core.inspect(literalNelBeforeMarkdownLink, '2026-07-22T12:00:00Z')).toEqual(
+      typescriptOkfCore.inspect(literalNelBeforeMarkdownLink, '2026-07-22T12:00:00Z'),
+    );
 
     const literalControlType = inputFor(
       [['literal-c1-control-type.md', '---\ntype: "\u0085"\n---\n']],

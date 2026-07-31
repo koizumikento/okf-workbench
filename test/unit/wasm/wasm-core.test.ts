@@ -746,6 +746,62 @@ describe('Rust/Wasm core boundary', () => {
       ['tag-only-set-before-field.md', 'set: !!set\n  ? !!str\nnext: value\n'],
       ['nested-set-tag-only-before-field.md', 'set: !!set\n  ? !!set\nnext: value\n'],
       ['set-block-scalar-question.md', 'set: !!set\n  ? !!str |-\n      ?\n'],
+      ['literal-nel-double-quoted-key.md', '"A\u0085B": value\n'],
+      ['literal-nel-single-quoted-key.md', "'A\u0085B': value\n"],
+      ['literal-nel-tagged-key.md', '!!str "A\u0085B": value\n'],
+      ['literal-nel-explicit-tagged-key.md', '? !!str "A\u0085B"\n: !!str value\n'],
+      ['set-block-scalar-sibling.md', 'x: !!set\n  ? !!str |-\n    one\n  ? two\n'],
+      ['set-keep-block-scalar-sibling.md', 'x: !!set\n  ? !!str |+\n    one\n\n  ? two\n'],
+      [
+        'set-explicit-indent-block-scalar-sibling.md',
+        'x: !!set\n  ? !!str |2-\n      ? !!int "1": scalar text\n  ? two\n',
+      ],
+      [
+        'nested-set-block-scalar-sibling.md',
+        'x: !!set\n  ? !!set\n    ? !!str >-\n      one\n    ? two\n  ? outer\n',
+      ],
+      [
+        'set-block-scalar-alias-sibling.md',
+        'x: !!set\n  ? !!timestamp &a |-\n    2001-12-15\n  ? *a\n',
+      ],
+      [
+        'deferred-map-comment-colon.md',
+        'x: !!set\n  ? !!map\n    # note: not a key\n    safe: value\n',
+      ],
+      ['deferred-map-explicit-key.md', 'x: !!set\n  ? !!map\n    ? !!str "1"\n    : value\n'],
+      ['empty-flow-set-comment.md', 'set: !!set { # only\n }\n'],
+      ['flow-set-member-trailing-comment.md', 'set: !!set { ? x # trailing: colon\n }\n'],
+      ['flow-set-between-members-comment.md', 'set: !!set { ? !!str one, # c\n ? !!int "2" }\n'],
+      [
+        'flow-set-leading-member-comment.md',
+        'set: !!set {\n  # leading: note\n  ? one,\n  ? two\n}\n',
+      ],
+      [
+        'flow-set-trailing-member-comment.md',
+        'set: !!set {\n  ? one, # first: note\n  # between: note\n  ? two\n}\n',
+      ],
+      ['flow-set-terminal-comment.md', 'set: !!set {\n  ? one,\n  # trailing: only\n}\n'],
+      ['multiline-flow-set-field-range.md', 'set: !!set { # opening\n  ? x\n}\n'],
+      [
+        'multiline-flow-set-sequence-field-range.md',
+        'sets:\n  - !!set { # opening\n      ? x\n    }\n',
+      ],
+      [
+        'deferred-map-gap-comment.md',
+        'set: !!set\n  ? !!map # tag\n    # gap: !!int fake\n    key: !!str value\n',
+      ],
+      [
+        'deferred-explicit-key-comment.md',
+        'set: !!set\n  ?\n    ? # key\n      !!int "1"\n    : value\n',
+      ],
+      [
+        'deferred-explicit-anchored-key-comment.md',
+        'set: !!set\n  ?\n    ? # key\n      &key !!int "1"\n    : value\n',
+      ],
+      [
+        'deferred-explicit-string-key-comment.md',
+        'set: !!set\n  ?\n    ? # key\n      !!str "1"\n    : value\n',
+      ],
       ['c1-control-type.md', 'type: "\\u0085"\n'],
       ['c1-control-resource.md', 'resource: "\\u0085urn:x"\n'],
       ['literal-c1-control-resource.md', 'resource: "\u0085urn:x"\n'],

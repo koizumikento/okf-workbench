@@ -205,8 +205,11 @@ fn run(cli: Cli) -> Result<u8, String> {
         }
         Command::New(args) => {
             ensure_supported_root_version(&args.root)?;
-            let path = args.path.unwrap_or_else(|| slug(&args.title));
+            let mut path = args.path.unwrap_or_else(|| slug(&args.title));
             validate_relative_path(&path)?;
+            if !path.ends_with(".md") {
+                path.push_str(".md");
+            }
             if !CONCEPT_TEMPLATES.contains(&args.template.as_str()) {
                 return Err(format!(
                     "unknown concept template {:?}; choose one of {}",

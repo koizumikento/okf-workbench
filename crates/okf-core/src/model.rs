@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
 use serde_json::{Map, Value};
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -378,8 +378,26 @@ pub struct GraphStatistics {
     pub edge_count: usize,
     pub orphan_count: usize,
     pub broken_link_count: usize,
+    #[serde(serialize_with = "serialize_utf16_count_map")]
     pub type_counts: std::collections::BTreeMap<String, usize>,
+    #[serde(serialize_with = "serialize_utf16_count_map")]
     pub tag_counts: std::collections::BTreeMap<String, usize>,
+}
+
+fn serialize_utf16_count_map<S>(
+    counts: &std::collections::BTreeMap<String, usize>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let mut entries = counts.iter().collect::<Vec<_>>();
+    entries.sort_by(|(left, _), (right, _)| left.encode_utf16().cmp(right.encode_utf16()));
+    let mut map = serializer.serialize_map(Some(entries.len()))?;
+    for (key, value) in entries {
+        map.serialize_entry(key, value)?;
+    }
+    map.end()
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

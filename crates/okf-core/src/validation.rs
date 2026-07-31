@@ -1,6 +1,6 @@
 use crate::parser::{is_valid_actor, parse_explicit_zone_timestamp};
 use crate::{Finding, LinkClassification, ParseFailureReason, ParsedBundle};
-use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, Utc};
+use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -27,44 +27,87 @@ fn ecmascript_trim(value: &str) -> &str {
 }
 
 pub fn parse_reference_time(now: &str) -> Option<DateTime<FixedOffset>> {
-    DateTime::parse_from_rfc3339(now)
-        .ok()
-        .or_else(|| {
-            for format in [
-                "%Y-%m-%dT%H:%MZ",
-                "%Y-%m-%dT%H:%M%z",
-                "%Y-%m-%dT%H:%M:%S",
-                "%Y-%m-%dT%H:%M",
-            ] {
-                if format.ends_with("%z") {
-                    if let Ok(value) = DateTime::parse_from_str(now, format) {
-                        return Some(value);
-                    }
-                } else if let Ok(value) = NaiveDateTime::parse_from_str(now, format) {
-                    return Some(value.and_utc().fixed_offset());
-                }
-            }
-            None
-        })
-        .or_else(|| DateTime::parse_from_str(now, "%Y-%m-%dT%H:%M:%S%.f%z").ok())
-        .or_else(|| DateTime::parse_from_str(now, "%Y-%m-%dT%H:%M:%S%z").ok())
-        .or_else(|| {
-            let (date, suffix) = now.split_once('T')?;
-            if !matches!(suffix, "24:00Z" | "24:00:00Z") {
-                return None;
-            }
-            NaiveDate::parse_from_str(date, "%Y-%m-%d")
-                .ok()?
-                .succ_opt()?
-                .and_hms_opt(0, 0, 0)
-                .map(|value| value.and_utc().fixed_offset())
-        })
-        .or_else(|| {
-            NaiveDate::parse_from_str(now, "%Y-%m-%d")
-                .ok()?
-                .and_hms_opt(0, 0, 0)
-                .map(|value| value.and_utc().fixed_offset())
-        })
+    let (date_source, time_source) = now.split_once('T').unwrap_or((now, ""));
+    if date_source.len() != 10
+        || date_source.as_bytes().get(4) != Some(&b'-')
+        || date_source.as_bytes().get(7) != Some(&b'-')
+    {
+        return None;
+    }
+    let date = NaiveDate::parse_from_str(date_source, "%Y-%m-%d").ok()?;
+    if time_source.is_empty() {
+        return (now.len() == 10)
+            .then(|| date.and_hms_opt(0, 0, 0))
+            .flatten()
+            .map(|value| value.and_utc().fixed_offset());
+    }
+
+    let (time, mut zone) = if let Some(time) = time_source.strip_suffix('Z') {
+        (time, "Z".to_owned())
+    } else if let Some(offset) = time_source
+        .char_indices()
+        .skip(1)
+        .find(|(_, character)| matches!(character, '+' | '-'))
+        .map(|(index, _)| index)
+    {
+        (&time_source[..offset], time_source[offset..].to_owned())
+    } else {
+        (time_source, "Z".to_owned())
+    };
+    if zone != "Z" {
+        let sign = zone.as_bytes().first().copied()?;
+        if !matches!(sign, b'+' | b'-') {
+            return None;
+        }
+        if zone.len() == 5 && zone[1..].bytes().all(|byte| byte.is_ascii_digit()) {
+            zone.insert(3, ':');
+        }
+        if zone.len() != 6
+            || zone.as_bytes().get(3) != Some(&b':')
+            || !zone[1..3].bytes().all(|byte| byte.is_ascii_digit())
+            || !zone[4..6].bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return None;
+        }
+    }
+
+    let parts = time.split(':').collect::<Vec<_>>();
+    if !(2..=3).contains(&parts.len())
+        || parts[0].len() != 2
+        || parts[1].len() != 2
+        || !parts[0].bytes().all(|byte| byte.is_ascii_digit())
+        || !parts[1].bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+    let hour = parts[0].parse::<u32>().ok()?;
+    let minute = parts[1].parse::<u32>().ok()?;
+    let seconds = parts.get(2).copied().unwrap_or("00");
+    let (whole_seconds, fraction) = seconds.split_once('.').unwrap_or((seconds, ""));
+    if whole_seconds.len() != 2
+        || !whole_seconds.bytes().all(|byte| byte.is_ascii_digit())
+        || (!fraction.is_empty() && !fraction.bytes().all(|byte| byte.is_ascii_digit()))
+        || seconds.ends_with('.')
+    {
+        return None;
+    }
+    let second = whole_seconds.parse::<u32>().ok()?;
+    if hour == 24 {
+        if minute != 0 || second != 0 || fraction.bytes().any(|byte| byte != b'0') {
+            return None;
+        }
+        let next = date.succ_opt()?;
+        return DateTime::parse_from_rfc3339(&format!("{next}T00:00:00{zone}")).ok();
+    }
+    if hour > 23 || minute > 59 || second > 59 {
+        return None;
+    }
+    let normalized_time = if parts.len() == 2 {
+        format!("{time}:00")
+    } else {
+        time.to_owned()
+    };
+    DateTime::parse_from_rfc3339(&format!("{date_source}T{normalized_time}{zone}")).ok()
 }
 
 pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {

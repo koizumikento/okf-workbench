@@ -702,18 +702,9 @@ fn parse_frontmatter(
             resource_limit: true,
         });
     }
-    if yaml_source.contains('\u{0085}') {
-        let message = yaml_source
-            .lines()
-            .find(|line| line.contains('\u{0085}'))
-            .map(str::trim_start)
-            .filter(|line| line.starts_with("type:"))
-            .map_or(
-                "Concept scalar metadata contains a control character that is unsafe for graph metadata.",
-                |_| "Concept type contains a control character that is unsafe for graph filters.",
-            );
+    if let Some(message) = literal_nel_semantic_message(yaml_source) {
         return Err(FrontmatterError {
-            message: message.to_owned(),
+            message,
             range: yaml_range,
             resource_limit: true,
         });
@@ -876,7 +867,8 @@ fn parse_frontmatter(
             resource_limit: false,
         });
     }
-    let normalized_yaml = normalize_line_breaks(yaml_source);
+    let (nel_safe_yaml, literal_nel_marker) = mask_literal_nel(yaml_source);
+    let normalized_yaml = normalize_line_breaks(&nel_safe_yaml);
     let set_safe_yaml = rewrite_standard_sets_for_serde(&normalized_yaml);
     let anchor_safe_yaml = normalize_hash_anchor_names(&set_safe_yaml);
     let flow_plain_safe_yaml = normalize_tight_flow_plain_keys(&anchor_safe_yaml);
@@ -969,6 +961,10 @@ fn parse_frontmatter(
         explicit_tags.insert(key, value);
     }
     restore_standard_set_sources(yaml_source, &mut raw, false, &empty_value_anchors);
+    if let Some(marker) = literal_nel_marker.as_deref() {
+        restore_literal_nel_in_map(&mut raw, marker);
+        restore_literal_nel_in_map(&mut explicit_tags, marker);
+    }
     let explicit_tag_snapshot = explicit_tags.clone();
     explicit_tags.retain(|key, _| {
         if raw.contains_key(key) {
@@ -1041,6 +1037,88 @@ fn parse_frontmatter(
         text[closing_line_end..].to_owned(),
         range_for(text, closing_line_end, text.len()),
     ))
+}
+
+fn mask_literal_nel(source: &str) -> (String, Option<String>) {
+    if !source.contains('\u{0085}') {
+        return (source.to_owned(), None);
+    }
+    let marker = (0_u32..)
+        .map(|index| format!("\u{e000}OKF-NEL-{index}\u{e001}"))
+        .find(|candidate| !source.contains(candidate))
+        .expect("an absent literal-NEL marker always exists");
+    (source.replace('\u{0085}', &marker), Some(marker))
+}
+
+fn restore_literal_nel_in_map(map: &mut Map<String, Value>, marker: &str) {
+    let mut restored = Map::with_capacity(map.len());
+    for (key, mut value) in std::mem::take(map) {
+        restore_literal_nel_in_value(&mut value, marker);
+        restored.insert(key.replace(marker, "\u{0085}"), value);
+    }
+    *map = restored;
+}
+
+fn restore_literal_nel_in_value(value: &mut Value, marker: &str) {
+    match value {
+        Value::String(text) => {
+            if text.contains(marker) {
+                *text = text.replace(marker, "\u{0085}");
+            }
+        }
+        Value::Array(values) => {
+            for nested in values {
+                restore_literal_nel_in_value(nested, marker);
+            }
+        }
+        Value::Object(map) => restore_literal_nel_in_map(map, marker),
+        Value::Null | Value::Bool(_) | Value::Number(_) => {}
+    }
+}
+
+fn literal_nel_semantic_message(source: &str) -> Option<String> {
+    let mut in_tags = false;
+    for span in line_spans(source) {
+        let body = &source[span.start..span.content_end];
+        let trimmed = body.trim_start_matches([' ', '\t']);
+        let indent = body.len() - trimmed.len();
+        if indent == 0 && !trimmed.starts_with(['#', '-', '?']) {
+            in_tags = trimmed.starts_with("tags:");
+        }
+        if !body.contains('\u{0085}') {
+            continue;
+        }
+        if indent == 0 && trimmed.starts_with("type:") {
+            return Some(
+                "Concept type contains a control character that is unsafe for graph filters."
+                    .to_owned(),
+            );
+        }
+        if in_tags {
+            return Some(
+                "Concept tag contains a control character that is unsafe for graph filters."
+                    .to_owned(),
+            );
+        }
+        if indent == 0
+            && [
+                "resource:",
+                "timestamp:",
+                "status:",
+                "stale_after:",
+                "runtime:",
+                "computation:",
+            ]
+            .iter()
+            .any(|key| trimmed.starts_with(key))
+        {
+            return Some(
+                "Concept scalar metadata contains a control character that is unsafe for graph metadata."
+                    .to_owned(),
+            );
+        }
+    }
+    None
 }
 
 fn object_string(
@@ -2290,6 +2368,7 @@ fn compact_nested_mapping_range(source: &str) -> Option<(usize, usize)> {
 fn invalid_explicit_timestamp_range(source: &str) -> Option<(usize, usize)> {
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
+    let non_string_key = non_string_mapping_key_range(source);
     let spans = line_spans(source);
     for (line_index, span) in spans.iter().enumerate() {
         let line = &source[span.start..span.content_end];
@@ -2303,10 +2382,16 @@ fn invalid_explicit_timestamp_range(source: &str) -> Option<(usize, usize)> {
                     .chars()
                     .rev()
                     .find(|character| !character.is_whitespace());
+                let timestamp_mapping_key = non_string_key.is_some_and(|(key_start, key_end)| {
+                    absolute < key_start
+                        && source[absolute + tag.len()..key_start].trim().is_empty()
+                        && source[key_end..].trim_start().starts_with(':')
+                });
                 if excluded_ranges
                     .iter()
                     .any(|(start, end)| *start <= absolute && absolute < *end)
                     || yaml_comment_start(prefix).is_some()
+                    || timestamp_mapping_key
                     || previous.is_some_and(|character| {
                         !matches!(character, '[' | '{' | ',' | ':' | '?' | '-')
                     })
@@ -3056,21 +3141,39 @@ fn under_indented_flow_range(source: &str) -> Option<(usize, usize, char)> {
 
 fn non_string_mapping_key_range(source: &str) -> Option<(usize, usize)> {
     let mut excluded_ranges = block_scalar_body_ranges(source);
-    excluded_ranges.extend(standard_set_body_ranges(source));
+    let standard_set_ranges = standard_set_body_ranges(source);
+    excluded_ranges.extend(standard_set_ranges.iter().copied());
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
     if let Some(range) = alias_mapping_key_range(source, &excluded_ranges) {
         return Some(range);
     }
+    if let Some(range) = non_string_flow_mapping_key_range(source, &excluded_ranges) {
+        return Some(range);
+    }
     let spans = line_spans(source);
     for (line_index, line) in spans.iter().enumerate() {
+        let body = &source[line.start..line.content_end];
+        let trimmed = body.trim_start_matches([' ', '\t']);
+        let inside_standard_set = standard_set_ranges
+            .iter()
+            .any(|(start, end)| *start <= line.start && line.start < *end);
+        if inside_standard_set
+            && let Some(member) = trimmed.strip_prefix('?').map(str::trim_start)
+            && let Some(colon) = mapping_key_colon(member)
+        {
+            let key_source = member[..colon].trim_end();
+            let key_start = line.start + body.len().saturating_sub(trimmed.len()) + trimmed.len()
+                - member.len();
+            if let Some(range) = non_string_key_source_range(key_source, key_start) {
+                return Some(range);
+            }
+        }
         if excluded_ranges
             .iter()
             .any(|(start, end)| *start <= line.start && line.start < *end)
         {
             continue;
         }
-        let body = &source[line.start..line.content_end];
-        let trimmed = body.trim_start_matches([' ', '\t']);
         let item = trimmed
             .strip_prefix("- ")
             .or_else(|| (trimmed == "-").then_some(""));
@@ -3098,12 +3201,8 @@ fn non_string_mapping_key_range(source: &str) -> Option<(usize, usize)> {
                 })
                 .unwrap_or(line.content_end);
             let candidate = source[key_start..key_end].trim_end_matches(['\r', '\n']);
-            let (plain_candidate, _, key_tag) = split_node_properties(candidate);
-            if key_tag != Some("str")
-                && serde_yaml::from_str::<serde_yaml::Value>(plain_candidate)
-                    .is_ok_and(|value| !matches!(value, serde_yaml::Value::String(_)))
-            {
-                return Some((key_start, key_start + plain_candidate.len()));
+            if let Some(range) = non_string_key_source_range(candidate, key_start) {
+                return Some(range);
             }
             continue;
         }
@@ -3114,17 +3213,92 @@ fn non_string_mapping_key_range(source: &str) -> Option<(usize, usize)> {
         if key_source.is_empty() {
             continue;
         }
-        let (plain_key_source, _, key_tag) = split_node_properties(key_source);
-        if key_tag == Some("str") {
+        let key_start = line.start + mapping_offset;
+        if let Some(range) = non_string_key_source_range(key_source, key_start) {
+            return Some(range);
+        }
+    }
+    None
+}
+
+fn non_string_key_source_range(key_source: &str, key_start: usize) -> Option<(usize, usize)> {
+    let (plain_key_source, _, key_tag) = split_node_properties(key_source);
+    if key_tag == Some("str") {
+        return None;
+    }
+    let non_string = key_tag.is_some()
+        || serde_yaml::from_str::<serde_yaml::Value>(plain_key_source)
+            .is_ok_and(|value| !matches!(value, serde_yaml::Value::String(_)));
+    if !non_string {
+        return None;
+    }
+    let start = key_start + key_source.len().saturating_sub(plain_key_source.len());
+    Some((start, start + scalar_lexical_source(plain_key_source).len()))
+}
+
+fn non_string_flow_mapping_key_range(
+    source: &str,
+    excluded_ranges: &[(usize, usize)],
+) -> Option<(usize, usize)> {
+    let mut quote = None;
+    let mut escaped = false;
+    let mut comment = false;
+    for (offset, character) in source.char_indices() {
+        if excluded_ranges
+            .iter()
+            .any(|(start, end)| *start <= offset && offset < *end)
+        {
             continue;
         }
-        if serde_yaml::from_str::<serde_yaml::Value>(plain_key_source)
-            .is_ok_and(|value| !matches!(value, serde_yaml::Value::String(_)))
-        {
-            let start = line.start
-                + mapping_offset
-                + key_source.len().saturating_sub(plain_key_source.len());
-            return Some((start, start + plain_key_source.len()));
+        if comment {
+            if matches!(character, '\r' | '\n') {
+                comment = false;
+            }
+            continue;
+        }
+        if let Some(active_quote) = quote {
+            if active_quote == '"' && character == '\\' && !escaped {
+                escaped = true;
+                continue;
+            }
+            if character == active_quote && !escaped {
+                quote = None;
+            }
+            escaped = false;
+            continue;
+        }
+        match character {
+            '#' if offset == 0
+                || source[..offset]
+                    .chars()
+                    .next_back()
+                    .is_some_and(char::is_whitespace) =>
+            {
+                comment = true;
+            }
+            '"' | '\'' => quote = Some(character),
+            '{' => {
+                let end = flow_value_end(source, offset);
+                for (entry_start, entry_end) in top_level_flow_entries(source, offset, end) {
+                    let entry_source = &source[entry_start..entry_end];
+                    let leading = entry_source.len() - entry_source.trim_start().len();
+                    let entry = entry_source.trim_start();
+                    let key = entry
+                        .strip_prefix('?')
+                        .map(str::trim_start)
+                        .unwrap_or(entry);
+                    let key_start = entry_start + leading + entry.len().saturating_sub(key.len());
+                    let Some(colon) = flow_top_level_mapping_colon(source, key_start, entry_end)
+                    else {
+                        continue;
+                    };
+                    let key_source = source[key_start..colon].trim_end();
+                    if let Some(range) = non_string_key_source_range(key_source, key_start) {
+                        return Some(range);
+                    }
+                }
+            }
+            _ => {}
         }
     }
     None
@@ -5626,6 +5800,11 @@ fn standard_tag_semantic(tag_name: &str, source_value: &str, existing: Value) ->
             .unwrap_or_else(|| source_value.trim().to_owned())
     };
     match tag_name {
+        "str" => Value::String(if source_value.trim().is_empty() {
+            String::new()
+        } else {
+            scalar_text()
+        }),
         "timestamp" => canonical_timestamp(&scalar_text())
             .map(Value::String)
             .unwrap_or(existing),
@@ -5856,9 +6035,9 @@ fn restore_collection_set_member_provenance(
     }
     let trimmed = member_source.trim_start();
     let (property_remainder, _, _) = split_node_properties(trimmed);
-    let synthetic = if matches!(property_remainder.chars().next(), Some('{' | '['))
-        || member_source.starts_with(['\r', '\n'])
-    {
+    let synthetic = if matches!(property_remainder.chars().next(), Some('{' | '[')) {
+        format!("member: {trimmed}")
+    } else if member_source.starts_with(['\r', '\n']) {
         format!("member: {member_source}")
     } else {
         format!("member:\n  {member_source}")
@@ -5961,19 +6140,16 @@ fn restore_direct_standard_set_member_source(member_source: &str, value: &mut Va
         }
         return;
     }
-    if tag_name.as_deref() == Some("set") {
-        if let Some(Value::Object(tagged)) = value.get_mut(TAGGED_KEY)
-            && tagged.get("tag").and_then(Value::as_str) == Some("tag:yaml.org,2002:set")
-            && !lexical.is_empty()
-        {
+    if tag_name.as_deref() == Some("set")
+        && let Some(Value::Object(tagged)) = value.get_mut(TAGGED_KEY)
+        && tagged.get("tag").and_then(Value::as_str) == Some("tag:yaml.org,2002:set")
+    {
+        if !lexical.is_empty() {
             tagged.insert("source".to_owned(), Value::String(lexical));
         }
         return;
     }
-    if value.is_object()
-        && !lexical.starts_with(['{', '['])
-        && mapping_key_colon(&lexical).is_some()
-    {
+    if value.is_object() && standard_set_member_tag_is_mapping_key(member_source) {
         // In `? !!str key: value`, the scalar tag belongs to the mapping key. The set member is
         // the mapping itself, so wrapping the whole object would change its semantics.
         return;
@@ -5987,6 +6163,9 @@ fn restore_direct_standard_set_member_source(member_source: &str, value: &mut Va
     if let Some(Value::Object(tagged)) = value.get_mut(TAGGED_KEY)
         && tagged.get("tag").and_then(Value::as_str) == Some(tag_uri)
     {
+        if tag_name == "str" && lexical.trim().is_empty() {
+            tagged.insert("value".to_owned(), Value::String(String::new()));
+        }
         tagged.insert("source".to_owned(), Value::String(lexical));
         return;
     }
@@ -5998,6 +6177,20 @@ fn restore_direct_standard_set_member_source(member_source: &str, value: &mut Va
     let mut wrapper = Map::new();
     wrapper.insert(TAGGED_KEY.to_owned(), Value::Object(body));
     *value = Value::Object(wrapper);
+}
+
+fn standard_set_member_tag_is_mapping_key(member_source: &str) -> bool {
+    line_spans(member_source).into_iter().any(|line| {
+        let body = &member_source[line.start..line.content_end];
+        let trimmed = body.trim_start_matches([' ', '\t']);
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            return false;
+        }
+        let (remainder, _, tag) = split_node_properties(trimmed);
+        tag.is_some()
+            && !remainder.starts_with(['{', '['])
+            && mapping_key_colon(remainder).is_some()
+    })
 }
 
 fn restore_nested_standard_set_member_sources(
@@ -6255,7 +6448,20 @@ fn restore_standard_set_sources(
         .collect::<Vec<_>>();
 
     fn restored_set_source(source: &str) -> String {
-        if source.trim() == "?" || source.trim_start().starts_with('{') {
+        let mut syntactic_lines = line_spans(source).into_iter().filter_map(|line| {
+            let body = source[line.start..line.content_end].trim();
+            (!body.is_empty() && !body.starts_with('#')).then_some(body)
+        });
+        let terminal_property_only = syntactic_lines.next().is_some_and(|body| {
+            let Some(member) = body.strip_prefix('?').map(str::trim_start) else {
+                return false;
+            };
+            let (remainder, anchor, tag) = split_node_properties(member);
+            remainder.is_empty()
+                && (anchor.is_some() || tag.is_some())
+                && syntactic_lines.next().is_none()
+        });
+        if source.trim() == "?" || source.trim_start().starts_with('{') || terminal_property_only {
             source.trim_end().to_owned()
         } else {
             source.to_owned()
@@ -7358,9 +7564,16 @@ fn block_field_value_end(
             let line_start = text[..content_end]
                 .rfind(['\r', '\n'])
                 .map_or(0, |newline| newline + 1);
-            if effective_tag.is_none()
-                && value_source.is_empty()
-                && text[line_start..content_end].trim() == "?"
+            let terminal = text[line_start..content_end].trim();
+            let terminal_member_property = terminal
+                .strip_prefix('?')
+                .map(str::trim_start)
+                .is_some_and(|member| {
+                    let (remainder, anchor, tag) = split_node_properties(member);
+                    remainder.is_empty() && (anchor.is_some() || tag.is_some())
+                });
+            if (value_source.is_empty() || effective_tag == Some("set"))
+                && ((effective_tag.is_none() && terminal == "?") || terminal_member_property)
             {
                 return content_end;
             }

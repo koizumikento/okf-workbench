@@ -224,6 +224,14 @@ pub fn bundle_preset_files(preset: BundlePreset, timestamp: &str) -> Vec<Rendere
         .collect()
 }
 
+pub fn bundle_preset_files_checked(
+    preset: BundlePreset,
+    timestamp: &str,
+) -> Result<Vec<RenderedFile>, String> {
+    validate_template_timestamp(timestamp)?;
+    Ok(bundle_preset_files(preset, timestamp))
+}
+
 pub fn concept_template_file(input: &ConceptTemplateInput) -> RenderedFile {
     let path = normalize_concept_path(&input.relative_path);
     let title = one_line(&input.title);
@@ -450,6 +458,8 @@ pub fn agent_files(target: AgentTarget, bundle_path: &str) -> Vec<RenderedFile> 
     } else {
         format!("{}/", bundle_path.trim_matches('/').replace('\\', "/"))
     };
+    let bundle_code = inline_code(&bundle);
+    let index_code = inline_code(&format!("{bundle}index.md"));
     let agents = RenderedFile {
         relative_path: "AGENTS.md".to_owned(),
         encoding: "utf8",
@@ -459,11 +469,8 @@ pub fn agent_files(target: AgentTarget, bundle_path: &str) -> Vec<RenderedFile> 
                 "<!-- okf-workbench:start -->".to_owned(),
                 "## OKF knowledge".to_owned(),
                 String::new(),
-                format!("- The OKF bundle is located at `{bundle}`."),
-                format!(
-                    "- Read `{}index.md` before tasks that require project-wide context.",
-                    bundle
-                ),
+                format!("- The OKF bundle is located at {bundle_code}."),
+                format!("- Read {index_code} before tasks that require project-wide context."),
                 "- Update the relevant concept when a change affects durable project knowledge."
                     .to_owned(),
                 "- When an `okf` executable is available for a local bundle, prefer it for validation, new-concept planning, and managed-index updates; review `--check` output before `--apply`."
@@ -480,7 +487,7 @@ pub fn agent_files(target: AgentTarget, bundle_path: &str) -> Vec<RenderedFile> 
         relative_path: ".agents/skills/maintain-okf-knowledge/SKILL.md".to_owned(),
         encoding: "utf8",
         content: format!(
-            "---\nname: maintain-okf-knowledge\ndescription: Maintain this repository's OKF knowledge bundle. Use when creating or updating durable project knowledge, recording decisions, repairing links, regenerating indexes, or reviewing knowledge quality.\n---\n\n# Maintain OKF knowledge\n\nThe repository's OKF bundle is located at `{bundle}`.\n\n## Workflow\n\n1. Read `{bundle}index.md` and follow its links before changing durable project knowledge.\n2. Search for an existing concept and update it instead of creating a duplicate.\n3. Create a new concept only when no existing concept has the same durable purpose.\n4. Add bundle-relative Markdown links to related concepts.\n5. Regenerate managed indexes and run both conformance and curation checks.\n\n## CLI-assisted workflow\n\nThe `okf` CLI is optional. Prefer it when an `okf` executable is available in the agent's terminal and the bundle has a local filesystem path. Otherwise use OKF Workbench editor commands and follow the document rules below.\n\nReplace `<bundle-root>` with a correctly shell-quoted local path for the bundle at `{bundle}`.\n\n```text\nokf validate <bundle-root> --format json\nokf new <bundle-root> --template decision --title \"<title>\" --check\nokf index <bundle-root> --mode missing --check\n```\n\nInspect every reported path and change before rerunning a write command with `--apply` instead of `--check`. Edit existing concept Markdown directly while preserving unknown frontmatter.\n\n## Concept documents\n\n- Every concept is a non-reserved `.md` file with YAML frontmatter.\n- `type` is required and may be any non-empty value; do not enforce a closed type list.\n- `title`, `description`, `resource`, and `tags` are optional or recommended fields.\n- Use `generated`, `verified`, `status`, `stale_after`, and `sources` for OKF v0.2 provenance, trust, and lifecycle metadata.\n- Read legacy `timestamp` only as the v0.1 fallback when `generated` is absent.\n- Preserve every unknown frontmatter field and tolerate unknown concept types.\n- Reuse a stable concept ID: its bundle-relative POSIX path without the `.md` suffix.\n\n## Links, provenance, and time\n\n- Use `/path/to/concept.md` for bundle-root links or relative paths from the current document.\n- Keep internal relationships as ordinary directed Markdown links; do not invent relationship types.\n- Use ISO 8601 date-times with an explicit `Z` or numeric offset for `generated.at` and `verified[].at`.\n- Treat `type: Attested Computation` as a declarative contract; do not execute its executor or attester without a separate trusted runtime.\n- Do not treat a broken link as a conformance failure; repair it as a curation problem.\n\n## Indexes and checks\n\n- Let OKF Workbench update only the explicit `okf-workbench:index` managed region in each `index.md`.\n- Do not hand-edit or duplicate managed-region markers.\n- Fix conformance errors before relying on the bundle for interoperability.\n- Review curation warnings for missing metadata, orphan concepts, duplicate resources, malformed trust families, suspicious times, and stale concepts.\n- Keep speculative notes and short-lived task state outside the durable bundle.\n"
+            "---\nname: maintain-okf-knowledge\ndescription: Maintain this repository's OKF knowledge bundle. Use when creating or updating durable project knowledge, recording decisions, repairing links, regenerating indexes, or reviewing knowledge quality.\n---\n\n# Maintain OKF knowledge\n\nThe repository's OKF bundle is located at {bundle_code}.\n\n## Workflow\n\n1. Read {index_code} and follow its links before changing durable project knowledge.\n2. Search for an existing concept and update it instead of creating a duplicate.\n3. Create a new concept only when no existing concept has the same durable purpose.\n4. Add bundle-relative Markdown links to related concepts.\n5. Regenerate managed indexes and run both conformance and curation checks.\n\n## CLI-assisted workflow\n\nThe `okf` CLI is optional. Prefer it when an `okf` executable is available in the agent's terminal and the bundle has a local filesystem path. Otherwise use OKF Workbench editor commands and follow the document rules below.\n\nReplace `<bundle-root>` with a correctly shell-quoted local path for the bundle at {bundle_code}.\n\n```text\nokf validate <bundle-root> --format json\nokf new <bundle-root> --template decision --title \"<title>\" --check\nokf index <bundle-root> --mode missing --check\n```\n\nInspect every reported path and change before rerunning a write command with `--apply` instead of `--check`. Edit existing concept Markdown directly while preserving unknown frontmatter.\n\n## Concept documents\n\n- Every concept is a non-reserved `.md` file with YAML frontmatter.\n- `type` is required and may be any non-empty value; do not enforce a closed type list.\n- `title`, `description`, `resource`, and `tags` are optional or recommended fields.\n- Use `generated`, `verified`, `status`, `stale_after`, and `sources` for OKF v0.2 provenance, trust, and lifecycle metadata.\n- Read legacy `timestamp` only as the v0.1 fallback when `generated` is absent.\n- Preserve every unknown frontmatter field and tolerate unknown concept types.\n- Reuse a stable concept ID: its bundle-relative POSIX path without the `.md` suffix.\n\n## Links, provenance, and time\n\n- Use `/path/to/concept.md` for bundle-root links or relative paths from the current document.\n- Keep internal relationships as ordinary directed Markdown links; do not invent relationship types.\n- Use ISO 8601 date-times with an explicit `Z` or numeric offset for `generated.at` and `verified[].at`.\n- Treat `type: Attested Computation` as a declarative contract; do not execute its executor or attester without a separate trusted runtime.\n- Do not treat a broken link as a conformance failure; repair it as a curation problem.\n\n## Indexes and checks\n\n- Let OKF Workbench update only the explicit `okf-workbench:index` managed region in each `index.md`.\n- Do not hand-edit or duplicate managed-region markers.\n- Fix conformance errors before relying on the bundle for interoperability.\n- Review curation warnings for missing metadata, orphan concepts, duplicate resources, malformed trust families, suspicious times, and stale concepts.\n- Keep speculative notes and short-lived task state outside the durable bundle.\n"
         ),
     };
     match target {
@@ -488,6 +495,54 @@ pub fn agent_files(target: AgentTarget, bundle_path: &str) -> Vec<RenderedFile> 
         AgentTarget::Skill => vec![skill],
         AgentTarget::Both => vec![agents, skill],
     }
+}
+
+pub fn agent_files_checked(
+    target: AgentTarget,
+    bundle_path: &str,
+) -> Result<Vec<RenderedFile>, String> {
+    let normalized = validate_bundle_directory(bundle_path)?;
+    Ok(agent_files(target, &normalized))
+}
+
+fn validate_template_timestamp(timestamp: &str) -> Result<(), String> {
+    if ecmascript_trim(timestamp).is_empty() {
+        return Err("Bundle rendering requires a caller-supplied timestamp.".to_owned());
+    }
+    validate_metadata_text(timestamp, "Concept timestamp", 256, None)?;
+    if has_control_character(timestamp) {
+        return Err(
+            "Concept timestamp contains a control character that cannot be retained safely."
+                .to_owned(),
+        );
+    }
+    Ok(())
+}
+
+fn validate_bundle_directory(path: &str) -> Result<String, String> {
+    if path == "." {
+        return Ok(".".to_owned());
+    }
+    let probe = validate_concept_path(&format!("{path}/placeholder.md"))?;
+    Ok(probe
+        .strip_suffix("/placeholder.md")
+        .unwrap_or_default()
+        .to_owned())
+}
+
+fn inline_code(value: &str) -> String {
+    let maximum = value
+        .split(|character| character != '`')
+        .map(str::len)
+        .max()
+        .unwrap_or_default();
+    let delimiter = "`".repeat(std::cmp::max(1, maximum + 1));
+    let pad = value.starts_with(['`', ' ']) || value.ends_with(['`', ' ']);
+    format!(
+        "{delimiter}{}{value}{}{delimiter}",
+        if pad { " " } else { "" },
+        if pad { " " } else { "" }
+    )
 }
 
 fn body_sections(template: &str) -> &'static [&'static str] {

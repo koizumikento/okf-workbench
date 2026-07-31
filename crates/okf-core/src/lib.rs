@@ -14,7 +14,8 @@ pub use model::*;
 pub use parser::parse_bundle;
 pub use templates::{
     AgentTarget, BundlePreset, ConceptTemplateInput, IndexMode, RenderedFile, agent_files,
-    bundle_preset_files, concept_template_file, concept_template_file_checked, index_files,
+    agent_files_checked, bundle_preset_files, bundle_preset_files_checked, concept_template_file,
+    concept_template_file_checked, index_files,
 };
 pub use validation::{is_future_minor_version, validate_bundle};
 
@@ -205,7 +206,10 @@ pub fn dispatch_json(request_json: &str) -> String {
             CoreResponse::success(build_graph_payload(&bundle))
         }
         CoreRequest::RenderBundle(input) => {
-            CoreResponse::success(bundle_preset_files(input.preset, &input.timestamp))
+            match bundle_preset_files_checked(input.preset, &input.timestamp) {
+                Ok(files) => CoreResponse::success(files),
+                Err(message) => CoreResponse::failure("invalid-request", message),
+            }
         }
         CoreRequest::RenderConcept(input) => match concept_template_file_checked(&input) {
             Ok(file) => CoreResponse::success(file),
@@ -221,7 +225,10 @@ pub fn dispatch_json(request_json: &str) -> String {
             CoreResponse::success(index_files(&bundle, input.mode))
         }
         CoreRequest::RenderAgent(input) => {
-            CoreResponse::success(agent_files(input.target, &input.bundle_path))
+            match agent_files_checked(input.target, &input.bundle_path) {
+                Ok(files) => CoreResponse::success(files),
+                Err(message) => CoreResponse::failure("unsafe-relative-path", message),
+            }
         }
     };
     serialize_response(response)

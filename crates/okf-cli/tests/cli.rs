@@ -516,6 +516,35 @@ fn unsafe_paths_and_unknown_templates_fail_before_writing() {
     assert!(!directory.path().join(".md").exists());
 }
 
+#[test]
+fn new_appends_markdown_extension_to_default_and_explicit_paths() {
+    let directory = tempdir().unwrap();
+    initialize(directory.path());
+    for arguments in [
+        vec![
+            "new",
+            directory.path().to_str().unwrap(),
+            "--title",
+            "Default Path",
+            "--apply",
+        ],
+        vec![
+            "new",
+            directory.path().to_str().unwrap(),
+            "--title",
+            "Explicit Path",
+            "--path",
+            "nested/explicit",
+            "--apply",
+        ],
+    ] {
+        let output = okf().args(arguments).output().unwrap();
+        assert!(output.status.success(), "{output:?}");
+    }
+    assert!(directory.path().join("default-path.md").is_file());
+    assert!(directory.path().join("nested/explicit.md").is_file());
+}
+
 #[cfg(unix)]
 #[test]
 fn symbolic_link_bundle_root_is_refused() {

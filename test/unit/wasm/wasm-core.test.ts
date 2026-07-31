@@ -214,6 +214,16 @@ describe('Rust/Wasm core boundary', () => {
     },
   );
 
+  test('bundle preset timestamps reject the same invalid metadata as the oracle', () => {
+    for (const timestamp of ['', '   ', 'x'.repeat(257), 'unsafe\u0085time']) {
+      expect(() => core.renderBundle('software-project', timestamp), timestamp).toThrow();
+      expect(
+        () => typescriptOkfCore.renderBundle('software-project', timestamp),
+        timestamp,
+      ).toThrow();
+    }
+  });
+
   test.each(CONCEPT_TEMPLATES)(
     'concept template %s is byte-identical to the migration oracle',
     (template) => {
@@ -305,6 +315,13 @@ describe('Rust/Wasm core boundary', () => {
       { relativePath: 'AGENTS.md', encoding: 'utf8', content: agents.value },
       { relativePath: AGENT_SKILL_PATH, encoding: 'utf8', content: skill.value },
     ]);
+    for (const path of ['know`ledge', 'a``b']) {
+      expect(core.renderAgent('both', path)).toEqual(typescriptOkfCore.renderAgent('both', path));
+    }
+    for (const path of ['', '../escape', '/absolute', 'bad\npath']) {
+      expect(() => core.renderAgent('both', path), path).toThrow();
+      expect(() => typescriptOkfCore.renderAgent('both', path), path).toThrow();
+    }
   });
 
   test.each(fixtureNames)(
@@ -352,6 +369,20 @@ describe('Rust/Wasm core boundary', () => {
       rootUri,
     );
     expect(core.renderIndexes(input, 'all')).toEqual(typescriptOkfCore.renderIndexes(input, 'all'));
+  });
+
+  test('graph statistic keys use JavaScript UTF-16 code-unit order', () => {
+    const rootUri = 'fixture:/graph-stat-order';
+    const input = inputFor(
+      [
+        ['emoji.md', concept('', 'tags: ["😀"]\n', '"😀"')],
+        ['pua.md', concept('', 'tags: ["\uE000"]\n', '"\uE000"')],
+      ],
+      rootUri,
+    );
+    expect(core.inspect(input, '2026-07-22T12:00:00Z')).toEqual(
+      typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'),
+    );
   });
 
   test('failed graph sources and duplicate tag statistics match the TypeScript oracle', () => {
@@ -419,7 +450,14 @@ describe('Rust/Wasm core boundary', () => {
     expect(core.inspect(input, '2026-07-31T00:00:00+0000')).toEqual(
       typescriptOkfCore.inspect(input, '2026-07-31T00:00:00+0000'),
     );
-    for (const now of ['2026-07-31T00:00:00', '2026-07-31T00:00Z', '2026-07-31T24:00:00Z']) {
+    for (const now of [
+      '2026-07-31T00:00:00',
+      '2026-07-31T00:00:00.123',
+      '2026-07-31T00:00Z',
+      '2026-07-31T24:00:00',
+      '2026-07-31T24:00:00Z',
+      '2026-07-31T24:00:00+00:00',
+    ]) {
       expect(core.inspect(input, now), now).toEqual(typescriptOkfCore.inspect(input, now));
     }
     expect(() => core.inspect(input, '07/31/2026')).toThrow(TypeError);
@@ -427,6 +465,16 @@ describe('Rust/Wasm core boundary', () => {
     expect(() => core.inspect(input, 'not-a-date')).toThrow();
     expect(() => typescriptOkfCore.inspect(input, 'not-a-date')).toThrow();
     expect(() => core.inspect(input, 'not-a-date')).toThrow(TypeError);
+    expect(() => core.inspect(input, new Date(Number.NaN))).toThrow(TypeError);
+    expect(() => typescriptOkfCore.inspect(input, new Date(Number.NaN))).toThrow(TypeError);
+    for (const invalid of [
+      '2026-07-31t00:00:00z',
+      '2026-07-31 00:00:00Z',
+      '2026-07-31T00:00:60Z',
+    ]) {
+      expect(() => core.inspect(input, invalid), invalid).toThrow(TypeError);
+      expect(() => typescriptOkfCore.inspect(input, invalid), invalid).toThrow(TypeError);
+    }
   });
 
   test('usage counts require a valid local or shared usage window', () => {
@@ -499,6 +547,13 @@ describe('Rust/Wasm core boundary', () => {
         'outer: !!set\n  ? !!set\n    ? value: &a !!binary |-\n        SGVsbG8=\noutside: *a\n',
       ],
       ['tagged-string-mapping-key-set.md', 'set: !!set\n  ? !!str key: value\n'],
+      ['quoted-tagged-string-mapping-key-set.md', 'set: !!set\n  ? !!str "key": value\n'],
+      ['empty-tagged-string-set.md', 'set: !!set\n  ? !!str\n'],
+      ['commented-empty-tagged-string-set.md', 'set: !!set\n  ? !!str # empty\n'],
+      ['empty-nested-set.md', 'set: !!set\n  ? !!set\n'],
+      ['explicit-nonstring-int-key.md', '!!int "1": one\n'],
+      ['set-explicit-nonstring-int-key.md', 'set: !!set\n  ? !!int "1": one\n'],
+      ['flow-explicit-timestamp-key.md', 'map: { !!timestamp "2001-12-15": one }\n'],
       [
         'anchored-mapping-nested-timestamp.md',
         'set: !!set\n  ? &m {outer: {time: !!timestamp 2001-2-3T4:5:6Z}}\ncopy: *m\n',
@@ -530,7 +585,14 @@ describe('Rust/Wasm core boundary', () => {
         'single-deferred-tagged-collection-member.md',
         'x: !!set\n  ?\n    nested:\n      key: !!int "1"\n',
       ],
+      [
+        'single-deferred-tagged-flow-sequence-member.md',
+        'x: !!set\n  ?\n    [!!timestamp "2001-12-15"]\n',
+      ],
+      ['single-deferred-tagged-flow-mapping-member.md', 'x: !!set\n  ?\n    {key: !!int "1"}\n'],
       ['terminal-bare-set-markers.md', 'items:\n  - !!set\n    ?\n  - !!set\n    ?\n'],
+      ['terminal-anchor-only-set-marker.md', 'set: !!set\n  ? &a\n'],
+      ['terminal-commented-set-marker.md', 'set: !!set\n  ? # empty\n  # trailing\n'],
       ['c1-control-type.md', 'type: "\\u0085"\n'],
       ['c1-control-resource.md', 'resource: "\\u0085urn:x"\n'],
       ['literal-c1-control-resource.md', 'resource: "\u0085urn:x"\n'],
@@ -550,6 +612,18 @@ describe('Rust/Wasm core boundary', () => {
     );
     expect(core.inspect(literalControlType, '2026-07-22T12:00:00Z')).toEqual(
       typescriptOkfCore.inspect(literalControlType, '2026-07-22T12:00:00Z'),
+    );
+    const preservedLiteralControl = inputFor(
+      [
+        [
+          'literal-c1-custom.md',
+          '---\ntype: reference\ncustom: "\u0085"\ntitle: "A\u0085B"\n---\n',
+        ],
+      ],
+      'fixture:/yaml-parity/literal-c1-custom.md',
+    );
+    expect(core.inspect(preservedLiteralControl, '2026-07-22T12:00:00Z')).toEqual(
+      typescriptOkfCore.inspect(preservedLiteralControl, '2026-07-22T12:00:00Z'),
     );
   });
 

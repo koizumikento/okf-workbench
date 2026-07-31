@@ -785,7 +785,15 @@ fn parse_frontmatter(
             .and_then(Value::as_array)
             .map(|tags| {
                 tags.iter()
-                    .filter_map(Value::as_str)
+                    .enumerate()
+                    .filter_map(|(index, value)| {
+                        let value = if explicit_tags.contains_key(&format!("/tags/{index}")) {
+                            semantic_value(value)
+                        } else {
+                            value
+                        };
+                        value.as_str()
+                    })
                     .map(str::to_owned)
                     .collect()
             })
@@ -1414,16 +1422,36 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
             .map(|(_, segment)| segment.as_str())
             .chain(std::iter::once(key.as_str()))
             .collect::<Vec<_>>();
-        if matches!(value_source.chars().next(), Some('{' | '[')) && value_source.contains("!!") {
-            preserve_flow_standard_yaml_tags(value_source, &path, raw, &mut explicit_tags);
+        if matches!(value_source.chars().next(), Some('{' | '[')) {
+            let relative_start = body
+                .find(value_source)
+                .unwrap_or_else(|| body.len().saturating_sub(value_source.len()));
+            let absolute_start = line.start + relative_start;
+            let absolute_end = flow_value_end(source, absolute_start);
+            let flow_source = &source[absolute_start..absolute_end];
+            if flow_source.contains("!!") {
+                preserve_flow_standard_yaml_tags(flow_source, &path, raw, &mut explicit_tags);
+            }
         }
         let mut remainder = value_source;
         let mut anchor_name = None;
-        if let Some(anchor) = remainder.strip_prefix('&')
-            && let Some((name, rest)) = anchor.split_once(char::is_whitespace)
-        {
-            anchor_name = Some(name.to_owned());
-            remainder = rest.trim_start();
+        let mut tag_name = None;
+        for _ in 0..2 {
+            if let Some(anchor) = remainder.strip_prefix('&') {
+                let (name, rest) = anchor
+                    .split_once(char::is_whitespace)
+                    .map_or((anchor, ""), |(name, rest)| (name, rest.trim_start()));
+                anchor_name = Some(name.to_owned());
+                remainder = rest;
+                continue;
+            }
+            if let Some(tag_source) = remainder.strip_prefix("!!") {
+                let (name, rest) = split_tag_source(tag_source);
+                tag_name = Some(name);
+                remainder = rest;
+                continue;
+            }
+            break;
         }
         if let Some(alias) = remainder.strip_prefix('*').map(str::trim)
             && let Some((wrapped, tag)) = anchors.get(alias).cloned()
@@ -1433,10 +1461,9 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
             continue;
         }
 
-        let Some(tag_source) = remainder.strip_prefix("!!") else {
+        let Some(tag_name) = tag_name else {
             continue;
         };
-        let (tag_name, remainder) = split_tag_source(tag_source);
         let lexical = tagged_lexical_source(source, &spans, line_index, indent, body, remainder);
         if let Some((wrapped, tag_uri)) =
             preserve_tagged_value(raw, &path, tag_name, &lexical, &mut explicit_tags)
@@ -1561,14 +1588,17 @@ fn scalar_lexical_source(source: &str) -> &str {
             .map_or(source, |offset| source[..offset].trim_end());
     };
     let mut escaped = false;
-    for (offset, character) in source.char_indices().skip(1) {
+    let mut characters = source.char_indices().peekable();
+    characters.next();
+    while let Some((offset, character)) = characters.next() {
         if quote == '"' && character == '\\' && !escaped {
             escaped = true;
             continue;
         }
         if character == quote && !escaped {
             let end = offset + character.len_utf8();
-            if quote == '\'' && source[end..].starts_with('\'') {
+            if quote == '\'' && characters.peek().is_some_and(|(_, next)| *next == '\'') {
+                characters.next();
                 escaped = false;
                 continue;
             }
@@ -1583,14 +1613,20 @@ fn flow_value_end(source: &str, start: usize) -> usize {
     let mut stack = Vec::new();
     let mut quote = None;
     let mut escaped = false;
-    for (relative, character) in source[start..].char_indices() {
+    let mut characters = source[start..].char_indices().peekable();
+    while let Some((relative, character)) = characters.next() {
         if let Some(active_quote) = quote {
             if active_quote == '"' && character == '\\' && !escaped {
                 escaped = true;
                 continue;
             }
             if character == active_quote && !escaped {
-                quote = None;
+                if active_quote == '\'' && characters.peek().is_some_and(|(_, next)| *next == '\'')
+                {
+                    characters.next();
+                } else {
+                    quote = None;
+                }
             }
             escaped = false;
             continue;
@@ -1933,24 +1969,22 @@ fn top_level_field_ranges(text: &str, start: usize, end: usize) -> Map<String, V
         {
             let name = body[..colon].trim();
             if !name.is_empty() {
+                let value_source = &body[colon + 1..];
+                let leading_whitespace = value_source.len() - value_source.trim_start().len();
+                let value_start = start + line.start + colon + 1 + leading_whitespace;
                 starts.push((
                     name.to_owned(),
                     start + line.start,
-                    start + line.content_end,
-                    inline_field_value_is_complete(body[colon + 1..].trim()),
+                    inline_field_value_end(text, value_start, start + line.content_end),
                 ));
             }
         }
     }
 
     let mut fields = Map::new();
-    for (index, (name, field_start, scalar_end, has_inline_value)) in starts.iter().enumerate() {
-        let next_start = starts.get(index + 1).map_or(end, |(_, start, _, _)| *start);
-        let field_end = if *has_inline_value {
-            *scalar_end
-        } else {
-            next_start
-        };
+    for (index, (name, field_start, inline_end)) in starts.iter().enumerate() {
+        let next_start = starts.get(index + 1).map_or(end, |(_, start, _)| *start);
+        let field_end = inline_end.unwrap_or(next_start);
         fields.insert(
             name.clone(),
             serde_json::to_value(range_for(text, *field_start, field_end)).unwrap_or(Value::Null),
@@ -1959,26 +1993,33 @@ fn top_level_field_ranges(text: &str, start: usize, end: usize) -> Map<String, V
     fields
 }
 
-fn inline_field_value_is_complete(source: &str) -> bool {
-    let mut value = source;
-    if let Some(anchor) = value.strip_prefix('&') {
-        let Some((_, remainder)) = anchor.split_once(char::is_whitespace) else {
-            return false;
+fn inline_field_value_end(text: &str, mut start: usize, line_end: usize) -> Option<usize> {
+    let mut value = &text[start..line_end];
+    for _ in 0..2 {
+        let remainder = if let Some(anchor) = value.strip_prefix('&') {
+            Some(
+                anchor
+                    .split_once(char::is_whitespace)
+                    .map_or("", |(_, remainder)| remainder.trim_start()),
+            )
+        } else if let Some(tag) = value.strip_prefix("!!") {
+            Some(split_tag_source(tag).1)
+        } else {
+            None
         };
-        value = remainder.trim_start();
-    }
-    if let Some(tag) = value.strip_prefix("!!") {
-        let (_, remainder) = split_tag_source(tag);
+        let Some(remainder) = remainder else {
+            break;
+        };
         value = remainder;
+        start = line_end - value.len();
     }
     if value.is_empty() || matches!(value.chars().next(), Some('|' | '>')) {
-        return false;
+        return None;
     }
     if matches!(value.chars().next(), Some('{' | '[')) {
-        let end = flow_value_end(value, 0);
-        return end < value.len() || matches!(value.chars().last(), Some('}' | ']'));
+        return Some(flow_value_end(text, start));
     }
-    true
+    Some(line_end)
 }
 
 fn fallback_content_hash(bytes: &[u8]) -> String {

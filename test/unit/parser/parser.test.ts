@@ -660,6 +660,7 @@ describe('OKF bundle parser', () => {
             'title: Tagged values',
             'description: Unknown tagged metadata remains consumable.',
             'timestamp: "2026-07-22T09:30:00Z"',
+            "tags: [!!str alpha, !!str 'it''s']",
             'producer:',
             '  captured_at: !!timestamp 2001-12-15T02:59:43.1Z',
             '  payload: !!binary SGVsbG8=',
@@ -675,12 +676,17 @@ describe('OKF bundle parser', () => {
             '    - !!str "job_id"',
             'producer_map: !!map',
             '  key: value',
+            'tag_first_map: !!map &tagged-map',
+            '  tagged_key: value',
             'notes: !!str |-',
             '  first',
             '  second',
             'items: !!seq',
             '  - one',
             '  - two',
+            'flow_metadata: [',
+            "  { label: !!str 'it''s', count: !!int 2 }",
+            ']',
             '---',
             '# Tagged values',
             '',
@@ -693,6 +699,7 @@ describe('OKF bundle parser', () => {
     const concept = bundle.concepts[0];
     expect(concept).toMatchObject({ id: 'tagged-values', type: 'producer-extension' });
     expect(concept?.timestamp).toBe('2026-07-22T09:30:00Z');
+    expect(concept?.tags).toEqual(['alpha', "it's"]);
     expect(concept?.frontmatter.raw.type).toEqual(
       tagged('tag:yaml.org,2002:str', 'producer-extension', 'producer-extension'),
     );
@@ -738,14 +745,30 @@ describe('OKF bundle parser', () => {
         receipt: [tagged('tag:yaml.org,2002:str', 'job_id', '"job_id"')],
       },
       producer_map: tagged('tag:yaml.org,2002:map', { key: 'value' }, 'key: value\n'),
+      tag_first_map: tagged(
+        'tag:yaml.org,2002:map',
+        { tagged_key: 'value' },
+        'tagged_key: value\n',
+      ),
       notes: tagged('tag:yaml.org,2002:str', 'first\nsecond', '|-\n  first\n  second\n'),
       items: tagged('tag:yaml.org,2002:seq', ['one', 'two'], '- one\n  - two\n'),
+      flow_metadata: [
+        {
+          label: tagged('tag:yaml.org,2002:str', "it's", "'it''s'"),
+          count: tagged('tag:yaml.org,2002:int', 2, '2'),
+        },
+      ],
     });
     expect(concept?.frontmatter.explicitTags).toMatchObject({
       '/executor/receipt/0': 'tag:yaml.org,2002:str',
       producer_map: 'tag:yaml.org,2002:map',
+      tag_first_map: 'tag:yaml.org,2002:map',
       notes: 'tag:yaml.org,2002:str',
       items: 'tag:yaml.org,2002:seq',
+      '/tags/0': 'tag:yaml.org,2002:str',
+      '/tags/1': 'tag:yaml.org,2002:str',
+      '/flow_metadata/0/label': 'tag:yaml.org,2002:str',
+      '/flow_metadata/0/count': 'tag:yaml.org,2002:int',
     });
     expect(({} as { readonly polluted?: unknown }).polluted).toBeUndefined();
     expect(JSON.parse(JSON.stringify(bundle))).toEqual(bundle);

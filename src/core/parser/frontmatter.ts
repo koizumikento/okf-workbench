@@ -508,14 +508,17 @@ function normalizeFrontmatter(
   raw: JsonObject,
   explicitTags: Readonly<Record<string, string>>,
 ): NormalizedFrontmatter {
-  const tags = semanticValue(raw.tags, explicitTags.tags);
+  const rawTags = semanticValue(raw.tags, explicitTags.tags);
+  const tags = Array.isArray(rawTags)
+    ? rawTags.map((tag, index) => semanticValue(tag, explicitTags[`/tags/${String(index)}`]))
+    : undefined;
   const verified = normalizeVerifications(raw.verified, explicitTags);
   return {
     ...optionalString('type', raw.type, explicitTags.type),
     ...optionalString('title', raw.title, explicitTags.title),
     ...optionalString('description', raw.description, explicitTags.description),
     ...optionalString('resource', raw.resource, explicitTags.resource),
-    tags: Array.isArray(tags) && tags.every((tag) => typeof tag === 'string') ? [...tags] : [],
+    tags: tags?.every((tag) => typeof tag === 'string') === true ? (tags as string[]) : [],
     ...optionalString('timestamp', raw.timestamp, explicitTags.timestamp),
     ...optionalObject('generated', normalizeGenerated(raw.generated, explicitTags)),
     verified,

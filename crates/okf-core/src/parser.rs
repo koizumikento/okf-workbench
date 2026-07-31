@@ -1327,16 +1327,15 @@ fn non_string_mapping_key_range(source: &str) -> Option<(usize, usize)> {
 }
 
 fn duplicate_mapping_key_range(source: &str) -> Option<(usize, usize)> {
+    if let Some(flow_start) = root_flow_mapping_start(source) {
+        return duplicate_flow_mapping_key_range(source, flow_start);
+    }
     let mut keys = std::collections::BTreeSet::new();
     let mut containers: Vec<(usize, String)> = Vec::new();
     for line in line_spans(source) {
         let body = &source[line.start..line.content_end];
         let trimmed = body.trim_start_matches([' ', '\t']);
-        if trimmed.is_empty()
-            || trimmed.starts_with('#')
-            || trimmed.starts_with('-')
-            || trimmed.starts_with('?')
-        {
+        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('-') {
             continue;
         }
         let indent = body.len() - trimmed.len();
@@ -1345,6 +1344,22 @@ fn duplicate_mapping_key_range(source: &str) -> Option<(usize, usize)> {
             .is_some_and(|(container_indent, _)| *container_indent >= indent)
         {
             containers.pop();
+        }
+        if let Some(explicit_key) = trimmed.strip_prefix('?') {
+            let explicit_key = explicit_key.trim_start().trim_end();
+            let Ok(key) = serde_yaml::from_str::<String>(explicit_key) else {
+                continue;
+            };
+            let scope = containers
+                .iter()
+                .map(|(_, segment)| segment.clone())
+                .collect::<Vec<_>>();
+            if !keys.insert((scope, key)) {
+                let key_start =
+                    line.start + indent + trimmed.len().saturating_sub(explicit_key.len());
+                return Some((key_start, (key_start + 1).min(line.content_end)));
+            }
+            continue;
         }
         let Some(colon) = mapping_key_colon(trimmed) else {
             continue;
@@ -1367,9 +1382,44 @@ fn duplicate_mapping_key_range(source: &str) -> Option<(usize, usize)> {
     None
 }
 
+fn duplicate_flow_mapping_key_range(source: &str, flow_start: usize) -> Option<(usize, usize)> {
+    let mut keys = std::collections::BTreeSet::new();
+    let mut cursor = flow_start + 1;
+    while cursor < source.len() {
+        cursor = skip_flow_space_and_comments(source, cursor, source.len());
+        if source[cursor..].starts_with('}') {
+            break;
+        }
+        if source[cursor..].starts_with('?')
+            && source[cursor + 1..]
+                .chars()
+                .next()
+                .is_some_and(char::is_whitespace)
+        {
+            cursor = skip_flow_space_and_comments(source, cursor + 1, source.len());
+        }
+        let key_start = cursor;
+        let colon = flow_mapping_colon(source, cursor, source.len())?;
+        let key_end = key_start + source[key_start..colon].trim_end().len();
+        let key = serde_yaml::from_str::<String>(&source[key_start..key_end]).ok()?;
+        if !keys.insert(key) {
+            return Some((key_start, (key_start + 1).min(key_end)));
+        }
+        let value_start = skip_flow_space_and_comments(source, colon + 1, source.len());
+        let (_, delimiter) = flow_mapping_value_end(source, value_start, source.len());
+        cursor = delimiter;
+        if source[cursor..].starts_with(',') {
+            cursor += 1;
+        } else {
+            break;
+        }
+    }
+    None
+}
+
 fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Map<String, Value> {
     let mut explicit_tags = Map::new();
-    let mut anchors: std::collections::BTreeMap<String, (Value, String)> =
+    let mut anchors: std::collections::BTreeMap<String, Vec<String>> =
         std::collections::BTreeMap::new();
     let mut containers: Vec<(usize, String)> = Vec::new();
     let mut sequence_indices: std::collections::BTreeMap<String, usize> =
@@ -1392,7 +1442,7 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
             containers.pop();
         }
         let item = trimmed.strip_prefix("- ");
-        let mapping_source = if let Some(item) = item {
+        let mut mapping_source = if let Some(item) = item {
             let sequence_key = format!(
                 "{indent}/{}",
                 containers
@@ -1408,23 +1458,52 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
         } else {
             trimmed
         };
-        if item.is_some()
-            && let Some((tag_name, remainder)) = split_standard_tag_property(mapping_source)
-        {
-            let path = containers
+        if item.is_some() {
+            let item_path = containers
                 .iter()
-                .map(|(_, segment)| segment.as_str())
+                .map(|(_, segment)| segment.clone())
                 .collect::<Vec<_>>();
-            let lexical =
-                tagged_lexical_source(source, &spans, line_index, indent, body, remainder);
-            preserve_tagged_value(raw, &path, tag_name, &lexical, &mut explicit_tags);
-            continue;
+            let (remainder, anchor_name, tag_name) = split_node_properties(mapping_source);
+            if let Some(anchor_name) = anchor_name {
+                anchors.insert(anchor_name, item_path.clone());
+            }
+            if let Some(alias) = remainder.strip_prefix('*').map(str::trim) {
+                apply_tagged_alias(raw, &mut explicit_tags, &anchors, alias, &item_path);
+                continue;
+            }
+            if mapping_key_colon(remainder).is_none() {
+                let path = item_path.iter().map(String::as_str).collect::<Vec<_>>();
+                if matches!(remainder.chars().next(), Some('{' | '['))
+                    && needs_flow_provenance_scan(mapping_source)
+                {
+                    let relative_start = body.find(mapping_source).unwrap_or(0);
+                    let flow_relative = mapping_source.len() - remainder.len();
+                    let absolute_end =
+                        flow_value_end(source, line.start + relative_start + flow_relative);
+                    preserve_flow_standard_yaml_tags(
+                        &source[line.start + relative_start..absolute_end],
+                        &path,
+                        raw,
+                        &mut explicit_tags,
+                        &mut anchors,
+                    );
+                }
+                if let Some(tag_name) = tag_name {
+                    let lexical =
+                        tagged_lexical_source(source, &spans, line_index, indent, body, remainder);
+                    preserve_tagged_value(raw, &path, tag_name, &lexical, &mut explicit_tags);
+                }
+                continue;
+            }
+            mapping_source = remainder;
         }
-        let Some((key, value_source)) = mapping_source.split_once(':') else {
+        let Some(colon) = mapping_key_colon(mapping_source) else {
             continue;
         };
-        let key = key.trim().trim_matches(['\'', '"']).to_owned();
-        let value_source = value_source.trim();
+        let key_source = mapping_source[..colon].trim_end();
+        let key = serde_yaml::from_str::<String>(key_source)
+            .unwrap_or_else(|_| key_source.trim_matches(['\'', '"']).to_owned());
+        let value_source = mapping_source[colon + 1..].trim();
         if value_source.is_empty() {
             containers.push((indent, key));
             continue;
@@ -1451,24 +1530,12 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
                 );
             }
         }
-        let mut remainder = value_source;
-        let mut anchor_name = None;
-        let mut tag_name = None;
-        for _ in 0..2 {
-            if let Some(anchor) = remainder.strip_prefix('&') {
-                let (name, rest) = anchor
-                    .split_once(char::is_whitespace)
-                    .map_or((anchor, ""), |(name, rest)| (name, rest.trim_start()));
-                anchor_name = Some(name.to_owned());
-                remainder = rest;
-                continue;
-            }
-            if let Some((name, rest)) = split_standard_tag_property(remainder) {
-                tag_name = Some(name);
-                remainder = rest;
-                continue;
-            }
-            break;
+        let (remainder, anchor_name, tag_name) = split_node_properties(value_source);
+        if let Some(anchor_name) = anchor_name {
+            anchors.insert(
+                anchor_name,
+                path.iter().map(|segment| (*segment).to_owned()).collect(),
+            );
         }
         if matches!(remainder.chars().next(), Some('{' | '['))
             && needs_flow_provenance_scan(value_source)
@@ -1487,23 +1554,19 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
                 &mut anchors,
             );
         }
-        if let Some(alias) = remainder.strip_prefix('*').map(str::trim)
-            && let Some((wrapped, tag)) = anchors.get(alias).cloned()
-        {
-            set_value_at_path(raw, &path, wrapped);
-            explicit_tags.insert(explicit_tag_path(&path), Value::String(tag));
+        if let Some(alias) = remainder.strip_prefix('*').map(str::trim) {
+            let owned_path = path
+                .iter()
+                .map(|segment| (*segment).to_owned())
+                .collect::<Vec<_>>();
+            apply_tagged_alias(raw, &mut explicit_tags, &anchors, alias, &owned_path);
             continue;
         }
 
-        let Some(tag_name) = tag_name else {
-            continue;
-        };
-        let lexical = tagged_lexical_source(source, &spans, line_index, indent, body, remainder);
-        if let Some((wrapped, tag_uri)) =
-            preserve_tagged_value(raw, &path, tag_name, &lexical, &mut explicit_tags)
-            && let Some(anchor_name) = anchor_name
-        {
-            anchors.insert(anchor_name, (wrapped, tag_uri));
+        if let Some(tag_name) = tag_name {
+            let lexical =
+                tagged_lexical_source(source, &spans, line_index, indent, body, remainder);
+            preserve_tagged_value(raw, &path, tag_name, &lexical, &mut explicit_tags);
         }
         if remainder.is_empty() {
             containers.push((indent, key));
@@ -1529,12 +1592,87 @@ fn split_standard_tag_property(source: &str) -> Option<(&str, &str)> {
     Some((tag_name, verbatim[end + 1..].trim_start()))
 }
 
+fn split_node_properties(mut source: &str) -> (&str, Option<String>, Option<&str>) {
+    let mut anchor_name = None;
+    let mut tag_name = None;
+    for _ in 0..2 {
+        if let Some(anchor) = source.strip_prefix('&') {
+            let (name, remainder) = anchor
+                .split_once(char::is_whitespace)
+                .map_or((anchor, ""), |(name, rest)| (name, rest.trim_start()));
+            anchor_name = Some(name.to_owned());
+            source = remainder;
+            continue;
+        }
+        if let Some((name, remainder)) = split_standard_tag_property(source) {
+            tag_name = Some(name);
+            source = remainder;
+            continue;
+        }
+        break;
+    }
+    (source, anchor_name, tag_name)
+}
+
 fn contains_standard_tag_property(source: &str) -> bool {
     source.contains("!!") || source.contains("!<tag:yaml.org,2002:")
 }
 
 fn needs_flow_provenance_scan(source: &str) -> bool {
     contains_standard_tag_property(source) || source.contains('*')
+}
+
+fn apply_tagged_alias(
+    raw: &mut Map<String, Value>,
+    explicit_tags: &mut Map<String, Value>,
+    anchors: &std::collections::BTreeMap<String, Vec<String>>,
+    alias: &str,
+    target_path: &[String],
+) {
+    let Some(anchor_path) = anchors.get(alias) else {
+        return;
+    };
+    let anchor = anchor_path.iter().map(String::as_str).collect::<Vec<_>>();
+    let Some(value) = value_at_path(raw, &anchor).cloned() else {
+        return;
+    };
+    let target = target_path.iter().map(String::as_str).collect::<Vec<_>>();
+    set_value_at_path(raw, &target, value.clone());
+    collect_tagged_paths(&value, target_path, explicit_tags);
+}
+
+fn collect_tagged_paths(value: &Value, path: &[String], explicit_tags: &mut Map<String, Value>) {
+    if let Some(body) = value
+        .as_object()
+        .and_then(|wrapper| wrapper.get(TAGGED_KEY))
+        .and_then(Value::as_object)
+    {
+        if let Some(tag) = body.get("tag").and_then(Value::as_str) {
+            let borrowed = path.iter().map(String::as_str).collect::<Vec<_>>();
+            explicit_tags.insert(explicit_tag_path(&borrowed), Value::String(tag.to_owned()));
+        }
+        if let Some(semantic) = body.get("value") {
+            collect_tagged_paths(semantic, path, explicit_tags);
+        }
+        return;
+    }
+    match value {
+        Value::Object(object) => {
+            for (key, child) in object {
+                let mut child_path = path.to_vec();
+                child_path.push(key.clone());
+                collect_tagged_paths(child, &child_path, explicit_tags);
+            }
+        }
+        Value::Array(array) => {
+            for (index, child) in array.iter().enumerate() {
+                let mut child_path = path.to_vec();
+                child_path.push(index.to_string());
+                collect_tagged_paths(child, &child_path, explicit_tags);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn preserve_tagged_value(
@@ -1582,6 +1720,7 @@ fn tagged_lexical_source(
             line_index,
             parent_indent,
             indicator.contains('+'),
+            true,
         );
         return source[absolute_start..end].to_owned();
     }
@@ -1614,7 +1753,7 @@ fn following_indented_source(
         return String::new();
     }
     let start = first.start + first_indent;
-    let end = following_block_end(source, spans, first_index, parent_indent, false);
+    let end = following_block_end(source, spans, first_index, parent_indent, false, false);
     source[start..end].to_owned()
 }
 
@@ -1624,8 +1763,12 @@ fn following_block_end(
     first_index: usize,
     parent_indent: usize,
     preserve_trailing_blank: bool,
+    preserve_empty_scalar_line: bool,
 ) -> usize {
     let mut end = spans[first_index].end;
+    let first_body = &source[spans[first_index].start..spans[first_index].content_end];
+    let mut saw_nonblank_content = !preserve_empty_scalar_line && !first_body.trim().is_empty();
+    let mut preserved_empty_line = false;
     for span in &spans[first_index + 1..] {
         let body = &source[span.start..span.content_end];
         let indent = body
@@ -1635,8 +1778,16 @@ fn following_block_end(
         if !body.trim().is_empty() && indent <= parent_indent {
             break;
         }
-        if preserve_trailing_blank || !body.trim().is_empty() {
+        if body.trim().is_empty() {
+            if preserve_trailing_blank
+                || (preserve_empty_scalar_line && !saw_nonblank_content && !preserved_empty_line)
+            {
+                end = span.end;
+                preserved_empty_line = true;
+            }
+        } else {
             end = span.end;
+            saw_nonblank_content = true;
         }
     }
     end
@@ -1743,7 +1894,7 @@ fn preserve_flow_standard_yaml_tags(
     base_path: &[&str],
     raw: &mut Map<String, Value>,
     explicit_tags: &mut Map<String, Value>,
-    anchors: &mut std::collections::BTreeMap<String, (Value, String)>,
+    anchors: &mut std::collections::BTreeMap<String, Vec<String>>,
 ) {
     let mut scanner = FlowTagScanner {
         source,
@@ -1764,7 +1915,7 @@ struct FlowTagScanner<'source, 'model> {
     cursor: usize,
     raw: &'model mut Map<String, Value>,
     explicit_tags: &'model mut Map<String, Value>,
-    anchors: &'model mut std::collections::BTreeMap<String, (Value, String)>,
+    anchors: &'model mut std::collections::BTreeMap<String, Vec<String>>,
 }
 
 impl FlowTagScanner<'_, '_> {
@@ -1789,6 +1940,9 @@ impl FlowTagScanner<'_, '_> {
                 continue;
             }
             break;
+        }
+        if let Some(anchor_name) = anchor_name {
+            self.anchors.insert(anchor_name, path.clone());
         }
         if let Some(tag_name) = tag_name {
             self.skip_whitespace();
@@ -1815,10 +1969,6 @@ impl FlowTagScanner<'_, '_> {
                 explicit_tag_path(&borrowed),
                 Value::String(tag_uri.to_owned()),
             );
-            if let Some(anchor_name) = anchor_name {
-                self.anchors
-                    .insert(anchor_name, (wrapped, tag_uri.to_owned()));
-            }
             return;
         }
         if let Some(alias) = self.remaining().strip_prefix('*') {
@@ -1827,13 +1977,14 @@ impl FlowTagScanner<'_, '_> {
                     character.is_whitespace() || matches!(character, ',' | '}' | ']')
                 })
                 .unwrap_or(alias.len());
-            let alias_name = &alias[..alias_end];
-            if let Some((wrapped, tag_uri)) = self.anchors.get(alias_name).cloned() {
-                let borrowed = path.iter().map(String::as_str).collect::<Vec<_>>();
-                set_value_at_path(self.raw, &borrowed, wrapped);
-                self.explicit_tags
-                    .insert(explicit_tag_path(&borrowed), Value::String(tag_uri));
-            }
+            let alias_name = alias[..alias_end].to_owned();
+            apply_tagged_alias(
+                self.raw,
+                self.explicit_tags,
+                self.anchors,
+                &alias_name,
+                path,
+            );
             self.cursor += alias_end + 1;
             return;
         }
@@ -2292,6 +2443,7 @@ fn block_field_value_end(
 ) -> usize {
     let indicator = block_scalar_indicator(value_source);
     let block_scalar = indicator.is_some();
+    let mut first_content = None;
     let mut last_content = None;
     let mut last_nonblank = None;
     for line in line_spans(&text[content_start..boundary]) {
@@ -2303,7 +2455,9 @@ fn block_field_value_end(
         }
         if trimmed.is_empty() {
             if block_scalar {
-                last_content = Some((content_start + line.content_end, content_start + line.end));
+                let range = (content_start + line.content_end, content_start + line.end);
+                first_content.get_or_insert(range);
+                last_content = Some(range);
             }
             continue;
         }
@@ -2311,11 +2465,15 @@ fn block_field_value_end(
             continue;
         }
         let range = (content_start + line.content_end, content_start + line.end);
+        first_content.get_or_insert(range);
         last_content = Some(range);
         last_nonblank = Some(range);
     }
     if block_scalar && indicator.is_some_and(|value| value.contains('+')) {
         return last_content.map_or(fallback, |(_, end)| end);
+    }
+    if block_scalar && last_nonblank.is_none() {
+        return first_content.map_or(fallback, |(_, end)| end);
     }
     last_nonblank.map_or(fallback, |(_, line_end)| line_end)
 }

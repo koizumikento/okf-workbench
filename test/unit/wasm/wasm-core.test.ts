@@ -559,7 +559,9 @@ describe('Rust/Wasm core boundary', () => {
               '  tagged_key: value',
               'tagged_parent: !!map',
               '  child: !!str "x"',
+              '',
               'anchored_flow: [!!str &flow-id "x"]',
+              'tagged_flow_parent: !!seq [!!str &tagged-flow-id "x", *tagged-flow-id]',
               'notes: !!str |-',
               '  first',
               '  second',
@@ -582,7 +584,27 @@ describe('Rust/Wasm core boundary', () => {
         ['mixed-tags.md', concept('', 'tags: [!!str alpha, 42, beta]\n', 'Reference')],
         [
           'flow-fields.md',
-          ['---', '{ type: Reference, "colon:key": value, plain: x }', '---', '# Flow'].join('\n'),
+          ['---', '{ ? "type": Reference, "colon:key": value, plain: x }', '---', '# Flow'].join(
+            '\n',
+          ),
+        ],
+        [
+          'explicit-fields.md',
+          [
+            '---',
+            '? "type"',
+            ': Reference',
+            'literal: |',
+            '  first',
+            '  # literal',
+            '# detached',
+            'keep: |+',
+            '  retained',
+            '',
+            'next: value',
+            '---',
+            '# Explicit',
+          ].join('\n'),
         ],
         [
           'invalid-generated-at.md',

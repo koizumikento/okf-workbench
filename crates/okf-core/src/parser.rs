@@ -1453,6 +1453,20 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
             }
             break;
         }
+        if matches!(remainder.chars().next(), Some('{' | '[')) && value_source.contains("!!") {
+            let relative_start = body
+                .find(value_source)
+                .unwrap_or_else(|| body.len().saturating_sub(value_source.len()));
+            let absolute_start = line.start + relative_start;
+            let flow_relative = value_source.len() - remainder.len();
+            let absolute_end = flow_value_end(source, absolute_start + flow_relative);
+            preserve_flow_standard_yaml_tags(
+                &source[absolute_start..absolute_end],
+                &path,
+                raw,
+                &mut explicit_tags,
+            );
+        }
         if let Some(alias) = remainder.strip_prefix('*').map(str::trim)
             && let Some((wrapped, tag)) = anchors.get(alias).cloned()
         {
@@ -1522,7 +1536,14 @@ fn tagged_lexical_source(
         .unwrap_or_else(|| body.len().saturating_sub(remainder.len()));
     let absolute_start = spans[line_index].start + relative_start;
     if remainder.starts_with('|') || remainder.starts_with('>') {
-        let end = following_block_end(source, spans, line_index, parent_indent);
+        let indicator = remainder.split_whitespace().next().unwrap_or(remainder);
+        let end = following_block_end(
+            source,
+            spans,
+            line_index,
+            parent_indent,
+            indicator.contains('+'),
+        );
         return source[absolute_start..end].to_owned();
     }
     if matches!(remainder.chars().next(), Some('{' | '[')) {
@@ -1554,7 +1575,7 @@ fn following_indented_source(
         return String::new();
     }
     let start = first.start + first_indent;
-    let end = following_block_end(source, spans, first_index, parent_indent);
+    let end = following_block_end(source, spans, first_index, parent_indent, false);
     source[start..end].to_owned()
 }
 
@@ -1563,6 +1584,7 @@ fn following_block_end(
     spans: &[LineSpan],
     first_index: usize,
     parent_indent: usize,
+    preserve_trailing_blank: bool,
 ) -> usize {
     let mut end = spans[first_index].end;
     for span in &spans[first_index + 1..] {
@@ -1574,7 +1596,9 @@ fn following_block_end(
         if !body.trim().is_empty() && indent <= parent_indent {
             break;
         }
-        end = span.end;
+        if preserve_trailing_blank || !body.trim().is_empty() {
+            end = span.end;
+        }
     }
     end
 }
@@ -1651,6 +1675,7 @@ fn flow_value_end(source: &str, start: usize) -> usize {
 }
 
 fn standard_tag_semantic(tag_name: &str, source_value: &str, existing: Value) -> Value {
+    let existing = semantic_value(&existing).clone();
     match tag_name {
         "timestamp" => DateTime::parse_from_rfc3339(source_value)
             .map(|value| Value::String(value.to_rfc3339_opts(SecondsFormat::Millis, true)))
@@ -1670,7 +1695,7 @@ fn standard_tag_semantic(tag_name: &str, source_value: &str, existing: Value) ->
             .as_object()
             .map(|set| Value::Array(set.keys().cloned().map(Value::String).collect::<Vec<_>>()))
             .unwrap_or(existing),
-        _ => semantic_value(&existing).clone(),
+        _ => existing,
     }
 }
 
@@ -1685,6 +1710,7 @@ fn preserve_flow_standard_yaml_tags(
         cursor: 0,
         raw,
         explicit_tags,
+        anchors: std::collections::BTreeMap::new(),
     };
     let mut path = base_path
         .iter()
@@ -1698,12 +1724,14 @@ struct FlowTagScanner<'source, 'model> {
     cursor: usize,
     raw: &'model mut Map<String, Value>,
     explicit_tags: &'model mut Map<String, Value>,
+    anchors: std::collections::BTreeMap<String, (Value, String)>,
 }
 
 impl FlowTagScanner<'_, '_> {
     fn parse_value(&mut self, path: &mut Vec<String>) {
         self.skip_whitespace();
         let mut tag_name = None;
+        let mut anchor_name = None;
         for _ in 0..2 {
             if self.remaining().starts_with("!!") {
                 self.cursor += 2;
@@ -1717,9 +1745,11 @@ impl FlowTagScanner<'_, '_> {
             }
             if self.peek() == Some('&') {
                 self.advance();
+                let anchor_start = self.cursor;
                 self.consume_while(|character| {
                     !character.is_whitespace() && !matches!(character, ',' | '}' | ']')
                 });
+                anchor_name = Some(self.source[anchor_start..self.cursor].to_owned());
                 self.skip_whitespace();
                 continue;
             }
@@ -1744,11 +1774,32 @@ impl FlowTagScanner<'_, '_> {
             body.insert("source".to_owned(), Value::String(source_value));
             let mut wrapper = Map::new();
             wrapper.insert(TAGGED_KEY.to_owned(), Value::Object(body));
-            set_value_at_path(self.raw, &borrowed, Value::Object(wrapper));
+            let wrapped = Value::Object(wrapper);
+            set_value_at_path(self.raw, &borrowed, wrapped.clone());
             self.explicit_tags.insert(
                 explicit_tag_path(&borrowed),
                 Value::String(tag_uri.to_owned()),
             );
+            if let Some(anchor_name) = anchor_name {
+                self.anchors
+                    .insert(anchor_name, (wrapped, tag_uri.to_owned()));
+            }
+            return;
+        }
+        if let Some(alias) = self.remaining().strip_prefix('*') {
+            let alias_end = alias
+                .find(|character: char| {
+                    character.is_whitespace() || matches!(character, ',' | '}' | ']')
+                })
+                .unwrap_or(alias.len());
+            let alias_name = &alias[..alias_end];
+            if let Some((wrapped, tag_uri)) = self.anchors.get(alias_name).cloned() {
+                let borrowed = path.iter().map(String::as_str).collect::<Vec<_>>();
+                set_value_at_path(self.raw, &borrowed, wrapped);
+                self.explicit_tags
+                    .insert(explicit_tag_path(&borrowed), Value::String(tag_uri));
+            }
+            self.cursor += alias_end + 1;
             return;
         }
         self.parse_untagged_value(path);
@@ -2001,13 +2052,44 @@ fn top_level_field_ranges(text: &str, start: usize, end: usize) -> Map<String, V
     for (line_index, line) in spans.iter().enumerate() {
         let body = &source[line.start..line.content_end];
         let trimmed = body.trim_start_matches([' ', '\t']);
-        if trimmed.is_empty() || trimmed.starts_with(['#', '-', '?']) {
+        if trimmed.is_empty() || trimmed.starts_with(['#', '-']) {
+            continue;
+        }
+        let indent = body.len() - trimmed.len();
+        if let Some(explicit_key) = trimmed.strip_prefix('?') {
+            let explicit_key = explicit_key.trim_start();
+            let expected_indent = *root_indent.get_or_insert(indent);
+            let Some(value_line) = spans.get(line_index + 1) else {
+                continue;
+            };
+            let value_body = &source[value_line.start..value_line.content_end];
+            let value_trimmed = value_body.trim_start_matches([' ', '\t']);
+            let value_indent = value_body.len() - value_trimmed.len();
+            if indent != expected_indent || value_indent != expected_indent {
+                continue;
+            }
+            let Some(after_colon) = value_trimmed.strip_prefix(':') else {
+                continue;
+            };
+            let Ok(name) = serde_yaml::from_str::<String>(explicit_key) else {
+                continue;
+            };
+            let leading_whitespace = after_colon.len() - after_colon.trim_start().len();
+            let field_start = start + line.start + indent + trimmed.len() - explicit_key.len();
+            let value_start = start + value_line.start + value_indent + 1 + leading_whitespace;
+            starts.push((
+                name,
+                field_start,
+                line_index + 1,
+                inline_field_value_end(text, value_start, start + value_line.content_end),
+                after_colon.trim_start().to_owned(),
+                expected_indent,
+            ));
             continue;
         }
         let Some(colon) = mapping_key_colon(trimmed) else {
             continue;
         };
-        let indent = body.len() - trimmed.len();
         let expected_indent = *root_indent.get_or_insert(indent);
         if indent != expected_indent {
             continue;
@@ -2026,15 +2108,16 @@ fn top_level_field_ranges(text: &str, start: usize, end: usize) -> Map<String, V
             line_index,
             inline_field_value_end(text, value_start, start + line.content_end),
             after_colon.trim_start().to_owned(),
+            expected_indent,
         ));
     }
     let mut fields = Map::new();
-    for (index, (name, field_start, line_index, inline_end, value_source)) in
+    for (index, (name, field_start, line_index, inline_end, value_source, field_indent)) in
         starts.iter().enumerate()
     {
         let next_start = starts
             .get(index + 1)
-            .map_or(end, |(_, field_start, _, _, _)| *field_start);
+            .map_or(end, |(_, field_start, _, _, _, _)| *field_start);
         let field_end = inline_end.unwrap_or_else(|| {
             block_field_value_end(
                 text,
@@ -2042,6 +2125,7 @@ fn top_level_field_ranges(text: &str, start: usize, end: usize) -> Map<String, V
                 next_start,
                 value_source,
                 start + spans[*line_index].content_end,
+                *field_indent,
             )
         });
         fields.insert(
@@ -2143,26 +2227,42 @@ fn block_field_value_end(
     boundary: usize,
     value_source: &str,
     fallback: usize,
+    field_indent: usize,
 ) -> usize {
-    let mut last = None;
-    for line in line_spans(&text[content_start..boundary]) {
-        let body = &text[content_start + line.start..content_start + line.content_end];
-        if body.trim().is_empty() || body.trim_start().starts_with('#') {
-            continue;
-        }
-        last = Some((content_start + line.content_end, content_start + line.end));
-    }
-    let Some((content_end, line_end)) = last else {
-        return fallback;
-    };
-    let value = value_source
+    let indicator = value_source
         .split_whitespace()
         .last()
         .unwrap_or(value_source);
-    if matches!(value.chars().next(), Some('|' | '>')) && !value.contains('-') {
-        content_end
-    } else {
+    let block_scalar = matches!(indicator.chars().next(), Some('|' | '>'));
+    let mut last_content = None;
+    let mut last_nonblank = None;
+    for line in line_spans(&text[content_start..boundary]) {
+        let body = &text[content_start + line.start..content_start + line.content_end];
+        let trimmed = body.trim_start_matches([' ', '\t']);
+        let indent = body.len() - trimmed.len();
+        if !trimmed.is_empty() && indent <= field_indent {
+            break;
+        }
+        if trimmed.is_empty() {
+            if block_scalar {
+                last_content = Some((content_start + line.content_end, content_start + line.end));
+            }
+            continue;
+        }
+        if !block_scalar && trimmed.starts_with('#') {
+            continue;
+        }
+        let range = (content_start + line.content_end, content_start + line.end);
+        last_content = Some(range);
+        last_nonblank = Some(range);
+    }
+    let Some((_, line_end)) = last_nonblank else {
+        return fallback;
+    };
+    if !block_scalar || !indicator.contains('+') {
         line_end
+    } else {
+        last_content.map_or(line_end, |(_, end)| end)
     }
 }
 
@@ -2173,6 +2273,14 @@ fn flow_field_ranges(text: &str, flow_start: usize, end: usize) -> Map<String, V
         cursor = skip_flow_space_and_comments(text, cursor, end);
         if text[cursor..].starts_with('}') {
             break;
+        }
+        let explicit = text[cursor..].starts_with('?')
+            && text[cursor + 1..]
+                .chars()
+                .next()
+                .is_some_and(char::is_whitespace);
+        if explicit {
+            cursor = skip_flow_space_and_comments(text, cursor + 1, end);
         }
         let key_start = cursor;
         let Some(colon) = flow_mapping_colon(text, cursor, end) else {

@@ -198,11 +198,8 @@ fn insert_root_version(existing: &str) -> Result<String, String> {
     };
 
     let mut insertions = vec![(opening_end, format!("okf_version: \"0.2\"{eol}"))];
-    for (relative, character) in existing[opening_end..source_end].char_indices() {
-        if character != '{' {
-            continue;
-        }
-        let offset = opening_end + relative + character.len_utf8();
+    if let Some(flow_start) = root_flow_mapping_start(&existing[opening_end..source_end]) {
+        let offset = opening_end + flow_start + 1;
         let separator = if existing[offset..source_end].trim_start().starts_with('}') {
             ""
         } else {
@@ -235,6 +232,35 @@ fn insert_root_version(existing: &str) -> Result<String, String> {
     Err(format!(
         "cannot add `okf_version` safely to index.md using {eol:?} line endings: {last_error}"
     ))
+}
+
+fn root_flow_mapping_start(source: &str) -> Option<usize> {
+    let mut cursor = 0usize;
+    loop {
+        while source[cursor..]
+            .chars()
+            .next()
+            .is_some_and(char::is_whitespace)
+        {
+            cursor += source[cursor..].chars().next()?.len_utf8();
+        }
+        if source[cursor..].starts_with('#') {
+            cursor += source[cursor..]
+                .find(['\r', '\n'])
+                .unwrap_or(source.len() - cursor);
+            continue;
+        }
+        if source[cursor..].starts_with('{') {
+            return Some(cursor);
+        }
+        if source[cursor..].starts_with('&') || source[cursor..].starts_with('!') {
+            cursor += source[cursor..]
+                .find(char::is_whitespace)
+                .unwrap_or(source.len() - cursor);
+            continue;
+        }
+        return None;
+    }
 }
 
 fn frontmatter_source_bounds(content: &str, start: usize) -> Option<(usize, usize, &'static str)> {
@@ -677,5 +703,18 @@ mod tests {
             );
             assert_eq!(updated.replacen(insertion, "", 1), source, "{source:?}");
         }
+    }
+
+    #[test]
+    fn root_version_insertion_ignores_flow_tokens_in_comments() {
+        let source = format!(
+            "---\n# {}\n&metadata\n title: Knowledge\n---\n# Knowledge\n",
+            "{".repeat(4_096)
+        );
+        let updated = insert_root_version(&source).unwrap();
+        assert_eq!(
+            root_frontmatter(&updated).unwrap().get("okf_version"),
+            Some(&serde_json::Value::String("0.2".to_owned()))
+        );
     }
 }

@@ -262,6 +262,18 @@ describe('Rust/Wasm core boundary', () => {
           ].join('\n'),
         ],
         [
+          'tagged-anchored.md',
+          [
+            '---',
+            'type: Reference',
+            'timestamp: !<tag:yaml.org,2002:str> &when "2026-07-22T10:00:00Z"',
+            'producer_time: *when',
+            '---',
+            '# Tagged anchored',
+            '',
+          ].join('\n'),
+        ],
+        [
           'indented.md',
           [
             '---',

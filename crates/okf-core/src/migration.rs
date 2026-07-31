@@ -279,7 +279,7 @@ fn simple_field_range(
             let value = line[value_start..].trim_start();
             if value.is_empty()
                 || value.starts_with(['|', '>', '&', '*'])
-                || value.starts_with("!!") && value.contains(" &")
+                || has_anchor_node_property(value)
             {
                 return Ok(None);
             }
@@ -303,6 +303,26 @@ fn simple_field_range(
             + 1;
     }
     Err(format!("The {field} source range is unavailable."))
+}
+
+fn has_anchor_node_property(mut value: &str) -> bool {
+    loop {
+        if value.starts_with('&') {
+            return true;
+        }
+        if let Some(verbatim) = value.strip_prefix("!<") {
+            let Some(end) = verbatim.find('>') else {
+                return false;
+            };
+            value = verbatim[end + 1..].trim_start();
+            continue;
+        }
+        let Some(tag) = value.strip_prefix('!') else {
+            return false;
+        };
+        let end = tag.find(char::is_whitespace).unwrap_or(tag.len());
+        value = tag[end..].trim_start();
+    }
 }
 
 fn top_level_field_value_start(line: &str, field: &str) -> Option<usize> {
@@ -774,6 +794,11 @@ mod tests {
             "---\nokf_version: &version \"0.1\"\nproducer_version: *version\n---\n# Root\n",
         )]);
         assert!(anchored_root.is_err());
+        let tagged_anchored_root = migration_result(&[(
+            "index.md",
+            "---\nokf_version: !<tag:yaml.org,2002:str> &version \"0.1\"\nproducer_version: *version\n---\n# Root\n",
+        )]);
+        assert!(tagged_anchored_root.is_err());
 
         let manual = migration(&[
             ("index.md", "---\nokf_version: \"0.1\"\n---\n# Root\n"),
@@ -784,6 +809,10 @@ mod tests {
             (
                 "multiline.md",
                 "---\ntype: Reference\ntimestamp: >-\n  2026-07-22T10:00:00Z\n---\n# Multiline\n",
+            ),
+            (
+                "tagged-anchored.md",
+                "---\ntype: Reference\ntimestamp: !<tag:yaml.org,2002:str> &when \"2026-07-22T10:00:00Z\"\nproducer_time: *when\n---\n# Tagged anchored\n",
             ),
         ]);
         assert_eq!(manual.files.len(), 1);

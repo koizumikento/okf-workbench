@@ -200,6 +200,24 @@ describe('OKF v0.2 migration', () => {
         actor: 'human:reviewer',
       }),
     ).toThrow(/single-line, unanchored/);
+    expect(() =>
+      planMigration({
+        bundle: input([
+          [
+            'index.md',
+            [
+              '---',
+              'okf_version: !<tag:yaml.org,2002:str> &version "0.1"',
+              'producer_version: *version',
+              '---',
+              '# Root',
+              '',
+            ].join('\n'),
+          ],
+        ]),
+        actor: 'human:reviewer',
+      }),
+    ).toThrow(/single-line, unanchored/);
 
     const plan = planMigration({
       bundle: input([
@@ -225,6 +243,18 @@ describe('OKF v0.2 migration', () => {
             '  2026-07-22T10:00:00Z',
             '---',
             '# Multiline',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'tagged-anchored.md',
+          [
+            '---',
+            'type: Reference',
+            'timestamp: !<tag:yaml.org,2002:str> &when "2026-07-22T10:00:00Z"',
+            'producer_time: *when',
+            '---',
+            '# Tagged anchored',
             '',
           ].join('\n'),
         ],

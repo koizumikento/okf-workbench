@@ -1,6 +1,6 @@
 use crate::parser::{is_valid_actor, parse_explicit_zone_timestamp};
 use crate::{Finding, LinkClassification, ParseFailureReason, ParsedBundle};
-use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
+use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, Utc};
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -29,8 +29,36 @@ fn ecmascript_trim(value: &str) -> &str {
 pub fn parse_reference_time(now: &str) -> Option<DateTime<FixedOffset>> {
     DateTime::parse_from_rfc3339(now)
         .ok()
+        .or_else(|| {
+            for format in [
+                "%Y-%m-%dT%H:%MZ",
+                "%Y-%m-%dT%H:%M%z",
+                "%Y-%m-%dT%H:%M:%S",
+                "%Y-%m-%dT%H:%M",
+            ] {
+                if format.ends_with("%z") {
+                    if let Ok(value) = DateTime::parse_from_str(now, format) {
+                        return Some(value);
+                    }
+                } else if let Ok(value) = NaiveDateTime::parse_from_str(now, format) {
+                    return Some(value.and_utc().fixed_offset());
+                }
+            }
+            None
+        })
         .or_else(|| DateTime::parse_from_str(now, "%Y-%m-%dT%H:%M:%S%.f%z").ok())
         .or_else(|| DateTime::parse_from_str(now, "%Y-%m-%dT%H:%M:%S%z").ok())
+        .or_else(|| {
+            let (date, suffix) = now.split_once('T')?;
+            if !matches!(suffix, "24:00Z" | "24:00:00Z") {
+                return None;
+            }
+            NaiveDate::parse_from_str(date, "%Y-%m-%d")
+                .ok()?
+                .succ_opt()?
+                .and_hms_opt(0, 0, 0)
+                .map(|value| value.and_utc().fixed_offset())
+        })
         .or_else(|| {
             NaiveDate::parse_from_str(now, "%Y-%m-%d")
                 .ok()?

@@ -480,11 +480,40 @@ fn unsafe_paths_and_unknown_templates_fail_before_writing() {
             "unknown-template",
             "--apply",
         ],
+        vec![
+            "new",
+            directory.path().to_str().unwrap(),
+            "--title",
+            "Reserved",
+            "--path",
+            "nested/index.md",
+            "--apply",
+        ],
+        vec![
+            "new",
+            directory.path().to_str().unwrap(),
+            "--title",
+            "Reserved",
+            "--path",
+            "nested/log.md",
+            "--apply",
+        ],
+        vec![
+            "new",
+            directory.path().to_str().unwrap(),
+            "--title",
+            "Missing filename",
+            "--path",
+            ".md",
+            "--apply",
+        ],
     ] {
         let output = okf().args(arguments).output().unwrap();
         assert_eq!(output.status.code(), Some(2));
     }
     assert!(!outside.exists());
+    assert!(!directory.path().join("nested").exists());
+    assert!(!directory.path().join(".md").exists());
 }
 
 #[cfg(unix)]

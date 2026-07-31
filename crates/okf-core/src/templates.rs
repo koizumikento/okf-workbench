@@ -276,7 +276,99 @@ pub fn concept_template_file(input: &ConceptTemplateInput) -> RenderedFile {
 pub fn concept_template_file_checked(input: &ConceptTemplateInput) -> Result<RenderedFile, String> {
     let mut normalized = input.clone();
     normalized.relative_path = validate_concept_path(&input.relative_path)?;
+    validate_concept_metadata(input)?;
     Ok(concept_template_file(&normalized))
+}
+
+fn validate_concept_metadata(input: &ConceptTemplateInput) -> Result<(), String> {
+    const TEMPLATES: &[&str] = &[
+        "generic-concept",
+        "decision",
+        "metric",
+        "api-endpoint",
+        "data-table",
+        "playbook",
+        "reference",
+        "attested-computation",
+    ];
+    if !TEMPLATES.contains(&input.template.as_str()) {
+        return Err(format!("Unknown concept template: {:?}.", input.template));
+    }
+    if ecmascript_trim(&input.r#type).is_empty() {
+        return Err(
+            "A concept type must contain at least one non-whitespace character.".to_owned(),
+        );
+    }
+    validate_metadata_text(&input.r#type, "Concept type", 256, Some(256))?;
+    if has_control_character(&input.r#type) {
+        return Err(
+            "Concept type contains a control character that cannot be used safely by graph filters."
+                .to_owned(),
+        );
+    }
+
+    let title = one_line(&input.title);
+    if title.is_empty() {
+        return Err(
+            "A concept title must contain at least one non-whitespace character.".to_owned(),
+        );
+    }
+    validate_metadata_text(&title, "Concept title", 4_096, None)?;
+
+    if let Some(description) = input.description.as_deref() {
+        let normalized = description.replace("\r\n", "\n").replace('\r', "\n");
+        validate_metadata_text(&normalized, "Concept description", 16_384, None)?;
+    }
+
+    if input.tags.len() > 128 {
+        return Err("Concept metadata contains more than 128 tags.".to_owned());
+    }
+    for tag in &input.tags {
+        if ecmascript_trim(tag).is_empty() {
+            return Err("Concept tags cannot be empty or whitespace-only.".to_owned());
+        }
+        validate_metadata_text(tag, "Concept tag", 256, Some(256))?;
+        if has_control_character(tag) {
+            return Err(
+                "Concept tag contains a control character that cannot be used safely by graph filters."
+                    .to_owned(),
+            );
+        }
+    }
+
+    if let Some(timestamp) = input.timestamp.as_deref() {
+        if ecmascript_trim(timestamp).is_empty() {
+            return Err("An injected timestamp must be non-empty text.".to_owned());
+        }
+        validate_metadata_text(timestamp, "Concept timestamp", 256, None)?;
+        if has_control_character(timestamp) {
+            return Err(
+                "Concept timestamp contains a control character that cannot be retained safely."
+                    .to_owned(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn validate_metadata_text(
+    value: &str,
+    subject: &str,
+    max_code_units: usize,
+    max_bytes: Option<usize>,
+) -> Result<(), String> {
+    if value.encode_utf16().count() > max_code_units {
+        return Err(format!(
+            "{subject} exceeds the {max_code_units}-code-unit safety limit."
+        ));
+    }
+    if max_bytes.is_some_and(|limit| value.len() > limit) {
+        return Err(format!(
+            "{subject} exceeds the {}-byte UTF-8 safety limit.",
+            max_bytes.unwrap_or_default()
+        ));
+    }
+    Ok(())
 }
 
 pub fn index_files(bundle: &ParsedBundle, mode: IndexMode) -> Vec<RenderedFile> {
@@ -632,6 +724,7 @@ fn validate_concept_path(path: &str) -> Result<String, String> {
         return Err("A non-empty relative path is required.".to_owned());
     }
     let mut candidate = path.replace('\\', "/");
+    let mut stable = false;
     for _ in 0..16 {
         if has_control_character(&candidate) {
             return Err(format!("The path {path:?} contains a control character."));
@@ -639,11 +732,12 @@ fn validate_concept_path(path: &str) -> Result<String, String> {
         let decoded = percent_decode(&candidate)
             .ok_or_else(|| format!("The path {path:?} contains invalid percent encoding."))?;
         if decoded == candidate {
+            stable = true;
             break;
         }
         candidate = decoded.replace('\\', "/");
     }
-    if percent_decode(&candidate).is_some_and(|decoded| decoded != candidate) {
+    if !stable {
         return Err(format!(
             "The path {path:?} contains excessive nested percent encoding."
         ));
@@ -672,12 +766,11 @@ fn validate_concept_path(path: &str) -> Result<String, String> {
             "The path {path:?} contains an empty, current, or parent segment."
         ));
     }
-    let file_name = candidate
-        .rsplit('/')
-        .next()
-        .unwrap_or_default()
-        .trim_end_matches(".md");
-    if matches!(file_name.to_ascii_lowercase().as_str(), "index" | "log") {
+    let file_name = candidate.rsplit('/').next().unwrap_or_default();
+    if matches!(
+        file_name.to_ascii_lowercase().as_str(),
+        "index.md" | "log.md"
+    ) {
         return Err(format!(
             "{path:?} is reserved by OKF and cannot be a concept path."
         ));
@@ -685,7 +778,7 @@ fn validate_concept_path(path: &str) -> Result<String, String> {
     if !candidate.ends_with(".md") {
         return Err(format!("The path {path:?} must end with .md."));
     }
-    if file_name.is_empty() {
+    if file_name.strip_suffix(".md").is_some_and(str::is_empty) {
         return Err(format!(
             "The concept path {path:?} must include a filename before the .md extension."
         ));
@@ -720,7 +813,20 @@ fn compare_utf16(left: &str, right: &str) -> std::cmp::Ordering {
 }
 
 fn one_line(value: &str) -> String {
-    value.split_whitespace().collect::<Vec<_>>().join(" ")
+    let mut output = String::new();
+    let mut pending_space = false;
+    for character in value.chars() {
+        if is_ecmascript_whitespace(character) {
+            pending_space = !output.is_empty();
+        } else {
+            if pending_space {
+                output.push(' ');
+                pending_space = false;
+            }
+            output.push(character);
+        }
+    }
+    output
 }
 
 fn yaml_string(value: &str) -> String {

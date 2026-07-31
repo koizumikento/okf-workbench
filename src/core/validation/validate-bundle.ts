@@ -110,7 +110,19 @@ export function validateBundle(
 }
 
 function parseReferenceTime(now: Date | string): number {
-  const value = now instanceof Date ? now.getTime() : Date.parse(now);
+  let value: number;
+  if (now instanceof Date) {
+    value = now.getTime();
+  } else {
+    const normalized = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/u.test(now)
+      ? `${now}Z`
+      : now;
+    const supported =
+      /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2}))?$/u.test(
+        normalized,
+      );
+    value = supported ? Date.parse(normalized) : Number.NaN;
+  }
   if (!Number.isFinite(value)) {
     throw new TypeError('ValidationOptions.now must be a valid Date or ISO date-time string.');
   }

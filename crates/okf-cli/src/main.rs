@@ -4,8 +4,8 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use okf_core::{
     AgentTarget, BundlePreset, CORE_VERSION, ConceptTemplateInput, IndexMode, RenderedFile,
-    agent_files, build_graph_payload, bundle_preset_files, concept_template_file, index_files,
-    is_future_minor_version, parse_bundle, validate_bundle,
+    agent_files, build_graph_payload, bundle_preset_files, concept_template_file_checked,
+    index_files, is_future_minor_version, parse_bundle, validate_bundle,
 };
 use serde::Serialize;
 use std::{
@@ -227,7 +227,7 @@ fn run(cli: Cli) -> Result<u8, String> {
             if concept_type.trim().is_empty() {
                 return Err("concept type must not be empty".to_owned());
             }
-            let files = vec![concept_template_file(&ConceptTemplateInput {
+            let files = vec![concept_template_file_checked(&ConceptTemplateInput {
                 template: args.template,
                 relative_path: path,
                 r#type: concept_type,
@@ -235,7 +235,7 @@ fn run(cli: Cli) -> Result<u8, String> {
                 description: args.description,
                 tags: args.tags,
                 timestamp: Some(timestamp()),
-            })];
+            })?];
             run_write(
                 "new",
                 args.root,

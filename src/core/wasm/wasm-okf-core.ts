@@ -237,6 +237,12 @@ function callCore(exports: OkfWasmExports, request: JsonValue): JsonValue {
     throw new OkfCoreUnavailableError('The OKF core returned an incompatible response envelope.');
   }
   if (response.error !== undefined) {
+    if (response.error.code === 'invalid-request') {
+      throw new TypeError(response.error.message);
+    }
+    if (response.error.code === 'unsafe-relative-path') {
+      throw new Error(response.error.message);
+    }
     throw new OkfCoreUnavailableError(
       `The OKF core refused the request (${response.error.code}): ${response.error.message}`,
     );

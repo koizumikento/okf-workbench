@@ -756,6 +756,10 @@ describe('Rust/Wasm core boundary', () => {
         '? !!str "A\u0085B"\n: one\n? "A\u0085B"\n: two\n',
       ],
       [
+        'literal-nel-multiline-explicit-semantic-duplicate-key.md',
+        '"A\\NB": one\n? !!str\n  "A\u0085B"\n: two\n',
+      ],
+      [
         'literal-nel-flow-semantic-duplicate-key.md',
         'custom: {"A\u0085B": one, !!str \'A\u0085B\': two}\n',
       ],
@@ -763,6 +767,19 @@ describe('Rust/Wasm core boundary', () => {
         'literal-nel-nested-tagged-key.md',
         '"A\u0085B":\n  nested: !!str "value"\n  binary: !!binary "SGVsbG8="\n',
       ],
+      [
+        'literal-nel-flow-key-nested-tagged-sequence.md',
+        'custom: {!!str "K\u0085L": [!!str "V\u0085W", !!float "1.5"]}\n',
+      ],
+      [
+        'flow-tagged-key-nested-tagged-sequence.md',
+        'custom: {!!str "KL": [!!str "VW", !!float "1.5"]}\n',
+      ],
+      [
+        'literal-nel-sequence-flow-tagged-key.md',
+        'custom:\n  - {!!str "A\u0085B": !!str "V\u0085W"}\n',
+      ],
+      ['sequence-flow-tagged-value.md', 'custom:\n  - {AB: !!str "VW"}\n'],
       ['literal-nel-flow-tagged-key.md', 'custom: {!!str "A\u0085B": !!str "V\u0085W"}\n'],
       ['literal-nel-binary.md', 'custom: !!binary "SGVs\u0085bG8="\n'],
       ['literal-nel-block-binary.md', 'custom: !!binary |-\n  SGVs\u0085bG8=\n'],
@@ -774,6 +791,11 @@ describe('Rust/Wasm core boundary', () => {
       ['literal-nel-flow-plain-scalar-colon.md', 'outer: [prefix:\u0085suffix]\n'],
       ['literal-nel-flow-plain-scalar-before-colon.md', 'outer: [prefix\u0085:suffix]\n'],
       ['literal-nel-flow-map-key-before-colon.md', 'custom: {prefix\u0085:suffix}\n'],
+      ['literal-nel-block-scalar-before-colon.md', 'custom: |-\n  prefix\u0085:suffix\n'],
+      [
+        'literal-nel-set-explicit-mapping-key.md',
+        'set: !!set\n  ?\n    ? !!str "A\u0085B"\n    : value\n',
+      ],
       [
         'tagged-block-scalar-shallow-comment.md',
         'custom: !!str |-\n  one\n # between\nnext: value\n',

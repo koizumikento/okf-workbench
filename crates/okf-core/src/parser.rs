@@ -1560,8 +1560,8 @@ fn collect_yaml_explicit_tags(value: &serde_yaml::Value) -> Map<String, Value> {
             }
             serde_yaml::Value::Mapping(mapping) => {
                 for (key, nested) in mapping {
-                    if let serde_yaml::Value::String(key) = key {
-                        path.push(escape(key));
+                    if let Some(key) = yaml_string_mapping_key(key) {
+                        path.push(escape(&key));
                         visit(nested, path, tags);
                         path.pop();
                     }
@@ -2150,7 +2150,14 @@ fn yaml_comment_start(source: &str) -> Option<usize> {
 }
 
 fn invalid_structural_literal_nel_range(source: &str) -> Option<(usize, usize)> {
+    let block_scalar_ranges = block_scalar_body_ranges(source);
     for line in line_spans(source) {
+        if block_scalar_ranges
+            .iter()
+            .any(|(start, end)| *start <= line.start && line.start < *end)
+        {
+            continue;
+        }
         let body = &source[line.start..line.content_end];
         let trimmed = body.trim_start_matches([' ', '\t']);
         let block_mapping_line = !trimmed.starts_with(['-', '{', '[']);
@@ -4742,7 +4749,7 @@ fn duplicate_mapping_key_range(source: &str) -> Option<(usize, usize)> {
                 let scalar_start = key_start + scalar_relative;
                 return Some((
                     scalar_start,
-                    one_character_end(source, scalar_start, line.content_end),
+                    one_character_end(source, scalar_start, key_end),
                 ));
             }
             continue;
@@ -5376,7 +5383,10 @@ fn preserve_standard_yaml_tags(
             let explicit_mapping_key = remainder.strip_prefix('?').is_some_and(|source| {
                 source.is_empty() || source.chars().next().is_some_and(char::is_whitespace)
             });
-            if mapping_key_colon(remainder).is_none() && !explicit_mapping_key {
+            if (matches!(remainder.chars().next(), Some('{' | '['))
+                || mapping_key_colon(remainder).is_none())
+                && !explicit_mapping_key
+            {
                 if let Some(anchor_name) = anchor_name {
                     anchors.insert(anchor_name, PreservedAnchor::Path(item_path.clone()));
                 }
@@ -7308,9 +7318,10 @@ fn restore_standard_set_sources(
         let Some(boundary) = restored.strip_prefix(existing) else {
             return false;
         };
-        boundary
+        let significant = boundary
             .lines()
-            .all(|line| line.trim().is_empty() || line.trim_start().starts_with('#'))
+            .find(|line| !line.trim().is_empty() && !line.trim_start().starts_with('#'));
+        significant.is_none_or(|line| line.trim_start().starts_with(':'))
     }
 
     fn reserve_existing_sources(
@@ -7543,16 +7554,23 @@ impl FlowTagScanner<'_, '_> {
             else {
                 return;
             };
-            let existing = if self
-                .explicit_tags
-                .contains_key(&explicit_tag_path(&borrowed))
+            let Some(tag_uri) = standard_tag_uri(&tag_name) else {
+                return;
+            };
+            let already_wrapped = existing
+                .get(TAGGED_KEY)
+                .and_then(Value::as_object)
+                .and_then(|tagged| tagged.get("tag"))
+                .and_then(Value::as_str)
+                == Some(tag_uri);
+            let existing = if already_wrapped
+                || self
+                    .explicit_tags
+                    .contains_key(&explicit_tag_path(&borrowed))
             {
                 semantic_value(&existing).clone()
             } else {
                 existing
-            };
-            let Some(tag_uri) = standard_tag_uri(&tag_name) else {
-                return;
             };
             let semantic = standard_tag_semantic(&tag_name, &source_value, existing);
             let mut body = Map::new();

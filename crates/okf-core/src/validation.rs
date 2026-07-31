@@ -1,6 +1,6 @@
 use crate::parser::{is_valid_actor, parse_explicit_zone_timestamp};
 use crate::{Finding, LinkClassification, ParseFailureReason, ParsedBundle};
-use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, Days, FixedOffset, NaiveDate, TimeZone, Utc};
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -31,45 +31,67 @@ pub fn parse_reference_time(now: &str) -> Option<DateTime<FixedOffset>> {
     if date_source.len() != 10
         || date_source.as_bytes().get(4) != Some(&b'-')
         || date_source.as_bytes().get(7) != Some(&b'-')
+        || !date_source[..4].bytes().all(|byte| byte.is_ascii_digit())
+        || !date_source[5..7].bytes().all(|byte| byte.is_ascii_digit())
+        || !date_source[8..10].bytes().all(|byte| byte.is_ascii_digit())
     {
         return None;
     }
-    let date = NaiveDate::parse_from_str(date_source, "%Y-%m-%d").ok()?;
+    let year = date_source[..4].parse::<i32>().ok()?;
+    let month = date_source[5..7].parse::<u32>().ok()?;
+    let day = date_source[8..10].parse::<u64>().ok()?;
+    if !(1..=31).contains(&day) {
+        return None;
+    }
+    let mut date = NaiveDate::from_ymd_opt(year, month, 1)?
+        .checked_add_days(Days::new(day.saturating_sub(1)))?;
     if time_source.is_empty() {
-        return (now.len() == 10)
-            .then(|| date.and_hms_opt(0, 0, 0))
-            .flatten()
-            .map(|value| value.and_utc().fixed_offset());
+        return (now.len() == 10).then(|| {
+            FixedOffset::east_opt(0)?
+                .from_local_datetime(&date.and_hms_opt(0, 0, 0)?)
+                .single()
+        })?;
     }
 
-    let (time, mut zone) = if let Some(time) = time_source.strip_suffix('Z') {
-        (time, "Z".to_owned())
+    let (time, zone) = if let Some(time) = time_source.strip_suffix('Z') {
+        (time, "Z")
     } else if let Some(offset) = time_source
         .char_indices()
         .skip(1)
         .find(|(_, character)| matches!(character, '+' | '-'))
         .map(|(index, _)| index)
     {
-        (&time_source[..offset], time_source[offset..].to_owned())
+        (&time_source[..offset], &time_source[offset..])
     } else {
-        (time_source, "Z".to_owned())
+        (time_source, "Z")
     };
-    if zone != "Z" {
+    let offset = if zone == "Z" {
+        FixedOffset::east_opt(0)?
+    } else {
         let sign = zone.as_bytes().first().copied()?;
         if !matches!(sign, b'+' | b'-') {
             return None;
         }
-        if zone.len() == 5 && zone[1..].bytes().all(|byte| byte.is_ascii_digit()) {
-            zone.insert(3, ':');
-        }
-        if zone.len() != 6
-            || zone.as_bytes().get(3) != Some(&b':')
-            || !zone[1..3].bytes().all(|byte| byte.is_ascii_digit())
-            || !zone[4..6].bytes().all(|byte| byte.is_ascii_digit())
-        {
+        let (hours, minutes) =
+            if zone.len() == 5 && zone[1..].bytes().all(|byte| byte.is_ascii_digit()) {
+                (&zone[1..3], &zone[3..5])
+            } else if zone.len() == 6
+                && zone.as_bytes().get(3) == Some(&b':')
+                && zone[1..3].bytes().all(|byte| byte.is_ascii_digit())
+                && zone[4..6].bytes().all(|byte| byte.is_ascii_digit())
+            {
+                (&zone[1..3], &zone[4..6])
+            } else {
+                return None;
+            };
+        let hours = hours.parse::<i32>().ok()?;
+        let minutes = minutes.parse::<i32>().ok()?;
+        if hours > 23 || minutes > 59 {
             return None;
         }
-    }
+        let seconds = (hours * 60 + minutes) * 60;
+        FixedOffset::east_opt(if sign == b'-' { -seconds } else { seconds })?
+    };
 
     let parts = time.split(':').collect::<Vec<_>>();
     if !(2..=3).contains(&parts.len())
@@ -96,18 +118,26 @@ pub fn parse_reference_time(now: &str) -> Option<DateTime<FixedOffset>> {
         if minute != 0 || second != 0 || fraction.bytes().any(|byte| byte != b'0') {
             return None;
         }
-        let next = date.succ_opt()?;
-        return DateTime::parse_from_rfc3339(&format!("{next}T00:00:00{zone}")).ok();
+        date = date.succ_opt()?;
     }
-    if hour > 23 || minute > 59 || second > 59 {
+    if hour > 24 || minute > 59 || second > 59 {
         return None;
     }
-    let normalized_time = if parts.len() == 2 {
-        format!("{time}:00")
+    let nanoseconds = if fraction.is_empty() {
+        0
     } else {
-        time.to_owned()
+        let digits = fraction.chars().take(9).collect::<String>();
+        format!("{digits:0<9}").parse::<u32>().ok()?
     };
-    DateTime::parse_from_rfc3339(&format!("{date_source}T{normalized_time}{zone}")).ok()
+    let normalized_hour = if hour == 24 { 0 } else { hour };
+    offset
+        .from_local_datetime(&date.and_hms_nano_opt(
+            normalized_hour,
+            minute,
+            second,
+            nanoseconds,
+        )?)
+        .single()
 }
 
 pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
@@ -571,7 +601,7 @@ fn validate_v02_metadata(
                 Some(concept_field_range(concept, "stale_after")),
             ));
         } else if let (Some(stale_after), Some(now)) = (parsed, now)
-            && stale_after <= now.with_timezone(&Utc).date_naive()
+            && stale_after.format("%Y-%m-%d").to_string() <= javascript_iso_date_prefix(now)
         {
             findings.push(curation(
                 "okf.curation.stale-concept",
@@ -730,6 +760,24 @@ fn validate_v02_metadata(
             ));
         }
     }
+}
+
+fn javascript_iso_date_prefix(now: &DateTime<FixedOffset>) -> String {
+    let utc = now.with_timezone(&Utc);
+    let year = utc.year();
+    let iso_date = if (0..=9999).contains(&year) {
+        format!("{year:04}-{:02}-{:02}", utc.month(), utc.day())
+    } else if year >= 0 {
+        format!("+{year:06}-{:02}-{:02}", utc.month(), utc.day())
+    } else {
+        format!(
+            "-{:06}-{:02}-{:02}",
+            year.unsigned_abs(),
+            utc.month(),
+            utc.day()
+        )
+    };
+    iso_date.chars().take(10).collect()
 }
 
 fn valid_normalized_usage_window(value: &crate::UsageWindow) -> bool {

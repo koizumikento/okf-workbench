@@ -407,7 +407,24 @@ pub struct GraphPayload {
     pub revision: u64,
     pub nodes: Vec<GraphNode>,
     pub edges: Vec<GraphEdge>,
+    #[serde(serialize_with = "serialize_utf16_backlinks")]
     pub backlinks: std::collections::BTreeMap<String, Vec<String>>,
     pub broken_links: Vec<BrokenLinkPresentation>,
     pub statistics: GraphStatistics,
+}
+
+fn serialize_utf16_backlinks<S>(
+    backlinks: &std::collections::BTreeMap<String, Vec<String>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let mut entries = backlinks.iter().collect::<Vec<_>>();
+    entries.sort_by(|(left, _), (right, _)| left.encode_utf16().cmp(right.encode_utf16()));
+    let mut map = serializer.serialize_map(Some(entries.len()))?;
+    for (key, value) in entries {
+        map.serialize_entry(key, value)?;
+    }
+    map.end()
 }

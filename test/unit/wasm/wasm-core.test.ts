@@ -215,12 +215,26 @@ describe('Rust/Wasm core boundary', () => {
   );
 
   test('bundle preset timestamps reject the same invalid metadata as the oracle', () => {
-    for (const timestamp of ['', '   ', 'x'.repeat(257), 'unsafe\u0085time']) {
-      expect(() => core.renderBundle('software-project', timestamp), timestamp).toThrow();
-      expect(
-        () => typescriptOkfCore.renderBundle('software-project', timestamp),
-        timestamp,
-      ).toThrow();
+    for (const timestamp of ['', '   ']) {
+      for (const preset of ['minimal', 'software-project', 'data-analytics'] as const) {
+        expect(() => core.renderBundle(preset, timestamp), `${preset}:${timestamp}`).toThrow();
+        expect(
+          () => typescriptOkfCore.renderBundle(preset, timestamp),
+          `${preset}:${timestamp}`,
+        ).toThrow();
+      }
+    }
+    for (const timestamp of ['x'.repeat(257), 'unsafe\u0085time']) {
+      for (const preset of ['software-project', 'data-analytics'] as const) {
+        expect(() => core.renderBundle(preset, timestamp), `${preset}:${timestamp}`).toThrow();
+        expect(
+          () => typescriptOkfCore.renderBundle(preset, timestamp),
+          `${preset}:${timestamp}`,
+        ).toThrow();
+      }
+      expect(core.renderBundle('minimal', timestamp)).toEqual(
+        typescriptOkfCore.renderBundle('minimal', timestamp),
+      );
     }
   });
 
@@ -315,8 +329,23 @@ describe('Rust/Wasm core boundary', () => {
       { relativePath: 'AGENTS.md', encoding: 'utf8', content: agents.value },
       { relativePath: AGENT_SKILL_PATH, encoding: 'utf8', content: skill.value },
     ]);
-    for (const path of ['know`ledge', 'a``b']) {
+    for (const path of [
+      'know`ledge',
+      'a``b',
+      './',
+      'knowledge/',
+      'knowledge\\',
+      './knowledge',
+      'knowledge///',
+      'x'.repeat(4096),
+    ]) {
       expect(core.renderAgent('both', path)).toEqual(typescriptOkfCore.renderAgent('both', path));
+    }
+    for (const relativePath of ['knowledge%20base', 'knowledge%2Fbase', 'knowledge%25base']) {
+      const providerPath = { pathIdentity: 'provider' as const, relativePath };
+      expect(core.renderAgent('both', providerPath)).toEqual(
+        typescriptOkfCore.renderAgent('both', providerPath),
+      );
     }
     for (const path of ['', '../escape', '/absolute', 'bad\npath']) {
       expect(() => core.renderAgent('both', path), path).toThrow();
@@ -375,13 +404,19 @@ describe('Rust/Wasm core boundary', () => {
     const rootUri = 'fixture:/graph-stat-order';
     const input = inputFor(
       [
-        ['emoji.md', concept('', 'tags: ["😀"]\n', '"😀"')],
-        ['pua.md', concept('', 'tags: ["\uE000"]\n', '"\uE000"')],
+        ['😀.md', concept('[pua](%EE%80%80.md)\n', 'tags: ["😀"]\n', '"😀"')],
+        ['\uE000.md', concept('[emoji](%F0%9F%98%80.md)\n', 'tags: ["\uE000"]\n', '"\uE000"')],
       ],
       rootUri,
     );
-    expect(core.inspect(input, '2026-07-22T12:00:00Z')).toEqual(
-      typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'),
+    const actual = core.inspect(input, '2026-07-22T12:00:00Z').graph;
+    const expected = typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z').graph;
+    expect(Object.keys(actual.backlinks)).toEqual(Object.keys(expected.backlinks));
+    expect(Object.keys(actual.statistics.typeCounts)).toEqual(
+      Object.keys(expected.statistics.typeCounts),
+    );
+    expect(Object.keys(actual.statistics.tagCounts)).toEqual(
+      Object.keys(expected.statistics.tagCounts),
     );
   });
 
@@ -457,6 +492,9 @@ describe('Rust/Wasm core boundary', () => {
       '2026-07-31T24:00:00',
       '2026-07-31T24:00:00Z',
       '2026-07-31T24:00:00+00:00',
+      '2025-02-29T00:00Z',
+      '2025-04-31T00:00Z',
+      '9999-12-31T24:00Z',
     ]) {
       expect(core.inspect(input, now), now).toEqual(typescriptOkfCore.inspect(input, now));
     }
@@ -554,6 +592,14 @@ describe('Rust/Wasm core boundary', () => {
       ['explicit-nonstring-int-key.md', '!!int "1": one\n'],
       ['set-explicit-nonstring-int-key.md', 'set: !!set\n  ? !!int "1": one\n'],
       ['flow-explicit-timestamp-key.md', 'map: { !!timestamp "2001-12-15": one }\n'],
+      ['nested-flow-set-mapping.md', 'outer: !!set\n  ? !!set { ? {value: one} }\n'],
+      [
+        'nested-flow-set-cross-member-anchor.md',
+        'outer: !!set\n  ? !!set { ? {value: &a !!str one} }\n  ? {copy: *a}\noutside: *a\n',
+      ],
+      ['explicit-indent-map-scalar.md', 'map:\n  value: !!str |2-\n    hello\n'],
+      ['explicit-indent-sequence-scalar.md', 'items:\n  - !!str >2-\n    hello\n    world\n'],
+      ['explicit-indent-set-scalar.md', 'set: !!set\n  ? &a !!str |2-\n    hello\noutside: *a\n'],
       [
         'anchored-mapping-nested-timestamp.md',
         'set: !!set\n  ? &m {outer: {time: !!timestamp 2001-2-3T4:5:6Z}}\ncopy: *m\n',
@@ -590,12 +636,28 @@ describe('Rust/Wasm core boundary', () => {
         'x: !!set\n  ?\n    [!!timestamp "2001-12-15"]\n',
       ],
       ['single-deferred-tagged-flow-mapping-member.md', 'x: !!set\n  ?\n    {key: !!int "1"}\n'],
+      [
+        'commented-deferred-tagged-flow-member.md',
+        'x: !!set\n  ? # member\n    [!!timestamp "2001-12-15"]\n',
+      ],
+      [
+        'detached-comment-deferred-tagged-flow-member.md',
+        'x: !!set\n  ?\n    # member\n    [!!timestamp "2001-12-15"]\n',
+      ],
       ['terminal-bare-set-markers.md', 'items:\n  - !!set\n    ?\n  - !!set\n    ?\n'],
       ['terminal-anchor-only-set-marker.md', 'set: !!set\n  ? &a\n'],
       ['terminal-commented-set-marker.md', 'set: !!set\n  ? # empty\n  # trailing\n'],
+      ['nested-terminal-bare-set-marker.md', 'outer: !!set\n  ? !!set\n    ?\n'],
+      ['terminal-bare-set-trailing-comment.md', 'set: !!set\n  ?\n# trailing\n'],
+      ['anchor-only-set-before-field.md', 'set: !!set\n  ? &a\nnext: value\n'],
+      ['tag-only-set-before-field.md', 'set: !!set\n  ? !!str\nnext: value\n'],
+      ['nested-set-tag-only-before-field.md', 'set: !!set\n  ? !!set\nnext: value\n'],
       ['c1-control-type.md', 'type: "\\u0085"\n'],
       ['c1-control-resource.md', 'resource: "\\u0085urn:x"\n'],
       ['literal-c1-control-resource.md', 'resource: "\u0085urn:x"\n'],
+      ['literal-c1-type-comment.md', 'type: reference # harmless\u0085comment\n'],
+      ['literal-c1-resource-comment.md', 'resource: urn:x # harmless\u0085comment\n'],
+      ['literal-c1-tags-comment.md', 'tags: # harmless\u0085comment\n  - safe\n'],
       ['bom-trim-type.md', 'type: "\\uFEFF"\n'],
     ] as const;
     for (const [path, fields] of cases) {

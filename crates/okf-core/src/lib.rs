@@ -14,8 +14,8 @@ pub use model::*;
 pub use parser::parse_bundle;
 pub use templates::{
     AgentTarget, BundlePreset, ConceptTemplateInput, IndexMode, RenderedFile, agent_files,
-    agent_files_checked, bundle_preset_files, bundle_preset_files_checked, concept_template_file,
-    concept_template_file_checked, index_files,
+    agent_files_checked, agent_files_provider_checked, bundle_preset_files,
+    bundle_preset_files_checked, concept_template_file, concept_template_file_checked, index_files,
 };
 pub use validation::{is_future_minor_version, validate_bundle};
 
@@ -74,11 +74,11 @@ pub struct RenderIndexesInput {
 pub struct RenderAgentInput {
     pub target: AgentTarget,
     #[serde(default = "default_bundle_path")]
-    pub bundle_path: String,
+    pub bundle_path: Value,
 }
 
-fn default_bundle_path() -> String {
-    ".".to_owned()
+fn default_bundle_path() -> Value {
+    Value::String(".".to_owned())
 }
 
 #[derive(Debug, Serialize)]
@@ -225,7 +225,19 @@ pub fn dispatch_json(request_json: &str) -> String {
             CoreResponse::success(index_files(&bundle, input.mode))
         }
         CoreRequest::RenderAgent(input) => {
-            match agent_files_checked(input.target, &input.bundle_path) {
+            let rendered = match input.bundle_path {
+                Value::String(path) => agent_files_checked(input.target, &path),
+                Value::Object(path)
+                    if path.get("pathIdentity").and_then(Value::as_str) == Some("provider") =>
+                {
+                    path.get("relativePath")
+                        .and_then(Value::as_str)
+                        .ok_or_else(|| "A non-empty provider-relative path is required.".to_owned())
+                        .and_then(|path| agent_files_provider_checked(input.target, path))
+                }
+                _ => Err("A non-empty relative path is required.".to_owned()),
+            };
+            match rendered {
                 Ok(files) => CoreResponse::success(files),
                 Err(message) => CoreResponse::failure("unsafe-relative-path", message),
             }

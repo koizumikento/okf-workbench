@@ -155,7 +155,7 @@ export function createWasmOkfCore(bytes: Uint8Array): OkfCore {
           operation: 'renderAgent',
           input: {
             target,
-            bundlePath: typeof bundlePath === 'string' ? bundlePath : bundlePath.relativePath,
+            bundlePath: bundlePath as unknown as JsonValue,
           },
         }),
       ),

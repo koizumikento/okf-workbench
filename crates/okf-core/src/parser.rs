@@ -1080,12 +1080,13 @@ fn literal_nel_semantic_message(source: &str) -> Option<String> {
     let mut in_tags = false;
     for span in line_spans(source) {
         let body = &source[span.start..span.content_end];
-        let trimmed = body.trim_start_matches([' ', '\t']);
-        let indent = body.len() - trimmed.len();
+        let syntax = yaml_comment_start(body).map_or(body, |comment| &body[..comment]);
+        let trimmed = syntax.trim_start_matches([' ', '\t']);
+        let indent = syntax.len() - trimmed.len();
         if indent == 0 && !trimmed.starts_with(['#', '-', '?']) {
             in_tags = trimmed.starts_with("tags:");
         }
-        if !body.contains('\u{0085}') {
+        if !syntax.contains('\u{0085}') {
             continue;
         }
         if indent == 0 && trimmed.starts_with("type:") {
@@ -3159,7 +3160,7 @@ fn non_string_mapping_key_range(source: &str) -> Option<(usize, usize)> {
             .any(|(start, end)| *start <= line.start && line.start < *end);
         if inside_standard_set
             && let Some(member) = trimmed.strip_prefix('?').map(str::trim_start)
-            && let Some(colon) = mapping_key_colon(member)
+            && let Some(colon) = flow_top_level_mapping_colon(member, 0, member.len())
         {
             let key_source = member[..colon].trim_end();
             let key_start = line.start + body.len().saturating_sub(trimmed.len()) + trimmed.len()
@@ -5503,7 +5504,7 @@ fn preserve_tagged_value(
                 .as_object()?
                 .get("source")?
                 .as_str()
-                .map(str::to_owned)
+                .map(restored_standard_set_source)
         })
         .flatten();
     let already_wrapped = existing
@@ -5531,6 +5532,34 @@ fn preserve_tagged_value(
     set_value_at_path(raw, path, wrapped.clone(), explicit_tags);
     explicit_tags.insert(explicit_tag_path(path), Value::String(tag_uri.clone()));
     Some((wrapped, tag_uri))
+}
+
+fn restored_standard_set_source(source: &str) -> String {
+    let mut syntactic_lines = line_spans(source).into_iter().filter_map(|line| {
+        let body = source[line.start..line.content_end].trim();
+        (!body.is_empty()).then_some(body)
+    });
+    let mut last = syntactic_lines.next();
+    for line in syntactic_lines {
+        last = Some(line);
+    }
+    let terminal_bare = last == Some("?");
+    let terminal_property_only = last.is_some_and(|body| {
+        let Some(member) = body.strip_prefix('?').map(str::trim_start) else {
+            return false;
+        };
+        let (remainder, anchor, tag) = split_node_properties(member);
+        remainder.is_empty() && (anchor.is_some() || tag.is_some())
+    });
+    if source.trim() == "?"
+        || source.trim_start().starts_with('{')
+        || terminal_bare
+        || terminal_property_only
+    {
+        source.trim_end().to_owned()
+    } else {
+        source.to_owned()
+    }
 }
 
 fn tagged_lexical_source(
@@ -5786,9 +5815,57 @@ fn flow_value_end(source: &str, start: usize) -> usize {
     source.len()
 }
 
+fn standalone_block_scalar_source(source: &str) -> String {
+    let spans = line_spans(source);
+    let Some(first) = spans.first() else {
+        return source.to_owned();
+    };
+    let first_body = &source[first.start..first.content_end];
+    let indicator = first_body.split_whitespace().next().unwrap_or(first_body);
+    if !matches!(indicator.chars().next(), Some('|' | '>')) {
+        return source.to_owned();
+    }
+    let Some(explicit_indent) = indicator
+        .chars()
+        .find_map(|character| character.to_digit(10))
+        .filter(|indent| *indent > 0)
+        .map(|indent| indent as usize)
+    else {
+        return source.to_owned();
+    };
+    let Some(minimum_indent) = spans
+        .iter()
+        .skip(1)
+        .filter_map(|span| {
+            let body = &source[span.start..span.content_end];
+            (!body.trim().is_empty()).then(|| body.bytes().take_while(|byte| *byte == b' ').count())
+        })
+        .min()
+    else {
+        return source.to_owned();
+    };
+    let remove = minimum_indent.saturating_sub(explicit_indent);
+    if remove == 0 {
+        return source.to_owned();
+    }
+    let mut normalized = String::with_capacity(source.len());
+    for (index, span) in spans.iter().enumerate() {
+        let body = &source[span.start..span.content_end];
+        if index == 0 || body.trim().is_empty() {
+            normalized.push_str(body);
+        } else {
+            let leading = body.bytes().take_while(|byte| *byte == b' ').count();
+            normalized.push_str(&body[std::cmp::min(remove, leading)..]);
+        }
+        normalized.push_str(&source[span.content_end..span.end]);
+    }
+    normalized
+}
+
 fn standard_tag_semantic(tag_name: &str, source_value: &str, existing: Value) -> Value {
+    let parser_source = standalone_block_scalar_source(source_value);
     let scalar_text = || {
-        serde_yaml::from_str::<serde_yaml::Value>(source_value)
+        serde_yaml::from_str::<serde_yaml::Value>(&parser_source)
             .ok()
             .and_then(|value| match value {
                 serde_yaml::Value::String(value) => Some(value),
@@ -6033,14 +6110,38 @@ fn restore_collection_set_member_provenance(
     {
         return Vec::new();
     }
-    let trimmed = member_source.trim_start();
+    let node_start = line_spans(member_source)
+        .into_iter()
+        .find_map(|line| {
+            let body = &member_source[line.start..line.content_end];
+            let trimmed = body.trim_start_matches([' ', '\t']);
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                return None;
+            }
+            let mut node = trimmed;
+            if let Some(after_question) = node.strip_prefix('?')
+                && (after_question.is_empty()
+                    || after_question
+                        .chars()
+                        .next()
+                        .is_some_and(char::is_whitespace))
+            {
+                node = after_question.trim_start();
+            }
+            if node.is_empty() || node.starts_with('#') {
+                return None;
+            }
+            Some(line.start + body.len() - trimmed.len() + trimmed.len() - node.len())
+        })
+        .unwrap_or_default();
+    let trimmed = member_source[node_start..].trim_start();
     let (property_remainder, _, _) = split_node_properties(trimmed);
     let synthetic = if matches!(property_remainder.chars().next(), Some('{' | '[')) {
         format!("member: {trimmed}")
-    } else if member_source.starts_with(['\r', '\n']) {
-        format!("member: {member_source}")
+    } else if member_source[node_start..].starts_with(['\r', '\n']) {
+        format!("member: {}", &member_source[node_start..])
     } else {
-        format!("member:\n  {member_source}")
+        format!("member:\n  {}", &member_source[node_start..])
     };
     let mut local_raw = Map::new();
     local_raw.insert("member".to_owned(), member.clone());
@@ -6447,27 +6548,6 @@ fn restore_standard_set_sources(
         .map(|source| semantic_for_standard_set_source(source))
         .collect::<Vec<_>>();
 
-    fn restored_set_source(source: &str) -> String {
-        let mut syntactic_lines = line_spans(source).into_iter().filter_map(|line| {
-            let body = source[line.start..line.content_end].trim();
-            (!body.is_empty() && !body.starts_with('#')).then_some(body)
-        });
-        let terminal_property_only = syntactic_lines.next().is_some_and(|body| {
-            let Some(member) = body.strip_prefix('?').map(str::trim_start) else {
-                return false;
-            };
-            let (remainder, anchor, tag) = split_node_properties(member);
-            remainder.is_empty()
-                && (anchor.is_some() || tag.is_some())
-                && syntactic_lines.next().is_none()
-        });
-        if source.trim() == "?" || source.trim_start().starts_with('{') || terminal_property_only {
-            source.trim_end().to_owned()
-        } else {
-            source.to_owned()
-        }
-    }
-
     fn source_matches_with_boundary(restored: &str, existing: &str) -> bool {
         if restored == existing || restored.trim_end() == existing.trim_end() {
             return true;
@@ -6504,7 +6584,7 @@ fn restore_standard_set_sources(
                     .and_then(Value::as_str)
                     .map(str::to_owned)
                     && let Some(index) = sources.iter().enumerate().position(|(index, source)| {
-                        let restored = restored_set_source(source);
+                        let restored = restored_standard_set_source(source);
                         let target = body.get("value").map(value_without_tag_sources);
                         !used[index]
                             && (target
@@ -6523,7 +6603,7 @@ fn restore_standard_set_sources(
                     })
                 {
                     used[index] = true;
-                    let source = restored_set_source(&sources[index]);
+                    let source = restored_standard_set_source(&sources[index]);
                     if source != existing {
                         body.insert("source".to_owned(), Value::String(source));
                     }
@@ -6568,7 +6648,7 @@ fn restore_standard_set_sources(
                     }
                 {
                     used[index] = true;
-                    let source = restored_set_source(source);
+                    let source = restored_standard_set_source(source);
                     body.insert("source".to_owned(), Value::String(source));
                 }
                 if let Some(semantic) = body.get_mut("value") {
@@ -7528,6 +7608,35 @@ fn block_field_value_end(
     let inline_node = !remainder.is_empty() && !remainder.starts_with('#');
     let non_block_scalar = tagged_scalar || inline_node || deferred_non_block_node;
     let indentationless_sequence = value_source.is_empty();
+    let set_field = effective_tag == Some("set")
+        || value_source.trim_start().starts_with("!!set")
+        || value_source
+            .trim_start()
+            .starts_with("!<tag:yaml.org,2002:set>");
+    let terminal_bare_set_has_trailing_comment = set_field && {
+        let mut bare_marker = false;
+        let mut trailing_comment = false;
+        for line in line_spans(&text[content_start..boundary]) {
+            let body = &text[content_start + line.start..content_start + line.content_end];
+            let trimmed = body.trim();
+            if trimmed == "?" {
+                bare_marker = true;
+                trailing_comment = false;
+            } else if bare_marker && trimmed.starts_with('#') {
+                trailing_comment = true;
+            } else if !trimmed.is_empty() {
+                bare_marker = false;
+                trailing_comment = false;
+            }
+        }
+        bare_marker && trailing_comment
+    };
+    if preserve_trailing_collection_boundary
+        && !block_scalar
+        && terminal_bare_set_has_trailing_comment
+    {
+        return boundary;
+    }
     let mut first_content = None;
     let mut last_content = None;
     let mut last_nonblank = None;
@@ -7559,6 +7668,26 @@ fn block_field_value_end(
         last_content = Some(range);
         last_nonblank = Some(range);
     }
+    if !block_scalar
+        && set_field
+        && let Some((content_end, _)) = last_nonblank
+    {
+        let line_start = text[..content_end]
+            .rfind(['\r', '\n'])
+            .map_or(0, |newline| newline + 1);
+        let terminal = text[line_start..content_end].trim();
+        let terminal_member_property =
+            terminal
+                .strip_prefix('?')
+                .map(str::trim_start)
+                .is_some_and(|member| {
+                    let (remainder, anchor, tag) = split_node_properties(member);
+                    remainder.is_empty() && (anchor.is_some() || tag.is_some())
+                });
+        if terminal == "?" || terminal_member_property {
+            return content_end;
+        }
+    }
     if preserve_trailing_collection_boundary && !block_scalar && !non_block_scalar {
         if let Some((content_end, _)) = last_nonblank {
             let line_start = text[..content_end]
@@ -7573,7 +7702,7 @@ fn block_field_value_end(
                     remainder.is_empty() && (anchor.is_some() || tag.is_some())
                 });
             if (value_source.is_empty() || effective_tag == Some("set"))
-                && ((effective_tag.is_none() && terminal == "?") || terminal_member_property)
+                && (terminal == "?" || terminal_member_property)
             {
                 return content_end;
             }

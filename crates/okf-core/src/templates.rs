@@ -228,7 +228,12 @@ pub fn bundle_preset_files_checked(
     preset: BundlePreset,
     timestamp: &str,
 ) -> Result<Vec<RenderedFile>, String> {
-    validate_template_timestamp(timestamp)?;
+    if ecmascript_trim(timestamp).is_empty() {
+        return Err("Bundle rendering requires a caller-supplied timestamp.".to_owned());
+    }
+    if !matches!(preset, BundlePreset::Minimal) {
+        validate_template_timestamp(timestamp)?;
+    }
     Ok(bundle_preset_files(preset, timestamp))
 }
 
@@ -505,6 +510,14 @@ pub fn agent_files_checked(
     Ok(agent_files(target, &normalized))
 }
 
+pub fn agent_files_provider_checked(
+    target: AgentTarget,
+    bundle_path: &str,
+) -> Result<Vec<RenderedFile>, String> {
+    let preserved = validate_provider_bundle_directory(bundle_path)?;
+    Ok(agent_files(target, &preserved))
+}
+
 fn validate_template_timestamp(timestamp: &str) -> Result<(), String> {
     if ecmascript_trim(timestamp).is_empty() {
         return Err("Bundle rendering requires a caller-supplied timestamp.".to_owned());
@@ -520,14 +533,119 @@ fn validate_template_timestamp(timestamp: &str) -> Result<(), String> {
 }
 
 fn validate_bundle_directory(path: &str) -> Result<String, String> {
-    if path == "." {
+    if !bounded_relative_path(path, true) {
+        return Err("The path exceeds the supported relative-path limit.".to_owned());
+    }
+    let slash_normalized = path.replace('\\', "/");
+    let mut candidate = slash_normalized.as_str();
+    while let Some(remainder) = candidate.strip_prefix("./") {
+        candidate = remainder;
+    }
+    while candidate.len() > 1 && candidate.ends_with('/') {
+        candidate = &candidate[..candidate.len() - 1];
+    }
+    let candidate = if candidate.is_empty() && !ecmascript_trim(path).is_empty() {
+        "."
+    } else {
+        candidate
+    };
+    if candidate == "." {
         return Ok(".".to_owned());
     }
-    let probe = validate_concept_path(&format!("{path}/placeholder.md"))?;
-    Ok(probe
-        .strip_suffix("/placeholder.md")
-        .unwrap_or_default()
-        .to_owned())
+    if ecmascript_trim(candidate).is_empty() {
+        return Err("A non-empty relative path is required.".to_owned());
+    }
+    let mut decoded = candidate.to_owned();
+    let mut stable = false;
+    for _ in 0..16 {
+        if has_control_character(&decoded) {
+            return Err(format!("The path {path:?} contains a control character."));
+        }
+        let next = percent_decode(&decoded)
+            .ok_or_else(|| format!("The path {path:?} contains invalid percent encoding."))?;
+        if next == decoded {
+            stable = true;
+            break;
+        }
+        decoded = next.replace('\\', "/");
+    }
+    if !stable {
+        return Err(format!(
+            "The path {path:?} contains excessive nested percent encoding."
+        ));
+    }
+    if !bounded_relative_path(&decoded, false) {
+        return Err("The path exceeds the supported relative-path limit.".to_owned());
+    }
+    let has_scheme = decoded.find(':').is_some_and(|colon| {
+        colon > 0
+            && decoded[..colon]
+                .chars()
+                .next()
+                .is_some_and(|character| character.is_ascii_alphabetic())
+            && decoded[..colon].chars().all(|character| {
+                character.is_ascii_alphanumeric() || matches!(character, '+' | '-' | '.')
+            })
+    });
+    if decoded.starts_with('/') || has_scheme {
+        return Err(format!("The path {path:?} is absolute or URI-like."));
+    }
+    if decoded
+        .split('/')
+        .any(|segment| segment.is_empty() || matches!(segment, "." | ".."))
+    {
+        return Err(format!(
+            "The path {path:?} contains an empty, current, or parent segment."
+        ));
+    }
+    Ok(decoded)
+}
+
+fn validate_provider_bundle_directory(path: &str) -> Result<String, String> {
+    if path.is_empty() {
+        return Err("A non-empty provider-relative path is required.".to_owned());
+    }
+    if !bounded_relative_path(path, false) {
+        return Err("The provider path exceeds the supported relative-path limit.".to_owned());
+    }
+    if has_control_character(path) {
+        return Err(format!(
+            "The provider path {path:?} contains a control character."
+        ));
+    }
+    if path.contains('\\') {
+        return Err(format!(
+            "The provider path {path:?} must use POSIX separators."
+        ));
+    }
+    let windows_absolute = path.as_bytes().get(1) == Some(&b':')
+        && path.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
+        && (path.len() == 2 || path.as_bytes().get(2) == Some(&b'/'));
+    if path.starts_with('/') || windows_absolute {
+        return Err(format!("The provider path {path:?} is absolute."));
+    }
+    if path == "." {
+        return Ok(path.to_owned());
+    }
+    if path
+        .split('/')
+        .any(|segment| segment.is_empty() || matches!(segment, "." | ".."))
+    {
+        return Err(format!(
+            "The provider path {path:?} contains an empty, current, or parent segment."
+        ));
+    }
+    Ok(path.to_owned())
+}
+
+fn bounded_relative_path(path: &str, backslash_is_separator: bool) -> bool {
+    path.encode_utf16().count() <= MAX_PROVIDER_PATH_CODE_UNITS
+        && path.len() <= MAX_PROVIDER_PATH_BYTES
+        && path
+            .chars()
+            .filter(|character| *character == '/' || (backslash_is_separator && *character == '\\'))
+            .count()
+            < MAX_PROVIDER_PATH_SEGMENTS
 }
 
 fn inline_code(value: &str) -> String {

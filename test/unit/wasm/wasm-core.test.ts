@@ -752,6 +752,14 @@ describe('Rust/Wasm core boundary', () => {
       ['literal-nel-explicit-tagged-key.md', '? !!str "A\u0085B"\n: !!str value\n'],
       ['literal-nel-semantic-duplicate-key.md', '"A\\NB": one\n"A\u0085B": two\n'],
       [
+        'literal-nel-explicit-semantic-duplicate-key.md',
+        '? !!str "A\u0085B"\n: one\n? "A\u0085B"\n: two\n',
+      ],
+      [
+        'literal-nel-flow-semantic-duplicate-key.md',
+        'custom: {"A\u0085B": one, !!str \'A\u0085B\': two}\n',
+      ],
+      [
         'literal-nel-nested-tagged-key.md',
         '"A\u0085B":\n  nested: !!str "value"\n  binary: !!binary "SGVsbG8="\n',
       ],
@@ -759,6 +767,10 @@ describe('Rust/Wasm core boundary', () => {
       ['literal-nel-binary.md', 'custom: !!binary "SGVs\u0085bG8="\n'],
       ['literal-nel-block-binary.md', 'custom: !!binary |-\n  SGVs\u0085bG8=\n'],
       ['literal-nel-structural-colon.md', 'custom:\u0085value\n'],
+      ['literal-nel-structural-key.md', 'custom\u0085:value\n'],
+      ['literal-nel-plain-scalar-colon.md', 'custom: prefix:\u0085suffix\n'],
+      ['literal-nel-plain-key.md', 'custom\u0085: value\n'],
+      ['literal-nel-flow-plain-scalar-colon.md', 'outer: [prefix:\u0085suffix]\n'],
       [
         'tagged-block-scalar-shallow-comment.md',
         'custom: !!str |-\n  one\n # between\nnext: value\n',
@@ -784,6 +796,10 @@ describe('Rust/Wasm core boundary', () => {
       [
         'nested-set-parent-comment-sibling.md',
         'outer:\n  x: !!set\n    ? !!timestamp &a |-\n      2001-12-15\n  # parent comment\n    ? *a\n',
+      ],
+      [
+        'nested-set-parent-comment-sequence-sibling.md',
+        'outer:\n  x: !!set\n    ? &a !!seq [!!str one]\n  # parent comment\n    ? *a\n',
       ],
       [
         'deferred-map-comment-colon.md',
@@ -812,6 +828,10 @@ describe('Rust/Wasm core boundary', () => {
         'set: !!set\n  ? !!map # tag\n    # gap: !!int fake\n    key: !!str value\n',
       ],
       [
+        'deferred-map-explicit-comment-key.md',
+        'set: !!set\n  ? !!map\n    ? # key: comment\n      !!str "1"\n    : value\n',
+      ],
+      [
         'deferred-explicit-key-comment.md',
         'set: !!set\n  ?\n    ? # key\n      !!int "1"\n    : value\n',
       ],
@@ -827,6 +847,11 @@ describe('Rust/Wasm core boundary', () => {
         'deferred-explicit-multiline-tag-key.md',
         'set: !!set\n  ?\n    ? !!int # tag\n      "1"\n    : value\n',
       ],
+      [
+        'deferred-explicit-multiline-string-key.md',
+        'set: !!set\n  ?\n    ? !!str # tag\n      "1"\n    : value\n',
+      ],
+      ['top-level-explicit-multiline-string-key.md', '? !!str # tag\n  "1"\n: value\n'],
       [
         'deferred-explicit-multiline-tag-anchor-key.md',
         'set: !!set\n  ?\n    ? !!int # tag\n      &key\n      "1"\n    : value\n',

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 import { GraphResourceLimitError } from '../graph/index.js';
 import { hasUnpairedUtf16Surrogate, type JsonValue, type ParseFailure } from '../model/index.js';
+import type { MigrationPlan } from '../migration/index.js';
 import type { ParseBundleInput } from '../parser/index.js';
 import type {
   BundleDirectoryInput,
@@ -163,6 +164,22 @@ export function createWasmOkfCore(bytes: Uint8Array): OkfCore {
           },
         }),
       ),
+    migrate: (input: ParseBundleInput, actor: string): MigrationPlan => {
+      const result = callCore(exports, {
+        operation: 'migrate',
+        input: { bundle: jsonBundleInput(input), actor },
+      });
+      if (
+        !isObject(result) ||
+        typeof result['fromVersion'] !== 'string' ||
+        result['toVersion'] !== '0.2' ||
+        !Array.isArray(result['files']) ||
+        !Array.isArray(result['documents'])
+      ) {
+        throw new OkfCoreUnavailableError('The OKF core returned an invalid migration plan.');
+      }
+      return result as unknown as MigrationPlan;
+    },
   };
 }
 

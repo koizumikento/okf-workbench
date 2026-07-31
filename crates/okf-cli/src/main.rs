@@ -3,12 +3,14 @@ mod workspace;
 use chrono::{DateTime, SecondsFormat, Utc};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use okf_core::{
-    AgentTarget, BundlePreset, CORE_VERSION, ConceptTemplateInput, IndexMode, RenderedFile,
-    agent_files, build_graph_payload_checked, bundle_preset_files, concept_template_file_checked,
-    index_files, is_future_minor_version, parse_bundle, validate_bundle,
+    AgentTarget, BundlePreset, CORE_VERSION, ConceptTemplateInput, IndexMode,
+    MigrationDocumentResult, MigrationInput, RenderedFile, agent_files,
+    build_graph_payload_checked, bundle_preset_files, concept_template_file_checked, index_files,
+    is_future_minor_version, migrate_bundle, parse_bundle, validate_bundle,
 };
 use serde::Serialize;
 use std::{
+    collections::BTreeMap,
     io::{self, IsTerminal, Write},
     path::{Path, PathBuf},
     process::ExitCode,
@@ -16,7 +18,7 @@ use std::{
 };
 use workspace::{
     PlanMode, PlannedChange, apply_plan, load_bundle, load_root_index, plan_files,
-    validate_relative_path,
+    plan_replacement_files, validate_relative_path,
 };
 
 const CONCEPT_TEMPLATES: &[&str] = &[
@@ -45,6 +47,7 @@ enum Command {
     Index(IndexArgs),
     Graph(GraphArgs),
     Agent(AgentArgs),
+    Migrate(MigrateArgs),
     Version,
 }
 
@@ -162,6 +165,18 @@ struct AgentArgs {
     write: WriteFlags,
 }
 
+#[derive(Debug, Args)]
+struct MigrateArgs {
+    #[arg(default_value = ".")]
+    root: PathBuf,
+    #[arg(long, default_value = "0.2")]
+    to: String,
+    #[arg(long)]
+    actor: String,
+    #[command(flatten)]
+    write: WriteFlags,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct JsonEnvelope<T: Serialize> {
@@ -177,6 +192,18 @@ struct PlanOutput<'a> {
     change_count: usize,
     applied: bool,
     changes: &'a [PlannedChange],
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MigrationOutput<'a> {
+    root: String,
+    from_version: &'a str,
+    to_version: &'a str,
+    change_count: usize,
+    applied: bool,
+    changes: &'a [PlannedChange],
+    documents: &'a [MigrationDocumentResult],
 }
 
 fn main() -> ExitCode {
@@ -338,6 +365,7 @@ fn run(cli: Cli) -> Result<u8, String> {
                 PlanMode::MergeAgent,
             )
         }
+        Command::Migrate(args) => run_migration(args),
         Command::Version => {
             write_json(&JsonEnvelope {
                 schema_version: 1,
@@ -409,25 +437,7 @@ fn run_write(
 ) -> Result<u8, String> {
     let root = absolute(root)?;
     let plan = plan_files(&root, files, mode)?;
-    let should_apply = if flags.check || plan.is_empty() {
-        false
-    } else if flags.apply {
-        true
-    } else if io::stdin().is_terminal() && io::stderr().is_terminal() {
-        let mut stderr = io::stderr().lock();
-        writeln!(stderr, "{} change(s) are ready:", plan.len()).map_err(io_error)?;
-        for change in &plan {
-            writeln!(stderr, "  {} {}", change.operation, change.relative_path)
-                .map_err(io_error)?;
-        }
-        write!(stderr, "Apply this complete plan? [y/N] ").map_err(io_error)?;
-        stderr.flush().map_err(io_error)?;
-        let mut answer = String::new();
-        io::stdin().read_line(&mut answer).map_err(io_error)?;
-        matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes")
-    } else {
-        return Err("a non-interactive write requires explicit `--apply`; use `--check` to inspect without writing".to_owned());
-    };
+    let should_apply = should_apply(&flags, &plan)?;
     if should_apply {
         apply_plan(&root, &plan)?;
     }
@@ -446,6 +456,110 @@ fn run_write(
     } else {
         0
     })
+}
+
+fn run_migration(args: MigrateArgs) -> Result<u8, String> {
+    if args.to != "0.2" {
+        return Err(format!(
+            "unsupported migration target {:?}; only `--to 0.2` is available",
+            args.to
+        ));
+    }
+    let root = absolute(args.root)?;
+    let bundle = load_bundle(&root)?;
+    let expected_contents = migration_source_snapshots(&bundle)?;
+    let migration = migrate_bundle(MigrationInput {
+        bundle,
+        actor: args.actor,
+    })?;
+    let plan = plan_replacement_files(&root, migration.files.clone(), &expected_contents)?;
+    let should_apply = should_apply(&args.write, &plan)?;
+    if should_apply {
+        apply_plan(&root, &plan)?;
+    }
+    write_json(&JsonEnvelope {
+        schema_version: 1,
+        command: "migrate",
+        result: MigrationOutput {
+            root: root.display().to_string(),
+            from_version: &migration.from_version,
+            to_version: migration.to_version,
+            change_count: plan.len(),
+            applied: should_apply,
+            changes: &plan,
+            documents: &migration.documents,
+        },
+    })?;
+    let needs_attention = !plan.is_empty()
+        || migration
+            .documents
+            .iter()
+            .any(|document| document.manual_follow_up);
+    Ok(if args.write.check && needs_attention {
+        1
+    } else {
+        0
+    })
+}
+
+fn migration_source_snapshots(
+    input: &okf_core::ParseBundleInput,
+) -> Result<BTreeMap<String, String>, String> {
+    input
+        .documents
+        .iter()
+        .map(|document| {
+            let content = match document.content.as_ref() {
+                Some(okf_core::DocumentContent::Text(value)) => value.clone(),
+                Some(okf_core::DocumentContent::Bytes(bytes)) => String::from_utf8(bytes.clone())
+                    .map_err(|_| {
+                    format!("migration requires valid UTF-8 in {}", document.bundle_path)
+                })?,
+                Some(okf_core::DocumentContent::InvalidUtf16 { .. }) => {
+                    return Err(format!(
+                        "migration requires valid UTF-16 text in {}",
+                        document.bundle_path
+                    ));
+                }
+                None => {
+                    return Err(format!(
+                        "migration cannot snapshot {} completely",
+                        document.bundle_path
+                    ));
+                }
+            };
+            Ok((document.bundle_path.clone(), content))
+        })
+        .collect()
+}
+
+fn should_apply(flags: &WriteFlags, plan: &[PlannedChange]) -> Result<bool, String> {
+    if flags.check || plan.is_empty() {
+        return Ok(false);
+    }
+    if flags.apply {
+        return Ok(true);
+    }
+    if io::stdin().is_terminal() && io::stderr().is_terminal() {
+        let mut stderr = io::stderr().lock();
+        writeln!(stderr, "{} change(s) are ready:", plan.len()).map_err(io_error)?;
+        for change in plan {
+            writeln!(stderr, "  {} {}", change.operation, change.relative_path)
+                .map_err(io_error)?;
+        }
+        write!(stderr, "Apply this complete plan? [y/N] ").map_err(io_error)?;
+        stderr.flush().map_err(io_error)?;
+        let mut answer = String::new();
+        io::stdin().read_line(&mut answer).map_err(io_error)?;
+        return Ok(matches!(
+            answer.trim().to_ascii_lowercase().as_str(),
+            "y" | "yes"
+        ));
+    }
+    Err(
+        "a non-interactive write requires explicit `--apply`; use `--check` to inspect without writing"
+            .to_owned(),
+    )
 }
 
 fn absolute(path: PathBuf) -> Result<PathBuf, String> {

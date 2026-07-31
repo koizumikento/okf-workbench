@@ -1,4 +1,5 @@
 import type { Finding, GraphPayload, ParseFailure, ParsedBundle } from '../model/index.js';
+import type { MigrationPlan } from '../migration/index.js';
 import type { ParseBundleInput } from '../parser/index.js';
 import type {
   BundleDirectoryInput,
@@ -31,4 +32,5 @@ export interface OkfCore {
     target: 'agents' | 'skill' | 'both',
     bundlePath: BundleDirectoryInput,
   ): readonly RenderedTemplateFile[];
+  migrate(input: ParseBundleInput, actor: string): MigrationPlan;
 }

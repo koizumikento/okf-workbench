@@ -65,6 +65,108 @@ describe('Rust/Wasm core boundary', () => {
     expect(core.coreVersion).toBe('0.2.1');
   });
 
+  test('has exact migration-plan parity with the TypeScript oracle', () => {
+    const migrationInput = inputFor(
+      [
+        ['index.md', ['---', 'okf_version: "0.1"', '---', '# Root', ''].join('\n')],
+        [
+          'legacy.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Legacy',
+            'description: Legacy provenance',
+            'timestamp: "2026-07-22T10:00:00Z"',
+            '---',
+            '# Legacy',
+            '',
+            '# Citations',
+            '',
+            '- https://example.com/source',
+            '',
+          ].join('\n'),
+        ],
+      ],
+      'fixture:/migration-parity',
+    );
+    expect(core.migrate(migrationInput, 'okf-workbench/0.2.1')).toEqual(
+      typescriptOkfCore.migrate(migrationInput, 'okf-workbench/0.2.1'),
+    );
+  });
+
+  test('keeps migration parity for ordinal paths, fences, CR-only text, and RFC3339 variants', () => {
+    const rootUri = 'fixture:/migration-adversarial';
+    const migrationInput = inputFor(
+      [
+        ['index.md', '---\rokf_version: "0.1"\r---\r# Root\r'],
+        [
+          'B.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Fenced',
+            'description: Fenced example',
+            '---',
+            '# Fenced',
+            '',
+            '```md',
+            '# Citations',
+            '- https://example.com/not-a-source',
+            '```',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'a.md',
+          '---\rtype: Reference\rtitle: CR\rdescription: CR-only\rtimestamp: "2026-07-22t10:00:60z"\r---\r# CR\r\r# Citations\r\r- https://example.com/source\r',
+        ],
+        [
+          '�.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Replacement character',
+            'description: UTF-8 ordering',
+            'timestamp: "2026-07-22T10:00:00Z"',
+            '---',
+            '# Replacement',
+            '',
+          ].join('\n'),
+        ],
+        [
+          '😀.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Emoji',
+            'description: UTF-8 ordering',
+            'timestamp: "2026-07-22T10:00:00Z"',
+            '---',
+            '# Emoji',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'space.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Space separator',
+            'description: Strict RFC3339',
+            'timestamp: "2026-07-22 10:00:00Z"',
+            '---',
+            '# Space',
+            '',
+          ].join('\n'),
+        ],
+      ],
+      rootUri,
+    );
+    expect(core.migrate(migrationInput, 'human:reviewer')).toEqual(
+      typescriptOkfCore.migrate(migrationInput, 'human:reviewer'),
+    );
+  });
+
   test.each(fixtureNames)('%s preserves the canonical semantic projection', async (name) => {
     const fixture = await loadFixture(name);
     const files = await readFixtureFiles(fixture);

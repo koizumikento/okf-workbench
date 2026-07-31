@@ -19,6 +19,7 @@ src/
 │   ├── graph/         # migration oracle
 │   ├── indexes/       # guarded managed-region merge
 │   ├── templates/     # migration oracle
+│   ├── migration/     # deterministic v0.1-to-v0.2 planning oracle
 │   └── wasm/          # production Extension Host ABI adapter
 ├── extension/
 │   ├── commands/
@@ -78,7 +79,7 @@ versioned JSON / raw Wasm ABI              native Rust calls
           |                                         |
           +--------------- okf-core ----------------+
                  parser / validator / graph /
-                 indexes / templates / agents
+                 indexes / templates / migration / agents
 ```
 
 `okf-core` accepts bytes and serializable operation inputs and returns serializable results. It
@@ -95,6 +96,12 @@ diagnostics, watchers, and the Webview lifecycle. The native CLI owns local path
 interactive confirmation, identity-anchored no-overwrite creates, fail-closed existing-file update
 handling, and stdout/stderr. The Webview receives only the bounded presentation payload and never
 instantiates Wasm.
+
+Migration is a pure shared-core planner. It receives one complete bundle snapshot plus an explicit
+actor and returns replacement bytes and per-document status. The Extension Host binds those bytes
+to provider-path SHA-256 snapshots and previews the complete proposal; the CLI binds them to local
+file snapshots and applies guarded same-directory replacements. Neither adapter infers actors or
+executes computation metadata.
 
 Supported target-platform VSIX packages add one native CLI at the distribution boundary, while the
 universal fallback remains CLI-free. The exact same executable is also shipped in a standalone

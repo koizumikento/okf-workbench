@@ -30,6 +30,7 @@ Exit gate: fixtures cover the compatibility contract and unknown fields survive 
 - Create a concept from a template.
 - Publish diagnostics to the Problems panel.
 - Regenerate indexes with preview.
+- Offer explicit, previewed v0.1-to-v0.2 migration.
 - Watch workspace changes.
 
 Exit gate: a user can complete the initialize-to-repair workflow without leaving the editor.

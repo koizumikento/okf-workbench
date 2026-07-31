@@ -219,9 +219,11 @@ and is not accepted by package validation.
 
 - Package: `okf-cli`; binary name: `okf`.
 - Local build: `cargo build --locked --release --bin okf`.
-- Commands: `init`, `new`, `validate`, `index`, `graph`, `agent`, and `version`.
+- Commands: `init`, `new`, `validate`, `index`, `graph`, `agent`, `migrate`, and `version`.
 - Read-only commands never mutate storage. `--check` is non-mutating; non-interactive writes
   require `--apply`.
+- `migrate` requires `--to 0.2` and an explicit `--actor`; its JSON result includes per-document
+  automatic-change and manual-follow-up status.
 - Native binaries are OS/architecture-specific release artifacts and are not included in the
   universal VSIX.
 - The initial `darwin-arm64`, `darwin-x64`, `linux-x64`, and `win32-x64` VSIX packages each include
@@ -676,10 +678,10 @@ Webview render acknowledgement, and rejects any provider mutation. This developm
 does not substitute for packaged VSIX lifecycle evidence, an external remote provider, or write-flow
 UI automation.
 
-The packaged lifecycle driver derives the six-command contract from acceptance-only command
+The packaged lifecycle driver derives the seven-command contract from acceptance-only command
 metadata and compares it with the installed manifest and registered IDs. In an untrusted workspace
 it probes all metadata-classified write commands: Initialize Bundle, New Concept, Regenerate
-Indexes, and Set Up Agent Integration. Each must refuse with `workspace-untrusted` before requesting
+Indexes, Migrate Bundle, and Set Up Agent Integration. Each must refuse with `workspace-untrusted` before requesting
 interactive input. Validate Bundle and Open 3D Graph are the two read commands.
 For those commands, the driver requires a request ticket and waits for completion using that exact
 request ID; a generic later runtime or graph signal cannot satisfy the command assertion.

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { OKF_SEMANTIC_LIMITS } from '../../../src/core/model/index.js';
 import { typescriptOkfCore } from '../../../src/core/wasm/index.js';
 import { createInitializeBundleCommand } from '../../../src/extension/commands/initialize-bundle.js';
+import { createMigrateBundleCommand } from '../../../src/extension/commands/migrate-bundle.js';
 import { createNewConceptCommand } from '../../../src/extension/commands/new-concept.js';
 import { SerialProposalWorkflowScheduler } from '../../../src/extension/commands/proposal-workflow-scheduler.js';
 import { createRegenerateIndexesCommand } from '../../../src/extension/commands/regenerate-indexes.js';
@@ -99,6 +100,96 @@ function harness(port = new FakeWorkspacePort()) {
 }
 
 describe('authoring command handlers', () => {
+  it('previews and applies an explicit v0.1 to v0.2 migration', async () => {
+    const { port, ui, previewer, shared } = harness();
+    port.putText(
+      `${bundleRoot}/index.md`,
+      ['---', 'okf_version: "0.1"', '---', '# Root', ''].join('\n'),
+    );
+    port.putText(
+      `${bundleRoot}/legacy.md`,
+      [
+        '---',
+        'type: Reference',
+        'title: Legacy',
+        'description: Legacy provenance',
+        'timestamp: "2026-07-22T10:00:00Z"',
+        'custom_field: retained',
+        '---',
+        '# Legacy',
+        '',
+        '# Citations',
+        '',
+        '- https://example.com/source',
+        '',
+      ].join('\n'),
+    );
+    ui.inputs.push('human:reviewer');
+    ui.confirmations.push(true);
+    const command = createMigrateBundleCommand({
+      ...shared,
+      selectBundle: async () => writableBundleSelection,
+    });
+
+    await expect(command()).resolves.toMatchObject({ kind: 'applied' });
+
+    expect(previewer.shown).toHaveLength(1);
+    expect(previewer.shown[0]?.proposal.changes).toHaveLength(2);
+    expect(
+      previewer.shown[0]?.proposal.changes.every((change) => change.operation === 'update'),
+    ).toBe(true);
+    expect(port.text(`${bundleRoot}/index.md`)).toContain('okf_version: "0.2"');
+    expect(port.text(`${bundleRoot}/legacy.md`)).toContain('generated:\n  by: "human:reviewer"');
+    expect(port.text(`${bundleRoot}/legacy.md`)).toContain(
+      '# Citations\n\n- https://example.com/source',
+    );
+  });
+
+  it('invalidates an active migration preview when its workspace folder is removed', async () => {
+    const { port, ui, previewer, shared } = harness();
+    const legacyPath = `${bundleRoot}/legacy.md`;
+    const originalLegacy = [
+      '---',
+      'type: Reference',
+      'title: Legacy',
+      'description: Legacy',
+      'timestamp: "2026-07-22T10:00:00Z"',
+      '---',
+      '# Legacy',
+      '',
+    ].join('\n');
+    port.putText(
+      `${bundleRoot}/index.md`,
+      ['---', 'okf_version: "0.1"', '---', '# Root', ''].join('\n'),
+    );
+    port.putText(legacyPath, originalLegacy);
+    ui.inputs.push('human:reviewer');
+    ui.confirmations.push(true);
+
+    let openFolders: readonly string[] = [workspaceRoot];
+    const tracker = new WorkspaceFolderMembershipTracker(stringUriCodec, () => openFolders);
+    const show = previewer.show.bind(previewer);
+    previewer.show = async (...arguments_) => {
+      const session = await show(...arguments_);
+      openFolders = [];
+      tracker.handleWorkspaceFoldersChanged({ removed: [workspaceRoot] });
+      openFolders = [workspaceRoot];
+      return session;
+    };
+    const command = createMigrateBundleCommand({
+      ...shared,
+      captureWorkspaceFolderMembership: (root) => tracker.capture(root),
+      selectBundle: async () => writableBundleSelection,
+    });
+
+    await expect(command()).resolves.toMatchObject({
+      kind: 'refused',
+      problems: [{ code: 'workspace-folder-unavailable', uri: workspaceRoot }],
+    });
+    expect(port.text(legacyPath)).toBe(originalLegacy);
+    expect(port.writes).toEqual([]);
+  });
+
   it.each([
     {
       command: 'Initialize Bundle',
@@ -1341,11 +1432,16 @@ describe('authoring command handlers', () => {
           : { integrationRootUri: workspaceRoot, bundlePath: 'knowledge' };
       },
     });
+    const migrateBundle = createMigrateBundleCommand({
+      ...shared,
+      selectBundle: selectWritableBundle,
+    });
 
     await expect(newConcept()).resolves.toEqual({ kind: 'cancelled' });
     await expect(regenerateIndexes()).resolves.toEqual({ kind: 'cancelled' });
     await expect(setupAgentIntegration()).resolves.toEqual({ kind: 'cancelled' });
-    expect(ui.errors).toHaveLength(3);
+    await expect(migrateBundle()).resolves.toEqual({ kind: 'cancelled' });
+    expect(ui.errors).toHaveLength(4);
     expect(ui.errors.every((message) => message.includes('unsupported OKF version "1.0"'))).toBe(
       true,
     );
@@ -1385,6 +1481,44 @@ describe('authoring command handlers', () => {
     expect(ui.errors.at(-1)).toContain('unsupported OKF version "1.0"');
     expect(previewer.shown).toEqual([]);
     expect(previewer.releasedSessions).toBe(0);
+  });
+
+  it('refuses migration when the bundle becomes unsupported before apply', async () => {
+    const { port, ui, previewer, shared } = harness();
+    const rootIndex = `${bundleRoot}/index.md`;
+    const legacyPath = `${bundleRoot}/legacy.md`;
+    const originalLegacy = [
+      '---',
+      'type: Reference',
+      'title: Legacy',
+      'description: Legacy',
+      'timestamp: "2026-07-22T10:00:00Z"',
+      '---',
+      '# Legacy',
+      '',
+    ].join('\n');
+    port.putText(rootIndex, '---\nokf_version: "0.1"\n---\n# Knowledge\n');
+    port.putText(legacyPath, originalLegacy);
+    ui.inputs.push('human:reviewer');
+    ui.confirmations.push(true);
+
+    const command = createMigrateBundleCommand({
+      ...shared,
+      selectBundle: async () => writableBundleSelection,
+      revalidateBundleWrite: async (root) => {
+        port.putText(rootIndex, '---\nokf_version: "1.0"\n---\n# Changed bundle\n');
+        const access = await inspectBundleWriteAccess(root, port, stringUriCodec);
+        return access.ok ? undefined : access.problem;
+      },
+    });
+
+    await expect(command()).resolves.toMatchObject({
+      kind: 'refused',
+      problems: [{ code: 'unsupported-okf-version-write' }],
+    });
+    expect(previewer.shown).toHaveLength(1);
+    expect(port.text(legacyPath)).toBe(originalLegacy);
+    expect(port.writes).toEqual([]);
   });
 
   it('revalidates the selected bundle before applying agent integration outside that bundle', async () => {

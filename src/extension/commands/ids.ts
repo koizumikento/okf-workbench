@@ -29,6 +29,11 @@ export const OKF_COMMANDS = [
     title: 'Set Up Agent Integration',
     workspaceAccess: 'write',
   },
+  {
+    id: 'okfWorkbench.migrateBundle',
+    title: 'Migrate Bundle to v0.2',
+    workspaceAccess: 'write',
+  },
 ] as const;
 
 export type OkfCommandId = (typeof OKF_COMMANDS)[number]['id'];

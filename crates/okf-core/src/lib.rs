@@ -4,12 +4,14 @@
 //! asynchronous runtime dependency. Callers enumerate documents and apply change plans.
 
 mod graph;
+mod migration;
 mod model;
 mod parser;
 mod templates;
 mod validation;
 
 pub use graph::build_graph_payload_checked;
+pub use migration::{MigrationDocumentResult, MigrationInput, MigrationPlan, migrate_bundle};
 pub use model::*;
 pub use parser::parse_bundle;
 pub use templates::{
@@ -37,6 +39,7 @@ pub enum CoreRequest {
     RenderConcept(ConceptTemplateInput),
     RenderIndexes(RenderIndexesInput),
     RenderAgent(RenderAgentInput),
+    Migrate(MigrationInput),
 }
 
 #[derive(Debug, Deserialize)]
@@ -130,7 +133,7 @@ impl CoreResponse {
 struct Metadata {
     abi_version: u32,
     core_version: &'static str,
-    capabilities: [&'static str; 7],
+    capabilities: [&'static str; 8],
 }
 
 #[derive(Debug, Serialize)]
@@ -171,6 +174,7 @@ pub fn dispatch_json(request_json: &str) -> String {
                 "concept-template",
                 "indexes",
                 "agent-template",
+                "migrate",
             ],
         }),
         CoreRequest::Inspect(input) => {
@@ -262,6 +266,10 @@ pub fn dispatch_json(request_json: &str) -> String {
                 Err(message) => CoreResponse::failure("unsafe-relative-path", message),
             }
         }
+        CoreRequest::Migrate(input) => match migrate_bundle(input) {
+            Ok(plan) => CoreResponse::success(plan),
+            Err(message) => CoreResponse::failure("migration-refused", message),
+        },
     };
     serialize_response(response)
 }

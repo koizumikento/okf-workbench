@@ -34,6 +34,11 @@ const EXPECTED_COMMAND_CATALOG = Object.freeze(
       title: 'Set Up Agent Integration',
       workspaceAccess: 'write',
     },
+    {
+      id: 'okfWorkbench.migrateBundle',
+      title: 'Migrate Bundle to v0.2',
+      workspaceAccess: 'write',
+    },
   ].map((command) => Object.freeze(command)),
 );
 

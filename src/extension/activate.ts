@@ -20,6 +20,7 @@ import {
 } from './composition/bundle-inspection.js';
 import {
   createInitializeBundleCommand,
+  createMigrateBundleCommand,
   createNewConceptCommand,
   createRegenerateIndexesCommand,
   createSetupAgentIntegrationCommand,
@@ -808,6 +809,18 @@ export function activate(context: vscode.ExtensionContext): OkfWorkbenchAcceptan
           ...workflowDependencies,
           selectAgentIntegrationTarget: () =>
             selectAgentIntegrationTarget(uriArgument(arguments_[0])),
+        },
+        requireProposalLease(proposalLease),
+      );
+      const outcome = await command();
+      refreshAfterWrite(outcome);
+      return outcome;
+    },
+    'okfWorkbench.migrateBundle': async (arguments_, proposalLease) => {
+      const command = createMigrateBundleCommand(
+        {
+          ...workflowDependencies,
+          selectBundle: () => selectWritableBundle(uriArgument(arguments_[0])),
         },
         requireProposalLease(proposalLease),
       );

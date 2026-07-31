@@ -10,6 +10,7 @@ use std::fs::OpenOptions;
 #[cfg(unix)]
 use std::os::unix::{ffi::OsStringExt, fs::MetadataExt};
 use std::{
+    collections::BTreeMap,
     ffi::{OsStr, OsString},
     fs::{self, File},
     io::{Read, Seek, SeekFrom, Write},
@@ -144,6 +145,7 @@ pub enum PlanMode {
         update_existing_regions: bool,
     },
     MergeAgent,
+    ReplaceExisting,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -685,6 +687,28 @@ pub fn plan_files(
     files: Vec<RenderedFile>,
     mode: PlanMode,
 ) -> Result<Vec<PlannedChange>, String> {
+    plan_files_with_expected(root, files, mode, None)
+}
+
+pub fn plan_replacement_files(
+    root: &Path,
+    files: Vec<RenderedFile>,
+    expected_contents: &BTreeMap<String, String>,
+) -> Result<Vec<PlannedChange>, String> {
+    plan_files_with_expected(
+        root,
+        files,
+        PlanMode::ReplaceExisting,
+        Some(expected_contents),
+    )
+}
+
+fn plan_files_with_expected(
+    root: &Path,
+    files: Vec<RenderedFile>,
+    mode: PlanMode,
+    expected_contents: Option<&BTreeMap<String, String>>,
+) -> Result<Vec<PlannedChange>, String> {
     let planned_root = capture_planned_root_identity(root)?;
     let mut plan = Vec::new();
     for file in files {
@@ -724,6 +748,22 @@ pub fn plan_files(
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(error) => return Err(error.to_string()),
         };
+        if matches!(mode, PlanMode::ReplaceExisting) {
+            let expected = expected_contents
+                .and_then(|contents| contents.get(&file.relative_path))
+                .ok_or_else(|| {
+                    format!(
+                        "{} is missing its migration source snapshot; no file was changed",
+                        target.display()
+                    )
+                })?;
+            if existing.as_ref() != Some(expected) {
+                return Err(format!(
+                    "{} changed after migration planning; no file was changed",
+                    target.display()
+                ));
+            }
+        }
         let content = match (&existing, mode, file.relative_path.as_str()) {
             (Some(existing), PlanMode::CreateOnly, _) if existing != &file.content => {
                 return Err(format!(
@@ -762,6 +802,13 @@ pub fn plan_files(
                 "<!-- okf-workbench:end -->",
             )?,
             (Some(_), PlanMode::MergeAgent, _) => file.content,
+            (Some(_), PlanMode::ReplaceExisting, _) => file.content,
+            (None, PlanMode::ReplaceExisting, _) => {
+                return Err(format!(
+                    "{} no longer exists; no file was changed",
+                    target.display()
+                ));
+            }
             (Some(_), _, _) => file.content,
             (None, _, _) => file.content,
         };
@@ -4700,6 +4747,29 @@ mod tests {
             "concurrent\n"
         );
         assert!(!root.join(".okf-workbench-staging.tmp").exists());
+    }
+
+    #[test]
+    fn migration_rejects_a_target_changed_after_source_loading() {
+        let directory = tempdir().unwrap();
+        let root = directory.path();
+        let target = root.join("concept.md");
+        fs::write(&target, "user changed after bundle load\n").unwrap();
+        let expected = BTreeMap::from([("concept.md".to_owned(), "loaded source\n".to_owned())]);
+        let result = plan_replacement_files(
+            root,
+            vec![RenderedFile {
+                relative_path: "concept.md".to_owned(),
+                encoding: "utf8",
+                content: "migrated source\n".to_owned(),
+            }],
+            &expected,
+        );
+        assert!(result.is_err());
+        assert_eq!(
+            fs::read_to_string(target).unwrap(),
+            "user changed after bundle load\n"
+        );
     }
 
     #[test]

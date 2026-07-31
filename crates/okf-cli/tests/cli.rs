@@ -902,6 +902,78 @@ fn agent_outputs_stay_outside_bundle_validation() {
 }
 
 #[test]
+fn migrate_checks_applies_and_then_becomes_idempotent() {
+    let directory = tempdir().unwrap();
+    let root = directory.path();
+    fs::write(
+        root.join("index.md"),
+        "---\nokf_version: \"0.1\"\n---\n# Root\n",
+    )
+    .unwrap();
+    let legacy = concat!(
+        "---\n",
+        "type: Reference\n",
+        "title: Legacy\n",
+        "description: Legacy provenance\n",
+        "timestamp: \"2026-07-22T10:00:00Z\"\n",
+        "custom_field: retained\n",
+        "---\n",
+        "# Legacy\n\n",
+        "# Citations\n\n",
+        "- https://example.com/source\n",
+    );
+    fs::write(root.join("legacy.md"), legacy).unwrap();
+
+    let check = okf()
+        .args([
+            "migrate",
+            root.to_str().unwrap(),
+            "--to",
+            "0.2",
+            "--actor",
+            "human:reviewer",
+            "--check",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(check.status.code(), Some(1), "{check:?}");
+    assert_eq!(fs::read_to_string(root.join("legacy.md")).unwrap(), legacy);
+    let check_body = json_stdout(&check);
+    assert_eq!(check_body["command"], "migrate");
+    assert_eq!(check_body["result"]["fromVersion"], "0.1");
+    assert_eq!(check_body["result"]["changeCount"], 2);
+
+    let apply = okf()
+        .args([
+            "migrate",
+            root.to_str().unwrap(),
+            "--actor",
+            "human:reviewer",
+            "--apply",
+        ])
+        .output()
+        .unwrap();
+    assert!(apply.status.success(), "{apply:?}");
+    let migrated = fs::read_to_string(root.join("legacy.md")).unwrap();
+    assert!(migrated.contains("generated:\n  by: \"human:reviewer\""));
+    assert!(migrated.contains("custom_field: retained"));
+    assert!(migrated.contains("# Citations\n\n- https://example.com/source"));
+
+    let second = okf()
+        .args([
+            "migrate",
+            root.to_str().unwrap(),
+            "--actor",
+            "human:reviewer",
+            "--check",
+        ])
+        .output()
+        .unwrap();
+    assert!(second.status.success(), "{second:?}");
+    assert_eq!(json_stdout(&second)["result"]["changeCount"], 0);
+}
+
+#[test]
 fn unsafe_paths_and_unknown_templates_fail_before_writing() {
     let directory = tempdir().unwrap();
     let outside = directory.path().join("outside.md");

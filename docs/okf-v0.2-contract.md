@@ -21,6 +21,24 @@ for legacy bundles.
   reserved-document conformance error for explicit repair.
 - Workbench never rewrites an existing `0.1` declaration merely because it can read v0.2.
 
+## Explicit migration
+
+Migration is optional and user-invoked through `OKF: Migrate Bundle to v0.2` or
+`okf migrate <bundle-root> --to 0.2 --actor <actor> --check|--apply`. It is never triggered by
+opening, validating, editing, or indexing a v0.1 bundle.
+
+- The caller supplies `generated.by` as `human:<id>`, `process:<id>`, or
+  `<producer>/<version>`; Workbench never infers an actor.
+- A valid legacy `timestamp` becomes `generated.at` only when `generated` is absent.
+- Simple URL bullets under `# Citations` may produce `sources`, while the original Citations body
+  remains unchanged. Named links, prose, empty sections, and other ambiguous forms are reported for
+  manual follow-up.
+- Unknown frontmatter and Markdown body content remain source-preserved.
+- The complete existing-file proposal is previewed in the extension. CLI `--check` writes nothing,
+  and `--apply` uses guarded atomic local replacements.
+- The root `okf_version` update is part of the same complete plan, and a second run is idempotent.
+- Migration does not invent verification, computation, execution, receipt, or attestation claims.
+
 ## Bundle and concept model
 
 The v0.1 bundle structure remains in force: UTF-8 Markdown, reserved `index.md` and `log.md`, POSIX
@@ -105,6 +123,6 @@ computation fields do not create invented semantic edges.
 
 ## Safety invariants
 
-The v0.2 migration does not change the local-first boundary, URI-first workspace access, guarded
+v0.2 adoption and explicit migration do not change the local-first boundary, URI-first workspace access, guarded
 proposal workflow, source-preserving merge rules, restrictive Webview CSP, or no-network/no-AI
 core behavior.

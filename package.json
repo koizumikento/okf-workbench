@@ -43,6 +43,7 @@
     "onCommand:okfWorkbench.regenerateIndexes",
     "onCommand:okfWorkbench.openGraph",
     "onCommand:okfWorkbench.setupAgentIntegration",
+    "onCommand:okfWorkbench.migrateBundle",
     "onCommand:okfWorkbench.reviewPendingChanges",
     "onCommand:okfWorkbench.selectBundle",
     "onCommand:okfWorkbench.refreshBundle",
@@ -99,6 +100,12 @@
       {
         "command": "okfWorkbench.setupAgentIntegration",
         "title": "Set Up Agent Integration",
+        "category": "OKF",
+        "enablement": "workspaceFolderCount > 0"
+      },
+      {
+        "command": "okfWorkbench.migrateBundle",
+        "title": "Migrate Bundle to v0.2",
         "category": "OKF",
         "enablement": "workspaceFolderCount > 0"
       },
@@ -174,6 +181,10 @@
           "when": "workspaceFolderCount > 0"
         },
         {
+          "command": "okfWorkbench.migrateBundle",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
           "command": "okfWorkbench.reviewPendingChanges",
           "when": "okfWorkbench.hasPendingProposal"
         },
@@ -230,6 +241,11 @@
           "command": "okfWorkbench.setupAgentIntegration",
           "when": "explorerResourceIsFolder && workspaceFolderCount > 0",
           "group": "navigation@15"
+        },
+        {
+          "command": "okfWorkbench.migrateBundle",
+          "when": "explorerResourceIsFolder && workspaceFolderCount > 0",
+          "group": "navigation@16"
         }
       ],
       "view/title": [
@@ -355,7 +371,7 @@
       },
       {
         "view": "okfWorkbench.actions",
-        "contents": "[New Concept](command:okfWorkbench.newConcept)\n\n[Validate Bundle](command:okfWorkbench.validateBundle)\n\n[Regenerate Indexes](command:okfWorkbench.regenerateIndexes)\n\n[Open 3D Graph](command:okfWorkbench.openGraph)\n\n[Set Up Agent Integration](command:okfWorkbench.setupAgentIntegration)",
+        "contents": "[New Concept](command:okfWorkbench.newConcept)\n\n[Validate Bundle](command:okfWorkbench.validateBundle)\n\n[Regenerate Indexes](command:okfWorkbench.regenerateIndexes)\n\n[Migrate Bundle to v0.2](command:okfWorkbench.migrateBundle)\n\n[Open 3D Graph](command:okfWorkbench.openGraph)\n\n[Set Up Agent Integration](command:okfWorkbench.setupAgentIntegration)",
         "when": "okfWorkbench.hasSelectedBundle && isWorkspaceTrusted"
       },
       {

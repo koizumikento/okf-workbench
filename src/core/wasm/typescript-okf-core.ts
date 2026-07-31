@@ -1,5 +1,6 @@
 import { buildGraphPayload } from '../graph/index.js';
 import { planProviderIndexes } from '../indexes/index.js';
+import { planMigration } from '../migration/index.js';
 import type { ParseFailure, ParsedBundle } from '../model/index.js';
 import { parseBundle, type ParseBundleInput } from '../parser/index.js';
 import { validateBundle } from '../validation/index.js';
@@ -86,6 +87,9 @@ export const typescriptOkfCore: OkfCore = {
       files.push({ relativePath: AGENT_SKILL_PATH, encoding: 'utf8', content: result.value });
     }
     return files;
+  },
+  migrate(input: ParseBundleInput, actor: string) {
+    return planMigration({ bundle: input, actor });
   },
 };
 

@@ -118,6 +118,20 @@ Requirements:
 - Preserve content outside an explicitly managed region, or refuse to update when safe merging is not possible.
 - Use each concept's title and description when present.
 
+### `OKF: Migrate Bundle to v0.2`
+
+Builds an optional, deterministic v0.1-to-v0.2 proposal.
+
+Requirements:
+
+- Require an explicit producer actor; never infer identity or run automatically.
+- Convert a valid legacy `timestamp` only when `generated` is absent.
+- Preserve unknown frontmatter and all Markdown body content.
+- Convert only unambiguous URL bullets under `# Citations`; retain Citations and report ambiguous
+  documents for manual follow-up.
+- Preview the complete existing-file proposal and update the root version in the same guarded plan.
+- Produce no changes on a second run and never invent Attested Computation or verification claims.
+
 ### `OKF: Open 3D Graph`
 
 Displays a read-only interactive graph in an editor Webview.
@@ -170,11 +184,11 @@ that is awaiting Apply or Cancel must remain recoverable when its modeless notif
 
 ### Native `okf` CLI
 
-Provides `init`, `new`, `validate`, `index`, `graph`, `agent`, and `version` for local automation.
+Provides `init`, `new`, `validate`, `index`, `graph`, `agent`, `migrate`, and `version` for local automation.
 
 Requirements:
 
-- Use the same parser, validator, graph, index, template, and agent generation crate as the
+- Use the same parser, validator, graph, index, template, migration, and agent generation crate as the
   extension.
 - Keep validation and graph commands read-only.
 - Require `--apply` for non-interactive writes; keep `--check` strictly non-mutating.

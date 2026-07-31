@@ -712,29 +712,28 @@ fn parse_frontmatter(
             resource_limit: false,
         });
     }
-    if let Some((relative_start, relative_end)) = duplicate_mapping_key_range(yaml_source) {
-        return Err(FrontmatterError {
-            message: "Invalid YAML frontmatter: Map keys must be unique".to_owned(),
-            range: Some(range_for(
-                text,
-                opening_end + relative_start,
-                opening_end + relative_end,
-            )),
-            resource_limit: false,
-        });
-    }
     let normalized_yaml = normalize_line_breaks(yaml_source);
     let yaml: serde_yaml::Value = serde_yaml::from_str(&normalized_yaml).map_err(|error| {
-        let range = error.location().map(|location| {
-            let relative_line = location.line().saturating_sub(1);
-            let source_lines = line_spans(yaml_source);
-            let line = source_lines
-                .get(relative_line)
-                .or_else(|| source_lines.last());
-            let start = opening_end + line.map_or(0, |line| line.start);
-            range_for(text, start, (start + 1).min(closing_start))
-        });
         let error_text = error.to_string();
+        let range = if error_text.contains("duplicate entry with key") {
+            duplicate_mapping_key_range(yaml_source).map(|(relative_start, relative_end)| {
+                range_for(
+                    text,
+                    opening_end + relative_start,
+                    opening_end + relative_end,
+                )
+            })
+        } else {
+            error.location().map(|location| {
+                let relative_line = location.line().saturating_sub(1);
+                let source_lines = line_spans(yaml_source);
+                let line = source_lines
+                    .get(relative_line)
+                    .or_else(|| source_lines.last());
+                let start = opening_end + line.map_or(0, |line| line.start);
+                range_for(text, start, (start + 1).min(closing_start))
+            })
+        };
         let message = if error_text.contains("expected ',' or ']'") {
             "Invalid YAML frontmatter: Flow sequence in block collection must be sufficiently indented and end with a ]".to_owned()
         } else if error_text.contains("duplicate entry with key") {
@@ -1329,6 +1328,7 @@ fn non_string_mapping_key_range(source: &str) -> Option<(usize, usize)> {
 
 fn duplicate_mapping_key_range(source: &str) -> Option<(usize, usize)> {
     let mut keys = std::collections::BTreeSet::new();
+    let mut containers: Vec<(usize, String)> = Vec::new();
     for line in line_spans(source) {
         let body = &source[line.start..line.content_end];
         let trimmed = body.trim_start_matches([' ', '\t']);
@@ -1339,16 +1339,29 @@ fn duplicate_mapping_key_range(source: &str) -> Option<(usize, usize)> {
         {
             continue;
         }
-        let Some(colon) = trimmed.find(':') else {
+        let indent = body.len() - trimmed.len();
+        while containers
+            .last()
+            .is_some_and(|(container_indent, _)| *container_indent >= indent)
+        {
+            containers.pop();
+        }
+        let Some(colon) = mapping_key_colon(trimmed) else {
             continue;
         };
-        let key = trimmed[..colon].trim();
-        if key.is_empty() {
+        let key_source = trimmed[..colon].trim_end();
+        let Ok(key) = serde_yaml::from_str::<String>(key_source) else {
             continue;
-        }
-        let indent = body.len() - trimmed.len();
-        if !keys.insert((indent, key.to_owned())) {
+        };
+        let scope = containers
+            .iter()
+            .map(|(_, segment)| segment.clone())
+            .collect::<Vec<_>>();
+        if !keys.insert((scope, key.clone())) {
             return Some((line.start, (line.start + 1).min(line.content_end)));
+        }
+        if trimmed[colon + 1..].trim().is_empty() {
+            containers.push((indent, key));
         }
     }
     None
@@ -1396,9 +1409,8 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
             trimmed
         };
         if item.is_some()
-            && let Some(tag_source) = mapping_source.strip_prefix("!!")
+            && let Some((tag_name, remainder)) = split_standard_tag_property(mapping_source)
         {
-            let (tag_name, remainder) = split_tag_source(tag_source);
             let path = containers
                 .iter()
                 .map(|(_, segment)| segment.as_str())
@@ -1429,8 +1441,14 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
             let absolute_start = line.start + relative_start;
             let absolute_end = flow_value_end(source, absolute_start);
             let flow_source = &source[absolute_start..absolute_end];
-            if flow_source.contains("!!") {
-                preserve_flow_standard_yaml_tags(flow_source, &path, raw, &mut explicit_tags);
+            if needs_flow_provenance_scan(flow_source) {
+                preserve_flow_standard_yaml_tags(
+                    flow_source,
+                    &path,
+                    raw,
+                    &mut explicit_tags,
+                    &mut anchors,
+                );
             }
         }
         let mut remainder = value_source;
@@ -1445,15 +1463,16 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
                 remainder = rest;
                 continue;
             }
-            if let Some(tag_source) = remainder.strip_prefix("!!") {
-                let (name, rest) = split_tag_source(tag_source);
+            if let Some((name, rest)) = split_standard_tag_property(remainder) {
                 tag_name = Some(name);
                 remainder = rest;
                 continue;
             }
             break;
         }
-        if matches!(remainder.chars().next(), Some('{' | '[')) && value_source.contains("!!") {
+        if matches!(remainder.chars().next(), Some('{' | '['))
+            && needs_flow_provenance_scan(value_source)
+        {
             let relative_start = body
                 .find(value_source)
                 .unwrap_or_else(|| body.len().saturating_sub(value_source.len()));
@@ -1465,6 +1484,7 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
                 &path,
                 raw,
                 &mut explicit_tags,
+                &mut anchors,
             );
         }
         if let Some(alias) = remainder.strip_prefix('*').map(str::trim)
@@ -1496,6 +1516,25 @@ fn split_tag_source(source: &str) -> (&str, &str) {
     source
         .split_once(char::is_whitespace)
         .map_or((source, ""), |(tag, value)| (tag, value.trim_start()))
+}
+
+fn split_standard_tag_property(source: &str) -> Option<(&str, &str)> {
+    if let Some(tag_source) = source.strip_prefix("!!") {
+        return Some(split_tag_source(tag_source));
+    }
+    let verbatim = source.strip_prefix("!<")?;
+    let end = verbatim.find('>')?;
+    let tag_uri = &verbatim[..end];
+    let tag_name = tag_uri.strip_prefix("tag:yaml.org,2002:")?;
+    Some((tag_name, verbatim[end + 1..].trim_start()))
+}
+
+fn contains_standard_tag_property(source: &str) -> bool {
+    source.contains("!!") || source.contains("!<tag:yaml.org,2002:")
+}
+
+fn needs_flow_provenance_scan(source: &str) -> bool {
+    contains_standard_tag_property(source) || source.contains('*')
 }
 
 fn preserve_tagged_value(
@@ -1704,13 +1743,14 @@ fn preserve_flow_standard_yaml_tags(
     base_path: &[&str],
     raw: &mut Map<String, Value>,
     explicit_tags: &mut Map<String, Value>,
+    anchors: &mut std::collections::BTreeMap<String, (Value, String)>,
 ) {
     let mut scanner = FlowTagScanner {
         source,
         cursor: 0,
         raw,
         explicit_tags,
-        anchors: std::collections::BTreeMap::new(),
+        anchors,
     };
     let mut path = base_path
         .iter()
@@ -1724,7 +1764,7 @@ struct FlowTagScanner<'source, 'model> {
     cursor: usize,
     raw: &'model mut Map<String, Value>,
     explicit_tags: &'model mut Map<String, Value>,
-    anchors: std::collections::BTreeMap<String, (Value, String)>,
+    anchors: &'model mut std::collections::BTreeMap<String, (Value, String)>,
 }
 
 impl FlowTagScanner<'_, '_> {
@@ -1733,13 +1773,8 @@ impl FlowTagScanner<'_, '_> {
         let mut tag_name = None;
         let mut anchor_name = None;
         for _ in 0..2 {
-            if self.remaining().starts_with("!!") {
-                self.cursor += 2;
-                let tag_start = self.cursor;
-                self.consume_while(|character| {
-                    !character.is_whitespace() && !matches!(character, ',' | '}' | ']')
-                });
-                tag_name = Some(self.source[tag_start..self.cursor].to_owned());
+            if let Some(name) = self.consume_standard_tag_property() {
+                tag_name = Some(name);
                 self.skip_whitespace();
                 continue;
             }
@@ -1902,6 +1937,23 @@ impl FlowTagScanner<'_, '_> {
         }
     }
 
+    fn consume_standard_tag_property(&mut self) -> Option<String> {
+        if self.remaining().starts_with("!!") {
+            self.cursor += 2;
+            let tag_start = self.cursor;
+            self.consume_while(|character| {
+                !character.is_whitespace() && !matches!(character, ',' | '}' | ']')
+            });
+            return Some(self.source[tag_start..self.cursor].to_owned());
+        }
+        let verbatim = self.remaining().strip_prefix("!<")?;
+        let end = verbatim.find('>')?;
+        let tag_uri = &verbatim[..end];
+        let tag_name = tag_uri.strip_prefix("tag:yaml.org,2002:")?.to_owned();
+        self.cursor += 2 + end + 1;
+        Some(tag_name)
+    }
+
     fn consume_while(&mut self, predicate: impl Fn(char) -> bool) {
         while let Some(character) = self.peek() {
             if !predicate(character) {
@@ -2059,7 +2111,16 @@ fn top_level_field_ranges(text: &str, start: usize, end: usize) -> Map<String, V
         if let Some(explicit_key) = trimmed.strip_prefix('?') {
             let explicit_key = explicit_key.trim_start();
             let expected_indent = *root_indent.get_or_insert(indent);
-            let Some(value_line) = spans.get(line_index + 1) else {
+            let Some((value_index, value_line)) = spans
+                .iter()
+                .enumerate()
+                .skip(line_index + 1)
+                .find(|(_, candidate)| {
+                    let body = &source[candidate.start..candidate.content_end];
+                    let trimmed = body.trim_start_matches([' ', '\t']);
+                    !trimmed.is_empty() && !trimmed.starts_with('#')
+                })
+            else {
                 continue;
             };
             let value_body = &source[value_line.start..value_line.content_end];
@@ -2080,7 +2141,7 @@ fn top_level_field_ranges(text: &str, start: usize, end: usize) -> Map<String, V
             starts.push((
                 name,
                 field_start,
-                line_index + 1,
+                value_index,
                 inline_field_value_end(text, value_start, start + value_line.content_end),
                 after_colon.trim_start().to_owned(),
                 expected_indent,
@@ -2229,11 +2290,8 @@ fn block_field_value_end(
     fallback: usize,
     field_indent: usize,
 ) -> usize {
-    let indicator = value_source
-        .split_whitespace()
-        .last()
-        .unwrap_or(value_source);
-    let block_scalar = matches!(indicator.chars().next(), Some('|' | '>'));
+    let indicator = block_scalar_indicator(value_source);
+    let block_scalar = indicator.is_some();
     let mut last_content = None;
     let mut last_nonblank = None;
     for line in line_spans(&text[content_start..boundary]) {
@@ -2256,14 +2314,28 @@ fn block_field_value_end(
         last_content = Some(range);
         last_nonblank = Some(range);
     }
-    let Some((_, line_end)) = last_nonblank else {
-        return fallback;
-    };
-    if !block_scalar || !indicator.contains('+') {
-        line_end
-    } else {
-        last_content.map_or(line_end, |(_, end)| end)
+    if block_scalar && indicator.is_some_and(|value| value.contains('+')) {
+        return last_content.map_or(fallback, |(_, end)| end);
     }
+    last_nonblank.map_or(fallback, |(_, line_end)| line_end)
+}
+
+fn block_scalar_indicator(mut source: &str) -> Option<&str> {
+    for _ in 0..2 {
+        let Some((_, remainder)) = split_standard_tag_property(source).or_else(|| {
+            let anchor = source.strip_prefix('&')?;
+            Some(
+                anchor
+                    .split_once(char::is_whitespace)
+                    .map_or((anchor, ""), |(name, rest)| (name, rest.trim_start())),
+            )
+        }) else {
+            break;
+        };
+        source = remainder;
+    }
+    let indicator = source.split_whitespace().next().unwrap_or(source);
+    matches!(indicator.chars().next(), Some('|' | '>')).then_some(indicator)
 }
 
 fn flow_field_ranges(text: &str, flow_start: usize, end: usize) -> Map<String, Value> {

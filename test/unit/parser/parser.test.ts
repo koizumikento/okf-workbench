@@ -683,6 +683,9 @@ describe('OKF bundle parser', () => {
             '',
             'anchored_flow: [!!str &flow-id "x"]',
             'tagged_flow_parent: !!seq [!!str &tagged-flow-id "x", *tagged-flow-id]',
+            'shared_seed: &shared-seed !!str "x"',
+            'shared_aliases: [*shared-seed]',
+            'verbatim_standard: !<tag:yaml.org,2002:str> "Reference"',
             'notes: !!str |-',
             '  first',
             '  second',
@@ -770,6 +773,9 @@ describe('OKF bundle parser', () => {
         [tagged('tag:yaml.org,2002:str', 'x', '"x"'), tagged('tag:yaml.org,2002:str', 'x', '"x"')],
         '[!!str &tagged-flow-id "x", *tagged-flow-id]',
       ),
+      shared_seed: tagged('tag:yaml.org,2002:str', 'x', '"x"'),
+      shared_aliases: [tagged('tag:yaml.org,2002:str', 'x', '"x"')],
+      verbatim_standard: tagged('tag:yaml.org,2002:str', 'Reference', '"Reference"'),
       notes: tagged('tag:yaml.org,2002:str', 'first\nsecond', '|-\n  first\n  second\n'),
       items: tagged('tag:yaml.org,2002:seq', ['one', 'two'], '- one\n  - two\n'),
       flow_metadata: [
@@ -789,6 +795,9 @@ describe('OKF bundle parser', () => {
       tagged_flow_parent: 'tag:yaml.org,2002:seq',
       '/tagged_flow_parent/0': 'tag:yaml.org,2002:str',
       '/tagged_flow_parent/1': 'tag:yaml.org,2002:str',
+      shared_seed: 'tag:yaml.org,2002:str',
+      '/shared_aliases/0': 'tag:yaml.org,2002:str',
+      verbatim_standard: 'tag:yaml.org,2002:str',
       notes: 'tag:yaml.org,2002:str',
       items: 'tag:yaml.org,2002:seq',
       '/tags/0': 'tag:yaml.org,2002:str',
@@ -820,6 +829,33 @@ describe('OKF bundle parser', () => {
 
     expect(bundle.failures).toEqual([]);
     expect(bundle.concepts[0]?.tags).toEqual([]);
+  });
+
+  it('keeps equal nested keys and quoted colon keys in separate mapping scopes', () => {
+    const bundle = parseBundle({
+      rootUri,
+      revision: 42,
+      documents: [
+        document('index.md', '---\nokf_version: "0.2"\n---\n# Root\n'),
+        document(
+          'scoped-keys.md',
+          [
+            '---',
+            'type: Reference',
+            'left:',
+            '  x: 1',
+            'right:',
+            '  x: 2',
+            '"a:b": 1',
+            '"a:c": 2',
+            '---',
+            '# Scoped',
+          ].join('\n'),
+        ),
+      ],
+    });
+
+    expect(bundle.failures).toEqual([]);
   });
 
   it('tracks explicit tag aliases without trusting structurally similar producer mappings', () => {

@@ -629,6 +629,8 @@ describe('Rust/Wasm core boundary', () => {
       ['terminal-sequence-blank-line.md', 'custom:\n  - child value\n\n'],
       ['terminal-deep-mapping-blank-line.md', 'custom:\n  child:\n    grandchild: value\n\n'],
       ['terminal-sequence-crlf-blank-line.md', 'custom:\r\n  - child value\r\n\r\n'],
+      ['terminal-sequence-of-set-blank-line.md', 'sets:\n  - !!set\n    ? x\n\n'],
+      ['terminal-sequence-indented-comment.md', 'items:\n  - one\n\n  # trailing comment\n'],
       [
         'deferred-map-parent-sibling.md',
         'outer:\n  custom: !!map\n    child: !!str value\n  next: value\n',
@@ -636,6 +638,10 @@ describe('Rust/Wasm core boundary', () => {
       [
         'deferred-map-parent-comment.md',
         'outer:\n  custom: !!map\n    child: !!str value\n  # between\n  next: value\n',
+      ],
+      [
+        'deferred-scalar-parent-comment.md',
+        'outer:\n  custom:\n    child value\n  # parent comment\n',
       ],
       [
         'deferred-sequence-parent-sibling.md',
@@ -822,6 +828,35 @@ describe('Rust/Wasm core boundary', () => {
         'literal-nel-invalid-implicit-key-with-sibling.md',
         'custom:\n  child:\u0085 value\n  sibling: ok\n',
       ],
+      ['literal-nel-explicit-map-key.md', 'outer:\n  ? prefix:\u0085suffix\n  : value\n'],
+      [
+        'literal-nel-deferred-scalar-before-root-sibling.md',
+        'custom:\n  child:\u0085 value\nnext: ok\n',
+      ],
+      [
+        'literal-nel-inline-scalar-before-root-sibling.md',
+        'custom: head\n  child:\u0085 value\nnext: ok\n',
+      ],
+      [
+        'literal-nel-block-scalar-before-root-sibling.md',
+        'custom: |-\n  child:\u0085 value\nnext: ok\n',
+      ],
+      [
+        'literal-nel-tagged-block-scalar-before-root-sibling.md',
+        'custom: !!str |-\n  child:\u0085 value\nnext: ok\n',
+      ],
+      [
+        'literal-nel-comment-before-root-sibling.md',
+        'custom:\n  child value\n  # note:\u0085 value\nnext: ok\n',
+      ],
+      [
+        'literal-nel-multiline-double-quote-before-root-sibling.md',
+        'custom: "first\n  child:\u0085 value"\nnext: ok\n',
+      ],
+      [
+        'literal-nel-multiline-single-quote-before-root-sibling.md',
+        "custom: 'first\n  child:\u0085 value'\nnext: ok\n",
+      ],
       ['literal-nel-inline-plain-continuation.md', 'custom: head\n  child:\u0085 value\n'],
       ['literal-nel-later-plain-continuation.md', 'custom:\n  first line\n  child:\u0085 value\n'],
       ['literal-nel-before-colon-continuation.md', 'tags:\n  key\u0085:value\n'],
@@ -842,6 +877,10 @@ describe('Rust/Wasm core boundary', () => {
       ['deferred-number-scalar.md', 'outer:\n  123\n'],
       ['deferred-boolean-scalar.md', 'outer:\n  true\n'],
       ['nested-set-empty-map-key.md', 'x: !!set\n  ? !!map\n    ?\n    : one\n'],
+      [
+        'nested-set-sequence-empty-map-key.md',
+        'set: !!set\n  ? !!map\n    items:\n      - ?\n        : one\n',
+      ],
       ['commented-empty-map-key.md', '? # key\n: one\n'],
       ['spaced-commented-empty-map-key.md', '?  # key\n: one\n'],
       ['anchored-empty-map-key.md', '? &a\n: one\n'],
@@ -850,6 +889,17 @@ describe('Rust/Wasm core boundary', () => {
       ['nested-set-commented-empty-map-key.md', 'x: !!set\n  ? !!map\n    ? # key\n    : one\n'],
       ['nested-set-anchored-empty-map-key.md', 'x: !!set\n  ? !!map\n    ? &a\n    : one\n'],
       ['deferred-empty-string-map-key.md', 'custom: !!map\n  ? !!str\n  : one\n'],
+      ['root-empty-string-map-key.md', '? !!str\n: one\n'],
+      ['tag-anchor-empty-string-map-key.md', 'custom: !!map\n  ? !!str &a\n  : one\ncopy: *a\n'],
+      ['anchor-tag-empty-string-map-key.md', 'custom: !!map\n  ? &a !!str\n  : one\ncopy: *a\n'],
+      [
+        'nested-set-anchor-tag-empty-string-map-key.md',
+        'x: !!set\n  ? !!map\n    ? &a !!str\n    : one\ncopy: *a\n',
+      ],
+      [
+        'empty-string-map-key-duplicate-quoted.md',
+        'custom: !!map\n  ? !!str\n  : one\n  "": two\n',
+      ],
       [
         'nested-set-deferred-empty-string-map-key.md',
         'x: !!set\n  ? !!map\n    ? !!str\n    : one\n',

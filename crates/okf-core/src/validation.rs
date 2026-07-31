@@ -1,3 +1,4 @@
+use crate::parser::is_valid_actor;
 use crate::{Finding, LinkClassification, ParseFailureReason, ParsedBundle};
 use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
@@ -38,25 +39,6 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
             corrective_action: Some(action.to_owned()),
             range: failure.range.clone(),
         });
-    }
-
-    if !bundle
-        .reserved_documents
-        .iter()
-        .any(|document| document.source.bundle_path == "index.md")
-        && !bundle
-            .failures
-            .iter()
-            .any(|failure| failure.bundle_path == "index.md")
-    {
-        findings.push(finding(
-            "okf.conformance.root-index",
-            "conformance",
-            "error",
-            &bundle.root_uri,
-            "OKF conformance: the selected bundle root is missing index.md.",
-            "Run OKF: Regenerate Indexes to synthesize the missing root index, or create index.md with an OKF version declaration.",
-        ));
     }
 
     for reserved in bundle
@@ -353,16 +335,18 @@ fn validate_v02_metadata(
     let raw = &concept.frontmatter.raw;
     if let Some(generated) = raw.get("generated") {
         let object = generated.as_object();
-        let by = object
-            .and_then(|value| value.get("by"))
-            .and_then(serde_json::Value::as_str);
-        let at = object
-            .and_then(|value| value.get("at"))
-            .and_then(serde_json::Value::as_str);
+        let by = concept
+            .generated
+            .as_ref()
+            .and_then(|value| value.by.as_deref());
+        let at = concept
+            .generated
+            .as_ref()
+            .and_then(|value| value.at.as_deref());
         let parsed_at =
             at.and_then(|value| DateTime::<FixedOffset>::parse_from_rfc3339(value).ok());
         if object.is_none()
-            || by.is_none_or(|value| value.trim().is_empty())
+            || by.is_none_or(|value| !is_valid_actor(value))
             || at.is_some() && parsed_at.is_none()
         {
             findings.push(curation(
@@ -392,18 +376,18 @@ fn validate_v02_metadata(
         };
         let mut invalid = values.is_empty();
         let mut future = false;
-        for value in values {
+        if concept.verified.len() != values.len() {
+            invalid = true;
+        }
+        for (index, value) in values.into_iter().enumerate() {
             let object = value.as_object();
-            let by = object
-                .and_then(|value| value.get("by"))
-                .and_then(serde_json::Value::as_str);
-            let at = object
-                .and_then(|value| value.get("at"))
-                .and_then(serde_json::Value::as_str);
+            let normalized = concept.verified.get(index);
+            let by = normalized.and_then(|value| value.by.as_deref());
+            let at = normalized.and_then(|value| value.at.as_deref());
             let parsed_at =
                 at.and_then(|value| DateTime::<FixedOffset>::parse_from_rfc3339(value).ok());
             if object.is_none()
-                || by.is_none_or(|value| value.trim().is_empty())
+                || by.is_none_or(|value| !is_valid_actor(value))
                 || parsed_at.is_none()
             {
                 invalid = true;
@@ -474,25 +458,35 @@ fn validate_v02_metadata(
 
     if let Some(sources) = raw.get("sources") {
         let valid = sources.as_array().is_some_and(|values| {
-            values.iter().all(|value| {
-                let Some(object) = value.as_object() else {
-                    return false;
-                };
-                object
-                    .get("resource")
-                    .and_then(serde_json::Value::as_str)
-                    .is_some_and(|resource| !resource.trim().is_empty())
-                    && optional_string_field(object, "id")
-                    && optional_string_field(object, "title")
-                    && optional_string_field(object, "author")
-                    && object
-                        .get("usage_count")
-                        .is_none_or(|value| value.as_u64().is_some())
-                    && object
-                        .get("last_modified")
-                        .is_none_or(|value| value.as_str().is_some_and(is_iso_date))
-                    && object.get("usage_window").is_none_or(valid_usage_window)
-            })
+            values.len() == concept.sources.len()
+                && values.iter().enumerate().all(|(index, value)| {
+                    let Some(object) = value.as_object() else {
+                        return false;
+                    };
+                    let Some(source) = concept.sources.get(index) else {
+                        return false;
+                    };
+                    source
+                        .resource
+                        .as_deref()
+                        .is_some_and(|resource| !resource.trim().is_empty())
+                        && (!object.contains_key("id") || source.id.is_some())
+                        && (!object.contains_key("title") || source.title.is_some())
+                        && (!object.contains_key("author")
+                            || source.author.as_deref().is_some_and(is_valid_actor))
+                        && object
+                            .get("usage_count")
+                            .is_none_or(valid_json_safe_nonnegative_integer)
+                        && object.get("last_modified").is_none_or(|_| {
+                            source.last_modified.as_deref().is_some_and(is_iso_date)
+                        })
+                        && object.get("usage_window").is_none_or(|_| {
+                            source
+                                .usage_window
+                                .as_ref()
+                                .is_some_and(valid_normalized_usage_window)
+                        })
+                })
         });
         if !valid {
             findings.push(curation(
@@ -539,14 +533,13 @@ fn validate_v02_metadata(
                 })
             })
         });
-        let computation_valid = raw.get("computation").map_or_else(
-            || has_inline_computation(&concept.body),
-            |value| {
-                value
-                    .as_str()
-                    .is_some_and(|computation| !computation.trim().is_empty())
-            },
-        );
+        let file_computation = raw.contains_key("computation")
+            && concept
+                .computation
+                .as_deref()
+                .is_some_and(|computation| !computation.trim().is_empty());
+        let inline_computation = has_inline_computation(&concept.body);
+        let computation_valid = file_computation ^ inline_computation;
         let executor_valid = raw
             .get("executor")
             .is_none_or(|value| valid_computation_endpoint(value, true));
@@ -588,8 +581,23 @@ fn validate_v02_metadata(
     }
 }
 
-fn optional_string_field(object: &serde_json::Map<String, serde_json::Value>, key: &str) -> bool {
-    object.get(key).is_none_or(|value| value.as_str().is_some())
+fn valid_json_safe_nonnegative_integer(value: &serde_json::Value) -> bool {
+    const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+    value
+        .as_u64()
+        .is_some_and(|value| value <= MAX_SAFE_INTEGER)
+        || value.as_f64().is_some_and(|value| {
+            value.is_finite()
+                && value >= 0.0
+                && value.fract() == 0.0
+                && value <= MAX_SAFE_INTEGER as f64
+        })
+}
+
+fn valid_normalized_usage_window(value: &crate::UsageWindow) -> bool {
+    value.from.as_deref().is_some_and(is_iso_date)
+        && value.to.as_deref().is_some_and(is_iso_date)
+        && value.from <= value.to
 }
 
 fn valid_usage_window(value: &serde_json::Value) -> bool {
@@ -899,25 +907,6 @@ fn json_value_kind(value: &serde_json::Value) -> &'static str {
         serde_json::Value::String(_) => "string",
         serde_json::Value::Array(_) => "array",
         serde_json::Value::Object(_) => "object",
-    }
-}
-
-fn finding(
-    code: &str,
-    category: &str,
-    severity: &str,
-    uri: &str,
-    message: &str,
-    action: &str,
-) -> Finding {
-    Finding {
-        code: code.to_owned(),
-        category: category.to_owned(),
-        severity: severity.to_owned(),
-        uri: uri.to_owned(),
-        message: message.to_owned(),
-        corrective_action: Some(action.to_owned()),
-        range: None,
     }
 }
 

@@ -10,6 +10,7 @@ import type {
 } from '../model/index.js';
 import { OKF_SEMANTIC_LIMITS } from '../model/resource-limits.js';
 import { extractMarkdownHeadings } from '../parser/markdown.js';
+import { isValidActor, semanticFrontmatterStringAt } from '../parser/frontmatter.js';
 import { SourceRangeIndex } from '../parser/source-range.js';
 
 export interface ValidationOptions {
@@ -23,7 +24,6 @@ export const VALIDATION_CODES = {
   markdown: 'okf.conformance.markdown',
   read: 'okf.conformance.read',
   resourceLimit: 'okf.conformance.resource-limit',
-  rootIndex: 'okf.conformance.root-index',
   conceptType: 'okf.conformance.concept-type',
   reservedFrontmatter: 'okf.conformance.reserved-frontmatter',
   indexStructure: 'okf.conformance.index-structure',
@@ -89,8 +89,6 @@ export function validateBundle(
     findings.push(findingForParseFailure(failure));
   }
 
-  validateRootIndexPresence(bundle, findings);
-
   for (const concept of fullyParsedConcepts) {
     validateConceptConformance(concept, findings);
     validateConceptLinks(concept, findings);
@@ -106,26 +104,6 @@ export function validateBundle(
   }
 
   return sortAndDedupeFindings(findings);
-}
-
-function validateRootIndexPresence(bundle: ParsedBundle, findings: Finding[]): void {
-  const rootIndexWasEnumerated =
-    bundle.reservedDocuments.some(
-      (document) => normalizeBundlePath(document.source.bundlePath) === 'index.md',
-    ) || bundle.failures.some((failure) => normalizeBundlePath(failure.bundlePath) === 'index.md');
-  if (rootIndexWasEnumerated) {
-    return;
-  }
-
-  findings.push({
-    code: VALIDATION_CODES.rootIndex,
-    category: 'conformance',
-    severity: 'error',
-    uri: bundle.rootUri,
-    message: 'OKF conformance: the selected bundle root is missing index.md.',
-    correctiveAction:
-      'Run OKF: Regenerate Indexes to synthesize the missing root index, or create index.md with an OKF version declaration.',
-  });
 }
 
 function parseReferenceTime(now: Date | string): number {
@@ -300,13 +278,13 @@ function validateV02Metadata(concept: Concept, nowMs: number, findings: Finding[
   const generated = raw.generated;
   if (generated !== undefined) {
     const object = asRecord(generated);
-    const by = object?.by;
-    const at = object?.at;
+    const by = semanticFrontmatterStringAt(concept.frontmatter, ['generated', 'by']);
+    const at = semanticFrontmatterStringAt(concept.frontmatter, ['generated', 'at']);
     const atMs = typeof at === 'string' ? parseExplicitZoneTimestamp(at) : undefined;
     if (
       object === undefined ||
-      typeof by !== 'string' ||
-      by.trim().length === 0 ||
+      by === undefined ||
+      !isValidActor(by) ||
       (at !== undefined && atMs === undefined)
     ) {
       findings.push(
@@ -335,17 +313,13 @@ function validateV02Metadata(concept: Concept, nowMs: number, findings: Finding[
     const values = Array.isArray(raw.verified) ? raw.verified : [raw.verified];
     let invalid = values.length === 0;
     let future = false;
-    for (const value of values) {
+    for (const [index, value] of values.entries()) {
       const event = asRecord(value);
-      const by = event?.by;
-      const at = event?.at;
+      const prefix = Array.isArray(raw.verified) ? ['verified', index] : ['verified'];
+      const by = semanticFrontmatterStringAt(concept.frontmatter, [...prefix, 'by']);
+      const at = semanticFrontmatterStringAt(concept.frontmatter, [...prefix, 'at']);
       const atMs = typeof at === 'string' ? parseExplicitZoneTimestamp(at) : undefined;
-      if (
-        event === undefined ||
-        typeof by !== 'string' ||
-        by.trim().length === 0 ||
-        atMs === undefined
-      ) {
+      if (event === undefined || by === undefined || !isValidActor(by) || atMs === undefined) {
         invalid = true;
       } else if (atMs > nowMs + FUTURE_TOLERANCE_MS) {
         future = true;
@@ -420,21 +394,26 @@ function validateV02Metadata(concept: Concept, nowMs: number, findings: Finding[
     const sources = raw.sources;
     const valid =
       Array.isArray(sources) &&
-      sources.every((source) => {
+      sources.every((source, index) => {
         const object = asRecord(source);
+        const normalized = concept.sources?.[index];
+        const author = normalized?.author;
         return (
-          typeof object?.resource === 'string' &&
-          object.resource.trim().length > 0 &&
-          optionalStringField(object, 'id') &&
-          optionalStringField(object, 'title') &&
-          optionalStringField(object, 'author') &&
+          object !== undefined &&
+          typeof normalized?.resource === 'string' &&
+          normalized.resource.trim().length > 0 &&
+          (!Object.hasOwn(object, 'id') || normalized.id !== undefined) &&
+          (!Object.hasOwn(object, 'title') || normalized.title !== undefined) &&
+          (author === undefined || isValidActor(author)) &&
+          (!Object.hasOwn(object ?? {}, 'author') || author !== undefined) &&
           (!Object.hasOwn(object, 'usage_count') ||
             (typeof object.usage_count === 'number' &&
               Number.isSafeInteger(object.usage_count) &&
               object.usage_count >= 0)) &&
           (!Object.hasOwn(object, 'last_modified') ||
-            (typeof object.last_modified === 'string' && isIsoDate(object.last_modified))) &&
-          (!Object.hasOwn(object, 'usage_window') || isUsageWindow(object.usage_window))
+            (normalized.lastModified !== undefined && isIsoDate(normalized.lastModified))) &&
+          (!Object.hasOwn(object, 'usage_window') ||
+            (normalized.usageWindow !== undefined && isUsageWindow(normalized.usageWindow)))
         );
       });
     if (!valid) {
@@ -477,10 +456,10 @@ function validateV02Metadata(concept: Concept, nowMs: number, findings: Finding[
             typeof object.required === 'boolean'
           );
         }));
-    const computationValid =
-      raw.computation === undefined
-        ? hasInlineComputation(concept.body)
-        : typeof raw.computation === 'string' && raw.computation.trim().length > 0;
+    const fileComputation =
+      typeof concept.computation === 'string' && concept.computation.trim().length > 0;
+    const inlineComputation = hasInlineComputation(concept.body);
+    const computationValid = fileComputation !== inlineComputation;
     const executorValid = optionalComputationEndpoint(raw.executor, true);
     const attesterValid = optionalComputationEndpoint(raw.attester, false);
     if (
@@ -516,10 +495,6 @@ function asRecord(value: unknown): Readonly<Record<string, unknown>> | undefined
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Readonly<Record<string, unknown>>)
     : undefined;
-}
-
-function optionalStringField(object: Readonly<Record<string, unknown>>, key: string): boolean {
-  return !Object.hasOwn(object, key) || typeof object[key] === 'string';
 }
 
 function isUsageWindow(value: unknown): boolean {

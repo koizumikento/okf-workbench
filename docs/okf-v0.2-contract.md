@@ -33,9 +33,11 @@ Workbench preserves the complete JSON-safe frontmatter map and normalizes these 
 - lifecycle: `status` and `stale_after`;
 - computation contracts: `runtime`, `parameters`, `computation`, `executor`, and `attester`.
 
-A bare `verified` mapping is normalized as one event. Trust tier is derived from verifier actors:
-no valid actor is `unverified`, non-`human:` actors are `machine-confirmed`, and any `human:` actor
-is `human-reviewed`.
+A bare `verified` mapping is normalized as one event. Actors use `human:<id>`, `process:<id>`, or
+`<producer>/<version>` with non-empty ASCII token segments and a maximum length of 256 characters.
+This convention applies to `generated.by`, `verified.by`, and `sources.author`. Trust tier is
+derived only from valid verifier actors: no valid actor is `unverified`, a valid non-`human:`
+actor is `machine-confirmed`, and any valid `human:` actor is `human-reviewed`.
 
 `generated.at` is the current content-change time. A legacy `timestamp` remains normalized for v0.1
 interoperability and is used as a fallback only when `generated` is absent. Templates that receive

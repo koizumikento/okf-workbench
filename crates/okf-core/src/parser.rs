@@ -44,6 +44,7 @@ const MAX_DESCRIPTION_CODE_UNITS: usize = 16_384;
 const MAX_RESOURCE_CODE_UNITS: usize = 4_096;
 const MAX_TIMESTAMP_CODE_UNITS: usize = 256;
 const TAGGED_KEY: &str = "$okf-workbench:yaml-tag";
+const EXACT_INTEGER_KEY: &str = "$okf-workbench:yaml-integer";
 
 #[derive(Debug)]
 struct DecodedDocument {
@@ -747,6 +748,7 @@ fn parse_frontmatter(
             resource_limit: false,
         }
     })?;
+    let mut explicit_tags = collect_yaml_explicit_tags(&yaml);
     let mut raw = match yaml_to_json(yaml).map_err(|message| FrontmatterError {
         message,
         range: Some(range_for(text, opening_end, closing_start)),
@@ -761,9 +763,11 @@ fn parse_frontmatter(
             });
         }
     };
-    let explicit_tags = preserve_standard_yaml_tags(yaml_source, &mut raw);
+    for (key, value) in preserve_standard_yaml_tags(yaml_source, &mut raw) {
+        explicit_tags.insert(key, value);
+    }
     let fields = top_level_field_ranges(text, opening_end, closing_start);
-    let verified = normalized_verifications(raw.get("verified"));
+    let verified = normalized_verifications(raw.get("verified"), &explicit_tags);
     let normalized = NormalizedFrontmatter {
         r#type: normalized_string(&raw, &explicit_tags, "type").map(str::to_owned),
         title: normalized_string(&raw, &explicit_tags, "title").map(str::to_owned),
@@ -787,18 +791,22 @@ fn parse_frontmatter(
             })
             .unwrap_or_default(),
         timestamp: normalized_string(&raw, &explicit_tags, "timestamp").map(str::to_owned),
-        generated: normalized_generated(raw.get("generated")),
+        generated: normalized_generated(raw.get("generated"), &explicit_tags),
         trust_tier: trust_tier(&verified).to_owned(),
         verified,
         status: normalized_string(&raw, &explicit_tags, "status").map(str::to_owned),
         stale_after: normalized_string(&raw, &explicit_tags, "stale_after").map(str::to_owned),
-        sources: normalized_sources(raw.get("sources")),
-        usage_window: normalized_usage_window(raw.get("usage_window")),
+        sources: normalized_sources(raw.get("sources"), &explicit_tags),
+        usage_window: normalized_usage_window(
+            raw.get("usage_window"),
+            &explicit_tags,
+            "/usage_window",
+        ),
         runtime: normalized_string(&raw, &explicit_tags, "runtime").map(str::to_owned),
-        parameters: normalized_parameters(raw.get("parameters")),
+        parameters: normalized_parameters(raw.get("parameters"), &explicit_tags),
         computation: normalized_string(&raw, &explicit_tags, "computation").map(str::to_owned),
-        executor: normalized_endpoint(raw.get("executor")),
-        attester: normalized_endpoint(raw.get("attester")),
+        executor: normalized_endpoint(raw.get("executor"), &explicit_tags, "/executor"),
+        attester: normalized_endpoint(raw.get("attester"), &explicit_tags, "/attester"),
     };
     let frontmatter = ParsedFrontmatter {
         raw,
@@ -815,19 +823,37 @@ fn parse_frontmatter(
     ))
 }
 
-fn object_string(object: &Map<String, Value>, key: &str) -> Option<String> {
-    object.get(key).and_then(Value::as_str).map(str::to_owned)
+fn object_string(
+    object: &Map<String, Value>,
+    key: &str,
+    explicit_tags: &Map<String, Value>,
+    path: &str,
+) -> Option<String> {
+    let value = object.get(key)?;
+    let value = if explicit_tags.contains_key(path) {
+        semantic_value(value)
+    } else {
+        value
+    };
+    value.as_str().map(str::to_owned)
 }
 
-fn normalized_generated(value: Option<&Value>) -> Option<GeneratedMetadata> {
+fn normalized_generated(
+    value: Option<&Value>,
+    explicit_tags: &Map<String, Value>,
+) -> Option<GeneratedMetadata> {
     let object = value?.as_object()?;
     Some(GeneratedMetadata {
-        by: object_string(object, "by"),
-        at: object_string(object, "at"),
+        by: object_string(object, "by", explicit_tags, "/generated/by"),
+        at: object_string(object, "at", explicit_tags, "/generated/at"),
     })
 }
 
-fn normalized_verifications(value: Option<&Value>) -> Vec<VerificationEvent> {
+fn normalized_verifications(
+    value: Option<&Value>,
+    explicit_tags: &Map<String, Value>,
+) -> Vec<VerificationEvent> {
+    let is_array = value.is_some_and(Value::is_array);
     let values = match value {
         Some(Value::Array(values)) => values.iter().collect::<Vec<_>>(),
         Some(value @ Value::Object(_)) => vec![value],
@@ -836,16 +862,24 @@ fn normalized_verifications(value: Option<&Value>) -> Vec<VerificationEvent> {
     values
         .into_iter()
         .filter_map(Value::as_object)
-        .map(|object| VerificationEvent {
-            by: object_string(object, "by"),
-            at: object_string(object, "at"),
+        .enumerate()
+        .map(|(index, object)| {
+            let prefix = if is_array {
+                format!("/verified/{index}")
+            } else {
+                "/verified".to_owned()
+            };
+            VerificationEvent {
+                by: object_string(object, "by", explicit_tags, &format!("{prefix}/by")),
+                at: object_string(object, "at", explicit_tags, &format!("{prefix}/at")),
+            }
         })
         .collect()
 }
 
 fn trust_tier(events: &[VerificationEvent]) -> &'static str {
     let valid_events = events.iter().filter(|event| {
-        event.by.as_deref().is_some_and(|by| !by.trim().is_empty())
+        event.by.as_deref().is_some_and(is_valid_actor)
             && event
                 .at
                 .as_deref()
@@ -865,47 +899,117 @@ fn trust_tier(events: &[VerificationEvent]) -> &'static str {
     }
 }
 
-fn normalized_usage_window(value: Option<&Value>) -> Option<UsageWindow> {
+pub(crate) fn is_valid_actor(value: &str) -> bool {
+    fn token(value: &str) -> bool {
+        !value.is_empty()
+            && value.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric()
+                    || matches!(byte, b'.' | b'_' | b'@' | b':' | b'-' | b'/')
+            })
+    }
+
+    if value.is_empty() || value.len() > 256 || value.trim() != value {
+        return false;
+    }
+    if let Some(actor) = value
+        .strip_prefix("human:")
+        .or_else(|| value.strip_prefix("process:"))
+    {
+        return token(actor);
+    }
+    let mut parts = value.split('/');
+    matches!(
+        (parts.next(), parts.next(), parts.next()),
+        (Some(producer), Some(version), None) if token(producer) && token(version)
+    )
+}
+
+fn normalized_usage_window(
+    value: Option<&Value>,
+    explicit_tags: &Map<String, Value>,
+    path: &str,
+) -> Option<UsageWindow> {
     let object = value?.as_object()?;
     Some(UsageWindow {
-        from: object_string(object, "from"),
-        to: object_string(object, "to"),
+        from: object_string(object, "from", explicit_tags, &format!("{path}/from")),
+        to: object_string(object, "to", explicit_tags, &format!("{path}/to")),
     })
 }
 
-fn normalized_sources(value: Option<&Value>) -> Vec<KnowledgeSource> {
+fn normalized_sources(
+    value: Option<&Value>,
+    explicit_tags: &Map<String, Value>,
+) -> Vec<KnowledgeSource> {
     value
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
         .filter_map(Value::as_object)
-        .map(|object| KnowledgeSource {
-            id: object_string(object, "id"),
-            resource: object_string(object, "resource"),
-            title: object_string(object, "title"),
-            author: object_string(object, "author"),
-            usage_count: object.get("usage_count").and_then(Value::as_u64),
-            last_modified: object_string(object, "last_modified"),
-            usage_window: normalized_usage_window(object.get("usage_window")),
+        .enumerate()
+        .map(|(index, object)| {
+            let path = format!("/sources/{index}");
+            KnowledgeSource {
+                id: object_string(object, "id", explicit_tags, &format!("{path}/id")),
+                resource: object_string(
+                    object,
+                    "resource",
+                    explicit_tags,
+                    &format!("{path}/resource"),
+                ),
+                title: object_string(object, "title", explicit_tags, &format!("{path}/title")),
+                author: object_string(object, "author", explicit_tags, &format!("{path}/author")),
+                usage_count: object
+                    .get("usage_count")
+                    .and_then(json_safe_nonnegative_integer),
+                last_modified: object_string(
+                    object,
+                    "last_modified",
+                    explicit_tags,
+                    &format!("{path}/last_modified"),
+                ),
+                usage_window: normalized_usage_window(
+                    object.get("usage_window"),
+                    explicit_tags,
+                    &format!("{path}/usage_window"),
+                ),
+            }
         })
         .collect()
 }
 
-fn normalized_parameters(value: Option<&Value>) -> Vec<ComputationParameter> {
+fn normalized_parameters(
+    value: Option<&Value>,
+    explicit_tags: &Map<String, Value>,
+) -> Vec<ComputationParameter> {
     value
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
         .filter_map(Value::as_object)
-        .map(|object| ComputationParameter {
-            name: object_string(object, "name"),
-            r#type: object_string(object, "type"),
+        .enumerate()
+        .map(|(index, object)| ComputationParameter {
+            name: object_string(
+                object,
+                "name",
+                explicit_tags,
+                &format!("/parameters/{index}/name"),
+            ),
+            r#type: object_string(
+                object,
+                "type",
+                explicit_tags,
+                &format!("/parameters/{index}/type"),
+            ),
             required: object.get("required").and_then(Value::as_bool),
         })
         .collect()
 }
 
-fn normalized_endpoint(value: Option<&Value>) -> Option<ComputationEndpoint> {
+fn normalized_endpoint(
+    value: Option<&Value>,
+    explicit_tags: &Map<String, Value>,
+    path: &str,
+) -> Option<ComputationEndpoint> {
     let object = value?.as_object()?;
     let receipt = object
         .get("receipt")
@@ -916,9 +1020,77 @@ fn normalized_endpoint(value: Option<&Value>) -> Option<ComputationEndpoint> {
         .map(str::to_owned)
         .collect();
     Some(ComputationEndpoint {
-        resource: object_string(object, "resource"),
+        resource: object_string(
+            object,
+            "resource",
+            explicit_tags,
+            &format!("{path}/resource"),
+        ),
         receipt,
     })
+}
+
+fn json_safe_nonnegative_integer(value: &Value) -> Option<u64> {
+    const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+    let integer = if let Some(value) = value.as_u64() {
+        value
+    } else {
+        let value = value.as_f64()?;
+        if !value.is_finite() || value < 0.0 || value.fract() != 0.0 {
+            return None;
+        }
+        value as u64
+    };
+    (integer <= MAX_SAFE_INTEGER).then_some(integer)
+}
+
+fn collect_yaml_explicit_tags(value: &serde_yaml::Value) -> Map<String, Value> {
+    fn escape(segment: &str) -> String {
+        segment.replace('~', "~0").replace('/', "~1")
+    }
+
+    fn visit(value: &serde_yaml::Value, path: &mut Vec<String>, tags: &mut Map<String, Value>) {
+        match value {
+            serde_yaml::Value::Tagged(tagged) => {
+                if !path.is_empty() {
+                    let raw_tag = tagged.tag.to_string();
+                    let tag = raw_tag
+                        .strip_prefix("!!")
+                        .and_then(standard_tag_uri)
+                        .unwrap_or(&raw_tag)
+                        .to_owned();
+                    let key = if path.len() == 1 {
+                        path[0].clone()
+                    } else {
+                        format!("/{}", path.join("/"))
+                    };
+                    tags.insert(key, Value::String(tag));
+                }
+                visit(&tagged.value, path, tags);
+            }
+            serde_yaml::Value::Mapping(mapping) => {
+                for (key, nested) in mapping {
+                    if let serde_yaml::Value::String(key) = key {
+                        path.push(escape(key));
+                        visit(nested, path, tags);
+                        path.pop();
+                    }
+                }
+            }
+            serde_yaml::Value::Sequence(sequence) => {
+                for (index, nested) in sequence.iter().enumerate() {
+                    path.push(index.to_string());
+                    visit(nested, path, tags);
+                    path.pop();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut tags = Map::new();
+    visit(value, &mut Vec::new(), &mut tags);
+    tags
 }
 
 fn yaml_to_json(value: serde_yaml::Value) -> Result<Value, String> {
@@ -927,9 +1099,27 @@ fn yaml_to_json(value: serde_yaml::Value) -> Result<Value, String> {
         serde_yaml::Value::Bool(value) => Value::Bool(value),
         serde_yaml::Value::Number(value) => {
             if let Some(value) = value.as_i64() {
-                Value::Number(Number::from(value))
+                if value.unsigned_abs() > 9_007_199_254_740_991 {
+                    let mut exact = Map::new();
+                    exact.insert(
+                        EXACT_INTEGER_KEY.to_owned(),
+                        Value::String(value.to_string()),
+                    );
+                    Value::Object(exact)
+                } else {
+                    Value::Number(Number::from(value))
+                }
             } else if let Some(value) = value.as_u64() {
-                Value::Number(Number::from(value))
+                if value > 9_007_199_254_740_991 {
+                    let mut exact = Map::new();
+                    exact.insert(
+                        EXACT_INTEGER_KEY.to_owned(),
+                        Value::String(value.to_string()),
+                    );
+                    Value::Object(exact)
+                } else {
+                    Value::Number(Number::from(value))
+                }
             } else {
                 value
                     .as_f64()
@@ -962,15 +1152,30 @@ fn yaml_to_json(value: serde_yaml::Value) -> Result<Value, String> {
             Value::Object(result)
         }
         serde_yaml::Value::Tagged(tagged) => {
-            let tag = tagged.tag.to_string();
+            let raw_tag = tagged.tag.to_string();
+            let tag = raw_tag
+                .strip_prefix("!!")
+                .and_then(standard_tag_uri)
+                .unwrap_or(&raw_tag)
+                .to_owned();
             if !tag.starts_with("tag:yaml.org,2002:") && !tag.starts_with("!!") {
                 return Err(format!(
                     "YAML frontmatter is not JSON-safe: custom YAML tag is not supported: {tag}"
                 ));
             }
+            let source = match &tagged.value {
+                serde_yaml::Value::String(value) => Some(value.clone()),
+                serde_yaml::Value::Bool(value) => Some(value.to_string()),
+                serde_yaml::Value::Number(value) => Some(value.to_string()),
+                serde_yaml::Value::Null => Some("null".to_owned()),
+                _ => None,
+            };
             let mut tagged_body = Map::new();
             tagged_body.insert("tag".to_owned(), Value::String(tag));
             tagged_body.insert("value".to_owned(), yaml_to_json(tagged.value)?);
+            if let Some(source) = source {
+                tagged_body.insert("source".to_owned(), Value::String(source));
+            }
             let mut wrapper = Map::new();
             wrapper.insert(TAGGED_KEY.to_owned(), Value::Object(tagged_body));
             Value::Object(wrapper)
@@ -1031,6 +1236,8 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
     let mut anchors: std::collections::BTreeMap<String, (Value, String)> =
         std::collections::BTreeMap::new();
     let mut containers: Vec<(usize, String)> = Vec::new();
+    let mut sequence_indices: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
     for line in line_spans(source) {
         let body = &source[line.start..line.content_end];
         let indent = body
@@ -1038,19 +1245,36 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
             .take_while(|character| *character == ' ')
             .count();
         let trimmed = body.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('-') {
+        if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
-        let Some((key, value_source)) = trimmed.split_once(':') else {
-            continue;
-        };
-        let key = key.trim().trim_matches(['\'', '"']).to_owned();
         while containers
             .last()
             .is_some_and(|(container_indent, _)| *container_indent >= indent)
         {
             containers.pop();
         }
+        let item = trimmed.strip_prefix("- ");
+        let mapping_source = if let Some(item) = item {
+            let sequence_key = format!(
+                "{indent}/{}",
+                containers
+                    .iter()
+                    .map(|(_, segment)| segment.as_str())
+                    .collect::<Vec<_>>()
+                    .join("/")
+            );
+            let index = sequence_indices.entry(sequence_key).or_default();
+            containers.push((indent, index.to_string()));
+            *index += 1;
+            item
+        } else {
+            trimmed
+        };
+        let Some((key, value_source)) = mapping_source.split_once(':') else {
+            continue;
+        };
+        let key = key.trim().trim_matches(['\'', '"']).to_owned();
         let value_source = value_source.trim();
         if value_source.is_empty() {
             containers.push((indent, key));
@@ -1073,9 +1297,7 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
             && let Some((wrapped, tag)) = anchors.get(alias).cloned()
         {
             set_value_at_path(raw, &path, wrapped);
-            if path.len() == 1 {
-                explicit_tags.insert(key, Value::String(tag));
-            }
+            explicit_tags.insert(explicit_tag_path(&path), Value::String(tag));
             continue;
         }
 
@@ -1120,14 +1342,25 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
         wrapper.insert(TAGGED_KEY.to_owned(), Value::Object(body));
         let wrapped = Value::Object(wrapper);
         set_value_at_path(raw, &path, wrapped.clone());
-        if path.len() == 1 {
-            explicit_tags.insert(key, Value::String(tag_uri.to_owned()));
-        }
+        explicit_tags.insert(explicit_tag_path(&path), Value::String(tag_uri.to_owned()));
         if let Some(anchor_name) = anchor_name {
             anchors.insert(anchor_name, (wrapped, tag_uri.to_owned()));
         }
     }
     explicit_tags
+}
+
+fn explicit_tag_path(path: &[&str]) -> String {
+    if path.len() == 1 {
+        return path[0].to_owned();
+    }
+    format!(
+        "/{}",
+        path.iter()
+            .map(|segment| segment.replace('~', "~0").replace('/', "~1"))
+            .collect::<Vec<_>>()
+            .join("/")
+    )
 }
 
 fn standard_tag_uri(tag_name: &str) -> Option<&'static str> {
@@ -1174,23 +1407,47 @@ fn value_at_path<'a>(root: &'a Map<String, Value>, path: &[&str]) -> Option<&'a 
     let (first, rest) = path.split_first()?;
     let mut value = root.get(*first)?;
     for segment in rest {
-        value = value.as_object()?.get(*segment)?;
+        value = if let Some(object) = value.as_object() {
+            object.get(*segment)?
+        } else {
+            value.as_array()?.get(segment.parse::<usize>().ok()?)?
+        };
     }
     Some(value)
 }
 
 fn set_value_at_path(root: &mut Map<String, Value>, path: &[&str], value: Value) {
-    let Some((last, parents)) = path.split_last() else {
+    let Some((first, rest)) = path.split_first() else {
         return;
     };
-    let mut current = root;
-    for segment in parents {
-        let Some(next) = current.get_mut(*segment).and_then(Value::as_object_mut) else {
-            return;
-        };
-        current = next;
+    let Some(current) = root.get_mut(*first) else {
+        return;
+    };
+    set_nested_value(current, rest, value);
+}
+
+fn set_nested_value(current: &mut Value, path: &[&str], value: Value) {
+    let Some((segment, rest)) = path.split_first() else {
+        *current = value;
+        return;
+    };
+    match current {
+        Value::Object(object) => {
+            if let Some(next) = object.get_mut(*segment) {
+                set_nested_value(next, rest, value);
+            }
+        }
+        Value::Array(array) => {
+            if let Some(next) = segment
+                .parse::<usize>()
+                .ok()
+                .and_then(|index| array.get_mut(index))
+            {
+                set_nested_value(next, rest, value);
+            }
+        }
+        _ => {}
     }
-    current.insert((*last).to_owned(), value);
 }
 
 fn top_level_field_ranges(text: &str, start: usize, end: usize) -> Map<String, Value> {

@@ -10,7 +10,7 @@ use okf_core::{
 use serde::Serialize;
 use std::{
     io::{self, IsTerminal, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::ExitCode,
     time::SystemTime,
 };
@@ -115,8 +115,8 @@ struct NewArgs {
     title: String,
     #[arg(long)]
     path: Option<String>,
-    #[arg(long, default_value = "concept")]
-    r#type: String,
+    #[arg(long)]
+    r#type: Option<String>,
     #[arg(long)]
     description: Option<String>,
     #[arg(long, value_delimiter = ',')]
@@ -196,6 +196,7 @@ fn run(cli: Cli) -> Result<u8, String> {
             run_write("init", args.path, files, args.write, PlanMode::CreateOnly)
         }
         Command::New(args) => {
+            ensure_supported_write_version(&args.root)?;
             let path = args.path.unwrap_or_else(|| slug(&args.title));
             validate_relative_path(&path)?;
             if !CONCEPT_TEMPLATES.contains(&args.template.as_str()) {
@@ -208,13 +209,20 @@ fn run(cli: Cli) -> Result<u8, String> {
             if args.title.trim().is_empty() {
                 return Err("concept title must not be empty".to_owned());
             }
-            if args.r#type.trim().is_empty() {
+            let concept_type = args.r#type.unwrap_or_else(|| {
+                if args.template == "attested-computation" {
+                    "Attested Computation".to_owned()
+                } else {
+                    "concept".to_owned()
+                }
+            });
+            if concept_type.trim().is_empty() {
                 return Err("concept type must not be empty".to_owned());
             }
             let files = vec![concept_template_file(&ConceptTemplateInput {
                 template: args.template,
                 relative_path: path,
-                r#type: args.r#type,
+                r#type: concept_type,
                 title: args.title,
                 description: args.description,
                 tags: args.tags,
@@ -255,8 +263,7 @@ fn run(cli: Cli) -> Result<u8, String> {
             ))
         }
         Command::Index(args) => {
-            let input = load_bundle(&args.root)?;
-            let bundle = parse_bundle(input);
+            let bundle = ensure_supported_write_version(&args.root)?;
             if let Some(parse_failure) = bundle.failures.first() {
                 return Err(format!(
                     "index generation refused an incomplete bundle: {}: {}",
@@ -289,6 +296,7 @@ fn run(cli: Cli) -> Result<u8, String> {
             Ok(0)
         }
         Command::Agent(args) => {
+            ensure_supported_write_version(&args.root)?;
             let target = match args.target {
                 AgentTargetArg::Agents => AgentTarget::Agents,
                 AgentTargetArg::Skill => AgentTarget::Skill,
@@ -315,6 +323,64 @@ fn run(cli: Cli) -> Result<u8, String> {
             Ok(0)
         }
     }
+}
+
+fn ensure_supported_write_version(root: &Path) -> Result<okf_core::ParsedBundle, String> {
+    let bundle = parse_bundle(load_bundle(root)?);
+    if let Some(failure) = bundle
+        .failures
+        .iter()
+        .find(|failure| failure.bundle_path.replace('\\', "/") == "index.md")
+    {
+        return Err(format!(
+            "write refused because the root index cannot be inspected: {}",
+            failure.message
+        ));
+    }
+    let Some(index) = bundle
+        .reserved_documents
+        .iter()
+        .find(|document| document.source.bundle_path.replace('\\', "/") == "index.md")
+    else {
+        return Ok(bundle);
+    };
+    let Some(frontmatter) = &index.frontmatter else {
+        return Ok(bundle);
+    };
+    let Some(raw_version) = frontmatter.raw.get("okf_version") else {
+        return Ok(bundle);
+    };
+    let Some(version) = &index.okf_version else {
+        return Err(format!(
+            "write refused because `okf_version` is not a supported string: {raw_version}"
+        ));
+    };
+    if matches!(version.as_str(), "0.1" | "0.2") || is_future_minor(version) {
+        return Ok(bundle);
+    }
+    Err(format!(
+        "write refused because the bundle declares unsupported OKF version {version:?}"
+    ))
+}
+
+fn is_future_minor(version: &str) -> bool {
+    let Some((major, minor)) = version.split_once('.') else {
+        return false;
+    };
+    if major.is_empty()
+        || !major.bytes().all(|byte| byte.is_ascii_digit())
+        || major.bytes().any(|byte| byte != b'0')
+        || minor.is_empty()
+        || !minor.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return false;
+    }
+    let significant_minor = minor.trim_start_matches('0');
+    significant_minor.len() > 1
+        || significant_minor
+            .as_bytes()
+            .first()
+            .is_some_and(|minor| *minor > b'2')
 }
 
 fn run_write(

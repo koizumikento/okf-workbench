@@ -96,6 +96,7 @@ Accepted decisions are recorded under [decisions/](decisions/):
 - [0007 — Adopt a Rust/Wasm shared OKF core and native CLI](decisions/0007-adopt-rust-wasm-shared-core-and-cli.md)
 - [0008 — Bundle the native CLI in platform VSIX packages and distribute it separately](decisions/0008-bundle-native-cli-in-platform-vsix.md)
 - [0009 — Preview only proposals that may change existing files](decisions/0009-preview-only-existing-file-changes.md)
+- [0010 — Support OKF v0.2 with a v0.1 compatibility fallback](decisions/0010-adopt-okf-v0.2-with-v0.1-fallback.md)
 
 ## Documentation rules
 

@@ -223,6 +223,76 @@ describe('OKF bundle parser', () => {
     });
   });
 
+  it('normalizes parser-proven nested string tags without allowing lookalike wrappers', () => {
+    const bundle = parseBundle({
+      rootUri,
+      revision: 5,
+      documents: [
+        document(
+          'nested-tags.md',
+          [
+            '---',
+            'type: Reference',
+            'generated:',
+            '  by: !!str process:builder',
+            '  at: !!str 2026-07-30T01:00:00Z',
+            'verified:',
+            '  - by: !!str human:reviewer',
+            '    at: !!str 2026-07-30T02:00:00Z',
+            'sources:',
+            '  - resource: !!str https://example.com/policy',
+            '    author: !!str process:catalog',
+            '    usage_count: 42.0',
+            '---',
+            '# Nested tags',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'lookalike.md',
+          [
+            '---',
+            'type: Reference',
+            'verified:',
+            `  by: { ${YAML_TAGGED_VALUE_KEY}: { tag: "tag:yaml.org,2002:str", value: "human:spoofed", source: "human:spoofed" } }`,
+            '  at: 2026-07-30T02:00:00Z',
+            '---',
+            '# Lookalike',
+            '',
+          ].join('\n'),
+        ),
+      ],
+    });
+
+    expect(bundle.failures).toEqual([]);
+    const nested = bundle.concepts.find(({ id }) => id === 'nested-tags');
+    const lookalike = bundle.concepts.find(({ id }) => id === 'lookalike');
+    expect(nested).toMatchObject({
+      generated: { by: 'process:builder', at: '2026-07-30T01:00:00Z' },
+      verified: [{ by: 'human:reviewer', at: '2026-07-30T02:00:00Z' }],
+      trustTier: 'human-reviewed',
+      sources: [
+        {
+          resource: 'https://example.com/policy',
+          author: 'process:catalog',
+          usageCount: 42,
+        },
+      ],
+    });
+    expect(nested?.frontmatter.explicitTags).toMatchObject({
+      '/generated/by': 'tag:yaml.org,2002:str',
+      '/generated/at': 'tag:yaml.org,2002:str',
+      '/verified/0/by': 'tag:yaml.org,2002:str',
+      '/verified/0/at': 'tag:yaml.org,2002:str',
+      '/sources/0/resource': 'tag:yaml.org,2002:str',
+      '/sources/0/author': 'tag:yaml.org,2002:str',
+    });
+    expect(lookalike).toMatchObject({
+      verified: [{ at: '2026-07-30T02:00:00Z' }],
+      trustTier: 'unverified',
+    });
+  });
+
   it('strictly decodes UTF-8 and continues after decode and YAML failures', () => {
     const invalidYaml = '---\ntype: [unterminated\n---\n# Broken\n';
     const bundle = parseBundle({
@@ -561,8 +631,10 @@ describe('OKF bundle parser', () => {
     expect(concept?.frontmatter.raw.type).toEqual(
       tagged('tag:yaml.org,2002:str', 'producer-extension', 'producer-extension'),
     );
-    expect(concept?.frontmatter.explicitTags).toEqual({
+    expect(concept?.frontmatter.explicitTags).toMatchObject({
       type: 'tag:yaml.org,2002:str',
+      '/producer/text': 'tag:yaml.org,2002:str',
+      '/producer/captured_at': 'tag:yaml.org,2002:timestamp',
     });
     expect(concept?.frontmatter.raw.producer).toEqual({
       captured_at: tagged(

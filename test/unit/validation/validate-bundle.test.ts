@@ -399,20 +399,102 @@ describe('validateBundle', () => {
     expect(() => validateBundle(bundle([]), { now: 'not-a-date' })).toThrow(TypeError);
   });
 
-  it('reports a missing root index without hiding other readable bundle content', () => {
+  it('allows an indexless bundle because the v0.2 root index is optional', () => {
     const findings = validateBundle(bundle([], { reservedDocuments: [] }), {
       now: '2026-07-22T00:00:00Z',
     });
 
-    expect(findings).toContainEqual({
-      code: VALIDATION_CODES.rootIndex,
-      category: 'conformance',
-      severity: 'error',
-      uri: rootUri,
-      message: 'OKF conformance: the selected bundle root is missing index.md.',
-      correctiveAction:
-        'Run OKF: Regenerate Indexes to synthesize the missing root index, or create index.md with an OKF version declaration.',
+    expect(findings).toEqual([]);
+  });
+
+  it('validates actor conventions, computation exclusivity, and safe usage counts', () => {
+    const parsed = parseBundle({
+      rootUri,
+      revision: 9,
+      documents: [
+        document(
+          'invalid-actors.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Invalid actors',
+            'description: Invalid actor forms must not elevate trust.',
+            'generated: { by: bogus }',
+            'verified: { by: "human:", at: 2026-07-30T02:00:00Z }',
+            'sources:',
+            '  - resource: https://example.com/source',
+            '    author: team:finance',
+            '---',
+            '# Invalid actors',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'both-computations.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Ambiguous computation',
+            'description: Both sanctioned forms are present.',
+            'runtime: local',
+            'computation: scripts/run.sh',
+            '---',
+            '# Computation',
+            '',
+            '```sh',
+            'true',
+            '```',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'safe-count.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Safe count',
+            'description: Integral YAML floats remain portable.',
+            'sources: [{ resource: https://example.com/safe, usage_count: 42.0 }]',
+            '---',
+            '# Safe count',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'unsafe-count.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Unsafe count',
+            'description: Integers beyond the JSON safe range are rejected.',
+            'sources: [{ resource: https://example.com/unsafe, usage_count: 9007199254740993 }]',
+            '---',
+            '# Unsafe count',
+            '',
+          ].join('\n'),
+        ),
+      ],
     });
+
+    expect(parsed.failures).toEqual([]);
+    expect(parsed.concepts.find(({ id }) => id === 'invalid-actors')?.trustTier).toBe('unverified');
+    expect(parsed.concepts.find(({ id }) => id === 'safe-count')?.sources?.[0]?.usageCount).toBe(
+      42,
+    );
+    const findings = validateBundle(parsed, { now: '2026-07-31T00:00:00Z' });
+    const findingsFor = (id: string): readonly string[] =>
+      findings.filter(({ uri }) => uri === `${rootUri}/${id}.md`).map(({ code }) => code);
+
+    expect(findingsFor('invalid-actors')).toEqual(
+      expect.arrayContaining([
+        VALIDATION_CODES.invalidGenerated,
+        VALIDATION_CODES.invalidVerified,
+        VALIDATION_CODES.invalidSources,
+      ]),
+    );
+    expect(findingsFor('both-computations')).toContain(VALIDATION_CODES.invalidAttestedComputation);
+    expect(findingsFor('safe-count')).not.toContain(VALIDATION_CODES.invalidSources);
+    expect(findingsFor('unsafe-count')).toContain(VALIDATION_CODES.invalidSources);
   });
 
   it('reports present non-string timestamp and okf_version values deterministically', () => {

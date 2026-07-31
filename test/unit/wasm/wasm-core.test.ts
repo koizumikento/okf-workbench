@@ -484,6 +484,55 @@ describe('Rust/Wasm core boundary', () => {
             'Attested Computation',
           ),
         ],
+        [
+          'nested-tags.md',
+          concept(
+            '',
+            [
+              'generated:',
+              '  by: !!str process:builder',
+              '  at: !!str 2026-07-22T11:00:00Z',
+              'verified:',
+              '  - by: !!str human:reviewer',
+              '    at: !!str 2026-07-22T11:30:00Z',
+              'sources:',
+              '  - resource: !!str https://example.com/source',
+              '    author: !!str process:catalog',
+              '    usage_count: 42.0',
+              '',
+            ].join('\n'),
+            'Reference',
+          ),
+        ],
+        [
+          'invalid-actors.md',
+          concept(
+            '',
+            [
+              'generated: { by: bogus }',
+              'verified: { by: "human:", at: 2026-07-22T11:30:00Z }',
+              'sources: [{ resource: https://example.com/source, author: team:finance }]',
+              '',
+            ].join('\n'),
+            'Reference',
+          ),
+        ],
+        [
+          'unsafe-count.md',
+          concept(
+            '',
+            'sources: [{ resource: https://example.com/source, usage_count: 9007199254740993 }]\n',
+            'Reference',
+          ),
+        ],
+        [
+          'ambiguous-computation.md',
+          concept(
+            '# Computation\n\n```sh\ntrue\n```\n',
+            'runtime: local\ncomputation: scripts/run.sh\n',
+            'Attested Computation',
+          ),
+        ],
         ['invalid-trust.md', concept('', 'verified: { by: human:spoofed }\n', 'Reference')],
         ['legacy-only.md', concept('', 'timestamp: 2026-07-22T10:00:00Z\n', 'Reference')],
         [

@@ -215,7 +215,7 @@ export function parseFrontmatter(text: string, ranges: SourceRangeIndex): Frontm
       };
     }
 
-    const explicitTags = collectTopLevelExplicitTags(document.contents, document);
+    const explicitTags = collectExplicitTags(document.contents, document);
 
     const fields: Record<string, SourceRange> = Object.create(null) as Record<string, SourceRange>;
     for (const pair of document.contents.items) {
@@ -509,7 +509,7 @@ function normalizeFrontmatter(
   explicitTags: Readonly<Record<string, string>>,
 ): NormalizedFrontmatter {
   const tags = semanticValue(raw.tags, explicitTags.tags);
-  const verified = normalizeVerifications(raw.verified);
+  const verified = normalizeVerifications(raw.verified, explicitTags);
   return {
     ...optionalString('type', raw.type, explicitTags.type),
     ...optionalString('title', raw.title, explicitTags.title),
@@ -517,18 +517,21 @@ function normalizeFrontmatter(
     ...optionalString('resource', raw.resource, explicitTags.resource),
     tags: Array.isArray(tags) && tags.every((tag) => typeof tag === 'string') ? [...tags] : [],
     ...optionalString('timestamp', raw.timestamp, explicitTags.timestamp),
-    ...optionalObject('generated', normalizeGenerated(raw.generated)),
+    ...optionalObject('generated', normalizeGenerated(raw.generated, explicitTags)),
     verified,
     trustTier: trustTier(verified),
     ...optionalString('status', raw.status, explicitTags.status),
     ...optionalString('staleAfter', raw.stale_after, explicitTags.stale_after),
-    sources: normalizeSources(raw.sources),
-    ...optionalObject('usageWindow', normalizeUsageWindow(raw.usage_window)),
+    sources: normalizeSources(raw.sources, explicitTags),
+    ...optionalObject(
+      'usageWindow',
+      normalizeUsageWindow(raw.usage_window, explicitTags, ['usage_window']),
+    ),
     ...optionalString('runtime', raw.runtime, explicitTags.runtime),
-    parameters: normalizeParameters(raw.parameters),
+    parameters: normalizeParameters(raw.parameters, explicitTags),
     ...optionalString('computation', raw.computation, explicitTags.computation),
-    ...optionalObject('executor', normalizeEndpoint(raw.executor)),
-    ...optionalObject('attester', normalizeEndpoint(raw.attester)),
+    ...optionalObject('executor', normalizeEndpoint(raw.executor, explicitTags, ['executor'])),
+    ...optionalObject('attester', normalizeEndpoint(raw.attester, explicitTags, ['attester'])),
   };
 }
 
@@ -566,18 +569,25 @@ function jsonObject(value: JsonValue | undefined): JsonObject | undefined {
   return value as JsonObject;
 }
 
-function objectString(value: JsonObject, key: string): string | undefined {
+function objectString(
+  value: JsonObject,
+  key: string,
+  explicitTags: Readonly<Record<string, string>>,
+  path: readonly (string | number)[],
+): string | undefined {
   const candidate = value[key];
-  return typeof candidate === 'string' ? candidate : undefined;
+  const semantic = semanticValue(candidate, explicitTags[tagPath([...path, key])]);
+  return typeof semantic === 'string' ? semantic : undefined;
 }
 
 function normalizeGenerated(
   value: JsonValue | undefined,
+  explicitTags: Readonly<Record<string, string>>,
 ): NormalizedFrontmatter['generated'] | undefined {
   const object = jsonObject(value);
   if (object === undefined) return undefined;
-  const by = objectString(object, 'by');
-  const at = objectString(object, 'at');
+  const by = objectString(object, 'by', explicitTags, ['generated']);
+  const at = objectString(object, 'at', explicitTags, ['generated']);
   return {
     ...(by === undefined ? {} : { by }),
     ...(at === undefined ? {} : { at }),
@@ -586,13 +596,15 @@ function normalizeGenerated(
 
 function normalizeVerifications(
   value: JsonValue | undefined,
+  explicitTags: Readonly<Record<string, string>>,
 ): NonNullable<NormalizedFrontmatter['verified']> {
   const values = Array.isArray(value) ? value : jsonObject(value) === undefined ? [] : [value];
-  return values.flatMap((entry) => {
+  return values.flatMap((entry, index) => {
     const object = jsonObject(entry);
     if (object === undefined) return [];
-    const by = objectString(object, 'by');
-    const at = objectString(object, 'at');
+    const path = Array.isArray(value) ? ['verified', index] : ['verified'];
+    const by = objectString(object, 'by', explicitTags, path);
+    const at = objectString(object, 'at', explicitTags, path);
     return [
       {
         ...(by === undefined ? {} : { by }),
@@ -608,13 +620,29 @@ function trustTier(
   const validEvents = events.filter(
     (event) =>
       event.by !== undefined &&
-      event.by.trim().length > 0 &&
+      isValidActor(event.by) &&
       event.at !== undefined &&
       isRfc3339DateTime(event.at),
   );
   if (validEvents.some((event) => event.by?.startsWith('human:') === true)) return 'human-reviewed';
   if (validEvents.length > 0) return 'machine-confirmed';
   return 'unverified';
+}
+
+/** Actor convention shared by trust derivation, validation, and migration. */
+export function isValidActor(value: string): boolean {
+  if (value.length === 0 || value.length > 256 || value.trim() !== value) return false;
+  const token = (part: string): boolean => part.length > 0 && /^[A-Za-z0-9._/@:-]+$/u.test(part);
+  for (const prefix of ['human:', 'process:'] as const) {
+    if (value.startsWith(prefix)) return token(value.slice(prefix.length));
+  }
+  const slash = value.indexOf('/');
+  return (
+    slash > 0 &&
+    slash === value.lastIndexOf('/') &&
+    token(value.slice(0, slash)) &&
+    token(value.slice(slash + 1))
+  );
 }
 
 function isRfc3339DateTime(value: string): boolean {
@@ -655,11 +683,13 @@ function isRfc3339DateTime(value: string): boolean {
 
 function normalizeUsageWindow(
   value: JsonValue | undefined,
+  explicitTags: Readonly<Record<string, string>>,
+  path: readonly (string | number)[],
 ): NormalizedFrontmatter['usageWindow'] | undefined {
   const object = jsonObject(value);
   if (object === undefined) return undefined;
-  const from = objectString(object, 'from');
-  const to = objectString(object, 'to');
+  const from = objectString(object, 'from', explicitTags, path);
+  const to = objectString(object, 'to', explicitTags, path);
   return {
     ...(from === undefined ? {} : { from }),
     ...(to === undefined ? {} : { to }),
@@ -668,23 +698,31 @@ function normalizeUsageWindow(
 
 function normalizeSources(
   value: JsonValue | undefined,
+  explicitTags: Readonly<Record<string, string>>,
 ): NonNullable<NormalizedFrontmatter['sources']> {
   if (!Array.isArray(value)) return [];
-  return value.flatMap((entry) => {
+  return value.flatMap((entry, index) => {
     const object = jsonObject(entry);
     if (object === undefined) return [];
+    const path = ['sources', index] as const;
     const usageCount = object.usage_count;
     return [
       {
-        ...optionalObject('id', objectString(object, 'id')),
-        ...optionalObject('resource', objectString(object, 'resource')),
-        ...optionalObject('title', objectString(object, 'title')),
-        ...optionalObject('author', objectString(object, 'author')),
+        ...optionalObject('id', objectString(object, 'id', explicitTags, path)),
+        ...optionalObject('resource', objectString(object, 'resource', explicitTags, path)),
+        ...optionalObject('title', objectString(object, 'title', explicitTags, path)),
+        ...optionalObject('author', objectString(object, 'author', explicitTags, path)),
         ...(typeof usageCount === 'number' && Number.isSafeInteger(usageCount) && usageCount >= 0
           ? { usageCount }
           : {}),
-        ...optionalObject('lastModified', objectString(object, 'last_modified')),
-        ...optionalObject('usageWindow', normalizeUsageWindow(object.usage_window)),
+        ...optionalObject(
+          'lastModified',
+          objectString(object, 'last_modified', explicitTags, path),
+        ),
+        ...optionalObject(
+          'usageWindow',
+          normalizeUsageWindow(object.usage_window, explicitTags, [...path, 'usage_window']),
+        ),
       },
     ];
   });
@@ -692,16 +730,18 @@ function normalizeSources(
 
 function normalizeParameters(
   value: JsonValue | undefined,
+  explicitTags: Readonly<Record<string, string>>,
 ): NonNullable<NormalizedFrontmatter['parameters']> {
   if (!Array.isArray(value)) return [];
-  return value.flatMap((entry) => {
+  return value.flatMap((entry, index) => {
     const object = jsonObject(entry);
     if (object === undefined) return [];
+    const path = ['parameters', index] as const;
     const required = object.required;
     return [
       {
-        ...optionalObject('name', objectString(object, 'name')),
-        ...optionalObject('type', objectString(object, 'type')),
+        ...optionalObject('name', objectString(object, 'name', explicitTags, path)),
+        ...optionalObject('type', objectString(object, 'type', explicitTags, path)),
         ...(typeof required === 'boolean' ? { required } : {}),
       },
     ];
@@ -710,12 +750,14 @@ function normalizeParameters(
 
 function normalizeEndpoint(
   value: JsonValue | undefined,
+  explicitTags: Readonly<Record<string, string>>,
+  path: readonly (string | number)[],
 ): NormalizedFrontmatter['executor'] | undefined {
   const object = jsonObject(value);
   if (object === undefined) return undefined;
   const receipt = object.receipt;
   return {
-    ...optionalObject('resource', objectString(object, 'resource')),
+    ...optionalObject('resource', objectString(object, 'resource', explicitTags, path)),
     receipt:
       Array.isArray(receipt) && receipt.every((entry) => typeof entry === 'string')
         ? [...receipt]
@@ -763,24 +805,59 @@ export function semanticFrontmatterString(
   return typeof semantic === 'string' ? semantic : undefined;
 }
 
-function collectTopLevelExplicitTags(
+/** Returns a semantic nested string only when its explicit-tag provenance was parser-observed. */
+export function semanticFrontmatterStringAt(
+  frontmatter: ParsedFrontmatter,
+  path: readonly (string | number)[],
+): string | undefined {
+  let value: JsonValue | undefined = frontmatter.raw;
+  for (const segment of path) {
+    if (typeof segment === 'number') {
+      value = Array.isArray(value) ? value[segment] : undefined;
+    } else {
+      value = jsonObject(value)?.[segment];
+    }
+  }
+  if (typeof value === 'string') return value;
+  const semantic = semanticValue(value, frontmatter.explicitTags[tagPath(path)]);
+  return typeof semantic === 'string' ? semantic : undefined;
+}
+
+function tagPath(path: readonly (string | number)[]): string {
+  if (path.length === 1 && typeof path[0] === 'string') return path[0];
+  return `/${path
+    .map((segment) => String(segment).replace(/~/gu, '~0').replace(/\//gu, '~1'))
+    .join('/')}`;
+}
+
+function collectExplicitTags(
   mapping: YAMLMap,
   document: Document,
 ): Readonly<Record<string, string>> {
   const tags: Record<string, string> = Object.create(null) as Record<string, string>;
-  for (const pair of mapping.items) {
-    if (!isScalar(pair.key) || typeof pair.key.value !== 'string') {
-      continue;
+  const visit = (candidate: unknown, path: readonly (string | number)[]): void => {
+    const node = resolvedNode(candidate, document);
+    if (node === undefined) return;
+    if (node.tag !== undefined) {
+      tags[tagPath(path)] = node.tag;
     }
-    const tag = explicitTag(pair.value, document);
-    if (tag !== undefined) {
-      tags[pair.key.value] = tag;
+    if (isMap(node)) {
+      for (const pair of node.items) {
+        if (isScalar(pair.key) && typeof pair.key.value === 'string') {
+          visit(pair.value, [...path, pair.key.value]);
+        }
+      }
+    } else if (isSeq(node)) {
+      node.items.forEach((item, index) => {
+        visit(item, [...path, index]);
+      });
     }
-  }
+  };
+  visit(mapping, []);
   return tags;
 }
 
-function explicitTag(value: unknown, document: Document): string | undefined {
+function resolvedNode(value: unknown, document: Document): Node | undefined {
   let current = value;
   const aliases = new Set<object>();
   for (let depth = 0; depth <= MAX_ALIAS_EXPANSIONS; depth += 1) {
@@ -788,7 +865,7 @@ function explicitTag(value: unknown, document: Document): string | undefined {
       return undefined;
     }
     if (!isAlias(current)) {
-      return current.tag;
+      return current;
     }
     if (aliases.has(current)) {
       return undefined;

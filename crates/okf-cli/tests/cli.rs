@@ -182,6 +182,105 @@ fn new_keeps_markdown_looking_description_in_frontmatter_only() {
 }
 
 #[test]
+fn attested_computation_defaults_to_the_required_type() {
+    let directory = tempdir().unwrap();
+    initialize(directory.path());
+    let created = okf()
+        .args([
+            "new",
+            directory.path().to_str().unwrap(),
+            "--template",
+            "attested-computation",
+            "--title",
+            "Deterministic build",
+            "--path",
+            "build.md",
+            "--apply",
+        ])
+        .output()
+        .unwrap();
+    assert!(created.status.success(), "{created:?}");
+    let content = fs::read_to_string(directory.path().join("build.md")).unwrap();
+    assert!(content.contains("type: \"Attested Computation\"\n"));
+}
+
+#[test]
+fn mutating_commands_refuse_unsupported_bundle_versions() {
+    for command in ["new", "index", "agent"] {
+        let directory = tempdir().unwrap();
+        initialize(directory.path());
+        fs::write(
+            directory.path().join("index.md"),
+            "---\nokf_version: \"1.0\"\n---\n# Knowledge\n",
+        )
+        .unwrap();
+        let mut arguments = vec![command, directory.path().to_str().unwrap()];
+        if command == "new" {
+            arguments.extend(["--title", "Blocked", "--path", "blocked.md"]);
+        }
+        arguments.push("--apply");
+        let output = okf().args(arguments).output().unwrap();
+        assert_eq!(output.status.code(), Some(2), "{command}: {output:?}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("unsupported OKF version"),
+            "{command}: {output:?}"
+        );
+        assert!(!directory.path().join("blocked.md").exists());
+    }
+}
+
+#[test]
+fn writes_refuse_non_string_and_malformed_root_versions() {
+    for index in [
+        "---\nokf_version: 2\n---\n# Knowledge\n",
+        "---\nokf_version: [unterminated\n---\n# Knowledge\n",
+    ] {
+        let directory = tempdir().unwrap();
+        initialize(directory.path());
+        fs::write(directory.path().join("index.md"), index).unwrap();
+        let output = okf()
+            .args([
+                "new",
+                directory.path().to_str().unwrap(),
+                "--title",
+                "Blocked",
+                "--path",
+                "blocked.md",
+                "--apply",
+            ])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2), "{output:?}");
+        assert!(!directory.path().join("blocked.md").exists());
+    }
+}
+
+#[test]
+fn writes_allow_declared_future_minor_versions() {
+    let directory = tempdir().unwrap();
+    initialize(directory.path());
+    fs::write(
+        directory.path().join("index.md"),
+        "---\nokf_version: \"0.999999999999999999999999999999\"\n---\n# Knowledge\n",
+    )
+    .unwrap();
+    let output = okf()
+        .args([
+            "new",
+            directory.path().to_str().unwrap(),
+            "--title",
+            "Future minor",
+            "--path",
+            "future.md",
+            "--apply",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(directory.path().join("future.md").is_file());
+}
+
+#[test]
 fn index_refuses_partial_parse_results_without_writing() {
     let directory = tempdir().unwrap();
     initialize(directory.path());

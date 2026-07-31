@@ -277,10 +277,7 @@ fn simple_field_range(
         let line = &source[byte_start..content_end];
         if let Some(value_start) = top_level_field_value_start(line, field) {
             let value = line[value_start..].trim_start();
-            if value.is_empty()
-                || value.starts_with(['|', '>', '&', '*'])
-                || has_anchor_node_property(value)
-            {
+            if !is_single_line_unanchored_scalar(value) {
                 return Ok(None);
             }
             let start = frontmatter.range.start.offset + utf16_len(&source[..byte_start]);
@@ -305,10 +302,10 @@ fn simple_field_range(
     Err(format!("The {field} source range is unavailable."))
 }
 
-fn has_anchor_node_property(mut value: &str) -> bool {
+fn is_single_line_unanchored_scalar(mut value: &str) -> bool {
     loop {
         if value.starts_with('&') {
-            return true;
+            return false;
         }
         if let Some(verbatim) = value.strip_prefix("!<") {
             let Some(end) = verbatim.find('>') else {
@@ -318,11 +315,12 @@ fn has_anchor_node_property(mut value: &str) -> bool {
             continue;
         }
         let Some(tag) = value.strip_prefix('!') else {
-            return false;
+            break;
         };
         let end = tag.find(char::is_whitespace).unwrap_or(tag.len());
         value = tag[end..].trim_start();
     }
+    !value.is_empty() && !value.starts_with(['|', '>', '&', '*'])
 }
 
 fn top_level_field_value_start(line: &str, field: &str) -> Option<usize> {
@@ -799,6 +797,12 @@ mod tests {
             "---\nokf_version: !<tag:yaml.org,2002:str> &version \"0.1\"\nproducer_version: *version\n---\n# Root\n",
         )]);
         assert!(tagged_anchored_root.is_err());
+        for source in [
+            "---\nokf_version: !!str\n  0.1\n---\n# Root\n",
+            "---\nokf_version: !<tag:yaml.org,2002:str> >-\n  0.1\n---\n# Root\n",
+        ] {
+            assert!(migration_result(&[("index.md", source)]).is_err());
+        }
 
         let manual = migration(&[
             ("index.md", "---\nokf_version: \"0.1\"\n---\n# Root\n"),
@@ -813,6 +817,14 @@ mod tests {
             (
                 "tagged-anchored.md",
                 "---\ntype: Reference\ntimestamp: !<tag:yaml.org,2002:str> &when \"2026-07-22T10:00:00Z\"\nproducer_time: *when\n---\n# Tagged anchored\n",
+            ),
+            (
+                "tag-only-line.md",
+                "---\ntype: Reference\ntimestamp: !!str\n  2026-07-22T10:00:00Z\n---\n# Tag only line\n",
+            ),
+            (
+                "tagged-block.md",
+                "---\ntype: Reference\ntimestamp: !<tag:yaml.org,2002:str> >-\n  2026-07-22T10:00:00Z\n---\n# Tagged block\n",
             ),
         ]);
         assert_eq!(manual.files.len(), 1);

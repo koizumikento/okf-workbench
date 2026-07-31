@@ -211,7 +211,7 @@ function simpleFieldRange(
     if (prefix !== undefined) {
       const colon = prefix.length + (/^[ \t]*/u.exec(line.slice(prefix.length))?.[0].length ?? 0);
       const value = line.slice(colon + 1).trimStart();
-      if (value.length === 0 || /^[|>&*]/u.test(value) || hasAnchorNodeProperty(value)) {
+      if (!isSingleLineUnanchoredScalar(value)) {
         return undefined;
       }
       const start = frontmatter.range.start.offset + offset;
@@ -228,20 +228,21 @@ function simpleFieldRange(
   throw new Error(`The ${field} source range is unavailable.`);
 }
 
-function hasAnchorNodeProperty(source: string): boolean {
+function isSingleLineUnanchoredScalar(source: string): boolean {
   let value = source;
   while (true) {
-    if (value.startsWith('&')) return true;
+    if (value.startsWith('&')) return false;
     if (value.startsWith('!<')) {
       const end = value.indexOf('>');
       if (end === -1) return false;
       value = value.slice(end + 1).trimStart();
       continue;
     }
-    if (!value.startsWith('!')) return false;
+    if (!value.startsWith('!')) break;
     const separator = value.search(/[ \t]/u);
     value = (separator === -1 ? '' : value.slice(separator)).trimStart();
   }
+  return value.length > 0 && !/^[|>&*]/u.test(value);
 }
 
 function applyEdits(text: string, edits: readonly Edit[]): string {

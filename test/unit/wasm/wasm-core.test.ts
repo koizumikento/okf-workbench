@@ -274,6 +274,30 @@ describe('Rust/Wasm core boundary', () => {
           ].join('\n'),
         ],
         [
+          'tag-only-line.md',
+          [
+            '---',
+            'type: Reference',
+            'timestamp: !!str',
+            '  2026-07-22T10:00:00Z',
+            '---',
+            '# Tag only line',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'tagged-block.md',
+          [
+            '---',
+            'type: Reference',
+            'timestamp: !<tag:yaml.org,2002:str> >-',
+            '  2026-07-22T10:00:00Z',
+            '---',
+            '# Tagged block',
+            '',
+          ].join('\n'),
+        ],
+        [
           'indented.md',
           [
             '---',

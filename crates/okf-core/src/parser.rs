@@ -786,16 +786,16 @@ fn parse_frontmatter(
             .map(|tags| {
                 tags.iter()
                     .enumerate()
-                    .filter_map(|(index, value)| {
+                    .map(|(index, value)| {
                         let value = if explicit_tags.contains_key(&format!("/tags/{index}")) {
                             semantic_value(value)
                         } else {
                             value
                         };
-                        value.as_str()
+                        value.as_str().map(str::to_owned)
                     })
-                    .map(str::to_owned)
-                    .collect()
+                    .collect::<Option<Vec<_>>>()
+                    .unwrap_or_default()
             })
             .unwrap_or_default(),
         timestamp: normalized_string(&raw, &explicit_tags, "timestamp").map(str::to_owned),
@@ -1471,6 +1471,9 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
         {
             anchors.insert(anchor_name, (wrapped, tag_uri));
         }
+        if remainder.is_empty() {
+            containers.push((indent, key));
+        }
     }
     explicit_tags
 }
@@ -1700,13 +1703,29 @@ struct FlowTagScanner<'source, 'model> {
 impl FlowTagScanner<'_, '_> {
     fn parse_value(&mut self, path: &mut Vec<String>) {
         self.skip_whitespace();
-        if self.remaining().starts_with("!!") {
-            self.cursor += 2;
-            let tag_start = self.cursor;
-            self.consume_while(|character| {
-                !character.is_whitespace() && !matches!(character, ',' | '}' | ']')
-            });
-            let tag_name = self.source[tag_start..self.cursor].to_owned();
+        let mut tag_name = None;
+        for _ in 0..2 {
+            if self.remaining().starts_with("!!") {
+                self.cursor += 2;
+                let tag_start = self.cursor;
+                self.consume_while(|character| {
+                    !character.is_whitespace() && !matches!(character, ',' | '}' | ']')
+                });
+                tag_name = Some(self.source[tag_start..self.cursor].to_owned());
+                self.skip_whitespace();
+                continue;
+            }
+            if self.peek() == Some('&') {
+                self.advance();
+                self.consume_while(|character| {
+                    !character.is_whitespace() && !matches!(character, ',' | '}' | ']')
+                });
+                self.skip_whitespace();
+                continue;
+            }
+            break;
+        }
+        if let Some(tag_name) = tag_name {
             self.skip_whitespace();
             let value_start = self.cursor;
             self.parse_untagged_value(path);
@@ -1917,6 +1936,7 @@ fn value_at_path<'a>(root: &'a Map<String, Value>, path: &[&str]) -> Option<&'a 
     let (first, rest) = path.split_first()?;
     let mut value = root.get(*first)?;
     for segment in rest {
+        value = semantic_value(value);
         value = if let Some(object) = value.as_object() {
             object.get(*segment)?
         } else {
@@ -1941,6 +1961,15 @@ fn set_nested_value(current: &mut Value, path: &[&str], value: Value) {
         *current = value;
         return;
     };
+    if let Some(tagged_value) = current
+        .as_object_mut()
+        .and_then(|wrapper| wrapper.get_mut(TAGGED_KEY))
+        .and_then(Value::as_object_mut)
+        .and_then(|body| body.get_mut("value"))
+    {
+        set_nested_value(tagged_value, path, value);
+        return;
+    }
     match current {
         Value::Object(object) => {
             if let Some(next) = object.get_mut(*segment) {
@@ -1961,30 +1990,60 @@ fn set_nested_value(current: &mut Value, path: &[&str], value: Value) {
 }
 
 fn top_level_field_ranges(text: &str, start: usize, end: usize) -> Map<String, Value> {
-    let mut starts = Vec::new();
-    for line in line_spans(&text[start..end]) {
-        let body = &text[start + line.start..start + line.content_end];
-        if !body.starts_with(char::is_whitespace)
-            && let Some(colon) = body.find(':')
-        {
-            let name = body[..colon].trim();
-            if !name.is_empty() {
-                let value_source = &body[colon + 1..];
-                let leading_whitespace = value_source.len() - value_source.trim_start().len();
-                let value_start = start + line.start + colon + 1 + leading_whitespace;
-                starts.push((
-                    name.to_owned(),
-                    start + line.start,
-                    inline_field_value_end(text, value_start, start + line.content_end),
-                ));
-            }
-        }
+    let source = &text[start..end];
+    if let Some(flow_start) = root_flow_mapping_start(source) {
+        return flow_field_ranges(text, start + flow_start, end);
     }
 
+    let spans = line_spans(source);
+    let mut starts = Vec::new();
+    let mut root_indent = None;
+    for (line_index, line) in spans.iter().enumerate() {
+        let body = &source[line.start..line.content_end];
+        let trimmed = body.trim_start_matches([' ', '\t']);
+        if trimmed.is_empty() || trimmed.starts_with(['#', '-', '?']) {
+            continue;
+        }
+        let Some(colon) = mapping_key_colon(trimmed) else {
+            continue;
+        };
+        let indent = body.len() - trimmed.len();
+        let expected_indent = *root_indent.get_or_insert(indent);
+        if indent != expected_indent {
+            continue;
+        }
+        let key_source = trimmed[..colon].trim_end();
+        let Ok(name) = serde_yaml::from_str::<String>(key_source) else {
+            continue;
+        };
+        let after_colon = &trimmed[colon + 1..];
+        let leading_whitespace = after_colon.len() - after_colon.trim_start().len();
+        let field_start = start + line.start + indent;
+        let value_start = field_start + colon + 1 + leading_whitespace;
+        starts.push((
+            name,
+            field_start,
+            line_index,
+            inline_field_value_end(text, value_start, start + line.content_end),
+            after_colon.trim_start().to_owned(),
+        ));
+    }
     let mut fields = Map::new();
-    for (index, (name, field_start, inline_end)) in starts.iter().enumerate() {
-        let next_start = starts.get(index + 1).map_or(end, |(_, start, _)| *start);
-        let field_end = inline_end.unwrap_or(next_start);
+    for (index, (name, field_start, line_index, inline_end, value_source)) in
+        starts.iter().enumerate()
+    {
+        let next_start = starts
+            .get(index + 1)
+            .map_or(end, |(_, field_start, _, _, _)| *field_start);
+        let field_end = inline_end.unwrap_or_else(|| {
+            block_field_value_end(
+                text,
+                start + spans[*line_index].end,
+                next_start,
+                value_source,
+                start + spans[*line_index].content_end,
+            )
+        });
         fields.insert(
             name.clone(),
             serde_json::to_value(range_for(text, *field_start, field_end)).unwrap_or(Value::Null),
@@ -1993,31 +2052,265 @@ fn top_level_field_ranges(text: &str, start: usize, end: usize) -> Map<String, V
     fields
 }
 
+fn root_flow_mapping_start(source: &str) -> Option<usize> {
+    let mut cursor = 0usize;
+    loop {
+        while let Some(character) = source[cursor..].chars().next() {
+            if character.is_whitespace() {
+                cursor += character.len_utf8();
+            } else {
+                break;
+            }
+        }
+        if source[cursor..].starts_with('#') {
+            cursor += source[cursor..]
+                .find(['\r', '\n'])
+                .unwrap_or(source.len() - cursor);
+            continue;
+        }
+        if source[cursor..].starts_with('{') {
+            return Some(cursor);
+        }
+        if source[cursor..].starts_with('&') || source[cursor..].starts_with('!') {
+            cursor += source[cursor..]
+                .find(char::is_whitespace)
+                .unwrap_or(source.len() - cursor);
+            continue;
+        }
+        return None;
+    }
+}
+
+fn mapping_key_colon(source: &str) -> Option<usize> {
+    let mut quote = None;
+    let mut escaped = false;
+    let mut characters = source.char_indices().peekable();
+    while let Some((offset, character)) = characters.next() {
+        if let Some(active_quote) = quote {
+            if active_quote == '"' && character == '\\' && !escaped {
+                escaped = true;
+                continue;
+            }
+            if character == active_quote && !escaped {
+                if active_quote == '\'' && characters.peek().is_some_and(|(_, next)| *next == '\'')
+                {
+                    characters.next();
+                } else {
+                    quote = None;
+                }
+            }
+            escaped = false;
+            continue;
+        }
+        match character {
+            '"' | '\'' => quote = Some(character),
+            ':' => {
+                let next = characters.peek().map(|(_, character)| *character);
+                if next.is_none_or(char::is_whitespace) {
+                    return Some(offset);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 fn inline_field_value_end(text: &str, mut start: usize, line_end: usize) -> Option<usize> {
-    let mut value = &text[start..line_end];
     for _ in 0..2 {
-        let remainder = if let Some(anchor) = value.strip_prefix('&') {
-            Some(
-                anchor
-                    .split_once(char::is_whitespace)
-                    .map_or("", |(_, remainder)| remainder.trim_start()),
-            )
+        let value = &text[start..line_end];
+        let token_end = if value.starts_with('&') || value.starts_with('!') {
+            value.find(char::is_whitespace).unwrap_or(value.len())
         } else {
-            value.strip_prefix("!!").map(|tag| split_tag_source(tag).1)
-        };
-        let Some(remainder) = remainder else {
             break;
         };
-        value = remainder;
-        start = line_end - value.len();
+        start += token_end;
+        start += text[start..line_end].len() - text[start..line_end].trim_start().len();
     }
+    let value = &text[start..line_end];
     if value.is_empty() || matches!(value.chars().next(), Some('|' | '>')) {
         return None;
     }
     if matches!(value.chars().next(), Some('{' | '[')) {
         return Some(flow_value_end(text, start));
     }
-    Some(line_end)
+    Some(start + scalar_lexical_source(value).len())
+}
+
+fn block_field_value_end(
+    text: &str,
+    content_start: usize,
+    boundary: usize,
+    value_source: &str,
+    fallback: usize,
+) -> usize {
+    let mut last = None;
+    for line in line_spans(&text[content_start..boundary]) {
+        let body = &text[content_start + line.start..content_start + line.content_end];
+        if body.trim().is_empty() || body.trim_start().starts_with('#') {
+            continue;
+        }
+        last = Some((content_start + line.content_end, content_start + line.end));
+    }
+    let Some((content_end, line_end)) = last else {
+        return fallback;
+    };
+    let value = value_source
+        .split_whitespace()
+        .last()
+        .unwrap_or(value_source);
+    if matches!(value.chars().next(), Some('|' | '>')) && !value.contains('-') {
+        content_end
+    } else {
+        line_end
+    }
+}
+
+fn flow_field_ranges(text: &str, flow_start: usize, end: usize) -> Map<String, Value> {
+    let mut fields = Map::new();
+    let mut cursor = flow_start + 1;
+    while cursor < end {
+        cursor = skip_flow_space_and_comments(text, cursor, end);
+        if text[cursor..].starts_with('}') {
+            break;
+        }
+        let key_start = cursor;
+        let Some(colon) = flow_mapping_colon(text, cursor, end) else {
+            break;
+        };
+        let key_end = text[key_start..colon].trim_end().len() + key_start;
+        let Ok(name) = serde_yaml::from_str::<String>(&text[key_start..key_end]) else {
+            break;
+        };
+        cursor = skip_flow_space_and_comments(text, colon + 1, end);
+        let (value_end, delimiter) = flow_mapping_value_end(text, cursor, end);
+        fields.insert(
+            name,
+            serde_json::to_value(range_for(text, key_start, value_end)).unwrap_or(Value::Null),
+        );
+        cursor = delimiter;
+        if text[cursor..].starts_with(',') {
+            cursor += 1;
+        } else {
+            break;
+        }
+    }
+    fields
+}
+
+fn skip_flow_space_and_comments(text: &str, mut cursor: usize, end: usize) -> usize {
+    loop {
+        while cursor < end
+            && text[cursor..]
+                .chars()
+                .next()
+                .is_some_and(char::is_whitespace)
+        {
+            cursor += text[cursor..].chars().next().unwrap_or_default().len_utf8();
+        }
+        if cursor >= end || !text[cursor..].starts_with('#') {
+            return cursor;
+        }
+        cursor += text[cursor..].find(['\r', '\n']).unwrap_or(end - cursor);
+    }
+}
+
+fn flow_mapping_colon(text: &str, start: usize, end: usize) -> Option<usize> {
+    let mut quote = None;
+    let mut escaped = false;
+    let mut characters = text[start..end].char_indices().peekable();
+    while let Some((relative, character)) = characters.next() {
+        if let Some(active_quote) = quote {
+            if active_quote == '"' && character == '\\' && !escaped {
+                escaped = true;
+                continue;
+            }
+            if character == active_quote && !escaped {
+                if active_quote == '\'' && characters.peek().is_some_and(|(_, next)| *next == '\'')
+                {
+                    characters.next();
+                } else {
+                    quote = None;
+                }
+            }
+            escaped = false;
+            continue;
+        }
+        match character {
+            '"' | '\'' => quote = Some(character),
+            ':' => return Some(start + relative),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn flow_mapping_value_end(text: &str, start: usize, end: usize) -> (usize, usize) {
+    let mut stack = Vec::new();
+    let mut quote = None;
+    let mut escaped = false;
+    let mut comment = false;
+    let mut last_significant = start;
+    let mut characters = text[start..end].char_indices().peekable();
+    while let Some((relative, character)) = characters.next() {
+        let absolute = start + relative;
+        if comment {
+            if matches!(character, '\r' | '\n') {
+                comment = false;
+            }
+            continue;
+        }
+        if let Some(active_quote) = quote {
+            last_significant = absolute + character.len_utf8();
+            if active_quote == '"' && character == '\\' && !escaped {
+                escaped = true;
+                continue;
+            }
+            if character == active_quote && !escaped {
+                if active_quote == '\'' && characters.peek().is_some_and(|(_, next)| *next == '\'')
+                {
+                    characters.next();
+                    last_significant += 1;
+                } else {
+                    quote = None;
+                }
+            }
+            escaped = false;
+            continue;
+        }
+        match character {
+            '#' if absolute == start
+                || text[..absolute]
+                    .chars()
+                    .next_back()
+                    .is_some_and(char::is_whitespace) =>
+            {
+                comment = true;
+            }
+            '"' | '\'' => {
+                quote = Some(character);
+                last_significant = absolute + character.len_utf8();
+            }
+            '{' => {
+                stack.push('}');
+                last_significant = absolute + 1;
+            }
+            '[' => {
+                stack.push(']');
+                last_significant = absolute + 1;
+            }
+            '}' | ']' if stack.last() == Some(&character) => {
+                stack.pop();
+                last_significant = absolute + 1;
+            }
+            ',' | '}' if stack.is_empty() => return (last_significant, absolute),
+            _ if !character.is_whitespace() => {
+                last_significant = absolute + character.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    (last_significant, end)
 }
 
 fn fallback_content_hash(bytes: &[u8]) -> String {

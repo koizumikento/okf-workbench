@@ -678,9 +678,16 @@ describe('OKF bundle parser', () => {
             '  key: value',
             'tag_first_map: !!map &tagged-map',
             '  tagged_key: value',
+            'tagged_parent: !!map',
+            '  child: !!str "x"',
+            'anchored_flow: [!!str &flow-id "x"]',
             'notes: !!str |-',
             '  first',
             '  second',
+            '# detached field comment',
+            '',
+            '"colon:key": value # inline field comment',
+            'commented: value # inline field comment',
             'items: !!seq',
             '  - one',
             '  - two',
@@ -750,6 +757,12 @@ describe('OKF bundle parser', () => {
         { tagged_key: 'value' },
         'tagged_key: value\n',
       ),
+      tagged_parent: tagged(
+        'tag:yaml.org,2002:map',
+        { child: tagged('tag:yaml.org,2002:str', 'x', '"x"') },
+        'child: !!str "x"\n',
+      ),
+      anchored_flow: [tagged('tag:yaml.org,2002:str', 'x', '"x"')],
       notes: tagged('tag:yaml.org,2002:str', 'first\nsecond', '|-\n  first\n  second\n'),
       items: tagged('tag:yaml.org,2002:seq', ['one', 'two'], '- one\n  - two\n'),
       flow_metadata: [
@@ -763,6 +776,9 @@ describe('OKF bundle parser', () => {
       '/executor/receipt/0': 'tag:yaml.org,2002:str',
       producer_map: 'tag:yaml.org,2002:map',
       tag_first_map: 'tag:yaml.org,2002:map',
+      tagged_parent: 'tag:yaml.org,2002:map',
+      '/tagged_parent/child': 'tag:yaml.org,2002:str',
+      '/anchored_flow/0': 'tag:yaml.org,2002:str',
       notes: 'tag:yaml.org,2002:str',
       items: 'tag:yaml.org,2002:seq',
       '/tags/0': 'tag:yaml.org,2002:str',
@@ -777,6 +793,23 @@ describe('OKF bundle parser', () => {
     expect(findings.map(({ code }) => code)).not.toContain(VALIDATION_CODES.frontmatter);
     expect(findings.map(({ code }) => code)).not.toContain(VALIDATION_CODES.conceptType);
     expect(buildGraphPayload({ ...bundle, findings }).statistics.conceptCount).toBe(1);
+  });
+
+  it('rejects the full tags projection when any semantic item is not a string', () => {
+    const bundle = parseBundle({
+      rootUri,
+      revision: 41,
+      documents: [
+        document('index.md', '---\nokf_version: "0.2"\n---\n# Root\n'),
+        document(
+          'mixed-tags.md',
+          ['---', 'type: Reference', 'tags: [!!str alpha, 42, beta]', '---', '# Mixed'].join('\n'),
+        ),
+      ],
+    });
+
+    expect(bundle.failures).toEqual([]);
+    expect(bundle.concepts[0]?.tags).toEqual([]);
   });
 
   it('tracks explicit tag aliases without trusting structurally similar producer mappings', () => {

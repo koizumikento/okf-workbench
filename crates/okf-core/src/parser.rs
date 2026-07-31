@@ -1201,11 +1201,10 @@ fn multiple_block_node_tag_range(source: &str) -> Option<(usize, usize)> {
     let spans = line_spans(source);
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
+    excluded_ranges.extend(plain_scalar_continuation_ranges(source));
+    normalize_ranges(&mut excluded_ranges);
     for (line_index, line) in spans.iter().enumerate() {
-        if excluded_ranges
-            .iter()
-            .any(|(start, end)| *start <= line.start && line.start < *end)
-        {
+        if sorted_range_contains(&excluded_ranges, line.start) {
             continue;
         }
         let body = &source[line.start..line.content_end];
@@ -1218,18 +1217,15 @@ fn multiple_block_node_tag_range(source: &str) -> Option<(usize, usize)> {
             continue;
         };
         let value_source = trimmed[colon + 1..].trim_start();
-        let (parent_remainder, _, parent_tag) = split_node_properties(value_source);
+        let (parent_remainder, parent_anchor, parent_tag) = split_node_properties(value_source);
         if !(parent_remainder.is_empty() || parent_remainder.starts_with('#'))
-            || parent_tag.is_none()
+            || (parent_anchor.is_none() && parent_tag.is_none())
         {
             continue;
         }
-        let mut child = None;
+        let mut tag_count = usize::from(parent_tag.is_some());
         for candidate in spans.iter().skip(line_index + 1) {
-            if excluded_ranges
-                .iter()
-                .any(|(start, end)| *start <= candidate.start && candidate.start < *end)
-            {
+            if sorted_range_contains(&excluded_ranges, candidate.start) {
                 continue;
             }
             let child_body = &source[candidate.start..candidate.content_end];
@@ -1241,39 +1237,38 @@ fn multiple_block_node_tag_range(source: &str) -> Option<(usize, usize)> {
             if child_indent <= indent {
                 break;
             }
-            child = Some((candidate, child_body, child_trimmed));
-            break;
-        }
-        let Some((child_line, child_body, child_trimmed)) = child else {
-            continue;
-        };
-        if child_trimmed.starts_with(['?', '-', ':']) {
-            continue;
-        }
-        let property_source = if let Some(child_colon) = mapping_key_colon(child_trimmed) {
-            let key_source = child_trimmed[..child_colon].trim_end_matches([' ', '\t']);
-            let (remainder, _, tag) = split_node_properties(key_source);
-            if !remainder.is_empty() || tag.is_none() {
-                continue;
+            if child_trimmed.starts_with(['?', '-', ':']) {
+                break;
             }
-            key_source
-        } else {
-            let (_, _, tag) = split_node_properties(child_trimmed);
-            if tag.is_none() {
-                continue;
+            let property_source = if let Some(child_colon) = mapping_key_colon(child_trimmed) {
+                let key_source = child_trimmed[..child_colon].trim_end_matches([' ', '\t']);
+                let (remainder, anchor, tag) = split_node_properties(key_source);
+                if !remainder.is_empty() || (anchor.is_none() && tag.is_none()) {
+                    break;
+                }
+                key_source
+            } else {
+                child_trimmed
+            };
+            let (remainder, anchor, tag) = split_node_properties(property_source);
+            if anchor.is_none() && tag.is_none() {
+                break;
             }
-            child_trimmed
-        };
-        let leading = child_body.len().saturating_sub(child_trimmed.len());
-        let (tag_start, tag_end) = node_tag_spans(property_source).into_iter().next()?;
-        let start = child_line.start + leading;
-        return Some((start + tag_start, start + tag_end));
+            let leading = child_body.len().saturating_sub(child_trimmed.len());
+            let start = candidate.start + leading;
+            for (tag_start, tag_end) in node_tag_spans(property_source) {
+                if tag_count > 0 {
+                    return Some((start + tag_start, start + tag_end));
+                }
+                tag_count += 1;
+            }
+            if !remainder.is_empty() && !remainder.starts_with('#') {
+                break;
+            }
+        }
     }
     for line in &spans {
-        if excluded_ranges
-            .iter()
-            .any(|(start, end)| *start <= line.start && line.start < *end)
-        {
+        if sorted_range_contains(&excluded_ranges, line.start) {
             continue;
         }
         let body = &source[line.start..line.content_end];
@@ -2359,6 +2354,16 @@ fn multiline_mapping_key_parts(
     })
 }
 
+fn flow_mapping_key_parts(source: &str) -> (&str, Option<String>, Option<&str>) {
+    if source.contains(['\r', '\n'])
+        && let Some((plain, _, anchor, tag)) = multiline_mapping_key_parts(source)
+    {
+        return (plain, anchor, tag);
+    }
+    let (plain, anchor, tag) = split_node_properties(source);
+    (plain, anchor, tag)
+}
+
 fn yaml_comment_start(source: &str) -> Option<usize> {
     let mut quote = None;
     let mut escaped = false;
@@ -2410,10 +2415,7 @@ fn invalid_structural_literal_nel_range(source: &str) -> Option<(usize, usize)> 
     let block_scalar_ranges = block_scalar_body_ranges(source);
     let spans = line_spans(source);
     for (line_index, line) in spans.iter().copied().enumerate() {
-        if block_scalar_ranges
-            .iter()
-            .any(|(start, end)| *start <= line.start && line.start < *end)
-        {
+        if sorted_range_contains(&block_scalar_ranges, line.start) {
             continue;
         }
         let body = &source[line.start..line.content_end];
@@ -2520,10 +2522,7 @@ fn has_sibling_mapping_line(
 fn nested_compact_literal_nel_range(source: &str) -> Option<(usize, usize)> {
     let block_scalar_ranges = block_scalar_body_ranges(source);
     for line in line_spans(source) {
-        if block_scalar_ranges
-            .iter()
-            .any(|(start, end)| *start <= line.start && line.start < *end)
-        {
+        if sorted_range_contains(&block_scalar_ranges, line.start) {
             continue;
         }
         let body = &source[line.start..line.content_end];
@@ -2536,7 +2535,6 @@ fn nested_compact_literal_nel_range(source: &str) -> Option<(usize, usize)> {
         let leading = after_colon.len() - after_colon.trim_start().len();
         let value = after_colon.trim_start();
         let (plain_value, _, _) = split_node_properties(value);
-        let property_length = value.len() - plain_value.len();
         if matches!(
             plain_value.chars().next(),
             Some('"' | '\'' | '|' | '>' | '{' | '[')
@@ -2550,7 +2548,7 @@ fn nested_compact_literal_nel_range(source: &str) -> Option<(usize, usize)> {
         if suffix.strip_prefix(':').is_some_and(|rest| {
             rest.is_empty() || rest.chars().next().is_some_and(char::is_whitespace)
         }) {
-            let start = line.start + indent + colon + 1 + leading + property_length;
+            let start = line.start + indent + colon + 1 + leading;
             return Some((start, one_character_end(source, start, line.content_end)));
         }
     }
@@ -2594,10 +2592,7 @@ fn invalid_comment_separator_range(source: &str) -> Option<(usize, usize)> {
     let mut closed_flow_collection = false;
     let mut characters = source.char_indices().peekable();
     while let Some((offset, character)) = characters.next() {
-        if excluded_ranges
-            .iter()
-            .any(|(start, end)| *start <= offset && offset < *end)
-        {
+        if sorted_range_contains(&excluded_ranges, offset) {
             continue;
         }
         if valid_comment {
@@ -2720,14 +2715,12 @@ fn invalid_comment_separator_range(source: &str) -> Option<(usize, usize)> {
 fn reserved_internal_tag(source: &str) -> Option<&'static str> {
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
+    normalize_ranges(&mut excluded_ranges);
     for tag in [
         "!oset", "!ostr", "!obool", "!oint", "!ofloat", "!onull", "!obigint",
     ] {
         for (offset, _) in source.match_indices(tag) {
-            if excluded_ranges
-                .iter()
-                .any(|(start, end)| *start <= offset && offset < *end)
-            {
+            if sorted_range_contains(&excluded_ranges, offset) {
                 continue;
             }
             let line_start = source[..offset]
@@ -2759,10 +2752,7 @@ fn unsupported_yaml_2002_tag_range(source: &str) -> Option<(usize, usize, String
     let mut escaped = false;
     let mut comment = false;
     for (offset, character) in source.char_indices() {
-        if excluded_ranges
-            .iter()
-            .any(|(start, end)| *start <= offset && offset < *end)
-        {
+        if sorted_range_contains(&excluded_ranges, offset) {
             continue;
         }
         if comment {
@@ -2830,11 +2820,9 @@ fn unsupported_yaml_2002_tag_range(source: &str) -> Option<(usize, usize, String
 fn unresolved_tight_alias_name(source: &str) -> Option<String> {
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
+    normalize_ranges(&mut excluded_ranges);
     for (offset, _) in source.match_indices('*') {
-        if excluded_ranges
-            .iter()
-            .any(|(start, end)| *start <= offset && offset < *end)
-        {
+        if sorted_range_contains(&excluded_ranges, offset) {
             continue;
         }
         let line_start = source[..offset]
@@ -2868,10 +2856,7 @@ fn unresolved_tight_alias_name(source: &str) -> Option<String> {
         let anchor_defined = yaml_anchor_occurrences_in_ranges(source, &[(0, offset)])
             .into_iter()
             .any(|(anchor_offset, anchor_name)| {
-                anchor_name == name
-                    && !excluded_ranges
-                        .iter()
-                        .any(|(start, end)| *start <= anchor_offset && anchor_offset < *end)
+                anchor_name == name && !sorted_range_contains(&excluded_ranges, anchor_offset)
             });
         if !anchor_defined {
             return Some(name.to_owned());
@@ -2881,14 +2866,26 @@ fn unresolved_tight_alias_name(source: &str) -> Option<String> {
 }
 
 fn multiline_implicit_key_range(source: &str) -> Option<(usize, usize)> {
+    for (start, end) in generic_multiline_quoted_scalar_ranges(source) {
+        let line_start = source[..start]
+            .rfind(['\r', '\n'])
+            .map_or(0, |newline| newline + 1);
+        let prefix = source[line_start..start].trim();
+        if prefix.ends_with('?') || mapping_key_colon(prefix).is_some() {
+            continue;
+        }
+        let suffix = &source[end..];
+        let leading = suffix.len() - suffix.trim_start_matches([' ', '\t']).len();
+        if suffix[leading..].starts_with(':') {
+            return Some((start, end));
+        }
+    }
     let spans = line_spans(source);
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
+    normalize_ranges(&mut excluded_ranges);
     for (line_index, span) in spans.iter().enumerate() {
-        if excluded_ranges
-            .iter()
-            .any(|(start, end)| *start <= span.start && span.start < *end)
-        {
+        if sorted_range_contains(&excluded_ranges, span.start) {
             continue;
         }
         let body = &source[span.start..span.content_end];
@@ -2992,6 +2989,7 @@ fn compact_nested_mapping_range(source: &str) -> Option<(usize, usize)> {
 fn invalid_explicit_timestamp_range(source: &str) -> Option<(usize, usize)> {
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
+    normalize_ranges(&mut excluded_ranges);
     let non_string_key = non_string_mapping_key_range(source);
     let spans = line_spans(source);
     for (line_index, span) in spans.iter().enumerate() {
@@ -3011,9 +3009,7 @@ fn invalid_explicit_timestamp_range(source: &str) -> Option<(usize, usize)> {
                         && source[absolute + tag.len()..key_start].trim().is_empty()
                         && source[key_end..].trim_start().starts_with(':')
                 });
-                if excluded_ranges
-                    .iter()
-                    .any(|(start, end)| *start <= absolute && absolute < *end)
+                if sorted_range_contains(&excluded_ranges, absolute)
                     || yaml_comment_start(prefix).is_some()
                     || timestamp_mapping_key
                     || previous.is_some_and(|character| {
@@ -3080,6 +3076,7 @@ fn rewrite_standard_sets_for_serde(source: &str) -> String {
     let spans = line_spans(source);
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
+    normalize_ranges(&mut excluded_ranges);
     let mut occurrences = source
         .match_indices("!!set")
         .map(|(start, tag)| (start, start + tag.len()))
@@ -3092,10 +3089,7 @@ fn rewrite_standard_sets_for_serde(source: &str) -> String {
     occurrences.sort_unstable();
     let mut edits = Vec::<(usize, usize, String)>::new();
     for (tag_start, tag_end) in occurrences {
-        if excluded_ranges
-            .iter()
-            .any(|(start, end)| *start <= tag_start && tag_start < *end)
-        {
+        if sorted_range_contains(&excluded_ranges, tag_start) {
             continue;
         }
         let Some((line_index, span)) = spans
@@ -3499,6 +3493,7 @@ fn mask_invalid_standard_scalar_tags(source: &str) -> String {
     let mut replacements = Vec::new();
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
+    normalize_ranges(&mut excluded_ranges);
     let spans = line_spans(source);
     for (line_index, span) in spans.iter().enumerate() {
         let line = &source[span.start..span.content_end];
@@ -3518,10 +3513,7 @@ fn mask_invalid_standard_scalar_tags(source: &str) -> String {
             while let Some(relative) = line[search_start..].find(tag) {
                 let offset = search_start + relative;
                 let absolute = span.start + offset;
-                if excluded_ranges
-                    .iter()
-                    .any(|(start, end)| *start <= absolute && absolute < *end)
-                {
+                if sorted_range_contains(&excluded_ranges, absolute) {
                     search_start = offset + tag.len();
                     continue;
                 }
@@ -3576,6 +3568,7 @@ fn mask_large_yaml_integers(source: &str) -> String {
     let mut edits = Vec::new();
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
+    normalize_ranges(&mut excluded_ranges);
     let spans = line_spans(source);
     for span in &spans {
         let line = &source[span.start..span.content_end];
@@ -3584,10 +3577,7 @@ fn mask_large_yaml_integers(source: &str) -> String {
         let mut escaped = false;
         for (offset, character) in syntax.char_indices() {
             let absolute = span.start + offset;
-            if excluded_ranges
-                .iter()
-                .any(|(start, end)| *start <= absolute && absolute < *end)
-            {
+            if sorted_range_contains(&excluded_ranges, absolute) {
                 continue;
             }
             if let Some(active_quote) = quote {
@@ -3715,11 +3705,9 @@ fn under_indented_flow_range(source: &str) -> Option<(usize, usize, char)> {
     let spans = line_spans(source);
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
+    normalize_ranges(&mut excluded_ranges);
     for (line_index, span) in spans.iter().enumerate() {
-        if excluded_ranges
-            .iter()
-            .any(|(start, end)| *start <= span.start && span.start < *end)
-        {
+        if sorted_range_contains(&excluded_ranges, span.start) {
             continue;
         }
         let body = &source[span.start..span.content_end];
@@ -3795,11 +3783,14 @@ fn duplicate_empty_explicit_key_range(source: &str) -> Option<(usize, usize)> {
     let spans = line_spans(source);
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
+    excluded_ranges.extend(plain_scalar_continuation_ranges(source));
+    normalize_ranges(&mut excluded_ranges);
     for (flow_start, flow_end) in flow_collection_ranges(source)
         .into_iter()
         .filter(|(start, _)| source[*start..].starts_with('{'))
     {
-        let mut saw_empty = false;
+        let mut saw_null = false;
+        let mut saw_empty_string = false;
         for (entry_start, entry_end) in top_level_flow_entries(source, flow_start, flow_end) {
             let entry = &source[entry_start..entry_end];
             let leading = entry.len() - entry.trim_start().len();
@@ -3813,21 +3804,36 @@ fn duplicate_empty_explicit_key_range(source: &str) -> Option<(usize, usize)> {
             let Some(colon) = flow_top_level_mapping_colon(source, key_start, entry_end) else {
                 continue;
             };
-            if !source[key_start..colon].trim().is_empty() {
+            let key_source = source[key_start..colon].trim_end_matches([' ', '\t', '\r', '\n']);
+            if yaml_syntax_is_empty(key_source) {
+                if saw_null {
+                    return Some((colon, one_character_end(source, colon, entry_end)));
+                }
+                saw_null = true;
                 continue;
             }
-            if saw_empty {
-                return Some((colon, one_character_end(source, colon, entry_end)));
+            let Some((plain_key_source, scalar_relative, _, key_tag)) =
+                multiline_mapping_key_parts(key_source)
+            else {
+                continue;
+            };
+            let scalar = scalar_lexical_source(plain_key_source);
+            if parsed_string_mapping_key(scalar, key_tag).as_deref() != Some("") {
+                continue;
             }
-            saw_empty = true;
+            if saw_empty_string {
+                if scalar.is_empty() {
+                    return Some((colon, one_character_end(source, colon, entry_end)));
+                }
+                let scalar_start = key_start + scalar_relative;
+                return Some((scalar_start, one_character_end(source, scalar_start, colon)));
+            }
+            saw_empty_string = true;
         }
     }
     let mut implicit_empty_indents = BTreeSet::new();
     for (line_index, line) in spans.iter().enumerate() {
-        if excluded_ranges
-            .iter()
-            .any(|(start, end)| *start <= line.start && line.start < *end)
-        {
+        if sorted_range_contains(&excluded_ranges, line.start) {
             continue;
         }
         let body = &source[line.start..line.content_end];
@@ -3872,10 +3878,7 @@ fn duplicate_empty_explicit_key_range(source: &str) -> Option<(usize, usize)> {
     }
     let mut seen_indents = BTreeSet::new();
     for (line_index, line) in spans.iter().enumerate() {
-        if excluded_ranges
-            .iter()
-            .any(|(start, end)| *start <= line.start && line.start < *end)
-        {
+        if sorted_range_contains(&excluded_ranges, line.start) {
             continue;
         }
         let body = &source[line.start..line.content_end];
@@ -3930,27 +3933,27 @@ fn duplicate_empty_explicit_key_range(source: &str) -> Option<(usize, usize)> {
 fn non_string_mapping_key_range(source: &str) -> Option<(usize, usize)> {
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
+    normalize_ranges(&mut excluded_ranges);
     if let Some(range) = non_string_flow_mapping_key_range(source, &excluded_ranges) {
         return Some(range);
     }
     let scalar_ranges = excluded_ranges.clone();
-    let standard_set_ranges = standard_set_body_ranges(source);
+    let mut standard_set_ranges = standard_set_body_ranges(source);
+    normalize_ranges(&mut standard_set_ranges);
     excluded_ranges.extend(standard_set_ranges.iter().copied());
+    normalize_ranges(&mut excluded_ranges);
     if let Some(range) = alias_mapping_key_range(source, &excluded_ranges) {
         return Some(range);
     }
     excluded_ranges.extend(flow_collection_ranges(source));
+    normalize_ranges(&mut excluded_ranges);
     let spans = line_spans(source);
     for (line_index, line) in spans.iter().enumerate() {
         let body = &source[line.start..line.content_end];
         let trimmed = body.trim_start_matches([' ', '\t']);
         let indent = body.len() - trimmed.len();
-        let inside_standard_set = standard_set_ranges
-            .iter()
-            .any(|(start, end)| *start <= line.start && line.start < *end);
-        let inside_scalar = scalar_ranges
-            .iter()
-            .any(|(start, end)| *start <= line.start && line.start < *end);
+        let inside_standard_set = sorted_range_contains(&standard_set_ranges, line.start);
+        let inside_scalar = sorted_range_contains(&scalar_ranges, line.start);
         let standard_set_item = inside_standard_set
             .then(|| {
                 trimmed
@@ -4045,9 +4048,7 @@ fn non_string_mapping_key_range(source: &str) -> Option<(usize, usize)> {
             }
         }
         if inside_standard_flow_set(source, line.start + indent)
-            || excluded_ranges
-                .iter()
-                .any(|(start, end)| *start <= line.start && line.start < *end)
+            || sorted_range_contains(&excluded_ranges, line.start)
         {
             continue;
         }
@@ -4221,10 +4222,7 @@ fn non_string_flow_mapping_key_range(
     let mut escaped = false;
     let mut comment = false;
     for (offset, character) in source.char_indices() {
-        if excluded_ranges
-            .iter()
-            .any(|(start, end)| *start <= offset && offset < *end)
-        {
+        if sorted_range_contains(excluded_ranges, offset) {
             continue;
         }
         if comment {
@@ -4302,7 +4300,7 @@ fn yaml_syntax_is_empty(source: &str) -> bool {
 
 fn multiline_quoted_scalar_ranges(source: &str) -> Vec<(usize, usize)> {
     let spans = line_spans(source);
-    spans
+    let mut ranges = spans
         .iter()
         .enumerate()
         .filter_map(|(line_index, span)| {
@@ -4356,7 +4354,87 @@ fn multiline_quoted_scalar_ranges(source: &str) -> Vec<(usize, usize)> {
             let end = start + scalar_lexical_source(&source[start..]).len();
             (end > span.end).then_some((span.end, end.max(start + value_source.len())))
         })
-        .collect()
+        .collect::<Vec<_>>();
+    ranges.extend(generic_multiline_quoted_scalar_ranges(source));
+    ranges.sort_unstable();
+    ranges.dedup();
+    ranges
+}
+
+fn generic_multiline_quoted_scalar_ranges(source: &str) -> Vec<(usize, usize)> {
+    let excluded = block_scalar_body_ranges(source);
+    let mut excluded_index = 0usize;
+    let mut ranges = Vec::new();
+    let mut quote = None;
+    let mut quote_start = 0;
+    let mut escaped = false;
+    let mut comment = false;
+    let mut characters = source.char_indices().peekable();
+    while let Some((offset, character)) = characters.next() {
+        while excluded
+            .get(excluded_index)
+            .is_some_and(|(_, end)| *end <= offset)
+        {
+            excluded_index += 1;
+        }
+        if excluded
+            .get(excluded_index)
+            .is_some_and(|(start, end)| *start <= offset && offset < *end)
+        {
+            continue;
+        }
+        if comment {
+            if matches!(character, '\r' | '\n') {
+                comment = false;
+            }
+            continue;
+        }
+        if let Some(active_quote) = quote {
+            if active_quote == '"' && character == '\\' && !escaped {
+                escaped = true;
+                continue;
+            }
+            if character == active_quote && !escaped {
+                if active_quote == '\'' && characters.peek().is_some_and(|(_, next)| *next == '\'')
+                {
+                    characters.next();
+                } else {
+                    let end = offset + character.len_utf8();
+                    if source[quote_start..end].contains(['\r', '\n']) {
+                        ranges.push((quote_start, end));
+                    }
+                    quote = None;
+                }
+            }
+            escaped = false;
+            continue;
+        }
+        match character {
+            '#' if offset == 0
+                || source[..offset]
+                    .chars()
+                    .next_back()
+                    .is_some_and(char::is_whitespace) =>
+            {
+                comment = true;
+            }
+            '"' | '\''
+                if offset == 0
+                    || source[..offset]
+                        .chars()
+                        .next_back()
+                        .is_some_and(|previous| {
+                            previous.is_whitespace()
+                                || matches!(previous, '[' | '{' | ',' | ':' | '?' | '-')
+                        }) =>
+            {
+                quote = Some(character);
+                quote_start = offset;
+            }
+            _ => {}
+        }
+    }
+    ranges
 }
 
 fn standard_set_body_ranges(source: &str) -> Vec<(usize, usize)> {
@@ -4394,6 +4472,7 @@ fn standard_set_body_ranges(source: &str) -> Vec<(usize, usize)> {
 fn standard_set_tag_occurrences(source: &str) -> Vec<(usize, usize)> {
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
+    normalize_ranges(&mut excluded_ranges);
     let mut occurrences = source
         .match_indices("!!set")
         .map(|(start, tag)| (start, start + tag.len()))
@@ -4403,10 +4482,7 @@ fn standard_set_tag_occurrences(source: &str) -> Vec<(usize, usize)> {
                 .map(|(start, tag)| (start, start + tag.len())),
         )
         .filter(|(start, _)| {
-            if excluded_ranges
-                .iter()
-                .any(|(range_start, range_end)| *range_start <= *start && *start < *range_end)
-            {
+            if sorted_range_contains(&excluded_ranges, *start) {
                 return false;
             }
             let line_start = source[..*start]
@@ -4425,6 +4501,7 @@ fn standard_set_tag_occurrences(source: &str) -> Vec<(usize, usize)> {
 fn invalid_flow_block_scalar_range(source: &str) -> Option<(usize, usize, char)> {
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
+    normalize_ranges(&mut excluded_ranges);
     let mut flow_depth = 0usize;
     let mut value_start = 0usize;
 
@@ -4437,10 +4514,7 @@ fn invalid_flow_block_scalar_range(source: &str) -> Option<(usize, usize, char)>
         let mut characters = syntax.char_indices().peekable();
         while let Some((relative, character)) = characters.next() {
             let absolute = span.start + relative;
-            if excluded_ranges
-                .iter()
-                .any(|(start, end)| *start <= absolute && absolute < *end)
-            {
+            if sorted_range_contains(&excluded_ranges, absolute) {
                 continue;
             }
             if let Some(active_quote) = quote {
@@ -4496,10 +4570,7 @@ fn invalid_deferred_flow_property_key_range(source: &str) -> Option<(usize, usiz
     let mut line_start = 0usize;
     let mut previous_syntax_line: Option<String> = None;
     for (offset, character) in source.char_indices() {
-        if excluded_ranges
-            .iter()
-            .any(|(start, end)| *start <= offset && offset < *end)
-        {
+        if sorted_range_contains(&excluded_ranges, offset) {
             continue;
         }
         if comment {
@@ -4532,7 +4603,7 @@ fn invalid_deferred_flow_property_key_range(source: &str) -> Option<(usize, usiz
             }
             '[' | '{' => flow_depth += 1,
             ']' | '}' => flow_depth = flow_depth.saturating_sub(1),
-            '?' if flow_depth > 0 && source[line_start..offset].trim().is_empty() => {
+            '?' if flow_depth > 0 && matches!(source[line_start..offset].trim(), "" | ",") => {
                 if let Some(previous) = previous_syntax_line.as_deref() {
                     let property = previous
                         .char_indices()
@@ -4693,6 +4764,7 @@ fn plain_nonfinite_kind(source: &str) -> Option<&'static str> {
 fn contains_untagged_nonfinite_number(source: &str) -> bool {
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
+    normalize_ranges(&mut excluded_ranges);
     for span in line_spans(source) {
         let line = &source[span.start..span.content_end];
         let syntax = yaml_comment_start(line).map_or(line, |comment| &line[..comment]);
@@ -4700,10 +4772,7 @@ fn contains_untagged_nonfinite_number(source: &str) -> bool {
         let mut escaped = false;
         for (offset, character) in syntax.char_indices() {
             let absolute = span.start + offset;
-            if excluded_ranges
-                .iter()
-                .any(|(start, end)| *start <= absolute && absolute < *end)
-            {
+            if sorted_range_contains(&excluded_ranges, absolute) {
                 continue;
             }
             if let Some(active_quote) = quote {
@@ -5253,10 +5322,7 @@ fn alias_mapping_key_range(
     let mut comment = false;
     let mut characters = source.char_indices().peekable();
     while let Some((offset, character)) = characters.next() {
-        if excluded_ranges
-            .iter()
-            .any(|(start, end)| *start <= offset && offset < *end)
-        {
+        if sorted_range_contains(excluded_ranges, offset) {
             continue;
         }
         if comment {
@@ -5392,10 +5458,7 @@ fn duplicate_mapping_key_range(source: &str) -> Option<(usize, usize)> {
     let mut block_scalar_ranges = block_scalar_body_ranges(source);
     block_scalar_ranges.extend(multiline_quoted_scalar_ranges(source));
     for (line_index, line) in spans.iter().enumerate() {
-        if block_scalar_ranges
-            .iter()
-            .any(|(start, end)| *start <= line.start && line.start < *end)
-        {
+        if sorted_range_contains(&block_scalar_ranges, line.start) {
             continue;
         }
         let body = &source[line.start..line.content_end];
@@ -5574,10 +5637,7 @@ fn duplicate_flow_mapping_key_range_anywhere(source: &str) -> Option<(usize, usi
     let mut comment = false;
     let mut characters = source.char_indices().peekable();
     while let Some((offset, character)) = characters.next() {
-        if block_scalar_ranges
-            .iter()
-            .any(|(start, end)| *start <= offset && offset < *end)
-        {
+        if sorted_range_contains(&block_scalar_ranges, offset) {
             continue;
         }
         if comment {
@@ -5712,11 +5772,9 @@ fn block_scalar_body_ranges(source: &str) -> Vec<(usize, usize)> {
 fn provenance_continuation_ranges(source: &str) -> Vec<(usize, usize)> {
     let spans = line_spans(source);
     let mut ranges = block_scalar_body_ranges(source);
+    let block_scalar_ranges = ranges.clone();
     for (line_index, span) in spans.iter().enumerate() {
-        if ranges
-            .iter()
-            .any(|(start, end)| *start <= span.start && span.start < *end)
-        {
+        if sorted_range_contains(&block_scalar_ranges, span.start) {
             continue;
         }
         let body = &source[span.start..span.content_end];
@@ -5802,6 +5860,95 @@ fn provenance_continuation_ranges(source: &str) -> Vec<(usize, usize)> {
         };
         if end > span.end {
             ranges.push((span.end, end));
+        }
+    }
+    ranges
+}
+
+fn plain_scalar_continuation_ranges(source: &str) -> Vec<(usize, usize)> {
+    let spans = line_spans(source);
+    let block_scalar_ranges = block_scalar_body_ranges(source);
+    let mut ranges = Vec::new();
+    let is_plain_scalar = |value: &str| {
+        !value.is_empty()
+            && !value.starts_with('#')
+            && !matches!(
+                value.chars().next(),
+                Some('"' | '\'' | '|' | '>' | '{' | '[' | '*' | '&' | '!' | '?' | ':' | '-')
+            )
+            && mapping_key_colon(value).is_none()
+    };
+    for (line_index, span) in spans.iter().enumerate() {
+        if sorted_range_contains(&block_scalar_ranges, span.start) {
+            continue;
+        }
+        let body = &source[span.start..span.content_end];
+        let trimmed = body.trim_start_matches([' ', '\t']);
+        let indent = body.len() - trimmed.len();
+        let item = trimmed
+            .strip_prefix("- ")
+            .or_else(|| (trimmed == "-").then_some(""));
+        let mapping_source = item.unwrap_or(trimmed);
+        let mapping_colon = mapping_key_colon(mapping_source);
+        let parent_indent = indent + usize::from(item.is_some() && mapping_colon.is_some()) * 2;
+        let value_source = if let Some(colon) = mapping_colon {
+            mapping_source[colon + 1..].trim_start()
+        } else if item.is_some() {
+            mapping_source
+        } else {
+            continue;
+        };
+        let (remainder, anchor, tag) = split_node_properties(value_source);
+        let (continuation_start, scan_index) = if is_plain_scalar(remainder) {
+            (span.end, line_index + 1)
+        } else if remainder.is_empty()
+            && anchor.is_none()
+            && tag.is_none()
+            && mapping_colon.is_some()
+        {
+            let Some((first_index, first)) =
+                spans
+                    .iter()
+                    .enumerate()
+                    .skip(line_index + 1)
+                    .find(|(_, candidate)| {
+                        let body = &source[candidate.start..candidate.content_end];
+                        let trimmed = body.trim_start_matches([' ', '\t']);
+                        !trimmed.is_empty() && !trimmed.starts_with('#')
+                    })
+            else {
+                continue;
+            };
+            let first_body = &source[first.start..first.content_end];
+            let first_trimmed = first_body.trim_start_matches([' ', '\t']);
+            let first_indent = first_body.len() - first_trimmed.len();
+            if first_indent <= parent_indent || !is_plain_scalar(first_trimmed) {
+                continue;
+            }
+            (first.end, first_index + 1)
+        } else {
+            continue;
+        };
+        let mut end = continuation_start;
+        for candidate in spans.iter().skip(scan_index) {
+            let candidate_body = &source[candidate.start..candidate.content_end];
+            let candidate_trimmed = candidate_body.trim_start_matches([' ', '\t']);
+            let candidate_indent = candidate_body.len() - candidate_trimmed.len();
+            if !candidate_trimmed.is_empty()
+                && (candidate_indent <= parent_indent
+                    || mapping_key_colon(candidate_trimmed).is_some()
+                    || candidate_trimmed
+                        .strip_prefix(['?', ':', '-'])
+                        .is_some_and(|rest| {
+                            rest.is_empty() || rest.chars().next().is_some_and(char::is_whitespace)
+                        }))
+            {
+                break;
+            }
+            end = candidate.content_end;
+        }
+        if end > continuation_start {
+            ranges.push((continuation_start, end));
         }
     }
     ranges
@@ -5923,12 +6070,8 @@ fn yaml_anchor_occurrences_in_ranges(
             {
                 comment = true;
             }
-            '&' if ranges
-                .iter()
-                .any(|(start, end)| *start <= cursor && cursor < *end)
-                && !excluded_ranges
-                    .iter()
-                    .any(|(start, end)| *start <= cursor && cursor < *end)
+            '&' if sorted_range_contains(ranges, cursor)
+                && !sorted_range_contains(&excluded_ranges, cursor)
                 && yaml_node_property_position(source, cursor) =>
             {
                 let start = cursor + 1;
@@ -6024,6 +6167,9 @@ fn preserve_standard_yaml_tags(
             )
         })
         .collect::<Vec<_>>();
+    let mut preservation_excluded_ranges = scanner_excluded_ranges;
+    preservation_excluded_ranges.extend(block_set_member_ranges.iter().copied());
+    normalize_ranges(&mut preservation_excluded_ranges);
     let mut set_member_ranges = block_set_member_ranges.clone();
     for (tag_start, tag_end) in source
         .match_indices("!!set")
@@ -6051,7 +6197,7 @@ fn preserve_standard_yaml_tags(
             set_member_ranges.push((start, flow_value_end(source, start)));
         }
     }
-    set_member_ranges.sort_unstable();
+    normalize_ranges(&mut set_member_ranges);
     let set_anchor_occurrences = yaml_anchor_occurrences_in_ranges(source, &set_member_ranges);
     let mut event_index = 0;
     let mut positioned_set_anchor_events = Vec::new();
@@ -6073,10 +6219,7 @@ fn preserve_standard_yaml_tags(
             anchors.insert(name.clone(), anchor.clone());
             positioned_event_index += 1;
         }
-        if scanner_excluded_ranges
-            .iter()
-            .chain(block_set_member_ranges.iter())
-            .any(|(start, end)| *start <= line.start && line.start < *end)
+        if sorted_range_contains(&preservation_excluded_ranges, line.start)
             || claimed_property_lines.contains(&line_index)
         {
             continue;
@@ -6734,10 +6877,7 @@ fn preserve_tagged_value(
 fn restored_standard_set_source(source: &str) -> String {
     let block_scalar_ranges = block_scalar_body_ranges(source);
     let mut syntactic_lines = line_spans(source).into_iter().filter_map(|line| {
-        if block_scalar_ranges
-            .iter()
-            .any(|(start, end)| *start <= line.start && line.start < *end)
-        {
+        if sorted_range_contains(&block_scalar_ranges, line.start) {
             return None;
         }
         let body = source[line.start..line.content_end].trim();
@@ -7093,6 +7233,7 @@ fn flow_value_end(source: &str, start: usize) -> usize {
 
 fn flow_collection_ranges(source: &str) -> Vec<(usize, usize)> {
     let excluded = block_scalar_body_ranges(source);
+    let mut excluded_index = 0usize;
     let mut ranges = Vec::new();
     let mut stack = Vec::new();
     let mut quote = None;
@@ -7100,9 +7241,15 @@ fn flow_collection_ranges(source: &str) -> Vec<(usize, usize)> {
     let mut comment = false;
     let mut characters = source.char_indices().peekable();
     while let Some((offset, character)) = characters.next() {
+        while excluded
+            .get(excluded_index)
+            .is_some_and(|(_, end)| *end <= offset)
+        {
+            excluded_index += 1;
+        }
         if excluded
-            .iter()
-            .any(|(start, end)| *start <= offset && offset < *end)
+            .get(excluded_index)
+            .is_some_and(|(start, end)| *start <= offset && offset < *end)
         {
             continue;
         }
@@ -7245,12 +7392,13 @@ fn rewrite_empty_standard_string_keys(source: &str) -> Option<String> {
     let spans = line_spans(source);
     let block_scalar_ranges = block_scalar_body_ranges(source);
     let quoted_scalar_ranges = multiline_quoted_scalar_ranges(source);
+    let plain_scalar_ranges = plain_scalar_continuation_ranges(source);
+    let mut scanner_excluded_ranges = block_scalar_ranges.clone();
+    scanner_excluded_ranges.extend(quoted_scalar_ranges);
+    scanner_excluded_ranges.extend(plain_scalar_ranges);
+    normalize_ranges(&mut scanner_excluded_ranges);
     for (line_index, line) in spans.iter().enumerate() {
-        if block_scalar_ranges
-            .iter()
-            .chain(quoted_scalar_ranges.iter())
-            .any(|(start, end)| *start <= line.start && line.start < *end)
-        {
+        if sorted_range_contains(&scanner_excluded_ranges, line.start) {
             continue;
         }
         let body = &source[line.start..line.content_end];
@@ -7417,29 +7565,34 @@ fn rewrite_empty_standard_string_keys(source: &str) -> Option<String> {
                 continue;
             };
             let absolute = entry_start + leading + key_offset;
-            if !explicit_key && syntax.contains(['\r', '\n']) {
-                replacements.push((absolute, absolute, "? ".to_owned()));
-            }
-            if let Some((anchor_start, anchor_end, name)) =
-                anchor.filter(|(anchor_start, _, _)| tag_start < *anchor_start)
-            {
-                replacements.push((
-                    absolute + tag_start,
-                    absolute + tag_end,
-                    " ".repeat(tag_end - tag_start),
-                ));
-                let replacement = format!("&{name} \"\"");
-                replacements.push((absolute + anchor_start, absolute + anchor_end, replacement));
+            let (property_start, property_end, anchor_name) = anchor.map_or(
+                (tag_start, tag_end, None),
+                |(anchor_start, anchor_end, name)| {
+                    (
+                        tag_start.min(anchor_start),
+                        tag_end.max(anchor_end),
+                        Some(name),
+                    )
+                },
+            );
+            let mut replacement = if explicit_key {
+                String::new()
             } else {
-                let replacement = "\"\"".to_owned();
-                let width = tag_end - tag_start;
-                let value = if replacement.len() < width {
-                    format!("{replacement}{}", " ".repeat(width - replacement.len()))
-                } else {
-                    replacement
-                };
-                replacements.push((absolute + tag_start, absolute + tag_end, value));
+                "? ".to_owned()
+            };
+            if let Some(name) = anchor_name {
+                replacement.push_str(&format!("&{name} \"\""));
+            } else {
+                replacement.push_str("\"\"");
             }
+            let width = property_end - property_start;
+            debug_assert!(replacement.len() <= width);
+            replacement.push_str(&" ".repeat(width.saturating_sub(replacement.len())));
+            replacements.push((
+                absolute + property_start,
+                absolute + property_end,
+                replacement,
+            ));
         }
     }
     if replacements.is_empty() {
@@ -7622,11 +7775,7 @@ fn semantic_for_standard_set_source(source: &str) -> Option<Value> {
         let following_member_indent = spans
             .iter()
             .enumerate()
-            .filter(|(_, line)| {
-                !scalar_ranges
-                    .iter()
-                    .any(|(start, end)| *start <= line.start && line.start < *end)
-            })
+            .filter(|(_, line)| !sorted_range_contains(&scalar_ranges, line.start))
             .filter_map(|(index, line)| {
                 let body = &source[line.start..line.content_end];
                 let trimmed = body.trim_start_matches([' ', '\t']);
@@ -7764,10 +7913,7 @@ fn standard_set_member_properties(member_source: &str) -> (String, Option<String
     let mut tag_name = None;
     let block_scalar_ranges = block_scalar_body_ranges(member_source);
     for line in line_spans(member_source) {
-        if block_scalar_ranges
-            .iter()
-            .any(|(start, end)| *start <= line.start && line.start < *end)
-        {
+        if sorted_range_contains(&block_scalar_ranges, line.start) {
             continue;
         }
         let body = &member_source[line.start..line.content_end];
@@ -7835,9 +7981,7 @@ fn collection_lexical_source(source: &str) -> String {
     let block_scalar_ranges = block_scalar_body_ranges(source);
     let mut last_syntactic_end = 0usize;
     for line in line_spans(source) {
-        let in_block_scalar = block_scalar_ranges
-            .iter()
-            .any(|(start, end)| *start <= line.start && line.start < *end);
+        let in_block_scalar = sorted_range_contains(&block_scalar_ranges, line.start);
         let trimmed = source[line.start..line.content_end].trim_start_matches([' ', '\t']);
         if in_block_scalar || (!trimmed.is_empty() && !trimmed.starts_with('#')) {
             last_syntactic_end = line.end;
@@ -7868,10 +8012,7 @@ fn restore_deferred_map_member_source(member_source: &str, member: &mut Value) {
     let excluded_ranges = block_scalar_body_ranges(member_source);
     let mut explicit_key_start = None;
     let Some(source_start) = line_spans(member_source).into_iter().find_map(|line| {
-        if excluded_ranges
-            .iter()
-            .any(|(start, end)| *start <= line.start && line.start < *end)
-        {
+        if sorted_range_contains(&excluded_ranges, line.start) {
             return None;
         }
         let body = &member_source[line.start..line.content_end];
@@ -8341,10 +8482,7 @@ fn standard_set_member_tag_is_mapping_key(member_source: &str) -> bool {
     let block_scalar_ranges = block_scalar_body_ranges(member_source);
     let spans = line_spans(member_source);
     spans.iter().enumerate().any(|(line_index, line)| {
-        if block_scalar_ranges
-            .iter()
-            .any(|(start, end)| *start <= line.start && line.start < *end)
-        {
+        if sorted_range_contains(&block_scalar_ranges, line.start) {
             return false;
         }
         let body = &member_source[line.start..line.content_end];
@@ -8502,6 +8640,7 @@ fn restore_standard_set_sources(
     let spans = line_spans(source);
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
+    normalize_ranges(&mut excluded_ranges);
     let mut occurrences = source
         .match_indices("!!set")
         .map(|(start, tag)| (start, start + tag.len()))
@@ -8514,10 +8653,7 @@ fn restore_standard_set_sources(
     occurrences.sort_unstable();
     let mut lexical_sources = Vec::new();
     for (tag_start, tag_end) in occurrences {
-        if excluded_ranges
-            .iter()
-            .any(|(start, end)| *start <= tag_start && tag_start < *end)
-        {
+        if sorted_range_contains(&excluded_ranges, tag_start) {
             continue;
         }
         let Some((line_index, span)) = spans
@@ -9052,7 +9188,7 @@ impl FlowTagScanner<'_, '_> {
                 return;
             };
             let key_source = self.source[key_start..colon].trim();
-            let (plain_key_source, anchor_name, tag_name) = split_node_properties(key_source);
+            let (plain_key_source, anchor_name, tag_name) = flow_mapping_key_parts(key_source);
             let key = parsed_string_mapping_key(plain_key_source, tag_name)
                 .unwrap_or_else(|| plain_key_source.trim_matches(['\'', '"']).to_owned());
             if let Some(anchor_name) = anchor_name {
@@ -9095,7 +9231,7 @@ impl FlowTagScanner<'_, '_> {
                 .flatten();
             if let Some(colon) = compact_mapping_colon {
                 let key_source = self.source[self.cursor..colon].trim();
-                let (plain_key_source, anchor_name, tag_name) = split_node_properties(key_source);
+                let (plain_key_source, anchor_name, tag_name) = flow_mapping_key_parts(key_source);
                 let key = parsed_string_mapping_key(plain_key_source, tag_name)
                     .unwrap_or_else(|| plain_key_source.trim_matches(['\'', '"']).to_owned());
                 if let Some(anchor_name) = anchor_name {
@@ -9705,15 +9841,13 @@ fn block_field_value_end(
             block_scalar_indicator(nested_value).is_some_and(|value| value.contains('+'))
         });
     let nested_set_excluded_ranges = block_scalar_body_ranges(&text[content_start..boundary]);
-    let nested_set_ranges = standard_set_body_ranges(&text[content_start..boundary]);
+    let mut nested_set_ranges = standard_set_body_ranges(&text[content_start..boundary]);
+    normalize_ranges(&mut nested_set_ranges);
     let nested_set_collection =
         line_spans(&text[content_start..boundary])
             .into_iter()
             .any(|line| {
-                if nested_set_excluded_ranges
-                    .iter()
-                    .any(|(start, end)| *start <= line.start && line.start < *end)
-                {
+                if sorted_range_contains(&nested_set_excluded_ranges, line.start) {
                     return false;
                 }
                 let body = &text[content_start + line.start..content_start + line.content_end];
@@ -9841,10 +9975,7 @@ fn block_field_value_end(
         let mut set_content = false;
         let mut trailing_comment = false;
         for line in line_spans(&text[content_start..boundary]) {
-            if nested_block_scalar_ranges
-                .iter()
-                .any(|(start, end)| *start <= line.start && line.start < *end)
-            {
+            if sorted_range_contains(&nested_block_scalar_ranges, line.start) {
                 continue;
             }
             let body = &text[content_start + line.start..content_start + line.content_end];
@@ -9902,10 +10033,10 @@ fn block_field_value_end(
             .rfind(['\r', '\n'])
             .map_or(0, |newline| newline + 1);
         let terminal = text[line_start..content_end].trim();
-        let terminal_in_block_scalar = nested_block_scalar_ranges.iter().any(|(start, end)| {
-            *start <= line_start.saturating_sub(content_start)
-                && line_start.saturating_sub(content_start) < *end
-        });
+        let terminal_in_block_scalar = sorted_range_contains(
+            &nested_block_scalar_ranges,
+            line_start.saturating_sub(content_start),
+        );
         let terminal_member_property =
             terminal
                 .strip_prefix('?')
@@ -9924,10 +10055,10 @@ fn block_field_value_end(
                 .rfind(['\r', '\n'])
                 .map_or(0, |newline| newline + 1);
             let terminal = text[line_start..content_end].trim();
-            let terminal_in_block_scalar = nested_block_scalar_ranges.iter().any(|(start, end)| {
-                *start <= line_start.saturating_sub(content_start)
-                    && line_start.saturating_sub(content_start) < *end
-            });
+            let terminal_in_block_scalar = sorted_range_contains(
+                &nested_block_scalar_ranges,
+                line_start.saturating_sub(content_start),
+            );
             let terminal_member_property = terminal
                 .strip_prefix('?')
                 .map(str::trim_start)
@@ -9950,9 +10081,8 @@ fn block_field_value_end(
                 .rfind(['\r', '\n'])
                 .map_or(0, |newline| newline + 1);
             let relative_line_start = line_start.saturating_sub(content_start);
-            let terminal_in_nested_set = nested_set_ranges
-                .iter()
-                .any(|(start, end)| *start <= relative_line_start && relative_line_start < *end);
+            let terminal_in_nested_set =
+                sorted_range_contains(&nested_set_ranges, relative_line_start);
             if nested_set_collection && terminal_in_nested_set {
                 return boundary;
             }
@@ -10807,6 +10937,26 @@ fn position_for(text: &str, byte_offset: usize) -> SourcePosition {
     }
 }
 
+fn normalize_ranges(ranges: &mut Vec<(usize, usize)>) {
+    ranges.sort_unstable();
+    let mut normalized: Vec<(usize, usize)> = Vec::with_capacity(ranges.len());
+    for (start, end) in ranges.drain(..) {
+        if let Some((_, previous_end)) = normalized.last_mut()
+            && start <= *previous_end
+        {
+            *previous_end = (*previous_end).max(end);
+        } else {
+            normalized.push((start, end));
+        }
+    }
+    *ranges = normalized;
+}
+
+fn sorted_range_contains(ranges: &[(usize, usize)], offset: usize) -> bool {
+    let index = ranges.partition_point(|(start, _)| *start <= offset);
+    index > 0 && offset < ranges[index - 1].1
+}
+
 #[derive(Clone, Copy)]
 struct LineSpan {
     start: usize,
@@ -11291,6 +11441,19 @@ mod tests {
         assert_eq!(bundle.failures.len(), 1);
         assert_eq!(bundle.failures[0].reason, ParseFailureReason::Frontmatter);
         assert_eq!(bundle.failures[0].bundle_path, "index.md");
+    }
+
+    #[test]
+    fn normalizes_excluded_ranges_for_boundary_lookups() {
+        let mut ranges = vec![(8, 12), (2, 4), (3, 7), (12, 15), (20, 21)];
+        normalize_ranges(&mut ranges);
+        assert_eq!(ranges, vec![(2, 7), (8, 15), (20, 21)]);
+        for offset in [2, 3, 6, 8, 12, 14, 20] {
+            assert!(sorted_range_contains(&ranges, offset), "{offset}");
+        }
+        for offset in [0, 1, 7, 15, 19, 21] {
+            assert!(!sorted_range_contains(&ranges, offset), "{offset}");
+        }
     }
 
     #[test]

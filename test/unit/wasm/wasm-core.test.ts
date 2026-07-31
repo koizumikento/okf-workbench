@@ -909,8 +909,42 @@ describe('Rust/Wasm core boundary', () => {
       ['duplicate-deferred-map-tag.md', 'custom: !!map\n  &a !!str : one\n'],
       ['duplicate-deferred-map-reverse-anchor-tag.md', 'custom: !!map\n  !!str &a : one\n'],
       ['duplicate-tag-block-scalar-text.md', 'custom: |-\n  !!str !!int value\n'],
+      ['duplicate-tag-plain-continuation-text.md', 'custom: first\n  !!str !!int value\n'],
       ['duplicate-tag-multiline-quoted-text.md', 'custom: "first\n  !!str !!int value"\n'],
+      [
+        'duplicate-tag-flow-multiline-quoted-text.md',
+        'custom: { key: "first\n  !!str !!int key: one" }\n',
+      ],
+      [
+        'duplicate-tag-multiline-quoted-implicit-key.md',
+        '"first\n  !!str !!int key: one": value\n',
+      ],
       ['duplicate-tag-multiline-node.md', 'title: !!str\n  !!int Visible\ncustom: 日本😀\n'],
+      [
+        'duplicate-tag-anchor-property-chain.md',
+        'title: &a\n  !!str\n  !!int Visible\ncustom: 日本😀\n',
+      ],
+      [
+        'commented-multiline-empty-key-duplicate.md',
+        'custom: { ? !!str # key\n  : one, ? !!str "" : two }\n',
+      ],
+      [
+        'commented-multiline-empty-key-plain-duplicate.md',
+        'custom: { ? !!str # key\n  : one, ? "" : two }\n',
+      ],
+      [
+        'commented-flow-key-alias-provenance.md',
+        'custom: { ? !!str\n  &a # anchor\n  : one }\ncopy: *a\n',
+      ],
+      ['multiline-flow-key-following-range.md', 'custom: {\n  !!str\n  : one\n}\n1: bad\n'],
+      ['multiline-flow-key-one-space-following-range.md', 'custom: {\n !!str\n : one\n}\n1: bad\n'],
+      [
+        'multiline-flow-tag-before-anchor-following-range.md',
+        'custom: {\n  !!str &a\n  : one\n}\n1: bad\n',
+      ],
+      ['literal-nel-tagged-invalid-compact.md', 'custom: !!str prefix\u0085: suffix\n'],
+      ['literal-nel-anchored-invalid-compact.md', 'custom: &a !!str prefix\u0085: suffix\n'],
+      ['malformed-multiline-flow-set-separator.md', 'custom: !!set { ? !!str\n  , ? "" }\n'],
       ['duplicate-tag-empty-implicit-key.md', 'custom: !!map\n  !!str !!int : one\n'],
       ['block-scalar-flow-like-empty-key.md', 'custom: |-\n  - !!str : one\n'],
       ['block-scalar-implicit-empty-duplicates.md', 'custom: |-\n  : one\n  : two\n'],

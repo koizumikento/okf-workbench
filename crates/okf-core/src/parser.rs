@@ -702,13 +702,6 @@ fn parse_frontmatter(
             resource_limit: true,
         });
     }
-    if let Some(message) = literal_nel_semantic_message(yaml_source) {
-        return Err(FrontmatterError {
-            message,
-            range: yaml_range,
-            resource_limit: true,
-        });
-    }
     if let Some(tag) = reserved_internal_tag(yaml_source) {
         return Err(FrontmatterError {
             message: format!(
@@ -973,6 +966,13 @@ fn parse_frontmatter(
             resource_limit: true,
         });
     }
+    if let Some(message) = normalized_scalar_literal_nel_message(&raw, &explicit_tags) {
+        return Err(FrontmatterError {
+            message,
+            range: yaml_range,
+            resource_limit: true,
+        });
+    }
     let explicit_tag_snapshot = explicit_tags.clone();
     explicit_tags.retain(|key, _| {
         if raw.contains_key(key) {
@@ -1084,42 +1084,6 @@ fn restore_literal_nel_in_value(value: &mut Value, marker: &str) {
     }
 }
 
-fn literal_nel_semantic_message(source: &str) -> Option<String> {
-    for span in line_spans(source) {
-        let body = &source[span.start..span.content_end];
-        let syntax = yaml_comment_start(body).map_or(body, |comment| &body[..comment]);
-        let trimmed = syntax.trim_start_matches([' ', '\t']);
-        let indent = syntax.len() - trimmed.len();
-        if !syntax.contains('\u{0085}') {
-            continue;
-        }
-        if indent == 0 && trimmed.starts_with("type:") {
-            return Some(
-                "Concept type contains a control character that is unsafe for graph filters."
-                    .to_owned(),
-            );
-        }
-        if indent == 0
-            && [
-                "resource:",
-                "timestamp:",
-                "status:",
-                "stale_after:",
-                "runtime:",
-                "computation:",
-            ]
-            .iter()
-            .any(|key| trimmed.starts_with(key))
-        {
-            return Some(
-                "Concept scalar metadata contains a control character that is unsafe for graph metadata."
-                    .to_owned(),
-            );
-        }
-    }
-    None
-}
-
 fn normalized_tags_contain_literal_nel(
     raw: &Map<String, Value>,
     explicit_tags: &Map<String, Value>,
@@ -1132,17 +1096,50 @@ fn normalized_tags_contain_literal_nel(
     } else {
         tags
     };
-    tags.as_array().is_some_and(|values| {
-        values.iter().enumerate().any(|(index, value)| {
-            let value = if explicit_tags.contains_key(&format!("/tags/{index}")) {
-                semantic_value(value)
-            } else {
-                value
-            };
-            value
-                .as_str()
-                .is_some_and(|value| value.contains('\u{0085}'))
+    tags.as_array()
+        .and_then(|values| {
+            values
+                .iter()
+                .enumerate()
+                .map(|(index, value)| {
+                    let value = if explicit_tags.contains_key(&format!("/tags/{index}")) {
+                        semantic_value(value)
+                    } else {
+                        value
+                    };
+                    value.as_str()
+                })
+                .collect::<Option<Vec<_>>>()
         })
+        .is_some_and(|values| values.iter().any(|value| value.contains('\u{0085}')))
+}
+
+fn normalized_scalar_literal_nel_message(
+    raw: &Map<String, Value>,
+    explicit_tags: &Map<String, Value>,
+) -> Option<String> {
+    if normalized_string(raw, explicit_tags, "type").is_some_and(|value| value.contains('\u{0085}'))
+    {
+        return Some(
+            "Concept type contains a control character that is unsafe for graph filters."
+                .to_owned(),
+        );
+    }
+    [
+        "resource",
+        "timestamp",
+        "status",
+        "stale_after",
+        "runtime",
+        "computation",
+    ]
+    .iter()
+    .any(|key| {
+        normalized_string(raw, explicit_tags, key).is_some_and(|value| value.contains('\u{0085}'))
+    })
+    .then(|| {
+        "Concept scalar metadata contains a control character that is unsafe for graph metadata."
+            .to_owned()
     })
 }
 

@@ -690,6 +690,14 @@ describe('Rust/Wasm core boundary', () => {
       ['literal-c1-tags-flow-map.md', 'tags: {custom: "A\u0085B"}\n'],
       ['literal-c1-tags-block-map.md', 'tags:\n  custom: "A\u0085B"\n'],
       ['literal-c1-tags-block-scalar.md', 'tags: |-\n  A\u0085B\n'],
+      ['literal-c1-tags-mixed-array.md', 'tags: ["A\u0085B", 42]\n'],
+      ['literal-c1-tags-reversed-mixed-array.md', 'tags: [42, "A\u0085B"]\n'],
+      ['literal-c1-type-flow-map.md', 'type: {custom: "A\u0085B"}\n'],
+      ['literal-c1-type-flow-sequence.md', 'type: ["A\u0085B"]\n'],
+      ['literal-c1-resource-flow-map.md', 'resource: {custom: "A\u0085B"}\n'],
+      ['literal-c1-resource-flow-sequence.md', 'resource: ["A\u0085B"]\n'],
+      ['literal-c1-status-flow-map.md', 'status: {custom: "A\u0085B"}\n'],
+      ['literal-c1-status-flow-sequence.md', 'status: ["A\u0085B"]\n'],
       ['bom-trim-type.md', 'type: "\\uFEFF"\n'],
     ] as const;
     for (const [path, fields] of cases) {

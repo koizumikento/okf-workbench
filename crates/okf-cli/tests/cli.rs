@@ -301,6 +301,25 @@ fn index_refuses_partial_parse_results_without_writing() {
     );
 }
 
+#[test]
+fn index_adds_v02_declaration_to_an_existing_versionless_root() {
+    let directory = tempdir().unwrap();
+    initialize(directory.path());
+    fs::write(
+        directory.path().join("index.md"),
+        "# Knowledge\n\nHuman introduction.\n",
+    )
+    .unwrap();
+    let output = okf()
+        .args(["index", directory.path().to_str().unwrap(), "--apply"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let root = fs::read_to_string(directory.path().join("index.md")).unwrap();
+    assert!(root.starts_with("---\nokf_version: \"0.2\"\n---\n"));
+    assert!(root.contains("Human introduction."));
+}
+
 #[cfg(unix)]
 #[test]
 fn closed_stdout_is_a_clean_pipeline_termination() {

@@ -505,6 +505,100 @@ describe('Rust/Wasm core boundary', () => {
           ),
         ],
         [
+          'shifted-tags.md',
+          concept(
+            '',
+            [
+              'verified:',
+              '  - invalid',
+              '  - by: !!str human:reviewer',
+              '    at: !!str 2026-07-22T11:30:00Z',
+              'sources:',
+              '  - invalid',
+              '  - resource: !!str https://example.com/shifted',
+              'parameters:',
+              '  - invalid',
+              '  - name: !!str year',
+              '    type: !!str integer',
+              '    required: !!bool true',
+              '',
+            ].join('\n'),
+            'Reference',
+          ),
+        ],
+        [
+          'tagged-computation.md',
+          concept(
+            '',
+            [
+              'status: !!str stable',
+              'stale_after: !!str 2026-09-23',
+              'usage_window: { from: !!str 2026-07-01, to: !!str 2026-07-31 }',
+              'sources: [{ resource: !!str https://example.com/tagged, usage_count: !!int 42 }]',
+              'runtime: !!str local',
+              'parameters: [{ name: !!str input, type: !!str string, required: !!bool true }]',
+              'computation: !!str scripts/run.sh',
+              'executor: { resource: !!str references/run.md, receipt: [!!str job_id, !!str result] }',
+              'attester: { resource: !!str references/attest.md }',
+              '',
+            ].join('\n'),
+            'Attested Computation',
+          ),
+        ],
+        [
+          'invalid-generated-at.md',
+          concept('', 'generated: { by: process:test, at: null }\n', 'Reference'),
+        ],
+        [
+          'multiple-inline.md',
+          concept(
+            '# Computation\n\n```sh\ntrue\n```\n\n```sh\nfalse\n```\n',
+            'runtime: local\n',
+            'Attested Computation',
+          ),
+        ],
+        [
+          'malformed-file-inline.md',
+          concept(
+            '# Computation\n\n```sh\ntrue\n```\n',
+            'runtime: local\ncomputation: 5\n',
+            'Attested Computation',
+          ),
+        ],
+        [
+          'fake-inline-heading.md',
+          concept('```md\n# Computation\n```\n', 'runtime: local\n', 'Attested Computation'),
+        ],
+        [
+          'attached-closing-hashes.md',
+          concept(
+            '# Computation###\n\n```sh\ntrue\n```\n',
+            'runtime: local\n',
+            'Attested Computation',
+          ),
+        ],
+        [
+          'cr-only-inline.md',
+          concept(
+            '# Computation\r\r```sh\rtrue\r```\r',
+            'runtime: local\n',
+            'Attested Computation',
+          ),
+        ],
+        [
+          'relaxed-times.md',
+          concept(
+            '',
+            [
+              'timestamp: "2026-07-22 10:00:00+0000"',
+              'generated: { by: process:test, at: "2026-07-22t11:00:00z" }',
+              'verified: { by: human:reviewer, at: "2026-07-22T11:30:00+0000" }',
+              '',
+            ].join('\n'),
+            'Reference',
+          ),
+        ],
+        [
           'invalid-actors.md',
           concept(
             '',

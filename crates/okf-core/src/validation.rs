@@ -1,7 +1,7 @@
-use crate::parser::is_valid_actor;
+use crate::parser::{is_valid_actor, parse_explicit_zone_timestamp};
 use crate::{Finding, LinkClassification, ParseFailureReason, ParsedBundle};
 use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
@@ -55,7 +55,7 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
         let range = frontmatter_field_range(frontmatter, "okf_version");
         match reserved.okf_version.as_deref() {
             Some("0.1" | "0.2") => {}
-            Some(declared) if future_minor_version(declared) => findings.push(Finding {
+            Some(declared) if is_future_minor_version(declared) => findings.push(Finding {
                 code: "okf.compatibility.future-minor-version".to_owned(),
                 category: "compatibility".to_owned(),
                 severity: "information".to_owned(),
@@ -195,7 +195,7 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
             let timestamp = concept
                 .timestamp
                 .as_deref()
-                .and_then(|value| DateTime::<FixedOffset>::parse_from_rfc3339(value).ok());
+                .and_then(parse_explicit_zone_timestamp);
             if timestamp.is_none() {
                 findings.push(curation(
                     "okf.curation.invalid-timestamp",
@@ -343,11 +343,11 @@ fn validate_v02_metadata(
             .generated
             .as_ref()
             .and_then(|value| value.at.as_deref());
-        let parsed_at =
-            at.and_then(|value| DateTime::<FixedOffset>::parse_from_rfc3339(value).ok());
+        let parsed_at = at.and_then(parse_explicit_zone_timestamp);
+        let has_at = object.is_some_and(|value| value.contains_key("at"));
         if object.is_none()
             || by.is_none_or(|value| !is_valid_actor(value))
-            || at.is_some() && parsed_at.is_none()
+            || has_at && parsed_at.is_none()
         {
             findings.push(curation(
                 "okf.curation.invalid-generated",
@@ -384,8 +384,7 @@ fn validate_v02_metadata(
             let normalized = concept.verified.get(index);
             let by = normalized.and_then(|value| value.by.as_deref());
             let at = normalized.and_then(|value| value.at.as_deref());
-            let parsed_at =
-                at.and_then(|value| DateTime::<FixedOffset>::parse_from_rfc3339(value).ok());
+            let parsed_at = at.and_then(parse_explicit_zone_timestamp);
             if object.is_none()
                 || by.is_none_or(|value| !is_valid_actor(value))
                 || parsed_at.is_none()
@@ -416,8 +415,11 @@ fn validate_v02_metadata(
         }
     }
 
-    if let Some(status) = raw.get("status")
-        && !matches!(status.as_str(), Some("draft" | "stable" | "deprecated"))
+    if raw.contains_key("status")
+        && !matches!(
+            concept.status.as_deref(),
+            Some("draft" | "stable" | "deprecated")
+        )
     {
         findings.push(curation(
             "okf.curation.invalid-status",
@@ -428,9 +430,10 @@ fn validate_v02_metadata(
         ));
     }
 
-    if let Some(stale_after) = raw.get("stale_after") {
-        let parsed = stale_after
-            .as_str()
+    if raw.contains_key("stale_after") {
+        let parsed = concept
+            .stale_after
+            .as_deref()
             .and_then(|value| NaiveDate::parse_from_str(value, "%Y-%m-%d").ok());
         if parsed.is_none() {
             findings.push(curation(
@@ -476,7 +479,7 @@ fn validate_v02_metadata(
                             || source.author.as_deref().is_some_and(is_valid_actor))
                         && object
                             .get("usage_count")
-                            .is_none_or(valid_json_safe_nonnegative_integer)
+                            .is_none_or(|_| source.usage_count.is_some())
                         && object.get("last_modified").is_none_or(|_| {
                             source.last_modified.as_deref().is_some_and(is_iso_date)
                         })
@@ -499,8 +502,11 @@ fn validate_v02_metadata(
         }
     }
 
-    if let Some(usage_window) = raw.get("usage_window")
-        && !valid_usage_window(usage_window)
+    if raw.contains_key("usage_window")
+        && !concept
+            .usage_window
+            .as_ref()
+            .is_some_and(valid_normalized_usage_window)
     {
         findings.push(curation(
             "okf.curation.invalid-usage-window",
@@ -514,23 +520,25 @@ fn validate_v02_metadata(
     if concept.r#type == "Attested Computation" {
         let parameters_valid = raw.get("parameters").is_none_or(|parameters| {
             parameters.as_array().is_some_and(|values| {
-                values.iter().all(|value| {
-                    let Some(object) = value.as_object() else {
-                        return false;
-                    };
-                    object
-                        .get("name")
-                        .and_then(serde_json::Value::as_str)
-                        .is_some_and(|name| !name.trim().is_empty())
-                        && object
-                            .get("type")
-                            .and_then(serde_json::Value::as_str)
-                            .is_some_and(|kind| !kind.trim().is_empty())
-                        && object
-                            .get("required")
-                            .and_then(serde_json::Value::as_bool)
-                            .is_some()
-                })
+                values.len() == concept.parameters.len()
+                    && values.iter().enumerate().all(|(index, value)| {
+                        let Some(object) = value.as_object() else {
+                            return false;
+                        };
+                        let Some(parameter) = concept.parameters.get(index) else {
+                            return false;
+                        };
+                        parameter
+                            .name
+                            .as_deref()
+                            .is_some_and(|name| !name.trim().is_empty())
+                            && parameter
+                                .r#type
+                                .as_deref()
+                                .is_some_and(|kind| !kind.trim().is_empty())
+                            && object.contains_key("required")
+                            && parameter.required.is_some()
+                    })
             })
         });
         let file_computation = raw.contains_key("computation")
@@ -538,14 +546,18 @@ fn validate_v02_metadata(
                 .computation
                 .as_deref()
                 .is_some_and(|computation| !computation.trim().is_empty());
-        let inline_computation = has_inline_computation(&concept.body);
-        let computation_valid = file_computation ^ inline_computation;
+        let inline_computations = inline_computation_count(&concept.body);
+        let computation_valid = if raw.contains_key("computation") {
+            file_computation && inline_computations == 0
+        } else {
+            inline_computations == 1
+        };
         let executor_valid = raw
             .get("executor")
-            .is_none_or(|value| valid_computation_endpoint(value, true));
-        let attester_valid = raw
-            .get("attester")
-            .is_none_or(|value| valid_computation_endpoint(value, false));
+            .is_none_or(|value| valid_computation_endpoint(value, concept.executor.as_ref(), true));
+        let attester_valid = raw.get("attester").is_none_or(|value| {
+            valid_computation_endpoint(value, concept.attester.as_ref(), false)
+        });
         if concept
             .runtime
             .as_deref()
@@ -581,45 +593,26 @@ fn validate_v02_metadata(
     }
 }
 
-fn valid_json_safe_nonnegative_integer(value: &serde_json::Value) -> bool {
-    const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
-    value
-        .as_u64()
-        .is_some_and(|value| value <= MAX_SAFE_INTEGER)
-        || value.as_f64().is_some_and(|value| {
-            value.is_finite()
-                && value >= 0.0
-                && value.fract() == 0.0
-                && value <= MAX_SAFE_INTEGER as f64
-        })
-}
-
 fn valid_normalized_usage_window(value: &crate::UsageWindow) -> bool {
     value.from.as_deref().is_some_and(is_iso_date)
         && value.to.as_deref().is_some_and(is_iso_date)
         && value.from <= value.to
 }
 
-fn valid_usage_window(value: &serde_json::Value) -> bool {
+fn valid_computation_endpoint(
+    value: &serde_json::Value,
+    normalized: Option<&crate::ComputationEndpoint>,
+    allow_receipt: bool,
+) -> bool {
     let Some(object) = value.as_object() else {
         return false;
     };
-    let Some(from) = object.get("from").and_then(serde_json::Value::as_str) else {
+    let Some(normalized) = normalized else {
         return false;
     };
-    let Some(to) = object.get("to").and_then(serde_json::Value::as_str) else {
-        return false;
-    };
-    is_iso_date(from) && is_iso_date(to) && from <= to
-}
-
-fn valid_computation_endpoint(value: &serde_json::Value, allow_receipt: bool) -> bool {
-    let Some(object) = value.as_object() else {
-        return false;
-    };
-    if object
-        .get("resource")
-        .and_then(serde_json::Value::as_str)
+    if normalized
+        .resource
+        .as_deref()
         .is_none_or(|resource| resource.trim().is_empty())
     {
         return false;
@@ -627,40 +620,44 @@ fn valid_computation_endpoint(value: &serde_json::Value, allow_receipt: bool) ->
     !allow_receipt
         || object.get("receipt").is_none_or(|receipt| {
             receipt.as_array().is_some_and(|fields| {
-                fields
-                    .iter()
-                    .all(|field| field.as_str().is_some_and(|field| !field.trim().is_empty()))
+                fields.len() == normalized.receipt.len()
+                    && normalized
+                        .receipt
+                        .iter()
+                        .all(|field| !field.trim().is_empty())
             })
         })
 }
 
-fn has_inline_computation(body: &str) -> bool {
+fn inline_computation_count(body: &str) -> usize {
     let mut in_computation = false;
-    for raw_line in body.split('\n') {
-        let line_without_carriage_return = raw_line.strip_suffix('\r').unwrap_or(raw_line);
-        let indent = line_without_carriage_return
-            .chars()
-            .take_while(|character| *character == ' ')
-            .count();
-        if indent > 3 {
-            continue;
-        }
-        let line = &line_without_carriage_return[indent..];
-        if let Some(rest) = line.strip_prefix('#')
-            && rest
-                .chars()
-                .next()
-                .is_none_or(|character| character == ' ' || character == '\t')
-        {
-            let text = rest.trim().trim_end_matches('#').trim_end().to_owned();
-            in_computation = text == "Computation";
-            continue;
-        }
-        if in_computation && (line.starts_with("```") || line.starts_with("~~~")) {
-            return true;
+    let mut heading_text: Option<String> = None;
+    let mut count = 0usize;
+    for event in Parser::new_ext(body, Options::empty()) {
+        match event {
+            Event::Start(Tag::Heading {
+                level: HeadingLevel::H1,
+                ..
+            }) => {
+                heading_text = Some(String::new());
+            }
+            Event::Text(text) | Event::Code(text) if heading_text.is_some() => {
+                if let Some(heading) = &mut heading_text {
+                    heading.push_str(&text);
+                }
+            }
+            Event::End(TagEnd::Heading(HeadingLevel::H1)) => {
+                in_computation = heading_text
+                    .take()
+                    .is_some_and(|heading| heading.trim() == "Computation");
+            }
+            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(_))) if in_computation => {
+                count += 1;
+            }
+            _ => {}
         }
     }
-    false
+    count
 }
 
 fn bounded_diagnostic_text(value: &str) -> String {
@@ -876,11 +873,24 @@ fn category_rank(category: &str) -> u8 {
     }
 }
 
-fn future_minor_version(value: &str) -> bool {
+pub fn is_future_minor_version(value: &str) -> bool {
     let Some((major, minor)) = value.split_once('.') else {
         return false;
     };
-    major == "0" && minor.parse::<u64>().is_ok_and(|minor| minor > 2)
+    if major.is_empty()
+        || !major.bytes().all(|byte| byte.is_ascii_digit())
+        || major.bytes().any(|byte| byte != b'0')
+        || minor.is_empty()
+        || !minor.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return false;
+    }
+    let significant_minor = minor.trim_start_matches('0');
+    significant_minor.len() > 1
+        || significant_minor
+            .as_bytes()
+            .first()
+            .is_some_and(|minor| *minor > b'2')
 }
 
 fn concept_field_range(concept: &crate::Concept, field: &str) -> crate::SourceRange {
@@ -969,5 +979,32 @@ mod tests {
     #[test]
     fn accepts_supported_root_version() {
         assert!(validate_root("---\nokf_version: \"0.1\"\n---\n# Root\n").is_empty());
+    }
+
+    #[test]
+    fn future_minor_versions_are_arbitrary_precision() {
+        assert!(is_future_minor_version("00.3"));
+        assert!(is_future_minor_version(
+            "0.999999999999999999999999999999999999999999999999999999999999"
+        ));
+        assert!(!is_future_minor_version("0.0002"));
+        assert!(!is_future_minor_version("1.3"));
+    }
+
+    #[test]
+    fn inline_computation_uses_commonmark_blocks() {
+        assert_eq!(
+            inline_computation_count("# Computation\r\r```sh\rtrue\r```\r"),
+            1
+        );
+        assert_eq!(inline_computation_count("```md\n# Computation\n```\n"), 0);
+        assert_eq!(
+            inline_computation_count("# Computation###\n\n```sh\ntrue\n```\n"),
+            0
+        );
+        assert_eq!(
+            inline_computation_count("# Computation\n\n```sh\ntrue\n```\n\n```sh\nfalse\n```\n"),
+            2
+        );
     }
 }

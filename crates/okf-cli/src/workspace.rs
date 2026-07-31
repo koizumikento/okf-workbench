@@ -14,7 +14,7 @@ const MAX_DOCUMENT_BYTES: u64 = 320 * 1024 + 16;
 #[derive(Clone, Copy, Debug)]
 pub enum PlanMode {
     CreateOnly,
-    MergeIndexes,
+    MergeIndexes { ensure_root_version: bool },
     MergeAgent,
 }
 
@@ -125,13 +125,24 @@ pub fn plan_files(
                     target.display()
                 ));
             }
-            (Some(existing), PlanMode::MergeIndexes, path) if path.ends_with("index.md") => {
-                merge_region(
+            (
+                Some(existing),
+                PlanMode::MergeIndexes {
+                    ensure_root_version,
+                },
+                path,
+            ) if path.ends_with("index.md") => {
+                let merged = merge_region(
                     existing,
                     &file.content,
                     "<!-- okf-workbench:index:start -->",
                     "<!-- okf-workbench:index:end -->",
-                )?
+                )?;
+                if path == "index.md" && ensure_root_version {
+                    insert_root_version(&merged)
+                } else {
+                    merged
+                }
             }
             (Some(existing), PlanMode::MergeAgent, "AGENTS.md") => merge_region(
                 existing,
@@ -161,6 +172,23 @@ pub fn plan_files(
     }
     plan.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
     Ok(plan)
+}
+
+fn insert_root_version(existing: &str) -> String {
+    let eol = if existing.contains("\r\n") {
+        "\r\n"
+    } else if existing.contains('\r') && !existing.contains('\n') {
+        "\r"
+    } else {
+        "\n"
+    };
+    let bom = existing.strip_prefix('\u{feff}').map_or("", |_| "\u{feff}");
+    let content = existing.strip_prefix('\u{feff}').unwrap_or(existing);
+    if let Some(after_opening) = content.strip_prefix(&format!("---{eol}")) {
+        format!("{bom}---{eol}okf_version: \"0.2\"{eol}{after_opening}")
+    } else {
+        format!("{bom}---{eol}okf_version: \"0.2\"{eol}---{eol}{content}")
+    }
 }
 
 pub fn apply_plan(root: &Path, plan: &[PlannedChange]) -> Result<(), String> {

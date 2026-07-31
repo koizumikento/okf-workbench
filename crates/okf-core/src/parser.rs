@@ -5,7 +5,7 @@ use crate::{
     ReservedDocument, SourceDocument, SourcePosition, SourceRange, UsageWindow, VerificationEvent,
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use chrono::{DateTime, SecondsFormat};
+use chrono::{DateTime, FixedOffset, SecondsFormat};
 use pulldown_cmark::{Event, Options, Parser, Tag};
 use serde_json::{Map, Number, Value};
 use std::collections::BTreeSet;
@@ -763,6 +763,7 @@ fn parse_frontmatter(
             });
         }
     };
+    unwrap_observed_nested_tags(&mut raw, &mut explicit_tags);
     for (key, value) in preserve_standard_yaml_tags(yaml_source, &mut raw) {
         explicit_tags.insert(key, value);
     }
@@ -861,18 +862,18 @@ fn normalized_verifications(
     };
     values
         .into_iter()
-        .filter_map(Value::as_object)
         .enumerate()
-        .map(|(index, object)| {
+        .filter_map(|(index, value)| {
+            let object = value.as_object()?;
             let prefix = if is_array {
                 format!("/verified/{index}")
             } else {
                 "/verified".to_owned()
             };
-            VerificationEvent {
+            Some(VerificationEvent {
                 by: object_string(object, "by", explicit_tags, &format!("{prefix}/by")),
                 at: object_string(object, "at", explicit_tags, &format!("{prefix}/at")),
-            }
+            })
         })
         .collect()
 }
@@ -883,7 +884,7 @@ fn trust_tier(events: &[VerificationEvent]) -> &'static str {
             && event
                 .at
                 .as_deref()
-                .is_some_and(|at| DateTime::parse_from_rfc3339(at).is_ok())
+                .is_some_and(|at| parse_explicit_zone_timestamp(at).is_some())
     });
     if valid_events.clone().any(|event| {
         event
@@ -924,6 +925,70 @@ pub(crate) fn is_valid_actor(value: &str) -> bool {
     )
 }
 
+pub(crate) fn parse_explicit_zone_timestamp(value: &str) -> Option<DateTime<FixedOffset>> {
+    let bytes = value.as_bytes();
+    if bytes.len() < 20
+        || !value.is_ascii()
+        || bytes.get(4) != Some(&b'-')
+        || bytes.get(7) != Some(&b'-')
+        || bytes.get(10) != Some(&b'T')
+        || bytes.get(13) != Some(&b':')
+        || bytes.get(16) != Some(&b':')
+    {
+        return None;
+    }
+    let zone_start = if bytes.last() == Some(&b'Z') {
+        bytes.len() - 1
+    } else {
+        let start = bytes.len().checked_sub(6)?;
+        if !matches!(bytes.get(start), Some(b'+' | b'-')) || bytes.get(start + 3) != Some(&b':') {
+            return None;
+        }
+        start
+    };
+    if zone_start < 19 {
+        return None;
+    }
+    let fixed_digits = [0..4, 5..7, 8..10, 11..13, 14..16, 17..19];
+    if fixed_digits
+        .iter()
+        .any(|range| !bytes[range.clone()].iter().all(u8::is_ascii_digit))
+    {
+        return None;
+    }
+    let fraction = &bytes[19..zone_start];
+    if !fraction.is_empty()
+        && (fraction.first() != Some(&b'.')
+            || fraction.len() == 1
+            || !fraction[1..].iter().all(u8::is_ascii_digit))
+    {
+        return None;
+    }
+    if bytes.last() != Some(&b'Z')
+        && (!bytes[zone_start + 1..zone_start + 3]
+            .iter()
+            .all(u8::is_ascii_digit)
+            || !bytes[zone_start + 4..zone_start + 6]
+                .iter()
+                .all(u8::is_ascii_digit))
+    {
+        return None;
+    }
+    let field = |range: std::ops::Range<usize>| {
+        std::str::from_utf8(&bytes[range]).ok()?.parse::<u32>().ok()
+    };
+    if field(11..13)? > 23 || field(14..16)? > 59 || field(17..19)? > 59 {
+        return None;
+    }
+    if bytes.last() != Some(&b'Z')
+        && (field(zone_start + 1..zone_start + 3)? > 23
+            || field(zone_start + 4..zone_start + 6)? > 59)
+    {
+        return None;
+    }
+    DateTime::parse_from_rfc3339(value).ok()
+}
+
 fn normalized_usage_window(
     value: Option<&Value>,
     explicit_tags: &Map<String, Value>,
@@ -944,11 +1009,11 @@ fn normalized_sources(
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .filter_map(Value::as_object)
         .enumerate()
-        .map(|(index, object)| {
+        .filter_map(|(index, value)| {
+            let object = value.as_object()?;
             let path = format!("/sources/{index}");
-            KnowledgeSource {
+            Some(KnowledgeSource {
                 id: object_string(object, "id", explicit_tags, &format!("{path}/id")),
                 resource: object_string(
                     object,
@@ -958,9 +1023,14 @@ fn normalized_sources(
                 ),
                 title: object_string(object, "title", explicit_tags, &format!("{path}/title")),
                 author: object_string(object, "author", explicit_tags, &format!("{path}/author")),
-                usage_count: object
-                    .get("usage_count")
-                    .and_then(json_safe_nonnegative_integer),
+                usage_count: object.get("usage_count").and_then(|value| {
+                    let value = if explicit_tags.contains_key(&format!("{path}/usage_count")) {
+                        semantic_value(value)
+                    } else {
+                        value
+                    };
+                    json_safe_nonnegative_integer(value)
+                }),
                 last_modified: object_string(
                     object,
                     "last_modified",
@@ -972,7 +1042,7 @@ fn normalized_sources(
                     explicit_tags,
                     &format!("{path}/usage_window"),
                 ),
-            }
+            })
         })
         .collect()
 }
@@ -985,22 +1055,23 @@ fn normalized_parameters(
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .filter_map(Value::as_object)
         .enumerate()
-        .map(|(index, object)| ComputationParameter {
-            name: object_string(
-                object,
-                "name",
-                explicit_tags,
-                &format!("/parameters/{index}/name"),
-            ),
-            r#type: object_string(
-                object,
-                "type",
-                explicit_tags,
-                &format!("/parameters/{index}/type"),
-            ),
-            required: object.get("required").and_then(Value::as_bool),
+        .filter_map(|(index, value)| {
+            let object = value.as_object()?;
+            let path = format!("/parameters/{index}");
+            let required = object.get("required").and_then(|value| {
+                let value = if explicit_tags.contains_key(&format!("{path}/required")) {
+                    semantic_value(value)
+                } else {
+                    value
+                };
+                value.as_bool()
+            });
+            Some(ComputationParameter {
+                name: object_string(object, "name", explicit_tags, &format!("{path}/name")),
+                r#type: object_string(object, "type", explicit_tags, &format!("{path}/type")),
+                required,
+            })
         })
         .collect()
 }
@@ -1016,8 +1087,15 @@ fn normalized_endpoint(
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .filter_map(Value::as_str)
-        .map(str::to_owned)
+        .enumerate()
+        .filter_map(|(index, value)| {
+            let value = if explicit_tags.contains_key(&format!("{path}/receipt/{index}")) {
+                semantic_value(value)
+            } else {
+                value
+            };
+            value.as_str().map(str::to_owned)
+        })
         .collect();
     Some(ComputationEndpoint {
         resource: object_string(
@@ -1093,6 +1171,28 @@ fn collect_yaml_explicit_tags(value: &serde_yaml::Value) -> Map<String, Value> {
     tags
 }
 
+fn unwrap_observed_nested_tags(raw: &mut Map<String, Value>, tags: &mut Map<String, Value>) {
+    let nested = tags
+        .keys()
+        .filter(|path| path.starts_with('/'))
+        .cloned()
+        .collect::<Vec<_>>();
+    for path in &nested {
+        let segments = path
+            .trim_start_matches('/')
+            .split('/')
+            .map(|segment| segment.replace("~1", "/").replace("~0", "~"))
+            .collect::<Vec<_>>();
+        let borrowed = segments.iter().map(String::as_str).collect::<Vec<_>>();
+        if let Some(existing) = value_at_path(raw, &borrowed).cloned() {
+            set_value_at_path(raw, &borrowed, semantic_value(&existing).clone());
+        }
+    }
+    for path in nested {
+        tags.remove(&path);
+    }
+}
+
 fn yaml_to_json(value: serde_yaml::Value) -> Result<Value, String> {
     Ok(match value {
         serde_yaml::Value::Null => Value::Null,
@@ -1153,14 +1253,15 @@ fn yaml_to_json(value: serde_yaml::Value) -> Result<Value, String> {
         }
         serde_yaml::Value::Tagged(tagged) => {
             let raw_tag = tagged.tag.to_string();
-            let tag = raw_tag
+            let canonical_tag = raw_tag
                 .strip_prefix("!!")
                 .and_then(standard_tag_uri)
                 .unwrap_or(&raw_tag)
                 .to_owned();
-            if !tag.starts_with("tag:yaml.org,2002:") && !tag.starts_with("!!") {
+            if !canonical_tag.starts_with("tag:yaml.org,2002:") && !canonical_tag.starts_with("!!")
+            {
                 return Err(format!(
-                    "YAML frontmatter is not JSON-safe: custom YAML tag is not supported: {tag}"
+                    "YAML frontmatter is not JSON-safe: custom YAML tag is not supported: {canonical_tag}"
                 ));
             }
             let source = match &tagged.value {
@@ -1170,9 +1271,46 @@ fn yaml_to_json(value: serde_yaml::Value) -> Result<Value, String> {
                 serde_yaml::Value::Null => Some("null".to_owned()),
                 _ => None,
             };
+            let converted = yaml_to_json(tagged.value)?;
+            let semantic = match canonical_tag.as_str() {
+                "tag:yaml.org,2002:timestamp" => source
+                    .as_deref()
+                    .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+                    .map(|value| Value::String(value.to_rfc3339_opts(SecondsFormat::Millis, true)))
+                    .unwrap_or(converted),
+                "tag:yaml.org,2002:binary" => source
+                    .as_deref()
+                    .and_then(|value| BASE64.decode(value).ok())
+                    .map(|bytes| {
+                        Value::Array(
+                            bytes
+                                .into_iter()
+                                .map(|byte| Value::Number(Number::from(byte)))
+                                .collect(),
+                        )
+                    })
+                    .unwrap_or(converted),
+                "tag:yaml.org,2002:set" => converted
+                    .as_object()
+                    .map(|set| {
+                        Value::Array(set.keys().cloned().map(Value::String).collect::<Vec<_>>())
+                    })
+                    .unwrap_or(converted),
+                "tag:yaml.org,2002:float" => match source.as_deref().map(str::to_ascii_lowercase) {
+                    Some(value) if matches!(value.as_str(), ".inf" | "+.inf") => {
+                        Value::String("Infinity".to_owned())
+                    }
+                    Some(value) if value == "-.inf" => Value::String("-Infinity".to_owned()),
+                    Some(value) if matches!(value.as_str(), ".nan" | "+.nan" | "-.nan") => {
+                        Value::String("NaN".to_owned())
+                    }
+                    _ => converted,
+                },
+                _ => converted,
+            };
             let mut tagged_body = Map::new();
-            tagged_body.insert("tag".to_owned(), Value::String(tag));
-            tagged_body.insert("value".to_owned(), yaml_to_json(tagged.value)?);
+            tagged_body.insert("tag".to_owned(), Value::String(canonical_tag));
+            tagged_body.insert("value".to_owned(), semantic);
             if let Some(source) = source {
                 tagged_body.insert("source".to_owned(), Value::String(source));
             }
@@ -1296,6 +1434,10 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
         if let Some(alias) = remainder.strip_prefix('*').map(str::trim)
             && let Some((wrapped, tag)) = anchors.get(alias).cloned()
         {
+            if path.len() > 1 {
+                set_value_at_path(raw, &path, semantic_value(&wrapped).clone());
+                continue;
+            }
             set_value_at_path(raw, &path, wrapped);
             explicit_tags.insert(explicit_tag_path(&path), Value::String(tag));
             continue;
@@ -1334,6 +1476,10 @@ fn preserve_standard_yaml_tags(source: &str, raw: &mut Map<String, Value>) -> Ma
                 .unwrap_or(existing),
             _ => semantic_value(&existing).clone(),
         };
+        if path.len() > 1 {
+            set_value_at_path(raw, &path, semantic);
+            continue;
+        }
         let mut body = Map::new();
         body.insert("tag".to_owned(), Value::String(tag_uri.to_owned()));
         body.insert("value".to_owned(), semantic);
@@ -2209,5 +2355,30 @@ mod tests {
         assert_eq!(bundle.failures.len(), 1);
         assert_eq!(bundle.failures[0].reason, ParseFailureReason::Frontmatter);
         assert_eq!(bundle.failures[0].bundle_path, "index.md");
+    }
+
+    #[test]
+    fn explicit_zone_timestamps_use_the_strict_contract_form() {
+        for value in [
+            "2026-07-22T12:00:00Z",
+            "2026-07-22T12:00:00.123456789Z",
+            "2026-07-22T12:00:00+09:00",
+        ] {
+            assert!(
+                parse_explicit_zone_timestamp(value).is_some(),
+                "{value} should be valid"
+            );
+        }
+        for value in [
+            "2026-07-22 12:00:00+0000",
+            "2026-07-22t12:00:00z",
+            "2026-07-22T12:00:00+0900",
+            "2026-07-22T12:00:60Z",
+        ] {
+            assert!(
+                parse_explicit_zone_timestamp(value).is_none(),
+                "{value} should be invalid"
+            );
+        }
     }
 }

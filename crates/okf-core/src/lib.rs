@@ -16,7 +16,7 @@ pub use templates::{
     AgentTarget, BundlePreset, ConceptTemplateInput, IndexMode, RenderedFile, agent_files,
     bundle_preset_files, concept_template_file, index_files,
 };
-pub use validation::validate_bundle;
+pub use validation::{is_future_minor_version, validate_bundle};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

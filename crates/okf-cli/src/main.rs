@@ -5,7 +5,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use okf_core::{
     AgentTarget, BundlePreset, CORE_VERSION, ConceptTemplateInput, IndexMode, RenderedFile,
     agent_files, build_graph_payload, bundle_preset_files, concept_template_file, index_files,
-    parse_bundle, validate_bundle,
+    is_future_minor_version, parse_bundle, validate_bundle,
 };
 use serde::Serialize;
 use std::{
@@ -193,7 +193,14 @@ fn run(cli: Cli) -> Result<u8, String> {
         Command::Init(args) => {
             let timestamp = timestamp();
             let files = bundle_preset_files(args.preset.into(), &timestamp);
-            run_write("init", args.path, files, args.write, PlanMode::CreateOnly)
+            run_write(
+                "init",
+                args.path,
+                files,
+                args.write,
+                PlanMode::CreateOnly,
+                false,
+            )
         }
         Command::New(args) => {
             ensure_supported_write_version(&args.root)?;
@@ -228,7 +235,14 @@ fn run(cli: Cli) -> Result<u8, String> {
                 tags: args.tags,
                 timestamp: Some(timestamp()),
             })];
-            run_write("new", args.root, files, args.write, PlanMode::CreateOnly)
+            run_write(
+                "new",
+                args.root,
+                files,
+                args.write,
+                PlanMode::CreateOnly,
+                true,
+            )
         }
         Command::Validate(args) => {
             let input = load_bundle(&args.root)?;
@@ -274,12 +288,36 @@ fn run(cli: Cli) -> Result<u8, String> {
                 IndexModeArg::Missing => IndexMode::Missing,
                 IndexModeArg::All => IndexMode::All,
             };
+            let ensure_root_version = bundle
+                .reserved_documents
+                .iter()
+                .find(|document| document.source.bundle_path.replace('\\', "/") == "index.md")
+                .is_none_or(|document| {
+                    document
+                        .frontmatter
+                        .as_ref()
+                        .is_none_or(|frontmatter| !frontmatter.raw.contains_key("okf_version"))
+                });
+            let mut files = index_files(&bundle, mode);
+            if ensure_root_version
+                && !files
+                    .iter()
+                    .any(|file| file.relative_path.replace('\\', "/") == "index.md")
+                && let Some(root_index) = index_files(&bundle, IndexMode::All)
+                    .into_iter()
+                    .find(|file| file.relative_path.replace('\\', "/") == "index.md")
+            {
+                files.push(root_index);
+            }
             run_write(
                 "index",
                 args.root,
-                index_files(&bundle, mode),
+                files,
                 args.write,
-                PlanMode::MergeIndexes,
+                PlanMode::MergeIndexes {
+                    ensure_root_version,
+                },
+                true,
             )
         }
         Command::Graph(args) => {
@@ -308,6 +346,7 @@ fn run(cli: Cli) -> Result<u8, String> {
                 agent_files(target, "."),
                 args.write,
                 PlanMode::MergeAgent,
+                true,
             )
         }
         Command::Version => {
@@ -355,32 +394,12 @@ fn ensure_supported_write_version(root: &Path) -> Result<okf_core::ParsedBundle,
             "write refused because `okf_version` is not a supported string: {raw_version}"
         ));
     };
-    if matches!(version.as_str(), "0.1" | "0.2") || is_future_minor(version) {
+    if matches!(version.as_str(), "0.1" | "0.2") || is_future_minor_version(version) {
         return Ok(bundle);
     }
     Err(format!(
         "write refused because the bundle declares unsupported OKF version {version:?}"
     ))
-}
-
-fn is_future_minor(version: &str) -> bool {
-    let Some((major, minor)) = version.split_once('.') else {
-        return false;
-    };
-    if major.is_empty()
-        || !major.bytes().all(|byte| byte.is_ascii_digit())
-        || major.bytes().any(|byte| byte != b'0')
-        || minor.is_empty()
-        || !minor.bytes().all(|byte| byte.is_ascii_digit())
-    {
-        return false;
-    }
-    let significant_minor = minor.trim_start_matches('0');
-    significant_minor.len() > 1
-        || significant_minor
-            .as_bytes()
-            .first()
-            .is_some_and(|minor| *minor > b'2')
 }
 
 fn run_write(
@@ -389,6 +408,7 @@ fn run_write(
     files: Vec<RenderedFile>,
     flags: WriteFlags,
     mode: PlanMode,
+    revalidate_version_before_apply: bool,
 ) -> Result<u8, String> {
     let root = absolute(root)?;
     let plan = plan_files(&root, files, mode)?;
@@ -412,6 +432,9 @@ fn run_write(
         return Err("a non-interactive write requires explicit `--apply`; use `--check` to inspect without writing".to_owned());
     };
     if should_apply {
+        if revalidate_version_before_apply {
+            ensure_supported_write_version(&root)?;
+        }
         apply_plan(&root, &plan)?;
     }
     write_json(&JsonEnvelope {

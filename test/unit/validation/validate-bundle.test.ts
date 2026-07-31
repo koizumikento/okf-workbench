@@ -473,6 +473,138 @@ describe('validateBundle', () => {
             '',
           ].join('\n'),
         ),
+        document(
+          'tagged-fields.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Tagged fields',
+            'description: Explicit standard tags preserve their semantic values.',
+            'status: !!str stable',
+            'stale_after: !!str 2026-09-23',
+            'usage_window:',
+            '  from: !!str 2026-07-01',
+            '  to: !!str 2026-07-31',
+            'sources:',
+            '  - resource: !!str https://example.com/tagged',
+            '    usage_count: !!int 42',
+            'runtime: !!str local',
+            'parameters:',
+            '  - name: !!str input',
+            '    type: !!str string',
+            '    required: !!bool true',
+            'computation: !!str scripts/run.sh',
+            'executor:',
+            '  resource: !!str references/run.md',
+            '  receipt: [!!str job_id, !!str result]',
+            'attester:',
+            '  resource: !!str references/attest.md',
+            '---',
+            '# Tagged fields',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'invalid-generated-at.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Invalid generated time',
+            'description: A present non-string at is malformed.',
+            'generated: { by: process:test, at: null }',
+            '---',
+            '# Invalid generated time',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'malformed-file-with-inline.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Malformed computation file',
+            'description: A malformed present file cannot fall back to inline.',
+            'runtime: local',
+            'computation: 5',
+            '---',
+            '# Computation',
+            '',
+            '```sh',
+            'true',
+            '```',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'multiple-inline.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Multiple inline computations',
+            'description: Exactly one inline fence is sanctioned.',
+            'runtime: local',
+            '---',
+            '# Computation',
+            '',
+            '```sh',
+            'true',
+            '```',
+            '',
+            '```sh',
+            'false',
+            '```',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'fake-inline-heading.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Fake inline heading',
+            'description: A heading inside a sample is not a computation section.',
+            'runtime: local',
+            '---',
+            '```md',
+            '# Computation',
+            '```',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'attached-closing-hashes.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Attached hashes',
+            'description: Closing hashes require preceding whitespace.',
+            'runtime: local',
+            '---',
+            '# Computation###',
+            '',
+            '```sh',
+            'true',
+            '```',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'cr-only-inline.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: CR only',
+            'description: CommonMark recognizes CR line endings.',
+            'runtime: local',
+            '---',
+            '# Computation',
+            '',
+            '```sh',
+            'true',
+            '```',
+            '',
+          ].join('\r'),
+        ),
       ],
     });
 
@@ -495,6 +627,29 @@ describe('validateBundle', () => {
     expect(findingsFor('both-computations')).toContain(VALIDATION_CODES.invalidAttestedComputation);
     expect(findingsFor('safe-count')).not.toContain(VALIDATION_CODES.invalidSources);
     expect(findingsFor('unsafe-count')).toContain(VALIDATION_CODES.invalidSources);
+    for (const code of [
+      VALIDATION_CODES.invalidStatus,
+      VALIDATION_CODES.invalidStaleAfter,
+      VALIDATION_CODES.invalidUsageWindow,
+      VALIDATION_CODES.invalidSources,
+      VALIDATION_CODES.invalidAttestedComputation,
+    ]) {
+      expect(findingsFor('tagged-fields')).not.toContain(code);
+    }
+    expect(findingsFor('invalid-generated-at')).toContain(VALIDATION_CODES.invalidGenerated);
+    expect(findingsFor('malformed-file-with-inline')).toContain(
+      VALIDATION_CODES.invalidAttestedComputation,
+    );
+    expect(findingsFor('multiple-inline')).toContain(VALIDATION_CODES.invalidAttestedComputation);
+    expect(findingsFor('fake-inline-heading')).toContain(
+      VALIDATION_CODES.invalidAttestedComputation,
+    );
+    expect(findingsFor('attached-closing-hashes')).toContain(
+      VALIDATION_CODES.invalidAttestedComputation,
+    );
+    expect(findingsFor('cr-only-inline')).not.toContain(
+      VALIDATION_CODES.invalidAttestedComputation,
+    );
   });
 
   it('reports present non-string timestamp and okf_version values deterministically', () => {

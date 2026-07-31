@@ -9,7 +9,10 @@ import type {
   SourceRange,
 } from '../model/index.js';
 import { OKF_SEMANTIC_LIMITS } from '../model/resource-limits.js';
-import { extractMarkdownHeadings } from '../parser/markdown.js';
+import {
+  countFencedCodeBlocksInTopLevelSection,
+  extractMarkdownHeadings,
+} from '../parser/markdown.js';
 import { isValidActor, semanticFrontmatterStringAt } from '../parser/frontmatter.js';
 import { SourceRangeIndex } from '../parser/source-range.js';
 
@@ -285,7 +288,7 @@ function validateV02Metadata(concept: Concept, nowMs: number, findings: Finding[
       object === undefined ||
       by === undefined ||
       !isValidActor(by) ||
-      (at !== undefined && atMs === undefined)
+      (Object.hasOwn(object, 'at') && atMs === undefined)
     ) {
       findings.push(
         metadataCuration(
@@ -350,9 +353,9 @@ function validateV02Metadata(concept: Concept, nowMs: number, findings: Finding[
 
   if (
     Object.hasOwn(raw, 'status') &&
-    raw.status !== 'draft' &&
-    raw.status !== 'stable' &&
-    raw.status !== 'deprecated'
+    concept.status !== 'draft' &&
+    concept.status !== 'stable' &&
+    concept.status !== 'deprecated'
   ) {
     findings.push(
       metadataCuration(
@@ -366,8 +369,8 @@ function validateV02Metadata(concept: Concept, nowMs: number, findings: Finding[
   }
 
   if (Object.hasOwn(raw, 'stale_after')) {
-    const staleAfter = raw.stale_after;
-    if (typeof staleAfter !== 'string' || !isIsoDate(staleAfter)) {
+    const staleAfter = concept.staleAfter;
+    if (staleAfter === undefined || !isIsoDate(staleAfter)) {
       findings.push(
         metadataCuration(
           concept,
@@ -406,10 +409,7 @@ function validateV02Metadata(concept: Concept, nowMs: number, findings: Finding[
           (!Object.hasOwn(object, 'title') || normalized.title !== undefined) &&
           (author === undefined || isValidActor(author)) &&
           (!Object.hasOwn(object ?? {}, 'author') || author !== undefined) &&
-          (!Object.hasOwn(object, 'usage_count') ||
-            (typeof object.usage_count === 'number' &&
-              Number.isSafeInteger(object.usage_count) &&
-              object.usage_count >= 0)) &&
+          (!Object.hasOwn(object, 'usage_count') || normalized.usageCount !== undefined) &&
           (!Object.hasOwn(object, 'last_modified') ||
             (normalized.lastModified !== undefined && isIsoDate(normalized.lastModified))) &&
           (!Object.hasOwn(object, 'usage_window') ||
@@ -429,7 +429,10 @@ function validateV02Metadata(concept: Concept, nowMs: number, findings: Finding[
     }
   }
 
-  if (Object.hasOwn(raw, 'usage_window') && !isUsageWindow(raw.usage_window)) {
+  if (
+    Object.hasOwn(raw, 'usage_window') &&
+    (concept.usageWindow === undefined || !isUsageWindow(concept.usageWindow))
+  ) {
     findings.push(
       metadataCuration(
         concept,
@@ -446,22 +449,28 @@ function validateV02Metadata(concept: Concept, nowMs: number, findings: Finding[
     const parametersValid =
       parameters === undefined ||
       (Array.isArray(parameters) &&
-        parameters.every((parameter) => {
+        parameters.length === (concept.parameters?.length ?? 0) &&
+        parameters.every((parameter, index) => {
           const object = asRecord(parameter);
+          const normalized = concept.parameters?.[index];
           return (
-            typeof object?.name === 'string' &&
-            object.name.trim().length > 0 &&
-            typeof object.type === 'string' &&
-            object.type.trim().length > 0 &&
-            typeof object.required === 'boolean'
+            object !== undefined &&
+            typeof normalized?.name === 'string' &&
+            normalized.name.trim().length > 0 &&
+            typeof normalized.type === 'string' &&
+            normalized.type.trim().length > 0 &&
+            Object.hasOwn(object, 'required') &&
+            typeof normalized.required === 'boolean'
           );
         }));
     const fileComputation =
       typeof concept.computation === 'string' && concept.computation.trim().length > 0;
-    const inlineComputation = hasInlineComputation(concept.body);
-    const computationValid = fileComputation !== inlineComputation;
-    const executorValid = optionalComputationEndpoint(raw.executor, true);
-    const attesterValid = optionalComputationEndpoint(raw.attester, false);
+    const inlineComputations = inlineComputationCount(concept.body);
+    const computationValid = Object.hasOwn(raw, 'computation')
+      ? fileComputation && inlineComputations === 0
+      : inlineComputations === 1;
+    const executorValid = optionalComputationEndpoint(raw.executor, concept.executor, true);
+    const attesterValid = optionalComputationEndpoint(raw.attester, concept.attester, false);
     if (
       !hasNonEmptyText(concept.runtime) ||
       !parametersValid ||
@@ -508,31 +517,31 @@ function isUsageWindow(value: unknown): boolean {
   );
 }
 
-function optionalComputationEndpoint(value: unknown, allowReceipt: boolean): boolean {
+function optionalComputationEndpoint(
+  value: unknown,
+  normalized: Concept['executor'],
+  allowReceipt: boolean,
+): boolean {
   if (value === undefined) return true;
   const object = asRecord(value);
-  if (typeof object?.resource !== 'string' || object.resource.trim().length === 0) return false;
+  if (
+    object === undefined ||
+    typeof normalized?.resource !== 'string' ||
+    normalized.resource.trim().length === 0
+  ) {
+    return false;
+  }
   if (!allowReceipt) return true;
   return (
     !Object.hasOwn(object, 'receipt') ||
     (Array.isArray(object.receipt) &&
-      object.receipt.every((field) => typeof field === 'string' && field.trim().length > 0))
+      object.receipt.length === normalized.receipt.length &&
+      normalized.receipt.every((field) => field.trim().length > 0))
   );
 }
 
-function hasInlineComputation(body: string): boolean {
-  let inComputation = false;
-  for (const rawLine of body.replace(/\r\n?/gu, '\n').split('\n')) {
-    const line = rawLine.replace(/^ {0,3}/u, '');
-    const heading = /^#(?:[ \t]+|$)(.*)$/u.exec(line);
-    if (heading !== null) {
-      const text = (heading[1] ?? '').replace(/[ \t]+#+[ \t]*$/u, '').trim();
-      inComputation = text === 'Computation';
-      continue;
-    }
-    if (inComputation && /^(?:`{3,}|~{3,})/u.test(line)) return true;
-  }
-  return false;
+function inlineComputationCount(body: string): number {
+  return countFencedCodeBlocksInTopLevelSection(body, 'Computation');
 }
 
 function metadataCuration(

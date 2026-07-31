@@ -144,18 +144,20 @@ interface ConceptLink {
 ```
 
 `ParsedFrontmatter.raw` retains the complete JSON-safe producer map, including unknown fields.
-Explicit standard YAML tags are represented by the reserved `$okf-workbench:yaml-tag` object with
-their canonical tag name, JSON-safe semantic value, and original lexical value source. In
+Explicit standard YAML tags on top-level fields are represented by the reserved
+`$okf-workbench:yaml-tag` object with their canonical tag name, JSON-safe semantic value, and
+original lexical value source. Nested standard tags are exposed as JSON-safe semantic values; the
+exact frontmatter source separately preserves their lexical form for source-preserving writes. In
 particular, YAML timestamps, binary data, and sets never leak `Date`, `Buffer`, or `Set` instances
-into the model. This object is a serialization representation, not a trust signal:
-`ParsedFrontmatter.explicitTags` is a separate sidecar derived only from the YAML AST. A direct
-explicit tag and an alias resolved to the same real tagged node retain provenance; a producer
-mapping or sequence that imitates the reserved object does not. Semantic-string compatibility
-checks accept a plain string or an AST-proven `!!str` scalar, including its aliases, and reject
-lookalike mappings, sequences, and values tagged with anything other than `!!str`. The exact
-frontmatter source remains separately available for source-preserving writes. Null-prototype
-mappings and a closed standard-tag converter prevent prototype pollution and fail closed on custom
-runtime objects. The normalized fields are conveniences, not a closed schema. OKF v0.2 provenance,
+into the model. The reserved object is a serialization representation, not a trust signal:
+`ParsedFrontmatter.explicitTags` is a top-level sidecar derived only from the YAML AST. A direct
+top-level tag and an alias resolved to the same real tagged node retain provenance; nested
+parser-observed tags are normalized before exposure, and a producer mapping or sequence that
+imitates the reserved object does not. Semantic-string compatibility checks accept a plain string
+or an AST-proven top-level `!!str` scalar, including its aliases, and reject lookalike mappings,
+sequences, and values tagged with anything other than `!!str`. Null-prototype mappings and a closed
+standard-tag converter prevent prototype pollution and fail closed on custom runtime objects. The
+normalized fields are conveniences, not a closed schema. OKF v0.2 provenance,
 production, verification, lifecycle, and computation families remain inert JSON-safe data. Trust
 tier is derived from valid verifier actors. `generated.at` supersedes the legacy `timestamp`, which
 is consulted only when `generated` is absent. The deterministic core and Webview never execute or

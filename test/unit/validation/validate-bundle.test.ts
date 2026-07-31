@@ -454,6 +454,7 @@ describe('validateBundle', () => {
             'type: Reference',
             'title: Safe count',
             'description: Integral YAML floats remain portable.',
+            'usage_window: { from: 2026-07-01, to: 2026-07-31 }',
             'sources: [{ resource: https://example.com/safe, usage_count: 42.0 }]',
             '---',
             '# Safe count',

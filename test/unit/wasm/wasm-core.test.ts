@@ -263,6 +263,139 @@ describe('Rust/Wasm core boundary', () => {
     },
   );
 
+  test('missing index rendering and multiline metadata match the TypeScript oracle', () => {
+    const rootUri = 'fixture:/index-parity';
+    const input = inputFor(
+      [
+        ['index.md', ['---', 'okf_version: "0.2"', '---', '# Existing', ''].join('\n')],
+        ['a.md', concept('', ['title: "A', '  B"', 'description: "D', '  E"', ''].join('\n'))],
+      ],
+      rootUri,
+    );
+    expect(core.renderIndexes(input, 'missing')).toEqual(
+      typescriptOkfCore.renderIndexes(input, 'missing'),
+    );
+  });
+
+  test('failed graph sources and duplicate tag statistics match the TypeScript oracle', () => {
+    const rootUri = 'fixture:/graph-parity';
+    const input = inputFor(
+      [
+        [
+          'a.md',
+          concept(
+            '[Missing](missing.md)\n',
+            [
+              'title: Failed metadata',
+              'tags: [x, x]',
+              'generated: { by: process:test, at: 2026-07-22T11:00:00Z }',
+              'stale_after: 2026-09-23',
+              '',
+            ].join('\n'),
+          ),
+        ],
+      ],
+      rootUri,
+    );
+    const healthy = core.inspect(input, '2026-07-22T12:00:00Z');
+    expect(healthy.graph.statistics.tagCounts).toEqual({ x: 1 });
+    const failure = {
+      kind: 'parse-failure' as const,
+      uri: `${rootUri}/a.md`,
+      bundlePath: 'a.md',
+      reason: 'read' as const,
+      message: 'Injected provider failure.',
+    };
+    const failures = [failure];
+    expect(core.inspect(input, '2026-07-22T12:00:00Z', failures)).toEqual(
+      typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z', failures),
+    );
+    const unrelatedFailure = [{ ...failure, uri: `${rootUri}/other-a.md` }];
+    expect(core.inspect(input, '2026-07-22T12:00:00Z', unrelatedFailure)).toEqual(
+      typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z', unrelatedFailure),
+    );
+    const normalizedFailure = [{ ...failure, bundlePath: './a.md' }];
+    expect(core.inspect(input, '2026-07-22T12:00:00Z', normalizedFailure)).toEqual(
+      typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z', normalizedFailure),
+    );
+  });
+
+  test('validation quoting, ordering, trimming, and date-only reference times match', () => {
+    const rootUri = 'fixture:/validation-edge-parity';
+    const input = inputFor(
+      [
+        ['index.md', ['---', 'okf_version: "\\0"', '---', '# Root', ''].join('\n')],
+        ['z.md', concept('', 'resource: " urn:shared "\nstale_after: 2026-07-31\n')],
+        ['😀.md', concept('', 'resource: urn:shared\n')],
+        ['\uE000.md', concept('', 'resource: urn:shared\n')],
+      ],
+      rootUri,
+    );
+    expect(core.inspect(input, '2026-07-31')).toEqual(
+      typescriptOkfCore.inspect(input, '2026-07-31'),
+    );
+  });
+
+  test('usage counts require a valid local or shared usage window', () => {
+    const rootUri = 'fixture:/usage-window';
+    const input = inputFor(
+      [
+        [
+          'missing.md',
+          concept('', 'sources: [{ resource: https://example.com/source, usage_count: 42 }]\n'),
+        ],
+        [
+          'shared.md',
+          concept(
+            '',
+            [
+              'usage_window: { from: 2026-07-01, to: 2026-07-31 }',
+              'sources: [{ resource: https://example.com/source, usage_count: 42 }]',
+              '',
+            ].join('\n'),
+          ),
+        ],
+      ],
+      rootUri,
+    );
+    const inspection = core.inspect(input, '2026-07-22T12:00:00Z');
+    expect(inspection).toEqual(typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'));
+    expect(
+      inspection.findings.some(
+        (finding) =>
+          finding.uri.endsWith('/missing.md') && finding.code === 'okf.curation.invalid-sources',
+      ),
+    ).toBe(true);
+    expect(
+      inspection.findings.some(
+        (finding) =>
+          finding.uri.endsWith('/shared.md') && finding.code === 'okf.curation.invalid-sources',
+      ),
+    ).toBe(false);
+  });
+
+  test('adversarial YAML lexical contexts match the TypeScript oracle', () => {
+    const cases = [
+      ['quoted-flow-shape.md', 'literal: "[|]"\n'],
+      ['block-flow-shape.md', 'literal: |-\n  [|]\n'],
+      ['plain-fake-anchor.md', 'literal: prefix &a suffix\nbefore: *a\n'],
+      ['quoted-fake-set.md', 'literal: "!!set { ? a: b }"\n'],
+      ['block-fake-set.md', 'literal: |-\n  !!set { ? x, ? x }\n'],
+      ['quoted-nested-tag.md', 'x: !!set { ? &a [!!int "1"] }\ncopy: *a\n'],
+      [
+        'cross-member-nested-set.md',
+        'outer: !!set\n  ? {value: &a !!str one}\n  ? !!set\n    ? {copy: *a}\noutside: *a\n',
+      ],
+    ] as const;
+    for (const [path, fields] of cases) {
+      const rootUri = `fixture:/yaml-parity/${path}`;
+      const input = inputFor([[path, concept('', fields)]], rootUri);
+      expect(core.inspect(input, '2026-07-22T12:00:00Z'), path).toEqual(
+        typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'),
+      );
+    }
+  });
+
   test.each([
     {
       name: 'all link-resolution classifications and reference forms',
@@ -895,6 +1028,14 @@ describe('Rust/Wasm core boundary', () => {
               '',
             ].join('\n'),
             'Attested Computation',
+          ),
+        ],
+        [
+          'missing-usage-window.md',
+          concept(
+            '',
+            'sources: [{ resource: https://example.com/source, usage_count: 42 }]\n',
+            'Reference',
           ),
         ],
         [

@@ -320,6 +320,85 @@ fn index_adds_v02_declaration_to_an_existing_versionless_root() {
     assert!(root.contains("Human introduction."));
 }
 
+#[test]
+fn missing_index_mode_only_adds_the_root_version_to_an_existing_index() {
+    let directory = tempdir().unwrap();
+    initialize(directory.path());
+    fs::write(
+        directory.path().join("index.md"),
+        [
+            "# Knowledge",
+            "",
+            "<!-- okf-workbench:index:start -->",
+            "## Contents",
+            "",
+            "- [Stale](./stale.md)",
+            "<!-- okf-workbench:index:end -->",
+            "",
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    fs::write(
+        directory.path().join("alpha.md"),
+        "---\ntype: reference\ntitle: Alpha\n---\n",
+    )
+    .unwrap();
+
+    let output = okf()
+        .args([
+            "index",
+            directory.path().to_str().unwrap(),
+            "--mode",
+            "missing",
+            "--apply",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let root = fs::read_to_string(directory.path().join("index.md")).unwrap();
+    assert!(root.starts_with("---\nokf_version: \"0.2\"\n---\n"));
+    assert!(root.contains("- [Stale](./stale.md)"));
+    assert!(!root.contains("- [Alpha](./alpha.md)"));
+}
+
+#[cfg(unix)]
+#[test]
+fn authoring_version_checks_ignore_unrelated_bundle_symlinks() {
+    use std::os::unix::fs::symlink;
+
+    let directory = tempdir().unwrap();
+    initialize(directory.path());
+    let outside = tempdir().unwrap();
+    symlink(outside.path(), directory.path().join("unrelated-link")).unwrap();
+
+    let created = okf()
+        .args([
+            "new",
+            directory.path().to_str().unwrap(),
+            "--title",
+            "Added",
+            "--path",
+            "added.md",
+            "--apply",
+        ])
+        .output()
+        .unwrap();
+    assert!(created.status.success(), "{created:?}");
+
+    let agent = okf()
+        .args([
+            "agent",
+            directory.path().to_str().unwrap(),
+            "--target",
+            "agents",
+            "--apply",
+        ])
+        .output()
+        .unwrap();
+    assert!(agent.status.success(), "{agent:?}");
+}
+
 #[cfg(unix)]
 #[test]
 fn closed_stdout_is_a_clean_pipeline_termination() {

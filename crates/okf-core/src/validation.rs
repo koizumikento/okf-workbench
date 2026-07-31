@@ -5,7 +5,12 @@ use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, T
 use std::collections::{BTreeMap, BTreeSet};
 
 pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
-    let now = DateTime::parse_from_rfc3339(now).ok();
+    let now = DateTime::parse_from_rfc3339(now).ok().or_else(|| {
+        NaiveDate::parse_from_str(now, "%Y-%m-%d")
+            .ok()?
+            .and_hms_opt(0, 0, 0)
+            .map(|value| value.and_utc().fixed_offset())
+    });
     let mut findings = bundle.findings.clone();
     for failure in &bundle.failures {
         let (code, action) = match failure.reason {
@@ -61,7 +66,8 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
                 severity: "information".to_owned(),
                 uri: reserved.source.uri.clone(),
                 message: format!(
-                    "OKF compatibility: bundle declares future minor version {declared:?}; reading continues on a best-effort basis."
+                    "OKF compatibility: bundle declares future minor version {}; reading continues on a best-effort basis.",
+                    json_quote(declared)
                 ),
                 corrective_action: Some(
                     "Review producer changes before relying on fields introduced after OKF 0.2."
@@ -75,7 +81,8 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
                 severity: "warning".to_owned(),
                 uri: reserved.source.uri.clone(),
                 message: format!(
-                    "OKF compatibility: bundle declares unsupported version {declared:?}; reading continues on a best-effort basis."
+                    "OKF compatibility: bundle declares unsupported version {}; reading continues on a best-effort basis.",
+                    json_quote(declared)
                 ),
                 corrective_action: Some(
                     "Review the declared OKF version before applying Workbench-generated changes."
@@ -103,12 +110,20 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
     let failed_paths = bundle
         .failures
         .iter()
-        .map(|failure| failure.bundle_path.as_str())
+        .map(|failure| {
+            (
+                failure.uri.clone(),
+                normalize_bundle_path(&failure.bundle_path),
+            )
+        })
         .collect::<BTreeSet<_>>();
     let mut connected = BTreeSet::new();
-    let mut resource_owners: BTreeMap<&str, Vec<&crate::Concept>> = BTreeMap::new();
+    let mut resource_owners: BTreeMap<String, Vec<&crate::Concept>> = BTreeMap::new();
     for concept in &bundle.concepts {
-        if failed_paths.contains(concept.source.bundle_path.as_str()) {
+        if failed_paths.contains(&(
+            concept.source.uri.clone(),
+            normalize_bundle_path(&concept.source.bundle_path),
+        )) {
             continue;
         }
         if concept.r#type.trim().is_empty() {
@@ -135,8 +150,8 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
                     &concept.source.uri,
                     &link.range,
                     format!(
-                        "OKF curation: internal link target {:?} does not resolve to a concept.",
-                        link.raw_target
+                        "OKF curation: internal link target {} does not resolve to a concept.",
+                        json_quote(&link.raw_target)
                     ),
                     "Create the target concept or update the Markdown link target.",
                 )),
@@ -145,8 +160,8 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
                     &concept.source.uri,
                     &link.range,
                     format!(
-                        "OKF curation: link target {:?} resolves outside the selected bundle.",
-                        link.raw_target
+                        "OKF curation: link target {} resolves outside the selected bundle.",
+                        json_quote(&link.raw_target)
                     ),
                     "Point the link at a concept inside the selected bundle or use an explicit external URL.",
                 )),
@@ -155,8 +170,8 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
                     &concept.source.uri,
                     &link.range,
                     format!(
-                        "OKF curation: link target {:?} cannot be decoded or normalized safely.",
-                        link.raw_target
+                        "OKF curation: link target {} cannot be decoded or normalized safely.",
+                        json_quote(&link.raw_target)
                     ),
                     "Use a valid Markdown URL with each path segment percent-encoded at most once.",
                 )),
@@ -220,22 +235,28 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
         if let Some(resource) = concept
             .resource
             .as_deref()
-            .filter(|value| !value.trim().is_empty())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
         {
-            resource_owners.entry(resource).or_default().push(concept);
+            resource_owners
+                .entry(resource.to_owned())
+                .or_default()
+                .push(concept);
         }
     }
 
     for concept in &bundle.concepts {
-        if !failed_paths.contains(concept.source.bundle_path.as_str())
-            && !connected.contains(concept.id.as_str())
+        if !failed_paths.contains(&(
+            concept.source.uri.clone(),
+            normalize_bundle_path(&concept.source.bundle_path),
+        )) && !connected.contains(concept.id.as_str())
         {
             findings.push(curation(
                 "okf.curation.orphan-concept",
                 &concept.source.uri,
                 &format!(
-                    "OKF curation: concept {:?} has no resolvable incoming or outgoing internal links.",
-                    concept.id
+                    "OKF curation: concept {} has no resolvable incoming or outgoing internal links.",
+                    json_quote(&concept.id)
                 ),
                 "Link this concept to related bundle knowledge, or keep it isolated intentionally.",
                 Some(concept_field_range(concept, "type")),
@@ -247,6 +268,11 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
         .iter()
         .filter(|(_, owners)| owners.len() > 1)
     {
+        let mut owners = owners.clone();
+        owners.sort_by(|left, right| {
+            compare_utf16(&left.id, &right.id)
+                .then_with(|| compare_utf16(&left.source.uri, &right.source.uri))
+        });
         for (index, owner) in owners.iter().enumerate() {
             let peer_ids = owners
                 .iter()
@@ -269,8 +295,8 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
                 "okf.curation.duplicate-resource",
                 &owner.source.uri,
                 &format!(
-                    "OKF curation: resource {:?} is also declared by {peers}.",
-                    bounded_diagnostic_text(resource)
+                    "OKF curation: resource {} is also declared by {peers}.",
+                    json_quote(&bounded_diagnostic_text(resource))
                 ),
                 "Confirm whether these concepts intentionally describe the same exact resource identifier.",
                 Some(concept_field_range(owner, "resource")),
@@ -283,8 +309,7 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
     }
 
     findings.sort_by(|left, right| {
-        left.uri
-            .cmp(&right.uri)
+        compare_utf16(&left.uri, &right.uri)
             .then_with(|| {
                 left.range
                     .as_ref()
@@ -312,8 +337,8 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
                     )
             })
             .then_with(|| category_rank(&left.category).cmp(&category_rank(&right.category)))
-            .then_with(|| left.code.cmp(&right.code))
-            .then_with(|| left.message.cmp(&right.message))
+            .then_with(|| compare_utf16(&left.code, &right.code))
+            .then_with(|| compare_utf16(&left.message, &right.message))
     });
     findings.dedup_by(|left, right| {
         left.uri == right.uri
@@ -451,8 +476,8 @@ fn validate_v02_metadata(
                 "okf.curation.stale-concept",
                 &concept.source.uri,
                 &format!(
-                    "OKF curation: concept is stale on or after {:?}.",
-                    stale_after.format("%Y-%m-%d").to_string()
+                    "OKF curation: concept is stale on or after {}.",
+                    json_quote(&stale_after.format("%Y-%m-%d").to_string())
                 ),
                 "Review and regenerate or re-verify the concept, then move `stale_after` forward when justified.",
                 Some(concept_field_range(concept, "stale_after")),
@@ -481,6 +506,18 @@ fn validate_v02_metadata(
                         && object
                             .get("usage_count")
                             .is_none_or(|_| source.usage_count.is_some())
+                        && (!object.contains_key("usage_count")
+                            || if object.contains_key("usage_window") {
+                                source
+                                    .usage_window
+                                    .as_ref()
+                                    .is_some_and(valid_normalized_usage_window)
+                            } else {
+                                concept
+                                    .usage_window
+                                    .as_ref()
+                                    .is_some_and(valid_normalized_usage_window)
+                            })
                         && object.get("last_modified").is_none_or(|_| {
                             source.last_modified.as_deref().is_some_and(is_iso_date)
                         })
@@ -688,6 +725,22 @@ fn bounded_diagnostic_text(value: &str) -> String {
     retained
 }
 
+fn json_quote(value: &str) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_owned())
+}
+
+fn normalize_bundle_path(value: &str) -> String {
+    let normalized = value.replace('\\', "/");
+    normalized
+        .strip_prefix("./")
+        .unwrap_or(&normalized)
+        .to_owned()
+}
+
+fn compare_utf16(left: &str, right: &str) -> std::cmp::Ordering {
+    left.encode_utf16().cmp(right.encode_utf16())
+}
+
 fn validate_reserved_document(reserved: &crate::ReservedDocument, findings: &mut Vec<Finding>) {
     let is_root_index = reserved.source.bundle_path.replace('\\', "/") == "index.md";
     if let Some(frontmatter) = &reserved.frontmatter
@@ -740,8 +793,8 @@ fn validate_reserved_document(reserved: &crate::ReservedDocument, findings: &mut
             let (message, range) = if let Some(heading) = invalid {
                 (
                     format!(
-                        "OKF conformance: log.md date heading {:?} is not YYYY-MM-DD.",
-                        heading.text
+                        "OKF conformance: log.md date heading {} is not YYYY-MM-DD.",
+                        json_quote(&heading.text)
                     ),
                     translate_body_range(&reserved.body_range.start, &heading.range),
                 )

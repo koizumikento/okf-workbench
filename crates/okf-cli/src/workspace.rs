@@ -16,7 +16,10 @@ const MAX_DOCUMENT_BYTES: u64 = 320 * 1024 + 16;
 #[derive(Clone, Copy, Debug)]
 pub enum PlanMode {
     CreateOnly,
-    MergeIndexes { ensure_root_version: bool },
+    MergeIndexes {
+        ensure_root_version: bool,
+        update_existing_regions: bool,
+    },
     MergeAgent,
 }
 
@@ -96,6 +99,48 @@ pub fn load_bundle(root: &Path) -> Result<ParseBundleInput, String> {
     })
 }
 
+pub fn load_root_index(root: &Path) -> Result<ParseBundleInput, String> {
+    ensure_safe_root(root)?;
+    let root = root
+        .canonicalize()
+        .map_err(|error| format!("cannot open bundle root {}: {error}", root.display()))?;
+    ensure_safe_root(&root)?;
+    let path = root.join("index.md");
+    let mut documents = Vec::new();
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() || !metadata.is_file() {
+                return Err(format!(
+                    "write refused unsafe root index {}",
+                    path.display()
+                ));
+            }
+            if metadata.len() > MAX_DOCUMENT_BYTES {
+                return Err(format!(
+                    "{} exceeds the bounded document size",
+                    path.display()
+                ));
+            }
+            documents.push(BundleDocumentInput {
+                uri: file_uri(&path),
+                bundle_path: "index.md".to_owned(),
+                content: Some(DocumentContent::Bytes(
+                    fs::read(&path).map_err(|error| error.to_string())?,
+                )),
+                content_hash: None,
+                identity_only_failure: None,
+            });
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.to_string()),
+    }
+    Ok(ParseBundleInput {
+        root_uri: file_uri(&root),
+        revision: 1,
+        documents,
+    })
+}
+
 pub fn plan_files(
     root: &Path,
     files: Vec<RenderedFile>,
@@ -131,15 +176,20 @@ pub fn plan_files(
                 Some(existing),
                 PlanMode::MergeIndexes {
                     ensure_root_version,
+                    update_existing_regions,
                 },
                 path,
             ) if path.ends_with("index.md") => {
-                let merged = merge_region(
-                    existing,
-                    &file.content,
-                    "<!-- okf-workbench:index:start -->",
-                    "<!-- okf-workbench:index:end -->",
-                )?;
+                let merged = if update_existing_regions {
+                    merge_region(
+                        existing,
+                        &file.content,
+                        "<!-- okf-workbench:index:start -->",
+                        "<!-- okf-workbench:index:end -->",
+                    )?
+                } else {
+                    existing.clone()
+                };
                 if path == "index.md" && ensure_root_version {
                     insert_root_version(&merged)?
                 } else {

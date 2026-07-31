@@ -13,7 +13,7 @@ pub fn build_graph_payload(bundle: &ParsedBundle) -> GraphPayload {
     let failed_paths = bundle
         .failures
         .iter()
-        .map(|failure| failure.bundle_path.as_str())
+        .map(|failure| (failure.uri.as_str(), failure.bundle_path.as_str()))
         .collect::<BTreeSet<_>>();
     let mut connected = BTreeSet::new();
     let mut edges_data = Vec::new();
@@ -26,6 +26,12 @@ pub fn build_graph_payload(bundle: &ParsedBundle) -> GraphPayload {
     let mut broken_count: BTreeMap<String, usize> = BTreeMap::new();
 
     for concept in &bundle.concepts {
+        if failed_paths.contains(&(
+            concept.source.uri.as_str(),
+            concept.source.bundle_path.as_str(),
+        )) {
+            continue;
+        }
         for link in &concept.links {
             if link.classification == LinkClassification::Internal
                 && let Some(target) = &link.target_id
@@ -50,10 +56,9 @@ pub fn build_graph_payload(bundle: &ParsedBundle) -> GraphPayload {
         }
     }
     edges_data.sort_by(|left, right| {
-        left.0
-            .cmp(&right.0)
+        compare_utf16(&left.0, &right.0)
             .then_with(|| left.2.start.offset.cmp(&right.2.start.offset))
-            .then_with(|| left.1.cmp(&right.1))
+            .then_with(|| compare_utf16(&left.1, &right.1))
     });
     let edges = edges_data
         .into_iter()
@@ -67,11 +72,11 @@ pub fn build_graph_payload(bundle: &ParsedBundle) -> GraphPayload {
         .collect::<Vec<_>>();
 
     for values in backlinks.values_mut() {
-        values.sort();
+        values.sort_by(|left, right| compare_utf16(left, right));
         values.dedup();
     }
     broken_links.sort_by(|left, right| {
-        left.source_id.cmp(&right.source_id).then_with(|| {
+        compare_utf16(&left.source_id, &right.source_id).then_with(|| {
             left.source_range
                 .start
                 .offset
@@ -83,36 +88,58 @@ pub fn build_graph_payload(bundle: &ParsedBundle) -> GraphPayload {
     let mut tag_counts = BTreeMap::new();
     let mut nodes = Vec::new();
     for concept in &bundle.concepts {
-        if !failed_paths.contains(concept.source.bundle_path.as_str()) {
+        if !failed_paths.contains(&(
+            concept.source.uri.as_str(),
+            concept.source.bundle_path.as_str(),
+        )) {
             *type_counts.entry(concept.r#type.clone()).or_default() += 1;
-            for tag in &concept.tags {
+            for tag in concept.tags.iter().collect::<BTreeSet<_>>() {
                 *tag_counts.entry(tag.clone()).or_default() += 1;
             }
         }
+        let source_failed = failed_paths.contains(&(
+            concept.source.uri.as_str(),
+            concept.source.bundle_path.as_str(),
+        ));
         nodes.push(GraphNode {
             id: concept.id.clone(),
-            source_failed: failed_paths
-                .contains(concept.source.bundle_path.as_str())
-                .then_some(true),
-            r#type: concept.r#type.clone(),
-            title: concept.title.clone(),
-            description: concept.description.clone(),
-            resource: concept.resource.clone(),
-            tags: concept.tags.clone(),
-            timestamp: (!concept.frontmatter.raw.contains_key("generated"))
+            source_failed: source_failed.then_some(true),
+            r#type: if source_failed {
+                String::new()
+            } else {
+                concept.r#type.clone()
+            },
+            title: (!source_failed).then(|| concept.title.clone()).flatten(),
+            description: (!source_failed)
+                .then(|| concept.description.clone())
+                .flatten(),
+            resource: (!source_failed).then(|| concept.resource.clone()).flatten(),
+            tags: if source_failed {
+                Vec::new()
+            } else {
+                concept.tags.clone()
+            },
+            timestamp: (!source_failed && !concept.frontmatter.raw.contains_key("generated"))
                 .then(|| concept.timestamp.clone())
                 .flatten(),
-            generated_by: concept
-                .generated
-                .as_ref()
-                .and_then(|generated| generated.by.clone()),
-            generated_at: concept
-                .generated
-                .as_ref()
-                .and_then(|generated| generated.at.clone()),
-            trust_tier: (!failed_paths.contains(concept.source.bundle_path.as_str()))
-                .then(|| concept.trust_tier.clone()),
-            status: if failed_paths.contains(concept.source.bundle_path.as_str()) {
+            generated_by: (!source_failed)
+                .then(|| {
+                    concept
+                        .generated
+                        .as_ref()
+                        .and_then(|generated| generated.by.clone())
+                })
+                .flatten(),
+            generated_at: (!source_failed)
+                .then(|| {
+                    concept
+                        .generated
+                        .as_ref()
+                        .and_then(|generated| generated.at.clone())
+                })
+                .flatten(),
+            trust_tier: (!source_failed).then(|| concept.trust_tier.clone()),
+            status: if source_failed {
                 None
             } else if let Some(status) = concept.status.clone() {
                 Some(status)
@@ -121,17 +148,23 @@ pub fn build_graph_payload(bundle: &ParsedBundle) -> GraphPayload {
             } else {
                 Some("stable".to_owned())
             },
-            stale_after: concept.stale_after.clone(),
-            source_count: (!failed_paths.contains(concept.source.bundle_path.as_str()))
-                .then_some(concept.sources.len()),
-            runtime: concept.runtime.clone(),
-            computation: concept.computation.clone(),
-            orphan: !connected.contains(concept.id.as_str())
-                && !failed_paths.contains(concept.source.bundle_path.as_str()),
-            broken_link_count: *broken_count.get(&concept.id).unwrap_or(&0),
+            stale_after: (!source_failed)
+                .then(|| concept.stale_after.clone())
+                .flatten(),
+            source_count: (!source_failed).then_some(concept.sources.len()),
+            runtime: (!source_failed).then(|| concept.runtime.clone()).flatten(),
+            computation: (!source_failed)
+                .then(|| concept.computation.clone())
+                .flatten(),
+            orphan: !connected.contains(concept.id.as_str()) && !source_failed,
+            broken_link_count: if source_failed {
+                0
+            } else {
+                *broken_count.get(&concept.id).unwrap_or(&0)
+            },
         });
     }
-    nodes.sort_by(|left, right| left.id.cmp(&right.id));
+    nodes.sort_by(|left, right| compare_utf16(&left.id, &right.id));
     let statistics = GraphStatistics {
         concept_count: nodes.len(),
         edge_count: edges.len(),
@@ -149,6 +182,10 @@ pub fn build_graph_payload(bundle: &ParsedBundle) -> GraphPayload {
         broken_links,
         statistics,
     }
+}
+
+fn compare_utf16(left: &str, right: &str) -> std::cmp::Ordering {
+    left.encode_utf16().cmp(right.encode_utf16())
 }
 
 fn radix36(mut value: usize) -> String {

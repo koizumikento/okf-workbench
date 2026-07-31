@@ -410,6 +410,10 @@ function validateV02Metadata(concept: Concept, nowMs: number, findings: Finding[
           (author === undefined || isValidActor(author)) &&
           (!Object.hasOwn(object ?? {}, 'author') || author !== undefined) &&
           (!Object.hasOwn(object, 'usage_count') || normalized.usageCount !== undefined) &&
+          (!Object.hasOwn(object, 'usage_count') ||
+            (Object.hasOwn(object, 'usage_window')
+              ? normalized.usageWindow !== undefined && isUsageWindow(normalized.usageWindow)
+              : concept.usageWindow !== undefined && isUsageWindow(concept.usageWindow))) &&
           (!Object.hasOwn(object, 'last_modified') ||
             (normalized.lastModified !== undefined && isIsoDate(normalized.lastModified))) &&
           (!Object.hasOwn(object, 'usage_window') ||

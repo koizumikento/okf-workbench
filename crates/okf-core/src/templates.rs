@@ -315,8 +315,16 @@ pub fn index_files(bundle: &ParsedBundle, mode: IndexMode) -> Vec<RenderedFile> 
                 .map(|mut entry| {
                     let full_path = format!("{prefix}{}", entry.path);
                     if let Some(concept) = by_path.get(full_path.as_str()) {
-                        entry.label = concept.title.clone().unwrap_or(entry.label);
-                        entry.description.clone_from(&concept.description);
+                        if let Some(title) = concept.title.as_deref().map(one_line)
+                            && !title.is_empty()
+                        {
+                            entry.label = title;
+                        }
+                        entry.description = concept
+                            .description
+                            .as_deref()
+                            .map(one_line)
+                            .filter(|description| !description.is_empty());
                     }
                     entry
                 })

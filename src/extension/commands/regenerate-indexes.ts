@@ -38,7 +38,7 @@ const MODE_ITEMS: readonly SelectionItem<IndexGenerationMode>[] = [
     value: 'missing-indexes-only',
     label: 'Missing indexes only',
     description:
-      'Create absent directory indexes; a versionless root receives only its OKF 0.1 declaration.',
+      'Create absent directory indexes; a versionless root receives only its OKF 0.2 declaration.',
   },
   {
     value: 'update-all',

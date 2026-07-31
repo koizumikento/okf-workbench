@@ -15,7 +15,8 @@ use std::{
     time::SystemTime,
 };
 use workspace::{
-    PlanMode, PlannedChange, apply_plan, load_bundle, plan_files, validate_relative_path,
+    PlanMode, PlannedChange, apply_plan, load_bundle, load_root_index, plan_files,
+    validate_relative_path,
 };
 
 const CONCEPT_TEMPLATES: &[&str] = &[
@@ -203,7 +204,7 @@ fn run(cli: Cli) -> Result<u8, String> {
             )
         }
         Command::New(args) => {
-            ensure_supported_write_version(&args.root)?;
+            ensure_supported_root_version(&args.root)?;
             let path = args.path.unwrap_or_else(|| slug(&args.title));
             validate_relative_path(&path)?;
             if !CONCEPT_TEMPLATES.contains(&args.template.as_str()) {
@@ -316,6 +317,7 @@ fn run(cli: Cli) -> Result<u8, String> {
                 args.write,
                 PlanMode::MergeIndexes {
                     ensure_root_version,
+                    update_existing_regions: matches!(mode, IndexMode::All),
                 },
                 true,
             )
@@ -334,7 +336,7 @@ fn run(cli: Cli) -> Result<u8, String> {
             Ok(0)
         }
         Command::Agent(args) => {
-            ensure_supported_write_version(&args.root)?;
+            ensure_supported_root_version(&args.root)?;
             let target = match args.target {
                 AgentTargetArg::Agents => AgentTarget::Agents,
                 AgentTargetArg::Skill => AgentTarget::Skill,
@@ -366,6 +368,15 @@ fn run(cli: Cli) -> Result<u8, String> {
 
 fn ensure_supported_write_version(root: &Path) -> Result<okf_core::ParsedBundle, String> {
     let bundle = parse_bundle(load_bundle(root)?);
+    ensure_supported_version(&bundle)?;
+    Ok(bundle)
+}
+
+fn ensure_supported_root_version(root: &Path) -> Result<(), String> {
+    ensure_supported_version(&parse_bundle(load_root_index(root)?))
+}
+
+fn ensure_supported_version(bundle: &okf_core::ParsedBundle) -> Result<(), String> {
     if let Some(failure) = bundle
         .failures
         .iter()
@@ -381,13 +392,13 @@ fn ensure_supported_write_version(root: &Path) -> Result<okf_core::ParsedBundle,
         .iter()
         .find(|document| document.source.bundle_path.replace('\\', "/") == "index.md")
     else {
-        return Ok(bundle);
+        return Ok(());
     };
     let Some(frontmatter) = &index.frontmatter else {
-        return Ok(bundle);
+        return Ok(());
     };
     let Some(raw_version) = frontmatter.raw.get("okf_version") else {
-        return Ok(bundle);
+        return Ok(());
     };
     let Some(version) = &index.okf_version else {
         return Err(format!(
@@ -395,7 +406,7 @@ fn ensure_supported_write_version(root: &Path) -> Result<okf_core::ParsedBundle,
         ));
     };
     if matches!(version.as_str(), "0.1" | "0.2") || is_future_minor_version(version) {
-        return Ok(bundle);
+        return Ok(());
     }
     Err(format!(
         "write refused because the bundle declares unsupported OKF version {version:?}"
@@ -433,7 +444,7 @@ fn run_write(
     };
     if should_apply {
         if revalidate_version_before_apply {
-            ensure_supported_write_version(&root)?;
+            ensure_supported_root_version(&root)?;
         }
         apply_plan(&root, &plan)?;
     }

@@ -196,7 +196,12 @@ pub fn dispatch_json(request_json: &str) -> String {
         }
         CoreRequest::RenderConcept(input) => CoreResponse::success(concept_template_file(&input)),
         CoreRequest::RenderIndexes(input) => {
-            let bundle = parse_bundle(input.bundle);
+            let mut bundle = parse_bundle(input.bundle);
+            if matches!(input.mode, IndexMode::Missing) {
+                // The ABI mirrors the TypeScript renderer, which plans against an empty
+                // existing-index set and leaves collision/merge handling to its caller.
+                bundle.reserved_documents.clear();
+            }
             CoreResponse::success(index_files(&bundle, input.mode))
         }
         CoreRequest::RenderAgent(input) => {

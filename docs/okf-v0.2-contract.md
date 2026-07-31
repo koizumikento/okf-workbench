@@ -32,6 +32,9 @@ opening, validating, editing, or indexing a v0.1 bundle.
 - A valid legacy `timestamp` becomes `generated.at` only when `generated` is absent.
 - Anchored or multiline target scalars are left for manual follow-up so aliases and complete YAML
   nodes cannot be damaged.
+- Manual follow-up results carry a bounded user-visible document path and a stable timestamp or
+  Citations reason; a zero-change result is not presented as already migrated while any such result
+  remains.
 - Simple URL bullets under `# Citations` may produce `sources`, while the original Citations body
   remains unchanged. Named links, prose, empty sections, and other ambiguous forms are reported for
   manual follow-up; indented code is never treated as a citation bullet.

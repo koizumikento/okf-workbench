@@ -237,6 +237,13 @@ describe('OKF v0.2 migration', () => {
         .filter(({ relativePath }) => relativePath !== 'index.md')
         .every(({ manualFollowUp, changed }) => manualFollowUp && !changed),
     ).toBe(true);
+    expect(
+      plan.documents
+        .filter(({ relativePath }) => relativePath !== 'index.md')
+        .every(({ manualReasons }) =>
+          manualReasons.includes('timestamp-requires-manual-migration'),
+        ),
+    ).toBe(true);
   });
 
   it('does not convert indented code or a non-ATX Citations# heading', () => {
@@ -269,6 +276,44 @@ describe('OKF v0.2 migration', () => {
             '',
           ].join('\n'),
         ],
+        [
+          'tabbed.md',
+          [
+            '---',
+            'type: Reference',
+            '---',
+            '# Citations',
+            '',
+            '\t- https://example.com/tab-code',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'three-space-tab.md',
+          [
+            '---',
+            'type: Reference',
+            '---',
+            '# Citations',
+            '',
+            '   \t- https://example.com/tab-code',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'indented-fence-close.md',
+          [
+            '---',
+            'type: Reference',
+            '---',
+            '```md',
+            '    ```',
+            '# Citations',
+            '- https://example.com/not-a-source',
+            '```',
+            '',
+          ].join('\n'),
+        ],
       ]),
       actor: 'human:reviewer',
     });
@@ -278,6 +323,18 @@ describe('OKF v0.2 migration', () => {
     );
     expect(
       plan.documents.find(({ relativePath }) => relativePath === 'not-heading.md'),
+    ).toMatchObject({ manualFollowUp: false, citationCandidates: [] });
+    for (const relativePath of ['tabbed.md', 'three-space-tab.md']) {
+      expect(
+        plan.documents.find((document) => document.relativePath === relativePath),
+      ).toMatchObject({
+        manualFollowUp: true,
+        manualReasons: ['citations-require-manual-review'],
+        citationCandidates: [],
+      });
+    }
+    expect(
+      plan.documents.find(({ relativePath }) => relativePath === 'indented-fence-close.md'),
     ).toMatchObject({ manualFollowUp: false, citationCandidates: [] });
   });
 });

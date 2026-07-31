@@ -17,6 +17,7 @@ pub struct MigrationDocumentResult {
     pub relative_path: String,
     pub changed: bool,
     pub manual_follow_up: bool,
+    pub manual_reasons: Vec<String>,
     pub actions: Vec<String>,
     pub citation_candidates: Vec<String>,
 }
@@ -102,6 +103,7 @@ pub fn migrate_bundle(input: MigrationInput) -> Result<MigrationPlan, String> {
         relative_path: "index.md".to_owned(),
         changed: !root_actions.is_empty(),
         manual_follow_up: false,
+        manual_reasons: Vec::new(),
         actions: root_actions,
         citation_candidates: Vec::new(),
     });
@@ -115,6 +117,7 @@ pub fn migrate_bundle(input: MigrationInput) -> Result<MigrationPlan, String> {
         let mut edits = Vec::new();
         let mut actions = Vec::new();
         let mut manual_follow_up = false;
+        let mut manual_reasons = Vec::new();
         let mut citation_candidates = Vec::new();
 
         if concept.frontmatter.raw.contains_key("timestamp")
@@ -140,9 +143,11 @@ pub fn migrate_bundle(input: MigrationInput) -> Result<MigrationPlan, String> {
                     actions.push("timestamp-to-generated".to_owned());
                 } else {
                     manual_follow_up = true;
+                    manual_reasons.push("timestamp-requires-manual-migration".to_owned());
                 }
             } else {
                 manual_follow_up = true;
+                manual_reasons.push("timestamp-requires-manual-migration".to_owned());
             }
         }
 
@@ -152,6 +157,7 @@ pub fn migrate_bundle(input: MigrationInput) -> Result<MigrationPlan, String> {
             citation_candidates.clone_from(&analysis.resources);
             if analysis.ambiguous || analysis.resources.is_empty() {
                 manual_follow_up = true;
+                manual_reasons.push("citations-require-manual-review".to_owned());
             } else {
                 let closing = frontmatter_closing_start(text)?;
                 let mut block = format!("sources:{line_ending}");
@@ -178,6 +184,7 @@ pub fn migrate_bundle(input: MigrationInput) -> Result<MigrationPlan, String> {
             relative_path: path.to_owned(),
             changed,
             manual_follow_up,
+            manual_reasons,
             actions,
             citation_candidates,
         });
@@ -404,11 +411,12 @@ fn analyze_citations(body: &str) -> Option<CitationAnalysis> {
     let mut seen = BTreeSet::new();
     let mut fence: Option<(char, usize)> = None;
     for raw_line in normalized.lines() {
-        let line = raw_line.trim_start_matches(' ');
-        let indent = raw_line.len().saturating_sub(line.len());
+        let (indent, line) = markdown_indent(raw_line);
         if let Some((marker, length)) = fence {
-            if fence_run(line, marker)
-                .is_some_and(|run| run >= length && line[run..].chars().all(char::is_whitespace))
+            if indent <= 3
+                && fence_run(line, marker).is_some_and(|run| {
+                    run >= length && line[run..].chars().all(char::is_whitespace)
+                })
             {
                 fence = None;
             }
@@ -464,6 +472,23 @@ fn analyze_citations(body: &str) -> Option<CitationAnalysis> {
         resources,
         ambiguous,
     })
+}
+
+fn markdown_indent(line: &str) -> (usize, &str) {
+    let mut columns = 0usize;
+    let mut offset = 0usize;
+    for (index, character) in line.char_indices() {
+        match character {
+            ' ' => columns += 1,
+            '\t' => columns += 4 - columns % 4,
+            _ => {
+                offset = index;
+                return (columns, &line[offset..]);
+            }
+        }
+        offset = index + character.len_utf8();
+    }
+    (columns, &line[offset..])
 }
 
 fn atx_heading_title(rest: &str) -> &str {
@@ -767,7 +792,13 @@ mod tests {
                 .documents
                 .iter()
                 .filter(|document| document.relative_path != "index.md")
-                .all(|document| document.manual_follow_up && !document.changed)
+                .all(|document| {
+                    document.manual_follow_up
+                        && !document.changed
+                        && document
+                            .manual_reasons
+                            .contains(&"timestamp-requires-manual-migration".to_owned())
+                })
         );
     }
 
@@ -783,6 +814,18 @@ mod tests {
                 "not-heading.md",
                 "---\ntype: Reference\n---\n# Citations#\n\n- https://example.com/not-a-citation\n",
             ),
+            (
+                "tabbed.md",
+                "---\ntype: Reference\n---\n# Citations\n\n\t- https://example.com/tab-code\n",
+            ),
+            (
+                "three-space-tab.md",
+                "---\ntype: Reference\n---\n# Citations\n\n   \t- https://example.com/tab-code\n",
+            ),
+            (
+                "indented-fence-close.md",
+                "---\ntype: Reference\n---\n```md\n    ```\n# Citations\n- https://example.com/not-a-source\n```\n",
+            ),
         ]);
         assert_eq!(plan.files.len(), 1);
         let indented = plan
@@ -792,6 +835,15 @@ mod tests {
             .unwrap();
         assert!(indented.manual_follow_up);
         assert!(indented.citation_candidates.is_empty());
+        for path in ["tabbed.md", "three-space-tab.md"] {
+            let document = plan
+                .documents
+                .iter()
+                .find(|document| document.relative_path == path)
+                .unwrap();
+            assert!(document.manual_follow_up);
+            assert!(document.citation_candidates.is_empty());
+        }
         let not_heading = plan
             .documents
             .iter()
@@ -799,5 +851,12 @@ mod tests {
             .unwrap();
         assert!(!not_heading.manual_follow_up);
         assert!(not_heading.citation_candidates.is_empty());
+        let fenced = plan
+            .documents
+            .iter()
+            .find(|document| document.relative_path == "indented-fence-close.md")
+            .unwrap();
+        assert!(!fenced.manual_follow_up);
+        assert!(fenced.citation_candidates.is_empty());
     }
 }

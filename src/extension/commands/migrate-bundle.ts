@@ -29,6 +29,41 @@ function actorProblem(value: string): string | undefined {
   return isValidActor(value) ? undefined : 'Use human:<id>, process:<id>, or <producer>/<version>.';
 }
 
+function boundedManualPath(value: string): string {
+  const limit = 160;
+  if (value.length <= limit) return value;
+  let retained = '';
+  for (const character of value) {
+    if (retained.length + character.length >= limit) break;
+    retained += character;
+  }
+  return `${retained}…`;
+}
+
+function manualReasonLabel(reason: string): string {
+  return reason === 'timestamp-requires-manual-migration'
+    ? 'timestamp needs manual migration'
+    : 'Citations need manual review';
+}
+
+function manualFollowUpDetails(
+  documents: readonly {
+    readonly relativePath: string;
+    readonly manualReasons: readonly string[];
+  }[],
+): readonly string[] {
+  const retained = documents
+    .slice(0, 8)
+    .map(
+      (document) =>
+        `${boundedManualPath(document.relativePath)}: ${document.manualReasons
+          .map(manualReasonLabel)
+          .join(', ')}`,
+    );
+  const omitted = documents.length - retained.length;
+  return omitted > 0 ? [...retained, `…and ${String(omitted)} more document(s)`] : retained;
+}
+
 export function createMigrateBundleCommand<TUri>(
   dependencies: MigrateBundleCommandDependencies<TUri>,
   admittedLease?: ProposalWorkflowLease,
@@ -146,11 +181,14 @@ export function createMigrateBundleCommand<TUri>(
           return { kind: 'refused', problems };
         }
 
-        const manualCount = plan.documents.filter((document) => document.manualFollowUp).length;
+        const manualDocuments = plan.documents.filter((document) => document.manualFollowUp);
+        const manualCount = manualDocuments.length;
+        const manualDetails = manualFollowUpDetails(manualDocuments);
+        const manualDetailsText = manualDetails.map((detail) => `\n- ${detail}`).join('');
         if (plan.files.length === 0) {
           await (manualCount > 0
             ? dependencies.ui.showWarning(
-                `No automatic migration changes are available. ${String(manualCount)} document(s) need manual follow-up; their Citations content was retained.`,
+                `No automatic migration changes are available. ${String(manualCount)} document(s) need manual follow-up:${manualDetailsText}`,
               )
             : dependencies.ui.showInformation(
                 'This bundle is already at OKF v0.2 and needs no deterministic migration changes.',
@@ -159,7 +197,7 @@ export function createMigrateBundleCommand<TUri>(
         }
         if (manualCount > 0) {
           await dependencies.ui.showWarning(
-            `${String(manualCount)} document(s) contain ambiguous legacy fields or Citations and will need manual follow-up. Their content will not be removed.`,
+            `${String(manualCount)} document(s) need manual follow-up; their content will not be removed:${manualDetailsText}`,
           );
         }
 
@@ -185,6 +223,7 @@ export function createMigrateBundleCommand<TUri>(
               `Producer: ${actor}`,
               `Automatic changes: ${String(plan.files.length)}`,
               `Manual follow-up: ${String(manualCount)}`,
+              ...manualDetails.map((detail) => `Manual: ${detail}`),
             ],
           },
           revalidateBundleWrite === undefined

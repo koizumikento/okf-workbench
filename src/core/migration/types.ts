@@ -10,6 +10,9 @@ export interface MigrationDocumentResult {
   readonly relativePath: string;
   readonly changed: boolean;
   readonly manualFollowUp: boolean;
+  readonly manualReasons: readonly (
+    'timestamp-requires-manual-migration' | 'citations-require-manual-review'
+  )[];
   readonly actions: readonly string[];
   readonly citationCandidates: readonly string[];
 }

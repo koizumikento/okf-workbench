@@ -90,6 +90,7 @@ export function planMigration(input: MigrationInput): MigrationPlan {
     relativePath: 'index.md',
     changed: rootActions.length > 0,
     manualFollowUp: false,
+    manualReasons: [],
     actions: rootActions,
     citationCandidates: [],
   });
@@ -101,6 +102,7 @@ export function planMigration(input: MigrationInput): MigrationPlan {
     const edits: Edit[] = [];
     const actions: string[] = [];
     let manualFollowUp = false;
+    const manualReasons: MigrationDocumentResult['manualReasons'][number][] = [];
     let citationCandidates: readonly string[] = [];
 
     if (
@@ -111,6 +113,7 @@ export function planMigration(input: MigrationInput): MigrationPlan {
         const range = simpleFieldRange(text, concept.frontmatter, 'timestamp');
         if (range === undefined) {
           manualFollowUp = true;
+          manualReasons.push('timestamp-requires-manual-migration');
         } else {
           const field = text.slice(range.start, range.end);
           edits.push({
@@ -122,6 +125,7 @@ export function planMigration(input: MigrationInput): MigrationPlan {
         }
       } else {
         manualFollowUp = true;
+        manualReasons.push('timestamp-requires-manual-migration');
       }
     }
 
@@ -131,6 +135,7 @@ export function planMigration(input: MigrationInput): MigrationPlan {
         citationCandidates = analysis.resources;
         if (analysis.ambiguous || analysis.resources.length === 0) {
           manualFollowUp = true;
+          manualReasons.push('citations-require-manual-review');
         } else {
           const closing = frontmatterClosingStart(text);
           const block = `sources:${eol}${analysis.resources
@@ -148,6 +153,7 @@ export function planMigration(input: MigrationInput): MigrationPlan {
       relativePath: path,
       changed,
       manualFollowUp,
+      manualReasons,
       actions,
       citationCandidates,
     });
@@ -267,12 +273,15 @@ function analyzeCitations(body: string): CitationAnalysis | undefined {
   const seen = new Set<string>();
   let fence: { readonly marker: '`' | '~'; readonly length: number } | undefined;
   for (const rawLine of normalized.split('\n')) {
-    const line = rawLine.replace(/^ {0,3}/u, '');
+    const { columns: indent, content: line } = markdownIndent(rawLine);
     if (fence !== undefined) {
       const run = line.match(fence.marker === '`' ? /^`+/u : /^~+/u)?.[0] ?? '';
-      if (run.length >= fence.length && line.slice(run.length).trim().length === 0) {
+      if (indent <= 3 && run.length >= fence.length && line.slice(run.length).trim().length === 0) {
         fence = undefined;
       }
+      continue;
+    }
+    if (indent > 3) {
       continue;
     }
     const opening = /^(`{3,}|~{3,})(.*)$/u.exec(line);
@@ -296,7 +305,6 @@ function analyzeCitations(body: string): CitationAnalysis | undefined {
       continue;
     }
     if (!inCitations || line.trim().length === 0) continue;
-    if (rawLine.startsWith('    ')) continue;
     const candidate = /^(?:-|\*) (.+)$/u.exec(line.trim())?.[1];
     if (candidate !== undefined && isSimpleUrl(candidate)) {
       if (!seen.has(candidate)) {
@@ -308,6 +316,23 @@ function analyzeCitations(body: string): CitationAnalysis | undefined {
     }
   }
   return found ? { resources, ambiguous } : undefined;
+}
+
+function markdownIndent(line: string): { readonly columns: number; readonly content: string } {
+  let columns = 0;
+  let offset = 0;
+  while (offset < line.length) {
+    const character = line[offset];
+    if (character === ' ') {
+      columns += 1;
+    } else if (character === '\t') {
+      columns += 4 - (columns % 4);
+    } else {
+      break;
+    }
+    offset += 1;
+  }
+  return { columns, content: line.slice(offset) };
 }
 
 function isSimpleUrl(value: string): boolean {

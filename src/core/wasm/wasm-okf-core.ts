@@ -400,9 +400,23 @@ export function decodeMigrationPlanResult(value: unknown): MigrationPlan {
   }
   const files = value['files'];
   const documents = value['documents'];
+  const filePaths = new Set(files.map((file) => file.relativePath));
+  const changedDocuments = documents.filter((document) => document.changed);
+  const rootDocument = documents.find((document) => document.relativePath === 'index.md');
   if (
-    new Set(files.map((file) => file.relativePath)).size !== files.length ||
+    filePaths.size !== files.length ||
     new Set(documents.map((document) => document.relativePath)).size !== documents.length ||
+    changedDocuments.length !== files.length ||
+    changedDocuments.some((document) => !filePaths.has(document.relativePath)) ||
+    documents.some(
+      (document) =>
+        document.changed !== document.actions.length > 0 ||
+        document.manualFollowUp !== document.manualReasons.length > 0,
+    ) ||
+    (value['fromVersion'] === '0.1' &&
+      (!filePaths.has('index.md') ||
+        rootDocument?.changed !== true ||
+        !rootDocument.actions.includes('root-version-to-0.2'))) ||
     files.some(
       (file, index) =>
         file.relativePath.length === 0 ||
@@ -420,12 +434,20 @@ export function decodeMigrationPlanResult(value: unknown): MigrationPlan {
 function isMigrationDocumentResult(value: unknown): boolean {
   const actions = isObject(value) ? value['actions'] : undefined;
   const citations = isObject(value) ? value['citationCandidates'] : undefined;
+  const manualReasons = isObject(value) ? value['manualReasons'] : undefined;
   return (
     isObject(value) &&
     typeof value['relativePath'] === 'string' &&
     value['relativePath'].length > 0 &&
     typeof value['changed'] === 'boolean' &&
     typeof value['manualFollowUp'] === 'boolean' &&
+    Array.isArray(manualReasons) &&
+    manualReasons.every(
+      (reason) =>
+        reason === 'timestamp-requires-manual-migration' ||
+        reason === 'citations-require-manual-review',
+    ) &&
+    new Set(manualReasons).size === manualReasons.length &&
     Array.isArray(actions) &&
     actions.every(
       (action) =>

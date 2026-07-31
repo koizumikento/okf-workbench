@@ -145,6 +145,38 @@ describe('authoring command handlers', () => {
     );
   });
 
+  it('reports bounded manual migration paths and reasons when no automatic change is safe', async () => {
+    const { port, ui, previewer, shared } = harness();
+    port.putText(
+      `${bundleRoot}/index.md`,
+      ['---', 'okf_version: "0.2"', '---', '# Root', ''].join('\n'),
+    );
+    port.putText(
+      `${bundleRoot}/anchored.md`,
+      [
+        '---',
+        'type: Reference',
+        'timestamp: &when "2026-07-22T10:00:00Z"',
+        'producer_time: *when',
+        '---',
+        '# Anchored',
+        '',
+      ].join('\n'),
+    );
+    ui.inputs.push('human:reviewer');
+    const command = createMigrateBundleCommand({
+      ...shared,
+      selectBundle: async () => writableBundleSelection,
+    });
+
+    await expect(command()).resolves.toEqual({ kind: 'unchanged' });
+
+    expect(previewer.shown).toEqual([]);
+    expect(ui.warnings).toHaveLength(1);
+    expect(ui.warnings[0]).toContain('anchored.md');
+    expect(ui.warnings[0]).toContain('timestamp needs manual migration');
+  });
+
   it('invalidates an active migration preview when its workspace folder is removed', async () => {
     const { port, ui, previewer, shared } = harness();
     const legacyPath = `${bundleRoot}/legacy.md`;

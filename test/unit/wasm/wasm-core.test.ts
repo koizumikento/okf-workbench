@@ -769,8 +769,11 @@ describe('Rust/Wasm core boundary', () => {
       ['literal-nel-structural-colon.md', 'custom:\u0085value\n'],
       ['literal-nel-structural-key.md', 'custom\u0085:value\n'],
       ['literal-nel-plain-scalar-colon.md', 'custom: prefix:\u0085suffix\n'],
+      ['literal-nel-plain-scalar-before-colon.md', 'custom: prefix\u0085:suffix\n'],
       ['literal-nel-plain-key.md', 'custom\u0085: value\n'],
       ['literal-nel-flow-plain-scalar-colon.md', 'outer: [prefix:\u0085suffix]\n'],
+      ['literal-nel-flow-plain-scalar-before-colon.md', 'outer: [prefix\u0085:suffix]\n'],
+      ['literal-nel-flow-map-key-before-colon.md', 'custom: {prefix\u0085:suffix}\n'],
       [
         'tagged-block-scalar-shallow-comment.md',
         'custom: !!str |-\n  one\n # between\nnext: value\n',

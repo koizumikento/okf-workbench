@@ -2189,6 +2189,7 @@ fn invalid_structural_literal_nel_range(source: &str) -> Option<(usize, usize)> 
                 }
                 '\u{0085}'
                     if block_mapping_line
+                        && mapping_colon.is_none()
                         && body[offset + character.len_utf8()..].starts_with(':')
                         && !body[offset + character.len_utf8() + 1..]
                             .starts_with(char::is_whitespace) =>

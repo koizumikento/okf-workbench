@@ -1,7 +1,7 @@
 # Security, Privacy, and Dependency Release Evidence
 
-- Status: **Historical `v0.1.0` release record; current OKF-v0.2 source candidate pending fresh
-  headed and packaged qualification**
+- Status: **Historical `v0.1.0` release record; current OKF-v0.2 source candidate has fresh headed
+  qualification and remains pending fresh packaged qualification**
 - Historical release review: 2026-07-27
 - Current-candidate binding reconciled: 2026-08-03
 - Scope: STR-214 release preflight and publication record for `v0.1.0`, plus retained predecessor
@@ -10,10 +10,10 @@
 - Decision controls: remediated candidates `LIC-01`, `CI-01`, and `HOST-01`; maintainer-approved
   `PG-01`; maintainer-accepted bounded residuals under `PG-02`; and fail-closed live validation for
   `PG-04` for `v0.1.0`. The packaged read/untrusted-refusal observations below remain bound to
-  their named historical revisions. Strict re-evaluation shows the retained schema-v3 headed
-  Webview record does not match the current Rust/Wasm source candidate; fresh headed performance,
-  network, packaged lifecycle, trusted write-command, and interactive editor observations remain
-  open for that candidate.
+  their named historical revisions. The fresh versioned schema-v3 headed Webview record binds the
+  current `0.3.0` identities and passes strict performance and network evaluation; packaged
+  lifecycle, trusted write-command, and broader interactive editor observations remain open for
+  that candidate.
 
 This is a bounded release preflight, not a claim that OKF Workbench is secure, compliant, certified, penetration-tested, or legally cleared. Local repository evidence, command output, browser-harness evidence, hosted settings, and human approval are kept separate.
 
@@ -239,7 +239,7 @@ when compatible patched dependency paths become available.
 | `LIC-01` | Artifact/license | The extension lacked a maintainer-approved project license. | The maintainer selected MIT on 2026-07-23; the manifest, lockfile, and root `LICENSE` agree, the final candidate passed the packaged license gate, all downloaded hosted VSIX files were byte-identical to it, and the maintainer approved the third-party inventory for publication on 2026-07-27. | remediated | Re-review notices when the production dependency graph changes. |
 | `CI-01` | CI/CD | Workflow actions are not immutable. | All workflow action references are pinned to reviewed full commit SHAs; static workflow checks reject mutable references. | remediated | Re-review action updates; no current finding. |
 | `CSP-01` | Webview | Workspace content can relax CSP or execute inline code. | HTML is a static shell, the nonce is random base64url, content is not interpolated, and the policy has `default-src 'none'`, nonce-only scripts, and `connect-src 'none'`. Tests pass. | suppressed | No finding. |
-| `NET-01` | Privacy/network | A core workflow sends bundle content to a remote service. | First-party source contains no network API or remote runtime URL; there is no runtime HTTP client; Chromium interception observed zero fetch calls. The retained schema-v3 headed VS Code `1.129.1` Webview record used the strict pre-navigation CDP envelope and observed zero remote HTTP(S)/WS requests for its recorded predecessor identities, but strict re-evaluation shows those identities do not match the current Rust/Wasm source candidate. The historical `v0.1.0` seven-lane packaged captures recorded zero calls through the acceptance driver's listed CommonJS builtin export-owner/global hooks during activation and request-correlated Validate/Open completion, retained the hooks until Extension Host exit, and refused all four write commands in untrusted workspaces. `3d-force-graph` receives in-memory `graphData`, and CSP denies connections. | suppressed for the named predecessor revisions only | Fresh current-candidate headed Webview, packaged lifecycle, and trusted write-command observation remain under `PG-02`. |
+| `NET-01` | Privacy/network | A core workflow sends bundle content to a remote service. | First-party source contains no network API or remote runtime URL; there is no runtime HTTP client; Chromium interception observed zero fetch calls. The current-candidate schema-v3 headed VS Code `1.129.1` Webview record used the strict pre-navigation CDP envelope and observed zero remote HTTP(S)/WS requests for its exact `0.3.0` identities. The historical `v0.1.0` seven-lane packaged captures recorded zero calls through the acceptance driver's listed CommonJS builtin export-owner/global hooks during activation and request-correlated Validate/Open completion, retained the hooks until Extension Host exit, and refused all four write commands in untrusted workspaces. `3d-force-graph` receives in-memory `graphData`, and CSP denies connections. | suppressed for the current headed and named predecessor packaged revisions | Fresh current-candidate packaged lifecycle and trusted write-command observation remain under `PG-02`. |
 | `XSS-01` | Webview/DOM | Metadata or link text reaches an executable HTML sink. | First-party Webview uses `textContent`, DOM creation, and `replaceChildren`; source scan finds no unsafe sink; hostile browser test passes. | suppressed | No finding. |
 | `PROTO-01` | Message boundary | A Webview can supply a privileged URI or malformed graph. | Strict decoders reject unknown keys, stale revisions, bad references, and source URI fields. Host maps current node IDs to private URI objects. | suppressed | No finding. |
 | `NAV-01` | Message boundary | A navigation-provider error becomes an unhandled promise rejection. | Controller catches navigator rejection, reports only the error type through the configured observer, and returns `rejected`; listener-path regression test passes. | suppressed | No finding after remediation. |
@@ -341,11 +341,12 @@ when compatible patched dependency paths become available.
 - Scope limit: the JavaScript hooks mutate listed CommonJS builtin export-owner properties and available globals; they are not operating-system isolation. They do not observe ESM named bindings, cached references, prototype or raw bindings, `dns.promises`, child processes, editor-owned traffic, or Webview traffic. The current and older headed Webview results are separate candidate-bound observations. Each observation closes its named surface only for the recorded production/input identities or exact VSIX bytes and editor/OS lanes. Any future runtime dependency, CSP change, editor family, packaged-content change, or evidence-contract change requires the applicable checks again.
 - Current harness semantics: active-phase reports inventory every installed hook, keeps the hooks installed until Extension Host exit, and fails closed on malformed evidence. The persisted attempt list ends at report creation; the still-installed hooks deny later tail calls but cannot amend that file. Post-uninstall reports explicitly set network attempts and quiescence to `null` with observer status `not-installed`; that phase verifies extension API absence only. The retained `v0.1.0` run contains these stricter fields; older records do not gain them retroactively.
 - Owner: release tester / security reviewer.
-- Disposition: **the named predecessor packaged activation/read/untrusted-refusal boundaries
-  passed; current-candidate headed Webview, packaged lifecycle, and trusted write-command
-  observations remain open**. The
-  VS Code `1.129.1` pre-navigation CDP record is retained at
-  `docs/evidence/performance/vscode-1.129.1.{json,md}` for its predecessor identities. The
+- Disposition: **the current-candidate headed Webview and named predecessor packaged
+  activation/read/untrusted-refusal boundaries passed; current-candidate packaged lifecycle and
+  trusted write-command observations remain open**. The current VS Code `1.129.1` pre-navigation
+  CDP record is retained at `docs/evidence/performance/vscode-1.129.1-0.3.0.{json,md}` for its
+  exact `0.3.0` identities. The predecessor record remains at
+  `docs/evidence/performance/vscode-1.129.1.{json,md}` for its `0.2.1` identities. The
   historical `v0.1.0` packaged run supplies request-correlated completion and host-exit-lifetime hook evidence, but it
   does not execute the trusted write-command workflows under those hooks.
 - Release decision: on 2026-07-27, the maintainer accepted these bounded residuals for the initial

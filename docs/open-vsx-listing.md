@@ -88,11 +88,11 @@ synchronization tools, and external agents are outside the extension's bundle-pr
 The manifest targets VS Code-compatible desktop editors with API floor `^1.121.0`. Compatibility
 is specific to the editor version, operating system, and exact extension package; the API floor is
 not a universal compatibility guarantee. A retained schema-v3 headed VS Code `1.129.1` capture for
-the predecessor `0.2.1` inputs recorded QR-002 at `677 ms` p95, `d3` as the QR-003 selection, and
-zero remote HTTP(S)/WS or other-scheme Webview requests on its recorded hardware. Strict
-re-evaluation rejects its input identities for the current Rust/Wasm source candidate. Retained VS
-Code `1.127.0` measurements are historical only. Fresh headed, hosted compatibility, and packaged
-lifecycle qualification remain pending for the exact release candidate.
+the exact `0.3.0` inputs records QR-002 at `862 ms` p95, selects `d3` for QR-003, and records zero
+remote HTTP(S)/WS or other-scheme Webview requests on its recorded hardware. Its versioned raw JSON
+and generated Markdown pass strict current-input evaluation. Retained VS Code `1.127.0`
+measurements are historical only. Fresh hosted compatibility and packaged lifecycle qualification
+remain pending for the exact release candidate.
 
 ### Future candidate approval requirements
 

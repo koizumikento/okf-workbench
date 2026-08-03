@@ -300,6 +300,17 @@ pub struct IdentityOnlyFailure {
     pub message: String,
 }
 
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvalidUtf16DocumentFields {
+    #[serde(default)]
+    pub uri: bool,
+    #[serde(default)]
+    pub bundle_path: bool,
+    #[serde(default)]
+    pub content_hash: bool,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BundleDocumentInput {
@@ -311,6 +322,8 @@ pub struct BundleDocumentInput {
     pub content_hash: Option<String>,
     #[serde(default)]
     pub identity_only_failure: Option<IdentityOnlyFailure>,
+    #[serde(default)]
+    pub invalid_utf16_fields: Option<InvalidUtf16DocumentFields>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -319,6 +332,8 @@ pub struct ParseBundleInput {
     pub root_uri: String,
     pub revision: u64,
     pub documents: Vec<BundleDocumentInput>,
+    #[serde(default)]
+    pub invalid_root_uri_utf16: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

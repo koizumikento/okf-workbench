@@ -536,13 +536,19 @@ fn is_windows_device_name(segment: &str) -> bool {
     let basename = segment
         .split_once('.')
         .map_or(segment, |(basename, _)| basename)
+        .trim_end_matches([' ', '.'])
         .to_ascii_uppercase();
-    matches!(basename.as_str(), "CON" | "PRN" | "AUX" | "NUL")
-        || ["COM", "LPT"].iter().any(|prefix| {
-            basename.strip_prefix(prefix).is_some_and(|suffix| {
-                matches!(suffix, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9")
-            })
+    matches!(
+        basename.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+    ) || ["COM", "LPT"].iter().any(|prefix| {
+        basename.strip_prefix(prefix).is_some_and(|suffix| {
+            matches!(
+                suffix,
+                "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+            )
         })
+    })
 }
 
 fn is_portable_generated_segment(segment: &str) -> bool {
@@ -1112,6 +1118,14 @@ mod tests {
             "CON.md",
             "aux.md",
             "COM1.md",
+            "COM¹.md",
+            "folder/lpt².txt",
+            "CONIN$.md",
+            "folder/conout$.txt",
+            "NUL .md",
+            "folder/AUX .txt.md",
+            "COM1 .md",
+            "folder/LPT9 .txt.md",
             "folder/name?.md",
             "folder/a|b.md",
             "folder/name%3F.md",

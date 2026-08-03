@@ -15,9 +15,9 @@
   Rust/Wasm migration and does not inherit these receipts; fresh Compatibility and package-smoke
   qualification is pending.
 - Latest retained schema-v3 headed Webview observation: a predecessor-bound `0.2.1` VS Code
-  `1.129.1` capture passed
-  QR-002 at `677 ms` p95 across 20 samples, QR-003 with `d3` selected, and the strict
-  zero-remote-request Webview network gate. The raw evidence SHA-256 is
+  `1.129.1` capture recorded QR-002 at `677 ms` p95 across 20 samples, `d3` as its QR-003 selection,
+  and zero remote HTTP(S)/WS or other-scheme Webview requests. The current strict evaluator exits
+  `2` because the record does not satisfy current-source binding checks. The raw evidence SHA-256 is
   `a8917c18c12c3ee8d00efa27254e6f5114779dc8a5f4589c62d015c128436eb6`.
 - Preserved predecessor-candidate local evidence: `docs/evidence/compatibility/`
 - The Activity Bar/sidebar implementation has current component/manifest coverage, retained predecessor hosted

@@ -67,13 +67,17 @@ function containsControlCharacter(value: string): boolean {
 
 function isWindowsDeviceName(segment: string): boolean {
   const dot = segment.indexOf('.');
-  const basename = (dot === -1 ? segment : segment.slice(0, dot)).toUpperCase();
+  const basename = (dot === -1 ? segment : segment.slice(0, dot))
+    .replace(/[ .]+$/u, '')
+    .toUpperCase();
   return (
     basename === 'CON' ||
     basename === 'PRN' ||
     basename === 'AUX' ||
     basename === 'NUL' ||
-    /^(?:COM|LPT)[1-9]$/u.test(basename)
+    basename === 'CONIN$' ||
+    basename === 'CONOUT$' ||
+    /^(?:COM|LPT)(?:[1-9]|¹|²|³)$/u.test(basename)
   );
 }
 

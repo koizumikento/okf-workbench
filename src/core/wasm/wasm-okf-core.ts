@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { GraphResourceLimitError } from '../graph/index.js';
-import type { JsonValue, ParseFailure } from '../model/index.js';
+import { hasUnpairedUtf16Surrogate, type JsonValue, type ParseFailure } from '../model/index.js';
 import type { ParseBundleInput } from '../parser/index.js';
 import type {
   BundleDirectoryInput,
@@ -167,52 +167,60 @@ export function createWasmOkfCore(bytes: Uint8Array): OkfCore {
 }
 
 function jsonBundleInput(input: ParseBundleInput): JsonValue {
+  const invalidRootUriUtf16 = hasUnpairedUtf16Surrogate(input.rootUri);
   return {
-    rootUri: input.rootUri,
+    rootUri: invalidRootUriUtf16 ? '<bundle-root-uri-invalid-unicode>' : input.rootUri,
     revision: input.revision,
+    ...(invalidRootUriUtf16 ? { invalidRootUriUtf16: true } : {}),
     documents: input.documents.map((document) => {
+      const invalidUri = hasUnpairedUtf16Surrogate(document.uri);
+      const invalidBundlePath = hasUnpairedUtf16Surrogate(document.bundlePath);
+      const invalidContentHash =
+        document.identityOnlyFailure === undefined &&
+        document.contentHash !== undefined &&
+        hasUnpairedUtf16Surrogate(document.contentHash);
+      const invalidUtf16Fields = {
+        uri: invalidUri,
+        bundlePath: invalidBundlePath,
+        contentHash: invalidContentHash,
+      };
+      const identity = {
+        uri: invalidUri ? '<provider-uri-invalid-unicode>' : document.uri,
+        bundlePath: invalidBundlePath ? '<provider-path-invalid-unicode>.md' : document.bundlePath,
+        ...(invalidUri || invalidBundlePath || invalidContentHash ? { invalidUtf16Fields } : {}),
+      };
       if (document.identityOnlyFailure !== undefined) {
         return {
-          uri: document.uri,
-          bundlePath: document.bundlePath,
-          identityOnlyFailure: document.identityOnlyFailure,
+          ...identity,
+          identityOnlyFailure: {
+            reason: document.identityOnlyFailure.reason,
+            message: hasUnpairedUtf16Surrogate(document.identityOnlyFailure.message)
+              ? 'Provider failure detail contains an unpaired UTF-16 surrogate.'
+              : document.identityOnlyFailure.message,
+          },
         };
       }
       if (typeof document.content === 'string' && hasUnpairedUtf16Surrogate(document.content)) {
         return {
-          uri: document.uri,
-          bundlePath: document.bundlePath,
+          ...identity,
           content: { invalidUtf16: true },
-          contentHash: document.contentHash ?? fallbackUtf16ContentHash(document.content),
+          ...(!invalidContentHash
+            ? {
+                contentHash: document.contentHash ?? fallbackUtf16ContentHash(document.content),
+              }
+            : {}),
         };
       }
       return {
-        uri: document.uri,
-        bundlePath: document.bundlePath,
+        ...identity,
         content:
           typeof document.content === 'string' ? document.content : Array.from(document.content),
-        ...(document.contentHash === undefined ? {} : { contentHash: document.contentHash }),
+        ...(document.contentHash === undefined || invalidContentHash
+          ? {}
+          : { contentHash: document.contentHash }),
       };
     }),
   };
-}
-
-function hasUnpairedUtf16Surrogate(text: string): boolean {
-  for (let offset = 0; offset < text.length; offset += 1) {
-    const codeUnit = text.charCodeAt(offset);
-    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
-      const next = text.charCodeAt(offset + 1);
-      if (next >= 0xdc00 && next <= 0xdfff) {
-        offset += 1;
-        continue;
-      }
-      return true;
-    }
-    if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
-      return true;
-    }
-  }
-  return false;
 }
 
 function fallbackUtf16ContentHash(text: string): string {

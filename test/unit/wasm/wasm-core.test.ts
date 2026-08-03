@@ -18,7 +18,7 @@ import {
   renderBundlePreset,
   renderConceptTemplate,
 } from '../../../src/core/templates/index.js';
-import { OKF_SEMANTIC_LIMITS } from '../../../src/core/model/index.js';
+import { OKF_SEMANTIC_LIMITS, type ParseFailure } from '../../../src/core/model/index.js';
 import type { ParseBundleInput } from '../../../src/core/parser/index.js';
 import { loadFixture, readFixtureFiles } from '../../helpers/fixtures.js';
 
@@ -285,6 +285,14 @@ describe('Rust/Wasm core boundary', () => {
       'CON.md',
       'aux.md',
       'COM1.md',
+      'COM¹.md',
+      'folder/lpt².txt',
+      'CONIN$.md',
+      'folder/conout$.txt',
+      'NUL .md',
+      'folder/AUX .txt.md',
+      'COM1 .md',
+      'folder/LPT9 .txt.md',
       'folder/name?.md',
       'folder/a|b.md',
       'folder/name%3F.md',
@@ -586,6 +594,131 @@ describe('Rust/Wasm core boundary', () => {
     ]);
   });
 
+  test('isolates every unpaired-surrogate document identity field at document scope', () => {
+    const rootUri = 'fixture:/invalid-unicode-identities';
+    const sibling = {
+      uri: `${rootUri}/sibling.md`,
+      bundlePath: 'sibling.md',
+      content: concept('# Sibling\n'),
+    } as const;
+    const cases = [
+      {
+        name: 'source URI',
+        input: {
+          rootUri,
+          revision: 7,
+          documents: [
+            {
+              uri: `${rootUri}/\uD800/invalid.md`,
+              bundlePath: 'invalid.md',
+              content: concept('# Invalid URI\n'),
+            },
+            sibling,
+          ],
+        },
+        failure: {
+          uri: '<provider-uri-invalid-unicode>',
+          bundlePath: 'invalid.md',
+          message: 'Source URI contains an unpaired UTF-16 surrogate.',
+        },
+      },
+      {
+        name: 'bundle path',
+        input: {
+          rootUri,
+          revision: 7,
+          documents: [
+            {
+              uri: `${rootUri}/invalid.md`,
+              bundlePath: 'invalid\uD800.md',
+              content: concept('# Invalid path\n'),
+            },
+            sibling,
+          ],
+        },
+        failure: {
+          uri: `${rootUri}/invalid.md`,
+          bundlePath: '<provider-path-invalid-unicode>',
+          message: 'Provider-relative path contains an unpaired UTF-16 surrogate.',
+        },
+      },
+      {
+        name: 'content hash',
+        input: {
+          rootUri,
+          revision: 7,
+          documents: [
+            {
+              uri: `${rootUri}/invalid.md`,
+              bundlePath: 'invalid.md',
+              content: concept('# Invalid hash\n'),
+              contentHash: 'hash-\uD800',
+            },
+            sibling,
+          ],
+        },
+        failure: {
+          uri: `${rootUri}/invalid.md`,
+          bundlePath: 'invalid.md',
+          message:
+            'Content identity contains an unpaired UTF-16 surrogate. Refresh the bundle from a conforming provider, then retry.',
+        },
+      },
+      {
+        name: 'provider failure detail',
+        input: {
+          rootUri,
+          revision: 7,
+          documents: [
+            {
+              uri: `${rootUri}/invalid.md`,
+              bundlePath: 'invalid.md',
+              identityOnlyFailure: {
+                reason: 'resource-limit' as const,
+                message: 'Provider detail \uD800',
+              },
+            },
+            sibling,
+          ],
+        },
+        failure: {
+          uri: `${rootUri}/invalid.md`,
+          bundlePath: 'invalid.md',
+          message: 'Provider failure detail contains an unpaired UTF-16 surrogate.',
+        },
+      },
+    ] as const;
+
+    for (const item of cases) {
+      const actual = core.inspect(item.input, '2026-07-22T12:00:00Z');
+      expect(actual, item.name).toEqual(
+        typescriptOkfCore.inspect(item.input, '2026-07-22T12:00:00Z'),
+      );
+      expect(
+        actual.bundle.concepts.some(({ id }) => id === 'sibling'),
+        item.name,
+      ).toBe(true);
+      expect(actual.bundle.failures, item.name).toMatchObject([
+        { ...item.failure, reason: 'resource-limit', scope: 'document' },
+      ]);
+      expect(JSON.stringify(actual), item.name).not.toContain('\\ud800');
+    }
+  });
+
+  test('rejects an unpaired-surrogate bundle root before crossing the Wasm boundary', () => {
+    const input = inputFor(
+      [['sibling.md', concept('# Sibling\n')]],
+      'fixture:/invalid-root-\uD800',
+    );
+
+    for (const candidate of [core, typescriptOkfCore]) {
+      expect(() => candidate.inspect(input, '2026-07-22T12:00:00Z')).toThrowError(
+        new GraphResourceLimitError('A bundle-scoped resource failure prevents graph publication.'),
+      );
+    }
+    expect(core.renderIndexes(input, 'all')).toEqual(typescriptOkfCore.renderIndexes(input, 'all'));
+  });
+
   test('classifies encoded trailing separators after URL-path normalization', () => {
     const rootUri = 'fixture:/encoded-trailing-separators';
     const input = inputFor(
@@ -656,6 +789,21 @@ describe('Rust/Wasm core boundary', () => {
     const cases = [
       ['quoted-flow-shape.md', 'literal: "[|]"\n'],
       ['block-flow-shape.md', 'literal: |-\n  [|]\n'],
+      ['plain-flow-question-lookalike.md', 'custom: word [ ?x\n'],
+      ['plain-flow-colon-lookalike.md', 'custom: word [ :x\n'],
+      ['plain-flow-alias-lookalike.md', 'custom: word [ *x\n'],
+      ['plain-flow-tag-lookalike.md', 'custom: word [ !ostr\n'],
+      ['plain-flow-standard-tag-lookalike.md', 'custom: word [ !!set\n'],
+      ['plain-flow-unknown-tag-lookalike.md', 'custom: word [ !!foo\n'],
+      ['multiline-plain-flow-lookalike.md', 'custom: word [\n  ?x\n'],
+      ['deferred-plain-flow-lookalike.md', 'custom:\n  word [ *x\n'],
+      ['tagged-deferred-plain-flow-lookalike.md', 'custom: !!str\n  word [ !ostr\n'],
+      [
+        'flow-double-colon-plain-scalar.md',
+        'verified: { by: provider::region/model::v2, at: 2026-07-22T12:00:00Z }\n',
+      ],
+      ['tight-flow-sequence-value.md', 'custom: [a:[b]]\n'],
+      ['tight-flow-mapping-value.md', 'custom: [a:{b}]\n'],
       ['plain-fake-anchor.md', 'literal: prefix &a suffix\nbefore: *a\n'],
       ['quoted-fake-set.md', 'literal: "!!set { ? a: b }"\n'],
       ['escaped-quoted-fake-duplicate-set.md', 'literal: "x \\" y: !!set { ? x, ? x }"\n'],
@@ -1107,6 +1255,7 @@ describe('Rust/Wasm core boundary', () => {
         'custom: !!str # tag\n  &collection {child: value}\ncopy: *collection\n',
       ],
       ['empty-nested-mapping-field-range.md', 'outer:\n  empty:\nafter: value\n'],
+      ['terminal-empty-status-field-range.md', 'status:\n'],
       ['empty-explicit-timestamp.md', 'custom: !!timestamp\n'],
       ['empty-explicit-binary.md', 'custom: !!binary\n'],
       ['string-tagged-hex.md', 'custom: !!str 0xF\n'],
@@ -1137,6 +1286,7 @@ describe('Rust/Wasm core boundary', () => {
       ['integer-leading-zero-one.md', 'custom: !!int 01\n'],
       ['integer-positive-leading-zeroes.md', 'custom: !!int +0123\n'],
       ['integer-negative-leading-zeroes.md', 'custom: !!int -0123\n'],
+      ['large-radix-set-member.md', 'custom: !!set { ? 0x20000000000001 }\n'],
       ['null-semantic-flow-key-duplicate.md', 'custom: { ? !!null "" : one, ? null : two }\n'],
       ['duplicate-tag-empty-implicit-key.md', 'custom: !!map\n  !!str !!int : one\n'],
       ['block-scalar-flow-like-empty-key.md', 'custom: |-\n  - !!str : one\n'],
@@ -1553,6 +1703,45 @@ describe('Rust/Wasm core boundary', () => {
       ['empty-definition-label.md', `[]: ${'a'.repeat(2_049)}\n`],
       ['list-definition-target-limit.md', `- [d]: ${'a'.repeat(2_049)}\n`],
       ['reference-expansion-boundary.md', `${'[x]\n'.repeat(50)}\n[x]: ${'a'.repeat(2_048)}\n`],
+      [
+        'reference-title-expansion-boundary.md',
+        `${'[x]\n'.repeat(50)}\n[x]: x "${'t'.repeat(2_045)}"\n`,
+      ],
+      ['fenced-attention-lookalikes.md', `\`\`\`\n${'*a '.repeat(1_025)}\n\`\`\`\n`],
+      ['indented-attention-lookalikes.md', `    ${'*a '.repeat(1_025)}\n`],
+      ['inline-code-attention-lookalikes.md', `\`${'*a '.repeat(1_025)}\`\n`],
+      ['html-attention-lookalikes.md', `<div>\n${'*a '.repeat(1_025)}\n</div>\n`],
+      ['thematic-break-lookalike.md', `${'* '.repeat(65)}\n`],
+      [
+        'container-scoped-fence.md',
+        `> \`\`\`\n${Array.from({ length: 5_001 }, (_, index) => `[d${String(index)}]: x`).join('\n')}\n`,
+      ],
+      [
+        'invalid-backtick-fence-info.md',
+        `\`\`\` bad\`\n\n${Array.from({ length: 5_001 }, (_, index) => `[d${String(index)}]: x`).join('\n')}\n`,
+      ],
+      ['lazy-paragraph-definition-lookalike.md', `paragraph\n[${'x'.repeat(513)}]: t.md\n`],
+      ['lazy-quote-definition-lookalike.md', `> paragraph\n> [${'x'.repeat(513)}]: t.md\n`],
+      ['lazy-list-definition-lookalike.md', `- paragraph\n  [${'x'.repeat(513)}]: t.md\n`],
+      ['multiline-definition-title.md', `[d]: ${'x'.repeat(2_049)} "first\n second"\n`],
+      ['incomplete-div-html-block.md', `<div\n[${'x'.repeat(513)}]: t.md\n`],
+      ['incomplete-script-html-block.md', `<script\n[${'x'.repeat(513)}]: t.md\n`],
+      ['attention-work-limit.md', `${'*a*\n'.repeat(512)}${'x\n'.repeat(7_681)}`],
+      [
+        'label-closing-work-limit.md',
+        `${']'.repeat(2_896)}\n\n${']'.repeat(68)}\n\n${']'.repeat(13)}`,
+      ],
+      [
+        'container-continuation-work-limit.md',
+        `${'- '.repeat(64)}item\n${`${' '.repeat(128)}continued\n`.repeat(1_023)}`,
+      ],
+      ['image-candidate-limit.md', `${'![x]\n'.repeat(5_001)}\n[x]: i\n`],
+      ['c1-link-paths.md', '[one](a%C2%80.md)\n[two](a%C2%85.md)\n'],
+      ['ecmascript-c1-label-trim.md', `[\u0085${'x'.repeat(600)}](target.md)\n`],
+      ['ecmascript-bom-label-trim.md', `[\uFEFF${'x'.repeat(200)}\uFEFF](target.md)\n`],
+      ['dotless-reference-normalization.md', '[I]\n\n[ı]: target.md\n'],
+      ['dotted-reference-normalization.md', '[İ]\n\n[i]: target.md\n'],
+      ['nfc-reference-normalization.md', '[é]\n\n[e\u0301]: target.md\n'],
     ] as const;
     for (const [path, body] of cases) {
       const input = inputFor([[path, concept(body)]], `fixture:/markdown-parity/${path}`);
@@ -1624,6 +1813,7 @@ describe('Rust/Wasm core boundary', () => {
       ],
       ['recursive-alias-expansion.md', concept('', recursiveAliases(10, 2))],
       ['recursive-alias-repetition-limit.md', concept('', recursiveAliases(5, 5))],
+      ['self-recursive-alias.md', concept('', 'custom: &self [*self]\n')],
       [
         'alias-lookalikes.md',
         concept(
@@ -1678,6 +1868,20 @@ describe('Rust/Wasm core boundary', () => {
         typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'),
       );
     }
+    const radixAggregate = inputFor(
+      Array.from(
+        { length: 10 },
+        (_, index) =>
+          [
+            `radix-${String(index)}.md`,
+            concept('', `custom: !!set { ? 0x${'F'.repeat(59_000)} }\n`),
+          ] as const,
+      ),
+      'fixture:/yaml-resource-parity/radix-aggregate',
+    );
+    expect(core.inspect(radixAggregate, '2026-07-22T12:00:00Z')).toEqual(
+      typescriptOkfCore.inspect(radixAggregate, '2026-07-22T12:00:00Z'),
+    );
   });
 
   test('matches aggregate Markdown and YAML bundle work limits', () => {
@@ -1695,7 +1899,42 @@ describe('Rust/Wasm core boundary', () => {
       ]),
       'fixture:/aggregate-frontmatter-work',
     );
-    for (const input of [markdownInput, frontmatterInput]) {
+    const attentionInput = inputFor(
+      Array.from({ length: 5 }, (_, index) => [
+        `attention-${String(index)}.md`,
+        concept(`${'*a*\n'.repeat(512)}${'x\n'.repeat(7_680)}`),
+      ]),
+      'fixture:/aggregate-markdown-attention-work',
+    );
+    const containerInput = inputFor(
+      Array.from({ length: 5 }, (_, index) => [
+        `container-${String(index)}.md`,
+        concept(`${'- '.repeat(64)}item\n${`${' '.repeat(128)}continued\n`.repeat(1_022)}`),
+      ]),
+      'fixture:/aggregate-markdown-container-work',
+    );
+    const labelEndInput = inputFor(
+      Array.from({ length: 5 }, (_, index) => [
+        `label-end-${String(index)}.md`,
+        concept(`${']'.repeat(2_896)}\n\n${']'.repeat(68)}\n\n${']'.repeat(12)}`),
+      ]),
+      'fixture:/aggregate-markdown-label-end-work',
+    );
+    const linkCandidateInput = inputFor(
+      Array.from({ length: 4 }, (_, index) => [
+        `link-candidate-${String(index)}.md`,
+        concept(`${'![x]\n'.repeat(5_000)}\n[x]: i\n`),
+      ]),
+      'fixture:/aggregate-markdown-link-candidates',
+    );
+    for (const input of [
+      markdownInput,
+      frontmatterInput,
+      attentionInput,
+      containerInput,
+      labelEndInput,
+      linkCandidateInput,
+    ]) {
       let expected: unknown;
       let actual: unknown;
       try {
@@ -1712,6 +1951,232 @@ describe('Rust/Wasm core boundary', () => {
       expect(expected).toBeInstanceOf(GraphResourceLimitError);
       expect((actual as Error).message).toBe((expected as Error).message);
     }
+  }, 60_000);
+
+  test('enforces graph revision and root URI boundaries before publication', () => {
+    const exactRevision = { ...inputFor([], ''), revision: Number.MAX_SAFE_INTEGER };
+    expect(core.inspect(exactRevision, '2026-07-22T12:00:00Z')).toEqual(
+      typescriptOkfCore.inspect(exactRevision, '2026-07-22T12:00:00Z'),
+    );
+
+    const unsafeRevision = { ...exactRevision, revision: Number.MAX_SAFE_INTEGER + 1 };
+    expectGraphLimitParity(unsafeRevision);
+
+    const exactRoot = inputFor([], 'r'.repeat(OKF_SEMANTIC_LIMITS.maxSourceUriCodeUnits));
+    expect(core.inspect(exactRoot, '2026-07-22T12:00:00Z')).toEqual(
+      typescriptOkfCore.inspect(exactRoot, '2026-07-22T12:00:00Z'),
+    );
+    expectGraphLimitParity(inputFor([], 'r'.repeat(OKF_SEMANTIC_LIMITS.maxSourceUriCodeUnits + 1)));
+  });
+
+  test('enforces exact and one-over failure count and identity graph budgets', () => {
+    const input = inputFor([], '');
+    const failure = (uri: string): ParseFailure => ({
+      kind: 'parse-failure',
+      uri,
+      bundlePath: '',
+      reason: 'read',
+      message: '',
+    });
+    const exactCount = Array.from({ length: OKF_SEMANTIC_LIMITS.maxFindings }, (_, index) =>
+      failure(`u${String(index)}`),
+    );
+    expect(core.inspect(input, '2026-07-22T12:00:00Z', exactCount).findings).toHaveLength(
+      OKF_SEMANTIC_LIMITS.maxFindings,
+    );
+    expect(
+      typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z', exactCount).findings,
+    ).toHaveLength(OKF_SEMANTIC_LIMITS.maxFindings);
+    expectGraphLimitParity(input, [...exactCount, failure('one-over')]);
+
+    const maximalUri = (index: number): string => {
+      const suffix = String(index);
+      return `${'u'.repeat(OKF_SEMANTIC_LIMITS.maxSourceUriBytes - suffix.length)}${suffix}`;
+    };
+    const exactIdentityCount =
+      OKF_SEMANTIC_LIMITS.maxGraphIdentityBytes / (OKF_SEMANTIC_LIMITS.maxSourceUriBytes * 2);
+    const exactIdentity = Array.from({ length: exactIdentityCount }, (_, index) =>
+      failure(maximalUri(index)),
+    );
+    expect(core.inspect(input, '2026-07-22T12:00:00Z', exactIdentity).graph.nodes).toEqual([]);
+    expect(
+      typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z', exactIdentity).graph.nodes,
+    ).toEqual([]);
+    expectGraphLimitParity(input, [...exactIdentity, failure(maximalUri(exactIdentityCount))]);
+
+    const documentIdentityUnits =
+      OKF_SEMANTIC_LIMITS.maxSourceUriBytes * 3 +
+      OKF_SEMANTIC_LIMITS.maxProviderPathBytes * 2 +
+      (OKF_SEMANTIC_LIMITS.maxProviderPathBytes - '.md'.length);
+    const exactDocumentCount = Math.floor(
+      OKF_SEMANTIC_LIMITS.maxGraphIdentityBytes / documentIdentityUnits,
+    );
+    const documentIdentityInput = (count: number): readonly [ParseBundleInput, ParseFailure[]] => {
+      const entries = Array.from({ length: count }, (_, index) => {
+        const suffix = `-${String(index)}.md`;
+        const bundlePath = `${'p'.repeat(
+          OKF_SEMANTIC_LIMITS.maxProviderPathBytes - suffix.length,
+        )}${suffix}`;
+        const uriSuffix = String(index);
+        const uri = `${'u'.repeat(
+          OKF_SEMANTIC_LIMITS.maxSourceUriBytes - uriSuffix.length,
+        )}${uriSuffix}`;
+        return { bundlePath, uri };
+      });
+      return [
+        {
+          rootUri: '',
+          revision: 7,
+          documents: entries.map(({ bundlePath, uri }) => ({
+            bundlePath,
+            uri,
+            content: concept(''),
+          })),
+        },
+        entries.map(({ bundlePath, uri }) => ({ ...failure(uri), bundlePath })),
+      ];
+    };
+    const [exactDocuments, exactDocumentFailures] = documentIdentityInput(exactDocumentCount);
+    expect(
+      core.inspect(exactDocuments, '2026-07-22T12:00:00Z', exactDocumentFailures).graph.nodes,
+    ).toHaveLength(exactDocumentCount);
+    expect(
+      typescriptOkfCore.inspect(exactDocuments, '2026-07-22T12:00:00Z', exactDocumentFailures).graph
+        .nodes,
+    ).toHaveLength(exactDocumentCount);
+    const [oneOverDocuments, oneOverDocumentFailures] = documentIdentityInput(
+      exactDocumentCount + 1,
+    );
+    expectGraphLimitParity(oneOverDocuments, oneOverDocumentFailures);
+  }, 60_000);
+
+  test('enforces the escaped 16 MiB graph JSON cap at the Wasm boundary', () => {
+    const payloadInput = (count: number): ParseBundleInput =>
+      inputFor(
+        Array.from({ length: count }, (_, index) => [
+          `payload-${String(index).padStart(3, '0')}.md`,
+          concept(
+            '',
+            `description: "${'\t'.repeat(OKF_SEMANTIC_LIMITS.maxDescriptionCodeUnits)}"\n`,
+          ),
+        ]),
+        'fixture:/graph-payload-cap',
+      );
+    const exact = payloadInput(509);
+    expect(core.inspect(exact, '2026-07-22T12:00:00Z').graph.nodes).toHaveLength(509);
+    expect(typescriptOkfCore.inspect(exact, '2026-07-22T12:00:00Z').graph.nodes).toHaveLength(509);
+    expectGraphLimitParity(payloadInput(510));
+  }, 60_000);
+
+  test('matches aggregate graph metadata exact and one-over parser limits', () => {
+    const uniqueTypes = (count: number): ParseBundleInput =>
+      inputFor(
+        Array.from({ length: count }, (_, index) => [
+          `type-${String(index).padStart(3, '0')}.md`,
+          concept('', '', `type-${String(index)}`),
+        ]),
+        'fixture:/aggregate-unique-types',
+      );
+    const exactTypes = uniqueTypes(OKF_SEMANTIC_LIMITS.maxUniqueGraphTypes);
+    expect(core.inspect(exactTypes, '2026-07-22T12:00:00Z').graph.nodes).toHaveLength(
+      OKF_SEMANTIC_LIMITS.maxUniqueGraphTypes,
+    );
+    expect(typescriptOkfCore.inspect(exactTypes, '2026-07-22T12:00:00Z').graph.nodes).toHaveLength(
+      OKF_SEMANTIC_LIMITS.maxUniqueGraphTypes,
+    );
+    expectGraphLimitParity(uniqueTypes(OKF_SEMANTIC_LIMITS.maxUniqueGraphTypes + 1));
+
+    const uniqueTags = (oneOver: boolean): ParseBundleInput => {
+      const documents = Array.from(
+        { length: OKF_SEMANTIC_LIMITS.maxUniqueGraphTags / OKF_SEMANTIC_LIMITS.maxTagsPerConcept },
+        (_, documentIndex) => {
+          const tags = Array.from(
+            { length: OKF_SEMANTIC_LIMITS.maxTagsPerConcept },
+            (_, tagIndex) =>
+              `tag-${String(documentIndex * OKF_SEMANTIC_LIMITS.maxTagsPerConcept + tagIndex)}`,
+          );
+          return [
+            `tags-${String(documentIndex).padStart(2, '0')}.md`,
+            concept('', `tags: [${tags.join(', ')}]\n`),
+          ] as const;
+        },
+      );
+      if (oneOver) documents.push(['tags-over.md', concept('', 'tags: [tag-over]\n')]);
+      return inputFor(documents, 'fixture:/aggregate-unique-tags');
+    };
+    const exactUniqueTags = uniqueTags(false);
+    expect(
+      Object.keys(core.inspect(exactUniqueTags, '2026-07-22T12:00:00Z').graph.statistics.tagCounts),
+    ).toHaveLength(OKF_SEMANTIC_LIMITS.maxUniqueGraphTags);
+    expect(
+      Object.keys(
+        typescriptOkfCore.inspect(exactUniqueTags, '2026-07-22T12:00:00Z').graph.statistics
+          .tagCounts,
+      ),
+    ).toHaveLength(OKF_SEMANTIC_LIMITS.maxUniqueGraphTags);
+    expectGraphLimitParity(uniqueTags(true));
+
+    const sharedTags = Array.from(
+      { length: OKF_SEMANTIC_LIMITS.maxTagsPerConcept },
+      (_, index) => `shared-${String(index)}`,
+    );
+    const tagAssignments = (lastCount: number): ParseBundleInput =>
+      inputFor(
+        [
+          ...Array.from(
+            { length: 156 },
+            (_, index) =>
+              [
+                `assignment-${String(index).padStart(3, '0')}.md`,
+                concept('', `tags: [${sharedTags.join(', ')}]\n`),
+              ] as const,
+          ),
+          [
+            'assignment-last.md',
+            concept('', `tags: [${sharedTags.slice(0, lastCount).join(', ')}]\n`),
+          ] as const,
+        ],
+        'fixture:/aggregate-tag-assignments',
+      );
+    const exactAssignments = tagAssignments(32);
+    expect(core.inspect(exactAssignments, '2026-07-22T12:00:00Z').graph.nodes).toHaveLength(157);
+    expect(
+      typescriptOkfCore.inspect(exactAssignments, '2026-07-22T12:00:00Z').graph.nodes,
+    ).toHaveLength(157);
+    expectGraphLimitParity(tagAssignments(33));
+  }, 60_000);
+
+  test('matches the exact and one-over aggregate retained-link-text limit', () => {
+    const maximalLabel = 'l'.repeat(OKF_SEMANTIC_LIMITS.maxLinkLabelBytes);
+    const maximalTarget = `${'t'.repeat(OKF_SEMANTIC_LIMITS.maxLinkTargetBytes - 3)}.md`;
+    const exactFullLinks = Math.floor(
+      OKF_SEMANTIC_LIMITS.maxBundleLinkTextUnits /
+        (OKF_SEMANTIC_LIMITS.maxLinkLabelBytes + OKF_SEMANTIC_LIMITS.maxLinkTargetBytes),
+    );
+    const remainder =
+      OKF_SEMANTIC_LIMITS.maxBundleLinkTextUnits -
+      exactFullLinks *
+        (OKF_SEMANTIC_LIMITS.maxLinkLabelBytes + OKF_SEMANTIC_LIMITS.maxLinkTargetBytes);
+    const linksInput = (oneOver: boolean): ParseBundleInput => {
+      const documents: [string, string][] = Array.from({ length: exactFullLinks }, (_, index) => [
+        `link-${String(index).padStart(4, '0')}.md`,
+        concept(`[${maximalLabel}](${maximalTarget})\n`),
+      ]);
+      documents.push([
+        'link-remainder.md',
+        concept(`[${maximalLabel}](${'r'.repeat(remainder - maximalLabel.length - 3)}.md)\n`),
+      ]);
+      if (oneOver) documents.push(['link-over.md', concept('[x](x)\n')]);
+      return inputFor(documents, 'fixture:/aggregate-link-text');
+    };
+    const exactLinks = linksInput(false);
+    expect(core.inspect(exactLinks, '2026-07-22T12:00:00Z').graph.nodes).toHaveLength(
+      exactFullLinks + 1,
+    );
+    expect(typescriptOkfCore.inspect(exactLinks, '2026-07-22T12:00:00Z').graph.nodes).toHaveLength(
+      exactFullLinks + 1,
+    );
+    expectGraphLimitParity(linksInput(true));
   }, 60_000);
 
   test.each([
@@ -2940,6 +3405,33 @@ describe('Rust/Wasm core boundary', () => {
     );
   });
 
+  test('extra root-index frontmatter has exact conformance URI and field-range parity', () => {
+    const rootUri = 'fixture:/validation-root-index';
+    const input = inputFor(
+      [['index.md', '---\nokf_version: "0.2"\ntitle: extra\n---\n# Root\n']],
+      rootUri,
+    );
+    const expectedFinding = {
+      code: 'okf.conformance.reserved-frontmatter',
+      category: 'conformance',
+      severity: 'error',
+      uri: `${rootUri}/index.md`,
+      range: {
+        start: { offset: 23, line: 2, character: 0 },
+        end: { offset: 35, line: 2, character: 12 },
+      },
+      message:
+        'OKF conformance: bundle-root index.md frontmatter may contain only `okf_version`; unexpected field "title" is not allowed.',
+      correctiveAction:
+        'Remove the extra root-index frontmatter field. Workbench retains it until you explicitly repair the document.',
+    };
+
+    const oracle = typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z');
+    expect(oracle.bundle.reservedDocuments[0]?.frontmatter?.raw.title).toBe('extra');
+    expect(oracle.findings).toEqual([expectedFinding]);
+    expect(core.inspect(input, '2026-07-22T12:00:00Z')).toEqual(oracle);
+  });
+
   test('resource-limit identity, source, metadata, and Markdown one-over cases match', () => {
     const rootUri = 'fixture:/resource-adversarial';
     const base = [
@@ -3190,4 +3682,25 @@ function inputFor(
       uri: `${rootUri}/${bundlePath.split('/').map(encodeURIComponent).join('/')}`,
     })),
   };
+}
+
+function expectGraphLimitParity(
+  input: ParseBundleInput,
+  failures: readonly ParseFailure[] = [],
+): void {
+  let expected: unknown;
+  let actual: unknown;
+  try {
+    typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z', failures);
+  } catch (error: unknown) {
+    expected = error;
+  }
+  try {
+    core.inspect(input, '2026-07-22T12:00:00Z', failures);
+  } catch (error: unknown) {
+    actual = error;
+  }
+  expect(actual).toBeInstanceOf(GraphResourceLimitError);
+  expect(expected).toBeInstanceOf(GraphResourceLimitError);
+  expect((actual as Error).message).toBe((expected as Error).message);
 }

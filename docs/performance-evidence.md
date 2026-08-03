@@ -1,7 +1,7 @@
 # Performance evidence
 
-- Status: **retained predecessor-bound local headed evidence passes**; fresh evidence for the
-  current Rust/Wasm source candidate is pending
+- Status: **retained predecessor-bound local headed observation**; the current strict evaluator
+  exits `2` for that record, and fresh evidence for the current Rust/Wasm source candidate is pending
 - Date: 2026-07-28
 - Governing decision:
   [ADR 0005, OQ-008](decisions/0005-resolve-mvp-implementation-questions.md#oq-008--performance-fixtures-and-thresholds)
@@ -9,19 +9,21 @@
 ## Retained schema-v3 measurement and binding status
 
 The tracked [schema-v3 report](evidence/performance/vscode-1.129.1.md) and
-[raw samples](evidence/performance/vscode-1.129.1.json) were captured in a genuine headed
-VS Code `1.129.1` session on 2026-07-28 and pass the strict current-input evaluator. The record is
-bound to the production runtime, build inputs, diagnostics observer, QR-003 harness inputs and
-definition, injected harness bytes, and editor/runtime metadata recorded in those files. Samples
-were captured in one run; none were copied or synthesized. They are retained for their exact
-recorded inputs and do not qualify the current OKF-v0.2 Rust/Wasm source candidate.
+[raw samples](evidence/performance/vscode-1.129.1.json), SHA-256
+`a8917c18c12c3ee8d00efa27254e6f5114779dc8a5f4589c62d015c128436eb6`, were captured in a genuine
+headed VS Code `1.129.1` session on 2026-07-28. They recorded passing results for their exact
+predecessor `0.2.1` production runtime, build inputs, diagnostics observer, QR-003 harness inputs
+and definition, injected harness bytes, and editor/runtime metadata. Samples were captured in one
+run; none were copied or synthesized. The current `--require-passing` evaluator exits `2`, marks
+QR-002 and QR-003 unmeasured, and does not accept the record as bound to the current production
+inputs. The record does not qualify the current OKF-v0.2 Rust/Wasm source candidate.
 
-| Target | Current status | Evidence |
+| Target | Recorded predecessor status | Evidence |
 | --- | --- | --- |
-| QR-002 — update p95 at or below 1,000 ms | **Pass** | `677.00 ms` nearest-rank p95 across 20 create/change/rename/delete samples, with runtime-originated same-revision Problems and graph correlation. |
-| QR-003 — representative graph remains interactive | **Pass** | `d3` first-frame maximum `297.10 ms`, cooldown mean `2,744.80 ms`, interaction p95 values `9.10/16.60/2.10/0.80 ms`, and zero idle frames. |
-| Headed Webview network | **Pass** | Strict pre-navigation CDP observation recorded zero remote HTTP(S)/WS requests, two packaged-resource loads, two internal Webview navigations, and zero other-scheme requests. |
-| Release force-engine default | **`d3` selected** | Same-Electron comparison passed `d3`; `ngraph` recorded a structured WebGL draw timeout after 5,000 ms and was not selected. |
+| QR-002 — update p95 at or below 1,000 ms | **Recorded pass** | `677.00 ms` nearest-rank p95 across 20 create/change/rename/delete samples, with runtime-originated same-revision Problems and graph correlation. |
+| QR-003 — representative graph remains interactive | **Recorded pass** | `d3` first-frame maximum `297.10 ms`, cooldown mean `2,744.80 ms`, interaction p95 values `9.10/16.60/2.10/0.80 ms`, and zero idle frames. |
+| Headed Webview network | **Recorded pass** | Strict pre-navigation CDP observation recorded zero remote HTTP(S)/WS requests, two packaged-resource loads, two internal Webview navigations, and zero other-scheme requests. |
+| Release force-engine default | **`d3` recorded for predecessor inputs** | Same-Electron comparison passed `d3`; `ngraph` recorded a structured WebGL draw timeout after 5,000 ms and was not selected. |
 
 This local record applies only to the recorded Mac16,7 / Apple M4 Pro environment, VS Code
 `1.129.1` commit `8a7abeba6e03ea3af87bfbce9a1b7e48fed567b8`, and the exact bound inputs. It is

@@ -711,6 +711,24 @@ function boundedDiagnosticText(value: string): string {
 function validateReservedDocument(reserved: ReservedDocument, findings: Finding[]): void {
   const isRootIndex = normalizeBundlePath(reserved.source.bundlePath) === 'index.md';
 
+  if (reserved.reservedKind === 'index' && isRootIndex && reserved.frontmatter !== undefined) {
+    const unexpectedFields = Object.keys(reserved.frontmatter.raw)
+      .filter((field) => field !== 'okf_version')
+      .sort();
+    for (const field of unexpectedFields) {
+      findings.push({
+        code: VALIDATION_CODES.reservedFrontmatter,
+        category: 'conformance',
+        severity: 'error',
+        uri: reserved.source.uri,
+        range: reserved.frontmatter.fields[field] ?? reserved.frontmatter.range,
+        message: `OKF conformance: bundle-root index.md frontmatter may contain only \`okf_version\`; unexpected field ${quote(boundedDiagnosticText(field))} is not allowed.`,
+        correctiveAction:
+          'Remove the extra root-index frontmatter field. Workbench retains it until you explicitly repair the document.',
+      });
+    }
+  }
+
   if (reserved.frontmatter !== undefined && !(reserved.reservedKind === 'index' && isRootIndex)) {
     findings.push({
       code: VALIDATION_CODES.reservedFrontmatter,

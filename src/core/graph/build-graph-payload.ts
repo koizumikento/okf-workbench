@@ -1,5 +1,6 @@
 import {
   OKF_SEMANTIC_LIMITS,
+  hasUnpairedUtf16Surrogate,
   utf8ByteLength,
   type BrokenLinkPresentation,
   type Concept,
@@ -419,6 +420,9 @@ function assertBoundedString(
   maxBytes: number,
   subject: string,
 ): void {
+  if (hasUnpairedUtf16Surrogate(value)) {
+    throw graphLimit(`${subject} contains an unpaired UTF-16 surrogate.`);
+  }
   if (value.length > maxCodeUnits || utf8ByteLength(value, maxBytes) > maxBytes) {
     throw graphLimit(
       `${subject} exceeds its ${String(maxCodeUnits)}-code-unit or ${String(maxBytes)}-byte limit.`,

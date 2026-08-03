@@ -401,6 +401,71 @@ fn index_update_preserves_macos_extended_metadata() {
     );
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn index_update_preserves_linux_owner_group_acl_and_user_xattr() {
+    use rustix::fs::{XattrFlags, getxattr, setxattr};
+    use std::os::unix::fs::MetadataExt;
+
+    fn read_xattr(path: &Path, name: &str) -> Vec<u8> {
+        let mut value = vec![0u8; 64 * 1024];
+        let length = getxattr(path, name, &mut value[..]).unwrap();
+        value.truncate(length);
+        value
+    }
+
+    let directory = tempdir().unwrap();
+    initialize(directory.path());
+    let index = directory.path().join("index.md");
+    fs::write(
+        directory.path().join("alpha.md"),
+        "---\ntype: reference\ntitle: Alpha\n---\n",
+    )
+    .unwrap();
+    let user_xattr = "user.okf-workbench.metadata-test";
+    setxattr(&index, user_xattr, b"retained", XattrFlags::empty()).unwrap();
+
+    let named_uid = if fs::metadata(&index).unwrap().uid() == 0 {
+        1u32
+    } else {
+        0u32
+    };
+    let mut acl = 2u32.to_le_bytes().to_vec();
+    for (tag, permissions, id) in [
+        (0x01u16, 0x06u16, u32::MAX),
+        (0x02u16, 0x04u16, named_uid),
+        (0x04u16, 0x04u16, u32::MAX),
+        (0x10u16, 0x04u16, u32::MAX),
+        (0x20u16, 0x00u16, u32::MAX),
+    ] {
+        acl.extend(tag.to_le_bytes());
+        acl.extend(permissions.to_le_bytes());
+        acl.extend(id.to_le_bytes());
+    }
+    let acl_name = "system.posix_acl_access";
+    let acl_supported = match setxattr(&index, acl_name, &acl, XattrFlags::empty()) {
+        Ok(()) => true,
+        Err(rustix::io::Errno::NOTSUP) => false,
+        Err(error) => panic!("cannot install Linux ACL fixture: {error}"),
+    };
+    let expected_acl = acl_supported.then(|| read_xattr(&index, acl_name));
+    let before = fs::metadata(&index).unwrap();
+
+    let output = okf()
+        .args(["index", directory.path().to_str().unwrap(), "--apply"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+
+    let after = fs::metadata(&index).unwrap();
+    assert_eq!((after.uid(), after.gid()), (before.uid(), before.gid()));
+    assert_eq!(after.mode() & 0o7777, before.mode() & 0o7777);
+    assert_eq!(read_xattr(&index, user_xattr), b"retained");
+    if let Some(expected_acl) = expected_acl {
+        assert_eq!(read_xattr(&index, acl_name), expected_acl);
+    }
+}
+
 #[test]
 fn index_adds_v02_declaration_to_an_explicit_key_root_map() {
     let directory = tempdir().unwrap();

@@ -417,11 +417,11 @@ Accepted MVP thresholds:
 - Opening the graph does not block normal text editing.
 - File changes are reflected within one second after debounce for representative bundles.
 
-A genuine strengthened-contract schema-v3 headed VS Code `1.129.1` run recorded QR-002 at `832 ms`
-p95 across 20 samples and QR-003 with `d3` selected; its strict CDP envelope recorded zero remote
-HTTP(S)/WS or other-scheme requests. The separately retained predecessor-bound report records
-`677 ms`; neither record qualifies the current Rust/Wasm source candidate, whose fresh capture is
-pending. The retained VS Code `1.127.0` run predates the current
+The tracked predecessor-bound schema-v3 headed VS Code `1.129.1` report records QR-002 at `677 ms`
+p95 across 20 samples, `d3` as its QR-003 selection, and zero remote HTTP(S)/WS or other-scheme
+requests. The current strict evaluator exits `2` because it does not accept the record as bound to
+the current Rust/Wasm source candidate, whose fresh capture is pending. The retained VS Code
+`1.127.0` run predates the current
 diagnostics-correlation, WebGL/UI-outcome, causal-timing, and network-envelope requirements and
 remains historical-only. See [performance evidence](performance-evidence.md) for the exact
 environment, authority rules, and candidate-binding limits.

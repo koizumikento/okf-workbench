@@ -888,6 +888,34 @@ fn compare_utf16(left: &str, right: &str) -> std::cmp::Ordering {
 
 fn validate_reserved_document(reserved: &crate::ReservedDocument, findings: &mut Vec<Finding>) {
     let is_root_index = reserved.source.bundle_path.replace('\\', "/") == "index.md";
+    if reserved.reserved_kind == "index"
+        && is_root_index
+        && let Some(frontmatter) = &reserved.frontmatter
+    {
+        let mut unexpected_fields = frontmatter
+            .raw
+            .keys()
+            .filter(|field| field.as_str() != "okf_version")
+            .collect::<Vec<_>>();
+        unexpected_fields.sort_by(|left, right| compare_utf16(left, right));
+        for field in unexpected_fields {
+            findings.push(Finding {
+                code: "okf.conformance.reserved-frontmatter".to_owned(),
+                category: "conformance".to_owned(),
+                severity: "error".to_owned(),
+                uri: reserved.source.uri.clone(),
+                message: format!(
+                    "OKF conformance: bundle-root index.md frontmatter may contain only `okf_version`; unexpected field {} is not allowed.",
+                    json_quote(&bounded_diagnostic_text(field))
+                ),
+                corrective_action: Some(
+                    "Remove the extra root-index frontmatter field. Workbench retains it until you explicitly repair the document."
+                        .to_owned(),
+                ),
+                range: frontmatter_field_range(frontmatter, field),
+            });
+        }
+    }
     if let Some(frontmatter) = &reserved.frontmatter
         && !(reserved.reserved_kind == "index" && is_root_index)
     {
@@ -1162,6 +1190,7 @@ mod tests {
     fn validate_root(source: &str) -> Vec<Finding> {
         let bundle = parse_bundle(ParseBundleInput {
             root_uri: "file:///bundle".to_owned(),
+            invalid_root_uri_utf16: None,
             revision: 1,
             documents: vec![BundleDocumentInput {
                 uri: "file:///bundle/index.md".to_owned(),
@@ -1169,6 +1198,7 @@ mod tests {
                 content: Some(DocumentContent::Text(source.to_owned())),
                 content_hash: None,
                 identity_only_failure: None,
+                invalid_utf16_fields: None,
             }],
         });
         validate_bundle(&bundle, "2026-07-24T00:00:00Z")
@@ -1185,6 +1215,53 @@ mod tests {
     #[test]
     fn accepts_supported_root_version() {
         assert!(validate_root("---\nokf_version: \"0.1\"\n---\n# Root\n").is_empty());
+    }
+
+    #[test]
+    fn rejects_extra_root_index_frontmatter_at_the_field_and_retains_it() {
+        let source = "---\nokf_version: \"0.2\"\ntitle: extra\n---\n# Root\n";
+        let bundle = parse_bundle(ParseBundleInput {
+            root_uri: "file:///bundle".to_owned(),
+            invalid_root_uri_utf16: None,
+            revision: 1,
+            documents: vec![BundleDocumentInput {
+                uri: "file:///bundle/index.md".to_owned(),
+                bundle_path: "index.md".to_owned(),
+                content: Some(DocumentContent::Text(source.to_owned())),
+                content_hash: None,
+                identity_only_failure: None,
+                invalid_utf16_fields: None,
+            }],
+        });
+        assert_eq!(
+            bundle.reserved_documents[0]
+                .frontmatter
+                .as_ref()
+                .and_then(|frontmatter| frontmatter.raw.get("title")),
+            Some(&serde_json::Value::String("extra".to_owned()))
+        );
+
+        let findings = validate_bundle(&bundle, "2026-07-24T00:00:00Z");
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].code, "okf.conformance.reserved-frontmatter");
+        assert_eq!(findings[0].category, "conformance");
+        assert_eq!(findings[0].severity, "error");
+        assert_eq!(findings[0].uri, "file:///bundle/index.md");
+        assert_eq!(
+            findings[0].range,
+            Some(crate::SourceRange {
+                start: crate::SourcePosition {
+                    offset: 23,
+                    line: 2,
+                    character: 0,
+                },
+                end: crate::SourcePosition {
+                    offset: 35,
+                    line: 2,
+                    character: 12,
+                },
+            })
+        );
     }
 
     #[test]

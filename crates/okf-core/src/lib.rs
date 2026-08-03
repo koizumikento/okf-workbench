@@ -176,6 +176,9 @@ pub fn dispatch_json(request_json: &str) -> String {
             }
             let mut bundle = parse_bundle(input.bundle);
             bundle.failures.extend(input.failures);
+            if let Some(message) = graph::inspect_prevalidation_graph_error(&bundle) {
+                return serialize_response(CoreResponse::failure("graph-resource-limit", message));
+            }
             bundle.failures.sort_by(|left, right| {
                 left.bundle_path
                     .cmp(&right.bundle_path)
@@ -183,16 +186,13 @@ pub fn dispatch_json(request_json: &str) -> String {
             });
             let findings = validate_bundle(&bundle, &input.now);
             bundle.findings.clone_from(&findings);
-            if bundle.failures.iter().any(|failure| {
-                failure.reason == ParseFailureReason::ResourceLimit
-                    && failure.scope.as_deref() == Some("bundle")
-            }) {
-                return serialize_response(CoreResponse::failure(
-                    "graph-resource-limit",
-                    "A bundle-scoped resource failure prevents graph publication.",
-                ));
+            if let Some(message) = graph::bounded_graph_input_error(&bundle) {
+                return serialize_response(CoreResponse::failure("graph-resource-limit", message));
             }
             let graph = build_graph_payload(&bundle);
+            if let Some(message) = graph::graph_payload_size_error(&graph) {
+                return serialize_response(CoreResponse::failure("graph-resource-limit", message));
+            }
             CoreResponse::success(Inspection {
                 bundle,
                 findings,
@@ -212,16 +212,15 @@ pub fn dispatch_json(request_json: &str) -> String {
         }
         CoreRequest::Graph(input) => {
             let bundle = parse_bundle(input);
-            if bundle.failures.iter().any(|failure| {
-                failure.reason == ParseFailureReason::ResourceLimit
-                    && failure.scope.as_deref() == Some("bundle")
-            }) {
-                CoreResponse::failure(
-                    "graph-resource-limit",
-                    "A bundle-scoped resource failure prevents graph publication.",
-                )
+            if let Some(message) = graph::bounded_graph_input_error(&bundle) {
+                CoreResponse::failure("graph-resource-limit", message)
             } else {
-                CoreResponse::success(build_graph_payload(&bundle))
+                let graph = build_graph_payload(&bundle);
+                if let Some(message) = graph::graph_payload_size_error(&graph) {
+                    CoreResponse::failure("graph-resource-limit", message)
+                } else {
+                    CoreResponse::success(graph)
+                }
             }
         }
         CoreRequest::RenderBundle(input) => {
@@ -288,5 +287,18 @@ mod tests {
     fn invalid_json_is_data_not_a_panic() {
         let response: Value = serde_json::from_str(&dispatch_json("{")).unwrap();
         assert_eq!(response["error"]["code"], "invalid-request");
+    }
+
+    #[test]
+    fn graph_operation_rejects_an_unsafe_revision() {
+        let response: Value = serde_json::from_str(&dispatch_json(
+            r#"{"operation":"graph","input":{"rootUri":"","revision":9007199254740992,"documents":[]}}"#,
+        ))
+        .unwrap();
+        assert_eq!(response["error"]["code"], "graph-resource-limit");
+        assert_eq!(
+            response["error"]["message"],
+            "The graph revision must be a non-negative safe integer."
+        );
     }
 }

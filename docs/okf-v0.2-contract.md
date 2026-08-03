@@ -16,7 +16,9 @@ for legacy bundles.
 - Unsupported major, malformed, and non-string declarations remain selectable for validation and
   graph inspection, but existing-bundle writes fail closed.
 - A missing root index or absent declaration remains eligible for best-effort authoring. Index
-  synthesis adds `okf_version: "0.2"` while preserving unrelated root content.
+  synthesis adds `okf_version: "0.2"` while preserving unrelated root body content. If an existing
+  root index has extra frontmatter, Workbench retains it during guarded writes but reports the
+  reserved-document conformance error for explicit repair.
 - Workbench never rewrites an existing `0.1` declaration merely because it can read v0.2.
 
 ## Bundle and concept model
@@ -68,7 +70,8 @@ The hard conformance boundary remains deliberately small:
 
 - every concept has parseable YAML frontmatter;
 - `type` is a non-empty string;
-- present reserved documents follow their structural rules.
+- present reserved documents follow their structural rules, including that bundle-root `index.md`
+  frontmatter contains no key other than the optional `okf_version` declaration.
 
 Optional v0.2 family problems are curation warnings, never conformance errors. Workbench reports
 malformed `generated`, `verified`, `status`, `stale_after`, `sources`, `usage_window`, source
@@ -76,7 +79,8 @@ credibility signals, and Attested Computation contracts; future generation or ve
 and concepts that have reached `stale_after`. Absence of any optional family is valid.
 
 Diagnostics continue to distinguish conformance, curation, and compatibility. Unknown producer
-fields and types remain accepted and preserved.
+fields and types on concept documents remain accepted and preserved. Extra root-index frontmatter
+is also retained rather than silently deleted, but remains a reserved-document conformance error.
 
 ## Attested Computation
 

@@ -1,15 +1,14 @@
-# Open VSX listing draft
+# Open VSX listing record and future-release boundary
 
-- Status: **Hold — all release-checklist gates must pass before the maintainer pushes `v0.1.0`**
-- Target version: `0.1.0`
+- Published status: **`straydog.okf-workbench@0.2.1` was published on 2026-07-28; this does not
+  qualify or publish the current Rust/Wasm source candidate**
+- Published version recorded here: `0.2.1`
 - Unique identifier: `straydog.okf-workbench`
-- Namespace: `straydog` — the public registry API reported `verified: true` and
-  `access: "restricted"` at `2026-07-23T08:35:06.452Z`; current authenticated publishing
-  authorization, PAT, and Publisher Agreement status still must be checked immediately before
-  release
-- Name availability: `straydog.okf-workbench@0.1.0` was unoccupied in the public registry check
-  retained at [Open VSX registry evidence](evidence/open-vsx-registry.json); the tagged release
-  workflow validates the current credential and namespace authorization before publication
+- Namespace: `straydog` — the retained `v0.2.1` release workflow verified publication authority
+  and published the universal and four target packages. Credential, namespace-role, and Publisher
+  Agreement readiness must be checked again for every future release.
+- Release record: the [completed `0.2.1` checklist](release-checklist.md) links the signed tag,
+  workflow, GitHub Release, public Open VSX listing, and post-publication checks.
 
 ## Listing metadata
 
@@ -38,10 +37,11 @@ documentation or speculative release-tag links.
 ### Create, validate, and explore OKF knowledge without leaving your editor
 
 OKF Workbench supports a complete local authoring loop for
-[Open Knowledge Format v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/ee67a5ca27044ebe7c38385f5b6cffc2305a9c1a/okf/SPEC.md)
-bundles: initialize, create, edit, validate, index, explore, and repair.
+[Open Knowledge Format v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/3fcbb9f828c2f23d109c855ee403c3a4c81f3a96/okf/SPEC.md)
+bundles with a v0.1 compatibility fallback: initialize, create, edit, validate, index, explore, and
+repair.
 
-Use three starter bundle presets and seven concept templates, keep arbitrary concept types and
+Use three starter bundle presets and eight concept templates, keep arbitrary concept types and
 unknown frontmatter, surface conformance errors separately from curation warnings, and regenerate
 managed index regions after reviewing a local diff.
 
@@ -77,9 +77,9 @@ lifecycle qualification remain pending for the exact release candidate.
 
 - `README.md` describes implemented behavior, the local-first privacy boundary, MIT licensing, and
   bundled third-party notices.
-- `CHANGELOG.md` contains the `0.1.0` candidate entry and a publication date at release time.
+- `CHANGELOG.md` contains the dated published `0.2.1` entry.
 - `assets/icon.png` is included and referenced by the manifest.
-- The fresh candidate contains exactly one project-license entry, `extension/LICENSE.txt`, whose
+- A future candidate must contain exactly one project-license entry, `extension/LICENSE.txt`, whose
   bytes match the canonical root `LICENSE`; its packaged JSON manifest declares exactly `MIT`, and
   `extension.vsixmanifest` points both license metadata entries to that same canonical path.
 - The packaged manifest contains the exact approved public `repository`, `bugs`, and `homepage`
@@ -99,8 +99,9 @@ and only namespace members can publish in a restricted namespace. Verified statu
 the namespace owner and publishing-user membership described by the
 [namespace-access rules](https://github.com/eclipse-openvsx/openvsx/wiki/Namespace-Access).
 
-The retained public API check confirms the namespace identity and target-version availability without
-using a credential. This does not prove the current PAT or exact namespace role; the protected
+The retained pre-`0.1.0` public API availability check is historical input to the initial release;
+it is not current authorization evidence. The completed `v0.2.1` workflow and public listing prove
+that version's publication. They do not prove a future PAT or exact namespace role; the protected
 workflow checks those with `ovsx verify-pat`. Publisher Agreement status is a separate out-of-band
 profile prerequisite, and Open VSX also enforces it at the publish endpoint.
 
@@ -109,5 +110,5 @@ maintainer authorizes release by pushing the matching signed `v*` tag for the re
 commit, as documented in the [release checklist](release-checklist.md). The workflow packages once,
 retains the VSIX and checksum, creates the GitHub Release, then exposes `OPEN_VSX_TOKEN` only to
 `ovsx verify-pat straydog` and the duplicate-safe publish command. A local `ovsx publish` command is
-not an approved fallback. Publication is an external state change and is not part of building this
-release candidate.
+not an approved fallback. Publication is an external state change and is not part of building a
+future release candidate.

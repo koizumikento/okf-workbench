@@ -14,6 +14,10 @@ const MAX_DOCUMENT_BYTES: usize = 320 * 1024 + 16;
 const MAX_DOCUMENT_CODE_UNITS: usize = 320 * 1024 + 16;
 const MAX_DOCUMENT_LINES: usize = 24_002;
 const MAX_LINKS: usize = 10_000;
+const MAX_BUNDLE_LINK_TEXT_UNITS: usize = 4 * 1024 * 1024;
+const MAX_BUNDLE_TAG_ASSIGNMENTS: usize = 20_000;
+const MAX_UNIQUE_GRAPH_TYPES: usize = 512;
+const MAX_UNIQUE_GRAPH_TAGS: usize = 4_096;
 pub(crate) const MAX_PROVIDER_PATH_CODE_UNITS: usize = 4_096;
 pub(crate) const MAX_PROVIDER_PATH_BYTES: usize = 4_096;
 pub(crate) const MAX_PROVIDER_PATH_SEGMENTS: usize = 64;
@@ -46,9 +50,13 @@ const MAX_MARKDOWN_LINKS_PER_DOCUMENT: usize = 5_000;
 const MAX_MARKDOWN_DEFINITIONS_PER_DOCUMENT: usize = 5_000;
 const MAX_MARKDOWN_ATTENTION_RUNS_PER_DOCUMENT: usize = 1_024;
 const MAX_MARKDOWN_ATTENTION_MARKERS_PER_DOCUMENT: usize = 1_024;
+const MAX_MARKDOWN_ATTENTION_WORK_UNITS_PER_DOCUMENT: usize = 8 * 1024 * 1024;
 const MAX_MARKDOWN_CONTAINER_NESTING_DEPTH: usize = 64;
+const MAX_MARKDOWN_CONTAINER_WORK_UNITS_PER_DOCUMENT: usize = 65_536;
 const MAX_MARKDOWN_MEDIA_NESTING_DEPTH: usize = 64;
+const MAX_MARKDOWN_LABEL_END_WORK_UNITS_PER_DOCUMENT: usize = 8 * 1024 * 1024;
 const MAX_LINK_TEXT_UNITS_PER_DOCUMENT: usize = 1024 * 1024;
+const MAX_MARKDOWN_REFERENCE_EXPANSION_BYTES: usize = 2 * 1024 * 1024;
 const MAX_LINK_TARGET_BYTES: usize = 2_048;
 const MAX_LINK_TARGET_CODE_UNITS: usize = 2_048;
 const MAX_LINK_LABEL_BYTES: usize = 512;
@@ -88,6 +96,15 @@ struct LinkCandidate {
     range: SourceRange,
 }
 
+#[derive(Clone, Debug, Default)]
+struct MarkdownWorkInspection {
+    attention_work_units: usize,
+    container_work_units: usize,
+    failure: Option<String>,
+    label_end_work_units: usize,
+    link_candidates: usize,
+}
+
 #[derive(Debug)]
 struct FrontmatterError {
     message: String,
@@ -103,6 +120,22 @@ struct FrontmatterWork {
 }
 
 pub fn parse_bundle(mut input: ParseBundleInput) -> ParsedBundle {
+    if input.invalid_root_uri_utf16 == Some(true) {
+        return ParsedBundle {
+            root_uri: "<bundle-root-uri-invalid-unicode>".to_owned(),
+            revision: input.revision,
+            concepts: Vec::new(),
+            reserved_documents: Vec::new(),
+            failures: vec![failure(
+                "<bundle-root-uri-invalid-unicode>",
+                "",
+                ParseFailureReason::ResourceLimit,
+                "Bundle root URI contains an unpaired UTF-16 surrogate.",
+                Some("bundle"),
+            )],
+            findings: Vec::new(),
+        };
+    }
     if let Some(message) = bounded_identity_failure(
         &input.root_uri,
         MAX_SOURCE_URI_CODE_UNITS,
@@ -153,6 +186,40 @@ pub fn parse_bundle(mut input: ParseBundleInput) -> ParsedBundle {
     let mut decoded = Vec::new();
     let mut seen = BTreeSet::new();
     for document in input.documents {
+        let invalid_utf16_uri = document
+            .invalid_utf16_fields
+            .as_ref()
+            .is_some_and(|fields| fields.uri);
+        let invalid_utf16_path = document
+            .invalid_utf16_fields
+            .as_ref()
+            .is_some_and(|fields| fields.bundle_path);
+        let invalid_utf16_content_hash = document
+            .invalid_utf16_fields
+            .as_ref()
+            .is_some_and(|fields| fields.content_hash);
+        if invalid_utf16_uri || invalid_utf16_path {
+            failures.push(failure(
+                if invalid_utf16_uri {
+                    "<provider-uri-invalid-unicode>"
+                } else {
+                    &document.uri
+                },
+                if invalid_utf16_path {
+                    "<provider-path-invalid-unicode>"
+                } else {
+                    &document.bundle_path
+                },
+                ParseFailureReason::ResourceLimit,
+                if invalid_utf16_path {
+                    "Provider-relative path contains an unpaired UTF-16 surrogate."
+                } else {
+                    "Source URI contains an unpaired UTF-16 surrogate."
+                },
+                Some("document"),
+            ));
+            continue;
+        }
         let provider_path_failure = bounded_identity_failure(
             &document.bundle_path,
             MAX_PROVIDER_PATH_CODE_UNITS,
@@ -223,16 +290,21 @@ pub fn parse_bundle(mut input: ParseBundleInput) -> ParsedBundle {
             continue;
         }
         if document.identity_only_failure.is_none()
-            && document
-                .content_hash
-                .as_deref()
-                .is_some_and(|hash| hash.encode_utf16().count() > MAX_CONTENT_HASH_CODE_UNITS)
+            && (invalid_utf16_content_hash
+                || document
+                    .content_hash
+                    .as_deref()
+                    .is_some_and(|hash| hash.encode_utf16().count() > MAX_CONTENT_HASH_CODE_UNITS))
         {
             failures.push(failure(
                 &document.uri,
                 &path,
                 ParseFailureReason::ResourceLimit,
-                "Content identity exceeds the 256-code-unit safety limit. Refresh the bundle from a conforming provider, then retry.",
+                if invalid_utf16_content_hash {
+                    "Content identity contains an unpaired UTF-16 surrogate. Refresh the bundle from a conforming provider, then retry."
+                } else {
+                    "Content identity exceeds the 256-code-unit safety limit. Refresh the bundle from a conforming provider, then retry."
+                },
                 Some("document"),
             ));
             if !is_reserved(&path) {
@@ -289,12 +361,20 @@ pub fn parse_bundle(mut input: ParseBundleInput) -> ParsedBundle {
     let mut pending = Vec::new();
     let mut reserved_documents = Vec::new();
     let mut total_links = 0usize;
+    let mut retained_link_text_units = 0usize;
+    let mut retained_tag_assignments = 0usize;
+    let mut retained_types = BTreeSet::new();
+    let mut retained_tags = BTreeSet::new();
     let mut retained_frontmatter_units = 0usize;
     let mut inspected_frontmatter_source_code_units = 0usize;
     let mut inspected_frontmatter_structural_tokens = 0usize;
     let mut inspected_markdown_body_code_units = 0usize;
     let mut inspected_markdown_lines = 0usize;
+    let mut inspected_markdown_attention_work_units = 0usize;
+    let mut inspected_markdown_container_work_units = 0usize;
+    let mut inspected_markdown_label_end_work_units = 0usize;
     let mut inspected_markdown_syntax_candidates = 0usize;
+    let mut inspected_markdown_link_candidates = 0usize;
     let mut bundle_limit_reached = false;
     for mut document in decoded {
         if document.identity_only {
@@ -359,11 +439,24 @@ pub fn parse_bundle(mut input: ParseBundleInput) -> ParsedBundle {
             let body_code_units = body.encode_utf16().count();
             let body_lines = preparse_line_count(body);
             let syntax_candidates = markdown_syntax_candidate_count(body);
+            let markdown_work = markdown_work_inspection(body);
             if inspected_markdown_body_code_units
                 > MAX_BUNDLE_MARKDOWN_BODY_CODE_UNITS.saturating_sub(body_code_units)
                 || inspected_markdown_lines > MAX_BUNDLE_MARKDOWN_LINES.saturating_sub(body_lines)
+                || inspected_markdown_attention_work_units
+                    > MAX_BUNDLE_MARKDOWN_ATTENTION_WORK_UNITS
+                        .saturating_sub(markdown_work.attention_work_units)
+                || inspected_markdown_container_work_units
+                    > MAX_BUNDLE_MARKDOWN_CONTAINER_WORK_UNITS
+                        .saturating_sub(markdown_work.container_work_units)
+                || inspected_markdown_label_end_work_units
+                    > MAX_BUNDLE_MARKDOWN_LABEL_END_WORK_UNITS
+                        .saturating_sub(markdown_work.label_end_work_units)
                 || inspected_markdown_syntax_candidates
                     > MAX_BUNDLE_MARKDOWN_SYNTAX_CANDIDATES.saturating_sub(syntax_candidates)
+                || inspected_markdown_link_candidates
+                    > MAX_BUNDLE_MARKDOWN_LINK_CANDIDATES
+                        .saturating_sub(markdown_work.link_candidates)
             {
                 let mut item = failure(
                     &document.uri,
@@ -391,7 +484,11 @@ pub fn parse_bundle(mut input: ParseBundleInput) -> ParsedBundle {
             }
             inspected_markdown_body_code_units += body_code_units;
             inspected_markdown_lines += body_lines;
+            inspected_markdown_attention_work_units += markdown_work.attention_work_units;
+            inspected_markdown_container_work_units += markdown_work.container_work_units;
+            inspected_markdown_label_end_work_units += markdown_work.label_end_work_units;
             inspected_markdown_syntax_candidates += syntax_candidates;
+            inspected_markdown_link_candidates += markdown_work.link_candidates;
         }
 
         let parsed = parse_frontmatter(&document.text);
@@ -517,7 +614,10 @@ pub fn parse_bundle(mut input: ParseBundleInput) -> ParsedBundle {
             bundle_limit_reached = true;
             continue;
         }
+        let previous_frontmatter_units = retained_frontmatter_units;
+        retained_frontmatter_units += frontmatter_units;
         if let Some(message) = concept_metadata_failure(&frontmatter.normalized) {
+            retained_frontmatter_units = previous_frontmatter_units;
             let mut item = failure(
                 &document.uri,
                 &document.path,
@@ -533,11 +633,11 @@ pub fn parse_bundle(mut input: ParseBundleInput) -> ParsedBundle {
             });
             continue;
         }
-        retained_frontmatter_units += frontmatter_units;
         let body_start = document.text.len().saturating_sub(body.len());
         let candidates = match markdown_links(&body, body_start, &document.text) {
             Ok(candidates) => candidates,
             Err(message) => {
+                retained_frontmatter_units = previous_frontmatter_units;
                 let mut item = failure(
                     &document.uri,
                     &document.path,
@@ -554,18 +654,87 @@ pub fn parse_bundle(mut input: ParseBundleInput) -> ParsedBundle {
                 continue;
             }
         };
-        total_links += candidates.len();
-        if total_links > MAX_LINKS {
-            failures.push(failure(
-                &input.root_uri,
-                "<bundle>",
+        if total_links > MAX_LINKS.saturating_sub(candidates.len()) {
+            let mut item = failure(
+                &document.uri,
+                &document.path,
                 ParseFailureReason::ResourceLimit,
-                "Bundle parsing refused more than 10,000 retained Markdown links.",
+                &format!(
+                    "Bundle parsing refused more than {MAX_LINKS} Markdown relationships. Reduce or split the document or bundle, then retry."
+                ),
                 Some("bundle"),
-            ));
-            break;
+            );
+            item.range = Some(body_range.clone());
+            failures.push(item);
+            pending.push(PendingConcept {
+                concept: partial_concept(&document),
+                candidates: Vec::new(),
+            });
+            bundle_limit_reached = true;
+            continue;
         }
         let normalized = &frontmatter.normalized;
+        let retained_text_units = candidates.iter().fold(0usize, |total, candidate| {
+            total.saturating_add(candidate.target.len() + candidate.label.len())
+        });
+        if retained_link_text_units > MAX_BUNDLE_LINK_TEXT_UNITS.saturating_sub(retained_text_units)
+        {
+            let mut item = failure(
+                &document.uri,
+                &document.path,
+                ParseFailureReason::ResourceLimit,
+                &format!(
+                    "Bundle Markdown link targets and labels exceed the {MAX_BUNDLE_LINK_TEXT_UNITS}-unit aggregate safety limit. Reduce or split the bundle, then retry."
+                ),
+                Some("bundle"),
+            );
+            item.range = Some(body_range.clone());
+            failures.push(item);
+            pending.push(PendingConcept {
+                concept: partial_concept(&document),
+                candidates: Vec::new(),
+            });
+            bundle_limit_reached = true;
+            continue;
+        }
+
+        let unique_document_tags = normalized.tags.iter().collect::<BTreeSet<_>>();
+        let new_type_count =
+            usize::from(!retained_types.contains(normalized.r#type.as_deref().unwrap_or_default()));
+        let new_unique_tag_count = unique_document_tags
+            .iter()
+            .filter(|tag| !retained_tags.contains(tag.as_str()))
+            .count();
+        if retained_tag_assignments
+            > MAX_BUNDLE_TAG_ASSIGNMENTS.saturating_sub(normalized.tags.len())
+            || retained_types.len() > MAX_UNIQUE_GRAPH_TYPES.saturating_sub(new_type_count)
+            || retained_tags.len() > MAX_UNIQUE_GRAPH_TAGS.saturating_sub(new_unique_tag_count)
+        {
+            retained_frontmatter_units = previous_frontmatter_units;
+            let mut item = failure(
+                &document.uri,
+                &document.path,
+                ParseFailureReason::ResourceLimit,
+                &format!(
+                    "Bundle graph metadata exceeds the {MAX_BUNDLE_TAG_ASSIGNMENTS} tag-assignment, {MAX_UNIQUE_GRAPH_TAGS} unique-tag, or {MAX_UNIQUE_GRAPH_TYPES} unique-type safety limit. Reduce or split the bundle, then retry."
+                ),
+                Some("bundle"),
+            );
+            item.range = Some(frontmatter.range.clone());
+            failures.push(item);
+            pending.push(PendingConcept {
+                concept: partial_concept(&document),
+                candidates: Vec::new(),
+            });
+            bundle_limit_reached = true;
+            continue;
+        }
+
+        total_links += candidates.len();
+        retained_link_text_units += retained_text_units;
+        retained_tag_assignments += normalized.tags.len();
+        retained_types.insert(normalized.r#type.clone().unwrap_or_default());
+        retained_tags.extend(unique_document_tags.into_iter().cloned());
         pending.push(PendingConcept {
             concept: Concept {
                 kind: "concept".to_owned(),
@@ -1167,6 +1336,15 @@ fn parse_frontmatter(
             resource_limit: false,
         });
     }
+    if radix_set_output_lower_bound_exceeded(yaml_source) {
+        return Err(FrontmatterError {
+            message: format!(
+                "YAML frontmatter is not JSON-safe: semantic output exceeds the {MAX_FRONTMATTER_OUTPUT_UNITS}-unit per-document safety limit"
+            ),
+            range: yaml_range,
+            resource_limit: true,
+        });
+    }
     if let Some((relative_start, relative_end)) = duplicate_block_set_member_range(yaml_source) {
         return Err(FrontmatterError {
             message: "Invalid YAML frontmatter: Map keys must be unique".to_owned(),
@@ -1266,7 +1444,10 @@ fn parse_frontmatter(
     let parser_yaml = parser_yaml.strip_prefix('\u{feff}').unwrap_or(&parser_yaml);
     let yaml: serde_yaml::Value = serde_yaml::from_str(parser_yaml).map_err(|error| {
         let error_text = error.to_string();
-        let range = if error_text.contains("duplicate entry with key") {
+        let recursive_alias = error_text.contains("recursion limit exceeded");
+        let range = if recursive_alias {
+            Some(range_for(text, opening_end, closing_start))
+        } else if error_text.contains("duplicate entry with key") {
             duplicate_mapping_key_range(yaml_source).map(|(relative_start, relative_end)| {
                 range_for(
                     text,
@@ -1285,7 +1466,9 @@ fn parse_frontmatter(
                 range_for(text, start, one_character_end(text, start, closing_start))
             })
         };
-        let message = if error_text.contains("expected ',' or ']'") {
+        let message = if recursive_alias {
+            "YAML frontmatter is not JSON-safe: recursive aliases are not supported".to_owned()
+        } else if error_text.contains("expected ',' or ']'") {
             "Invalid YAML frontmatter: Flow sequence in block collection must be sufficiently indented and end with a ]".to_owned()
         } else if error_text.contains("duplicate entry with key") {
             "Invalid YAML frontmatter: Map keys must be unique".to_owned()
@@ -1541,7 +1724,7 @@ fn multiple_block_node_property_range(
     let spans = line_spans(source);
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
-    excluded_ranges.extend(plain_scalar_continuation_ranges(source));
+    excluded_ranges.extend(plain_scalar_value_ranges(source));
     normalize_ranges(&mut excluded_ranges);
     for (line_index, line) in spans.iter().enumerate() {
         if sorted_range_contains(&excluded_ranges, line.start) {
@@ -3380,7 +3563,7 @@ fn invalid_comment_separator_range(source: &str) -> Option<(usize, usize)> {
 fn reserved_internal_tag(source: &str) -> Option<&'static str> {
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
-    excluded_ranges.extend(plain_scalar_continuation_ranges(source));
+    excluded_ranges.extend(plain_scalar_value_ranges(source));
     normalize_ranges(&mut excluded_ranges);
     let flow_ranges = flow_collection_ranges(source);
     for tag in [
@@ -3422,7 +3605,7 @@ fn reserved_internal_tag(source: &str) -> Option<&'static str> {
 fn unsupported_yaml_2002_tag_range(source: &str) -> Option<(usize, usize, String)> {
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
-    excluded_ranges.extend(plain_scalar_continuation_ranges(source));
+    excluded_ranges.extend(plain_scalar_value_ranges(source));
     normalize_ranges(&mut excluded_ranges);
     let mut quote = None;
     let mut escaped = false;
@@ -3496,7 +3679,7 @@ fn unsupported_yaml_2002_tag_range(source: &str) -> Option<(usize, usize, String
 fn unresolved_tight_alias_name(source: &str) -> Option<String> {
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
-    excluded_ranges.extend(plain_scalar_continuation_ranges(source));
+    excluded_ranges.extend(plain_scalar_value_ranges(source));
     normalize_ranges(&mut excluded_ranges);
     for (offset, _) in source.match_indices('*') {
         if sorted_range_contains(&excluded_ranges, offset) {
@@ -4159,7 +4342,7 @@ fn normalize_hash_anchor_names(source: &str) -> String {
     let mut replacements = Vec::new();
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
-    excluded_ranges.extend(plain_scalar_continuation_ranges(source));
+    excluded_ranges.extend(plain_scalar_value_ranges(source));
     normalize_ranges(&mut excluded_ranges);
     let mut quote = None;
     let mut escaped = false;
@@ -4226,6 +4409,7 @@ fn normalize_hash_anchor_names(source: &str) -> String {
 fn normalize_tight_flow_plain_keys(source: &str) -> String {
     let spans = line_spans(source);
     let mut replacements = Vec::new();
+    let plain_scalar_ranges = plain_scalar_value_ranges(source);
     let mut flow_depth = 0usize;
     let mut quote = None;
     let mut escaped = false;
@@ -4238,6 +4422,10 @@ fn normalize_tight_flow_plain_keys(source: &str) -> String {
             .next()
             .expect("cursor is at a character boundary");
         let width = character.len_utf8();
+        if sorted_range_contains(&plain_scalar_ranges, cursor) {
+            cursor += width;
+            continue;
+        }
         if comment {
             if matches!(character, '\r' | '\n') {
                 comment = false;
@@ -4304,7 +4492,14 @@ fn normalize_tight_flow_plain_keys(source: &str) -> String {
                     node_boundary = false;
                     continue;
                 }
-                node_boundary = flow_depth > 0;
+                let structural_colon = flow_depth > 0
+                    && next.is_none_or(|value| {
+                        value.is_whitespace() || matches!(value, ',' | ']' | '}' | '[' | '{')
+                    });
+                if structural_colon && next.is_some_and(|value| matches!(value, '[' | '{')) {
+                    replacements.push((cursor + width, cursor + width, " ".to_owned()));
+                }
+                node_boundary = structural_colon;
             }
             '?' if flow_depth > 0 && node_boundary => {
                 let next = source[cursor + width..].chars().next();
@@ -4682,7 +4877,7 @@ fn duplicate_empty_explicit_key_range(source: &str) -> Option<(usize, usize)> {
     let spans = line_spans(source);
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
-    excluded_ranges.extend(plain_scalar_continuation_ranges(source));
+    excluded_ranges.extend(plain_scalar_value_ranges(source));
     normalize_ranges(&mut excluded_ranges);
     for (flow_start, flow_end) in flow_collection_ranges(source)
         .into_iter()
@@ -4832,6 +5027,7 @@ fn duplicate_empty_explicit_key_range(source: &str) -> Option<(usize, usize)> {
 fn non_string_mapping_key_range(source: &str) -> Option<(usize, usize)> {
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
+    excluded_ranges.extend(plain_scalar_value_ranges(source));
     normalize_ranges(&mut excluded_ranges);
     if let Some(range) = non_string_flow_mapping_key_range(source, &excluded_ranges) {
         return Some(range);
@@ -5840,11 +6036,30 @@ fn deferred_standard_tag_name(
 fn decimal_from_radix(digits: &str, radix: u32) -> Option<String> {
     const DECIMAL_LIMB_BASE: u64 = 1_000_000_000;
     let mut decimal = vec![0_u32];
-    for character in digits.chars() {
-        let digit = u64::from(character.to_digit(radix)?);
-        let mut carry = digit;
+    let chunk_digits = match radix {
+        16 => 8,
+        8 => 11,
+        _ => 1,
+    };
+    let mut cursor = 0usize;
+    while cursor < digits.len() {
+        let remaining = digits.len() - cursor;
+        let width = if cursor == 0 {
+            let leading = remaining % chunk_digits;
+            if leading == 0 { chunk_digits } else { leading }
+        } else {
+            chunk_digits.min(remaining)
+        };
+        let mut chunk = 0_u64;
+        for character in digits[cursor..cursor + width].chars() {
+            chunk = chunk
+                .checked_mul(u64::from(radix))?
+                .checked_add(u64::from(character.to_digit(radix)?))?;
+        }
+        let factor = u64::from(radix).checked_pow(width as u32)?;
+        let mut carry = chunk;
         for value in &mut decimal {
-            let product = u64::from(*value) * u64::from(radix) + carry;
+            let product = u64::from(*value) * factor + carry;
             *value = (product % DECIMAL_LIMB_BASE) as u32;
             carry = product / DECIMAL_LIMB_BASE;
         }
@@ -5852,6 +6067,7 @@ fn decimal_from_radix(digits: &str, radix: u32) -> Option<String> {
             decimal.push((carry % DECIMAL_LIMB_BASE) as u32);
             carry /= DECIMAL_LIMB_BASE;
         }
+        cursor += width;
     }
     while decimal.len() > 1 && decimal.last() == Some(&0) {
         decimal.pop();
@@ -6000,8 +6216,12 @@ fn duplicate_flow_set_member_range(source: &str) -> Option<(usize, usize)> {
             .unwrap_or_else(|| line.len().saturating_sub(remainder.len()));
         let flow_start = span.start + relative;
         let flow_end = flow_value_end(source, flow_start);
+        let entries = top_level_flow_entries(source, flow_start, flow_end);
+        if entries.len() < 2 {
+            continue;
+        }
         let mut seen = Vec::<Value>::new();
-        for (entry_start, entry_end) in top_level_flow_entries(source, flow_start, flow_end) {
+        for (entry_start, entry_end) in entries {
             let entry_source = &source[entry_start..entry_end];
             let leading = entry_source.len() - entry_source.trim_start().len();
             let entry = entry_source.trim();
@@ -6226,6 +6446,54 @@ fn standard_flow_set_ranges(source: &str) -> Vec<(usize, usize)> {
     ranges
 }
 
+fn radix_set_output_lower_bound_exceeded(source: &str) -> bool {
+    standard_flow_set_ranges(source)
+        .into_iter()
+        .any(|(flow_start, flow_end)| {
+            let set_source_units = source[flow_start..flow_end].encode_utf16().count();
+            top_level_flow_entries(source, flow_start, flow_end)
+                .into_iter()
+                .filter_map(|(entry_start, entry_end)| {
+                    let entry = source[entry_start..entry_end].trim();
+                    let member = entry
+                        .strip_prefix('?')
+                        .map(str::trim_start)
+                        .unwrap_or(entry);
+                    let (lexical, _, tag) = standard_set_member_properties(member);
+                    if tag.is_some_and(|name| name != "int") {
+                        return None;
+                    }
+                    let scalar = lexical.trim();
+                    let (digits, bits_per_digit, radix) = scalar
+                        .strip_prefix("0x")
+                        .map(|digits| (digits, 4usize, 16u32))
+                        .or_else(|| {
+                            scalar
+                                .strip_prefix("0o")
+                                .map(|digits| (digits, 3usize, 8u32))
+                        })?;
+                    if digits.is_empty()
+                        || !digits.chars().all(|character| character.is_digit(radix))
+                    {
+                        return None;
+                    }
+                    let significant = digits.trim_start_matches('0');
+                    if significant.is_empty() {
+                        return Some(1usize);
+                    }
+                    let first = significant.chars().next()?.to_digit(radix)?;
+                    let first_bits = (u32::BITS - first.leading_zeros()) as usize;
+                    let bit_length = (significant.len() - 1)
+                        .saturating_mul(bits_per_digit)
+                        .saturating_add(first_bits);
+                    Some(bit_length.saturating_sub(1).saturating_mul(30_102) / 100_000 + 1)
+                })
+                .any(|decimal_units| {
+                    set_source_units.saturating_add(decimal_units) > MAX_FRONTMATTER_OUTPUT_UNITS
+                })
+        })
+}
+
 fn parent_collection_tag_flags(source: &str, spans: &[LineSpan]) -> Vec<Option<bool>> {
     let mut parents = vec![None; spans.len()];
     let mut stack = Vec::<(usize, bool)>::new();
@@ -6334,7 +6602,9 @@ fn alias_mapping_key_range(
                     cursor += next.len_utf8();
                 }
                 let alias_end = cursor;
-                if flow_explicit_key && !sorted_range_contains(&standard_flow_set_ranges, offset) {
+                let standard_set_member = sorted_range_contains(&standard_flow_set_ranges, offset)
+                    || direct_standard_flow_set_member(source, offset);
+                if flow_explicit_key && !standard_set_member {
                     return Some((alias_start, alias_end));
                 }
                 while source[cursor..].starts_with([' ', '\t']) {
@@ -6390,6 +6660,27 @@ fn alias_mapping_key_range(
         }
     }
     None
+}
+
+fn direct_standard_flow_set_member(source: &str, offset: usize) -> bool {
+    let Some(opening) = source[..offset].rfind('{') else {
+        return false;
+    };
+    let prefix = source[..opening].trim_end();
+    let line_start = prefix.rfind(['\r', '\n']).map_or(0, |newline| newline + 1);
+    let line_prefix = &prefix[line_start..];
+    let node_start = line_prefix
+        .char_indices()
+        .rev()
+        .find_map(|(position, character)| {
+            matches!(character, ':' | ',' | '[' | '{' | '?').then_some(position + 1)
+        })
+        .unwrap_or(0);
+    let node_source = line_prefix[node_start..]
+        .trim()
+        .strip_prefix("- ")
+        .unwrap_or(line_prefix[node_start..].trim());
+    split_node_properties(node_source).2 == Some("set")
 }
 
 fn duplicate_mapping_key_range(source: &str) -> Option<(usize, usize)> {
@@ -6937,6 +7228,102 @@ fn plain_scalar_continuation_ranges(source: &str) -> Vec<(usize, usize)> {
     ranges
 }
 
+fn plain_scalar_value_ranges(source: &str) -> Vec<(usize, usize)> {
+    let spans = line_spans(source);
+    let block_scalar_ranges = block_scalar_body_ranges(source);
+    let mut ranges = Vec::new();
+    let is_plain_scalar = |value: &str| {
+        !value.is_empty()
+            && !value.starts_with('#')
+            && !matches!(
+                value.chars().next(),
+                Some('"' | '\'' | '|' | '>' | '{' | '[' | '*' | '&' | '!' | '?' | ':' | '-')
+            )
+            && mapping_key_colon(value).is_none()
+    };
+    for (line_index, span) in spans.iter().enumerate() {
+        if sorted_range_contains(&block_scalar_ranges, span.start) {
+            continue;
+        }
+        let body = &source[span.start..span.content_end];
+        let trimmed = body.trim_start_matches([' ', '\t']);
+        let indent = body.len() - trimmed.len();
+        let item = trimmed
+            .strip_prefix("- ")
+            .or_else(|| (trimmed == "-").then_some(""));
+        let mapping_source = item.unwrap_or(trimmed);
+        let mapping_colon = mapping_key_colon(mapping_source);
+        let parent_indent = indent + usize::from(item.is_some() && mapping_colon.is_some()) * 2;
+        let value_source = if let Some(colon) = mapping_colon {
+            mapping_source[colon + 1..].trim_start()
+        } else if item.is_some() {
+            mapping_source
+        } else {
+            continue;
+        };
+        let (remainder, anchor, tag) = split_node_properties(value_source);
+        let (scalar_start, scan_index) = if is_plain_scalar(remainder) {
+            let relative = body
+                .find(value_source)
+                .unwrap_or_else(|| body.len().saturating_sub(value_source.len()))
+                + value_source.len().saturating_sub(remainder.len());
+            (span.start + relative, line_index + 1)
+        } else if remainder.is_empty()
+            && mapping_colon.is_some()
+            && tag.is_none_or(|name| !matches!(name, "map" | "seq" | "set" | "omap" | "pairs"))
+            && (value_source.is_empty() || anchor.is_some() || tag.is_some())
+        {
+            let Some((first_index, first)) =
+                spans
+                    .iter()
+                    .enumerate()
+                    .skip(line_index + 1)
+                    .find(|(_, candidate)| {
+                        let body = &source[candidate.start..candidate.content_end];
+                        let trimmed = body.trim_start_matches([' ', '\t']);
+                        !trimmed.is_empty() && !trimmed.starts_with('#')
+                    })
+            else {
+                continue;
+            };
+            let first_body = &source[first.start..first.content_end];
+            let first_trimmed = first_body.trim_start_matches([' ', '\t']);
+            let first_indent = first_body.len() - first_trimmed.len();
+            if first_indent <= parent_indent || !is_plain_scalar(first_trimmed) {
+                continue;
+            }
+            (first.start + first_indent, first_index + 1)
+        } else {
+            continue;
+        };
+        let mut end = spans
+            .get(scan_index.saturating_sub(1))
+            .map_or(scalar_start, |line| line.content_end);
+        for candidate in spans.iter().skip(scan_index) {
+            let candidate_body = &source[candidate.start..candidate.content_end];
+            let candidate_trimmed = candidate_body.trim_start_matches([' ', '\t']);
+            let candidate_indent = candidate_body.len() - candidate_trimmed.len();
+            if !candidate_trimmed.is_empty()
+                && (candidate_indent <= parent_indent
+                    || mapping_key_colon(candidate_trimmed).is_some()
+                    || candidate_trimmed
+                        .strip_prefix(['?', ':', '-'])
+                        .is_some_and(|rest| {
+                            rest.is_empty() || rest.chars().next().is_some_and(char::is_whitespace)
+                        }))
+            {
+                break;
+            }
+            end = candidate.content_end;
+        }
+        if end > scalar_start {
+            ranges.push((scalar_start, end));
+        }
+    }
+    normalize_ranges(&mut ranges);
+    ranges
+}
+
 fn duplicate_flow_mapping_key_range(source: &str, flow_start: usize) -> Option<(usize, usize)> {
     let mut keys = Vec::new();
     let mut cursor = flow_start + 1;
@@ -7078,6 +7465,9 @@ fn yaml_anchor_occurrences_in_ranges(
 }
 
 fn yaml_node_property_position(source: &str, offset: usize) -> bool {
+    if sorted_range_contains(&plain_scalar_value_ranges(source), offset) {
+        return false;
+    }
     let line_start = source[..offset]
         .rfind(['\r', '\n'])
         .map_or(0, |newline| newline + 1);
@@ -7124,7 +7514,7 @@ fn preserve_standard_yaml_tags(
     let mut claimed_property_lines = std::collections::BTreeSet::new();
     let spans = line_spans(source);
     let mut scanner_excluded_ranges = provenance_continuation_ranges(source);
-    scanner_excluded_ranges.extend(plain_scalar_continuation_ranges(source));
+    scanner_excluded_ranges.extend(plain_scalar_value_ranges(source));
     normalize_ranges(&mut scanner_excluded_ranges);
     let block_set_member_ranges = spans
         .iter()
@@ -8241,7 +8631,9 @@ fn flow_value_end(source: &str, start: usize) -> usize {
 }
 
 fn flow_collection_ranges(source: &str) -> Vec<(usize, usize)> {
-    let excluded = block_scalar_body_ranges(source);
+    let mut excluded = block_scalar_body_ranges(source);
+    excluded.extend(plain_scalar_value_ranges(source));
+    normalize_ranges(&mut excluded);
     let mut excluded_index = 0usize;
     let mut ranges = Vec::new();
     let mut stack = Vec::new();
@@ -8461,7 +8853,7 @@ fn rewrite_empty_standard_string_keys(source: &str) -> Option<String> {
     let parent_collection_tags = parent_collection_tag_flags(source, &spans);
     let block_scalar_ranges = block_scalar_body_ranges(source);
     let quoted_scalar_ranges = multiline_quoted_scalar_ranges(source);
-    let plain_scalar_ranges = plain_scalar_continuation_ranges(source);
+    let plain_scalar_ranges = plain_scalar_value_ranges(source);
     let mut scanner_excluded_ranges = block_scalar_ranges.clone();
     scanner_excluded_ranges.extend(quoted_scalar_ranges);
     scanner_excluded_ranges.extend(plain_scalar_ranges);
@@ -9517,13 +9909,28 @@ fn restore_collection_set_member_provenance(
 fn restore_direct_standard_set_member_source(member_source: &str, value: &mut Value) {
     let (lexical, _, tag_name) = standard_set_member_properties(member_source);
     if tag_name.is_none() {
+        if value.as_object().is_some_and(|object| {
+            object.len() == 1
+                && object
+                    .get(EXACT_INTEGER_KEY)
+                    .and_then(Value::as_str)
+                    .is_some()
+        }) {
+            return;
+        }
         let scalar = lexical.trim();
         if let Some(canonical) = canonical_set_integer(scalar, false)
             && canonical != scalar
             && !yaml_schema_integer_string(scalar)
-            && let Ok(normalized) = serde_json::from_str::<Value>(&canonical)
         {
-            *value = normalized;
+            let already_exact = value.as_object().is_some_and(|object| {
+                object.len() == 1
+                    && object.get(EXACT_INTEGER_KEY).and_then(Value::as_str)
+                        == Some(canonical.as_str())
+            });
+            if !already_exact && let Ok(normalized) = serde_json::from_str::<Value>(&canonical) {
+                *value = normalized;
+            }
         }
         return;
     }
@@ -10908,6 +11315,10 @@ fn block_field_value_end(
     field_indent: usize,
     preserve_trailing_collection_boundary: bool,
 ) -> usize {
+    if preserve_trailing_collection_boundary && value_source.is_empty() && content_start >= boundary
+    {
+        return fallback;
+    }
     let indicator = block_scalar_indicator(value_source);
     let (remainder, explicit_anchor, explicit_tag) = split_node_properties(value_source);
     let deferred_properties = (remainder.is_empty() || remainder.starts_with('#'))
@@ -11745,7 +12156,7 @@ fn yaml_collection_nesting_failure(source: &str) -> Option<String> {
 fn yaml_alias_occurrence_count(source: &str) -> (usize, usize, usize) {
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
-    excluded_ranges.extend(plain_scalar_continuation_ranges(source));
+    excluded_ranges.extend(plain_scalar_value_ranges(source));
     normalize_ranges(&mut excluded_ranges);
     let mut aliases = Vec::new();
     let mut quote = None;
@@ -11980,7 +12391,7 @@ fn yaml_anchored_node_range(source: &str, anchor: &YamlAnchorOccurrence) -> Opti
 fn multiple_yaml_document_range(source: &str) -> Option<(usize, usize)> {
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
-    excluded_ranges.extend(plain_scalar_continuation_ranges(source));
+    excluded_ranges.extend(plain_scalar_value_ranges(source));
     normalize_ranges(&mut excluded_ranges);
     let spans = line_spans(source);
     for (index, span) in spans.iter().enumerate() {
@@ -12217,11 +12628,15 @@ fn markdown_links(
     if let Some(message) = markdown_inline_work_failure(body) {
         return Err(message);
     }
-    let maximum_definition_target = markdown_definition_inspection(body)?;
+    let maximum_definition_expansion = markdown_definition_inspection(body)?;
     let bracket_count = body.bytes().filter(|byte| *byte == b'[').count();
-    let estimated_reference_expansion = bracket_count.saturating_mul(maximum_definition_target);
-    let desired_parser_capacity = estimated_reference_expansion
-        .min(MAX_LINK_TEXT_UNITS_PER_DOCUMENT + MAX_LINK_TARGET_BYTES + 1);
+    let estimated_reference_expansion = bracket_count.saturating_mul(maximum_definition_expansion);
+    if estimated_reference_expansion > MAX_MARKDOWN_REFERENCE_EXPANSION_BYTES {
+        return Err(format!(
+            "Markdown reference expansion exceeds the {MAX_MARKDOWN_REFERENCE_EXPANSION_BYTES}-byte parser-work safety limit. Reduce repeated references or definition titles, then retry."
+        ));
+    }
+    let desired_parser_capacity = estimated_reference_expansion;
     let parser_padding = if desired_parser_capacity > body.len().max(100_000) {
         desired_parser_capacity.saturating_sub(body.len())
     } else {
@@ -12235,7 +12650,34 @@ fn markdown_links(
         padded
     });
     let parser_body = padded_body.as_deref().unwrap_or(body);
-    let parser = Parser::new_ext(parser_body, Options::ENABLE_STRIKETHROUGH).into_offset_iter();
+    let reference_parser = Parser::new_ext(body, Options::ENABLE_STRIKETHROUGH);
+    let reference_definitions = reference_parser
+        .reference_definitions()
+        .iter()
+        .map(|(label, definition)| {
+            (
+                normalize_reference_identifier(label),
+                definition.dest.to_string(),
+                definition
+                    .title
+                    .as_ref()
+                    .map_or_else(String::new, ToString::to_string),
+            )
+        })
+        .collect::<Vec<_>>();
+    let reference_callback = move |broken: pulldown_cmark::BrokenLink<'_>| {
+        let identifier = normalize_reference_identifier(&broken.reference);
+        reference_definitions
+            .iter()
+            .find(|(label, _, _)| *label == identifier)
+            .map(|(_, destination, title)| (destination.clone().into(), title.clone().into()))
+    };
+    let parser = Parser::new_with_broken_link_callback(
+        parser_body,
+        Options::ENABLE_STRIKETHROUGH,
+        Some(reference_callback),
+    )
+    .into_offset_iter();
     let positions = source_position_index(full_text);
     let mut stack: Vec<(String, String, std::ops::Range<usize>)> = Vec::new();
     let mut result = Vec::new();
@@ -12262,6 +12704,7 @@ fn markdown_links(
             }
             Event::End(pulldown_cmark::TagEnd::Link) => {
                 if let Some((label, target, start_range)) = stack.pop() {
+                    let label = trim_ecmascript_whitespace(&label);
                     if let Some(message) = bounded_link_text_failure(
                         &target,
                         MAX_LINK_TARGET_CODE_UNITS,
@@ -12271,7 +12714,7 @@ fn markdown_links(
                         return Err(message);
                     }
                     if let Some(message) = bounded_link_text_failure(
-                        label.trim(),
+                        label,
                         MAX_LINK_LABEL_CODE_UNITS,
                         MAX_LINK_LABEL_BYTES,
                         "link label",
@@ -12283,7 +12726,7 @@ fn markdown_links(
                             "Markdown contains more than {MAX_MARKDOWN_LINKS_PER_DOCUMENT} links, exceeding the per-document safety limit. Reduce or split the document, then retry."
                         ));
                     }
-                    let additional_text_units = target.len().saturating_add(label.trim().len());
+                    let additional_text_units = target.len().saturating_add(label.len());
                     if retained_text_units
                         > MAX_LINK_TEXT_UNITS_PER_DOCUMENT.saturating_sub(additional_text_units)
                     {
@@ -12300,7 +12743,7 @@ fn markdown_links(
                         end += 2;
                     }
                     result.push(LinkCandidate {
-                        label: label.trim().to_owned(),
+                        label: label.to_owned(),
                         target,
                         range: range_for_with_position_index(
                             full_text,
@@ -12317,65 +12760,114 @@ fn markdown_links(
     Ok(result)
 }
 
+fn trim_ecmascript_whitespace(value: &str) -> &str {
+    value.trim_matches(is_ecmascript_whitespace)
+}
+
+fn is_ecmascript_whitespace(character: char) -> bool {
+    matches!(
+        character,
+        '\u{0009}'
+            | '\u{000a}'
+            | '\u{000b}'
+            | '\u{000c}'
+            | '\u{000d}'
+            | '\u{0020}'
+            | '\u{00a0}'
+            | '\u{1680}'
+            | '\u{2000}'
+            ..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
+    )
+}
+
+fn normalize_reference_identifier(value: &str) -> String {
+    let mut result = String::new();
+    let mut pending_space = false;
+    for character in trim_ecmascript_whitespace(value).chars() {
+        if is_ecmascript_whitespace(character) {
+            pending_space = !result.is_empty();
+            continue;
+        }
+        if pending_space {
+            result.push(' ');
+            pending_space = false;
+        }
+        result.push(character);
+    }
+    result.to_uppercase().to_lowercase()
+}
+
 fn markdown_definition_inspection(body: &str) -> Result<usize, String> {
+    let definition_parser = Parser::new_ext(body, Options::ENABLE_STRIKETHROUGH);
+    let parsed_definitions = definition_parser
+        .reference_definitions()
+        .iter()
+        .map(|(_, definition)| definition)
+        .collect::<Vec<_>>();
     let spans = line_spans(body);
     let mut definition_count = 0usize;
-    let mut maximum_target_bytes = 0usize;
-    let mut fence: Option<(char, usize)> = None;
-    let mut html_block: Option<MarkdownHtmlBlock> = None;
+    let mut maximum_expansion_bytes = 0usize;
+    let mut seen_definition_labels = BTreeSet::new();
+    let mut fence: Option<(char, usize, usize)> = None;
+    let mut html_block: Option<(MarkdownHtmlBlock, usize)> = None;
     let mut line_index = 0usize;
     while line_index < spans.len() {
         let span = &spans[line_index];
         let source_line = &body[span.start..span.content_end];
-        let line = markdown_container_content(source_line);
+        let (line, container_depth) = markdown_container_content_and_depth(source_line);
         let leading_spaces = line
             .chars()
             .take_while(|character| *character == ' ')
             .count();
         let trimmed = &line[leading_spaces.min(line.len())..];
-        if let Some((marker, minimum)) = fence {
-            if leading_spaces <= 3 {
-                let marker_count = trimmed
-                    .chars()
-                    .take_while(|character| *character == marker)
-                    .count();
-                if marker_count >= minimum
-                    && trimmed[marker_count..].chars().all(char::is_whitespace)
-                {
-                    fence = None;
+        if let Some((marker, minimum, opening_depth)) = fence {
+            if container_depth < opening_depth {
+                fence = None;
+            } else {
+                if leading_spaces <= 3 {
+                    let marker_count = trimmed
+                        .chars()
+                        .take_while(|character| *character == marker)
+                        .count();
+                    if marker_count >= minimum
+                        && trimmed[marker_count..].chars().all(char::is_whitespace)
+                    {
+                        fence = None;
+                    }
                 }
+                line_index += 1;
+                continue;
             }
-            line_index += 1;
-            continue;
         }
-        if let Some(active_html_block) = html_block.as_ref() {
-            if active_html_block.ends_on(trimmed) {
+        if let Some((active_html_block, opening_depth)) = html_block.as_ref() {
+            if container_depth < *opening_depth {
                 html_block = None;
-            }
-            line_index += 1;
-            continue;
-        }
-        if leading_spaces <= 3
-            && let Some(marker) = trimmed
-                .chars()
-                .next()
-                .filter(|marker| matches!(marker, '`' | '~'))
-        {
-            let marker_count = trimmed
-                .chars()
-                .take_while(|character| *character == marker)
-                .count();
-            if marker_count >= 3 {
-                fence = Some((marker, marker_count));
+            } else {
+                if active_html_block.ends_on(trimmed) {
+                    html_block = None;
+                }
                 line_index += 1;
                 continue;
             }
         }
         if leading_spaces <= 3
+            && let Some((marker, marker_count)) = markdown_fence_opener(trimmed)
+        {
+            fence = Some((marker, marker_count, container_depth));
+            line_index += 1;
+            continue;
+        }
+        if leading_spaces <= 3
             && let Some(started_html_block) = markdown_html_block_start(trimmed)
         {
             if !started_html_block.ends_on(trimmed) {
-                html_block = Some(started_html_block);
+                html_block = Some((started_html_block, container_depth));
             }
             line_index += 1;
             continue;
@@ -12409,6 +12901,51 @@ fn markdown_definition_inspection(body: &str) -> Result<usize, String> {
             line_index += 1;
             continue;
         };
+        let label = &trimmed[1..closing];
+        let candidate_start = span.start + source_line.len() - line.len() + leading_spaces;
+        let parsed_definition = parsed_definitions.iter().copied().find(|definition| {
+            definition.span.start <= candidate_start && candidate_start < definition.span.end
+        });
+        let normalized_label = normalize_reference_identifier(label);
+        if let Some(definition) = parsed_definition {
+            definition_count += 1;
+            if definition_count > MAX_MARKDOWN_DEFINITIONS_PER_DOCUMENT {
+                return Err(format!(
+                    "Markdown contains more than {MAX_MARKDOWN_DEFINITIONS_PER_DOCUMENT} link definitions, exceeding the pre-parse safety limit. Reduce or split the document, then retry."
+                ));
+            }
+            seen_definition_labels.insert(normalized_label);
+            let title_bytes = definition.title.as_ref().map_or(0, |title| title.len());
+            maximum_expansion_bytes =
+                maximum_expansion_bytes.max(definition.dest.len().saturating_add(title_bytes));
+            if let Some(message) = bounded_link_text_failure(
+                label,
+                MAX_LINK_LABEL_CODE_UNITS,
+                MAX_LINK_LABEL_BYTES,
+                "link label",
+            ) {
+                return Err(message);
+            }
+            if let Some(message) = bounded_link_text_failure(
+                &definition.dest,
+                MAX_LINK_TARGET_CODE_UNITS,
+                MAX_LINK_TARGET_BYTES,
+                "link target",
+            ) {
+                return Err(message);
+            }
+            line_index += definition
+                .span
+                .clone()
+                .filter(|offset| body.as_bytes().get(*offset) == Some(&b'\n'))
+                .count();
+            line_index += 1;
+            continue;
+        }
+        if !seen_definition_labels.contains(&normalized_label) {
+            line_index += 1;
+            continue;
+        }
         let mut definition_tail = after_colon.trim_start();
         if definition_tail.is_empty()
             && let Some(next) = spans.get(line_index + 1)
@@ -12428,19 +12965,20 @@ fn markdown_definition_inspection(body: &str) -> Result<usize, String> {
             line_index += 1;
             continue;
         };
-        if !markdown_definition_title_is_valid(remainder) {
+        let Some(title_bytes) = markdown_definition_title_bytes(remainder) else {
             line_index += 1;
             continue;
-        }
+        };
         definition_count += 1;
         if definition_count > MAX_MARKDOWN_DEFINITIONS_PER_DOCUMENT {
             return Err(format!(
                 "Markdown contains more than {MAX_MARKDOWN_DEFINITIONS_PER_DOCUMENT} link definitions, exceeding the pre-parse safety limit. Reduce or split the document, then retry."
             ));
         }
-        maximum_target_bytes = maximum_target_bytes.max(destination.len());
+        maximum_expansion_bytes =
+            maximum_expansion_bytes.max(destination.len().saturating_add(title_bytes));
         if let Some(message) = bounded_link_text_failure(
-            &trimmed[1..closing],
+            label,
             MAX_LINK_LABEL_CODE_UNITS,
             MAX_LINK_LABEL_BYTES,
             "link label",
@@ -12457,7 +12995,7 @@ fn markdown_definition_inspection(body: &str) -> Result<usize, String> {
         }
         line_index += 1;
     }
-    Ok(maximum_target_bytes)
+    Ok(maximum_expansion_bytes)
 }
 
 fn markdown_syntax_candidate_count(body: &str) -> usize {
@@ -12469,70 +13007,280 @@ fn markdown_syntax_candidate_count(body: &str) -> usize {
         .count()
 }
 
-fn markdown_inline_work_failure(body: &str) -> Option<String> {
-    let bytes = body.as_bytes();
+fn markdown_work_inspection(body: &str) -> MarkdownWorkInspection {
+    let mut inspection = MarkdownWorkInspection::default();
     let mut attention_runs = 0usize;
     let mut attention_markers = 0usize;
     let mut media_depth = 0usize;
-    let mut index = 0usize;
-    while index < bytes.len() {
-        if bytes[index] == b'\\' {
-            index = (index + 2).min(bytes.len());
-            continue;
-        }
-        if matches!(bytes[index], b'*' | b'_') {
-            let marker = bytes[index];
-            attention_runs += 1;
-            if attention_runs > MAX_MARKDOWN_ATTENTION_RUNS_PER_DOCUMENT {
-                return Some(format!(
-                    "Markdown emphasis delimiter work exceeds the {MAX_MARKDOWN_ATTENTION_RUNS_PER_DOCUMENT}-run pre-parse safety limit. Reduce or split the document, then retry."
-                ));
+    let mut active_container_depth = 0usize;
+    let mut fence: Option<(char, usize, usize)> = None;
+    let mut html_block: Option<(MarkdownHtmlBlock, usize)> = None;
+    let spans = line_spans(body);
+    for span in &spans {
+        let source_line = &body[span.start..span.content_end];
+        let (line, container_depth) = markdown_container_content_and_depth(source_line);
+        let indentation_columns = markdown_indentation_columns(source_line);
+        if container_depth > 0 {
+            inspection.container_work_units = inspection
+                .container_work_units
+                .saturating_add(container_depth.saturating_mul(2));
+            active_container_depth = container_depth;
+        } else if active_container_depth > 0
+            && !source_line.trim().is_empty()
+            && indentation_columns >= active_container_depth.saturating_mul(2)
+        {
+            inspection.container_work_units = inspection
+                .container_work_units
+                .saturating_add(active_container_depth);
+        } else {
+            active_container_depth = 0;
+            let candidate = source_line.trim_start_matches([' ', '\t']);
+            if markdown_container_attempt(candidate) {
+                inspection.container_work_units += 1;
             }
-            while bytes.get(index) == Some(&marker) {
-                attention_markers += 1;
-                if attention_markers > MAX_MARKDOWN_ATTENTION_MARKERS_PER_DOCUMENT {
-                    return Some(format!(
-                        "Markdown emphasis delimiter work exceeds the {MAX_MARKDOWN_ATTENTION_MARKERS_PER_DOCUMENT}-marker-code-unit pre-parse safety limit. Reduce or split the document, then retry."
-                    ));
+        }
+        if inspection.container_work_units > MAX_MARKDOWN_CONTAINER_WORK_UNITS_PER_DOCUMENT {
+            inspection.container_work_units = MAX_MARKDOWN_CONTAINER_WORK_UNITS_PER_DOCUMENT + 1;
+            inspection.failure = Some(format!(
+                "Markdown list and blockquote continuation work exceeds the {MAX_MARKDOWN_CONTAINER_WORK_UNITS_PER_DOCUMENT}-unit per-document pre-parse safety limit. Reduce or split the document, then retry."
+            ));
+            return inspection;
+        }
+        let leading_spaces = line
+            .chars()
+            .take_while(|character| *character == ' ')
+            .count();
+        let trimmed = &line[leading_spaces.min(line.len())..];
+        if let Some((marker, minimum, opening_depth)) = fence {
+            if container_depth < opening_depth {
+                fence = None;
+            } else {
+                if leading_spaces <= 3 {
+                    let marker_count = trimmed
+                        .chars()
+                        .take_while(|character| *character == marker)
+                        .count();
+                    if marker_count >= minimum
+                        && trimmed[marker_count..].chars().all(char::is_whitespace)
+                    {
+                        fence = None;
+                    }
                 }
-                index += 1;
+                continue;
+            }
+        }
+        if let Some((active_html_block, opening_depth)) = html_block.as_ref() {
+            if container_depth < *opening_depth {
+                html_block = None;
+            } else {
+                if active_html_block.ends_on(trimmed) {
+                    html_block = None;
+                }
+                continue;
+            }
+        }
+        if container_depth > MAX_MARKDOWN_CONTAINER_NESTING_DEPTH {
+            inspection.failure = Some(format!(
+                "Markdown list and blockquote nesting exceeds the {MAX_MARKDOWN_CONTAINER_NESTING_DEPTH}-level pre-parse safety limit. Reduce nesting, then retry."
+            ));
+            return inspection;
+        }
+        if leading_spaces >= 4 {
+            continue;
+        }
+        if let Some((marker, marker_count)) = markdown_fence_opener(trimmed) {
+            fence = Some((marker, marker_count, container_depth));
+            continue;
+        }
+        if let Some(started_html_block) = markdown_html_block_start(trimmed) {
+            if !started_html_block.ends_on(trimmed) {
+                html_block = Some((started_html_block, container_depth));
             }
             continue;
         }
-        if bytes[index] == b'!' && bytes.get(index + 1) == Some(&b'[') {
-            media_depth += 1;
-            if media_depth > MAX_MARKDOWN_MEDIA_NESTING_DEPTH {
-                return Some(format!(
-                    "Markdown link and image label nesting exceeds the {MAX_MARKDOWN_MEDIA_NESTING_DEPTH}-level pre-parse safety limit. Reduce nesting, then retry."
-                ));
-            }
-            index += 2;
+        if markdown_thematic_break(trimmed) {
             continue;
         }
-        if bytes[index] == b'[' {
-            media_depth += 1;
-            if media_depth > MAX_MARKDOWN_MEDIA_NESTING_DEPTH {
-                return Some(format!(
-                    "Markdown link and image label nesting exceeds the {MAX_MARKDOWN_MEDIA_NESTING_DEPTH}-level pre-parse safety limit. Reduce nesting, then retry."
-                ));
-            }
-        } else if bytes[index] == b']' {
-            media_depth = media_depth.saturating_sub(1);
+        if trimmed.is_empty() {
+            media_depth = 0;
+            continue;
         }
-        index += 1;
-    }
 
-    let maximum_container_depth = line_spans(body)
-        .iter()
-        .map(|span| markdown_container_content_and_depth(&body[span.start..span.content_end]).1)
-        .max()
-        .unwrap_or(0);
-    if maximum_container_depth > MAX_MARKDOWN_CONTAINER_NESTING_DEPTH {
-        return Some(format!(
-            "Markdown list and blockquote nesting exceeds the {MAX_MARKDOWN_CONTAINER_NESTING_DEPTH}-level pre-parse safety limit. Reduce nesting, then retry."
+        let bytes = trimmed.as_bytes();
+        let mut index = 0usize;
+        while index < bytes.len() {
+            if bytes[index] == b'\\' {
+                index = (index + 2).min(bytes.len());
+                continue;
+            }
+            if bytes[index] == b'`' {
+                let marker_count = bytes[index..]
+                    .iter()
+                    .take_while(|byte| **byte == b'`')
+                    .count();
+                if let Some(end) =
+                    markdown_inline_code_end(bytes, index + marker_count, marker_count)
+                {
+                    index = end;
+                    continue;
+                }
+                index += marker_count;
+                continue;
+            }
+            if matches!(bytes[index], b'*' | b'_') {
+                let marker = bytes[index];
+                attention_runs += 1;
+                if attention_runs > MAX_MARKDOWN_ATTENTION_RUNS_PER_DOCUMENT {
+                    inspection.failure = Some(format!(
+                        "Markdown emphasis delimiter work exceeds the {MAX_MARKDOWN_ATTENTION_RUNS_PER_DOCUMENT}-run pre-parse safety limit. Reduce or split the document, then retry."
+                    ));
+                    return inspection;
+                }
+                inspection.attention_work_units = attention_runs.saturating_mul(spans.len());
+                if inspection.attention_work_units > MAX_MARKDOWN_ATTENTION_WORK_UNITS_PER_DOCUMENT
+                {
+                    inspection.attention_work_units =
+                        MAX_MARKDOWN_ATTENTION_WORK_UNITS_PER_DOCUMENT + 1;
+                    inspection.failure = Some(format!(
+                        "Markdown emphasis resolution work exceeds the {MAX_MARKDOWN_ATTENTION_WORK_UNITS_PER_DOCUMENT}-unit per-document pre-parse safety limit. Reduce or split the document, then retry."
+                    ));
+                    return inspection;
+                }
+                while bytes.get(index) == Some(&marker) {
+                    attention_markers += 1;
+                    if attention_markers > MAX_MARKDOWN_ATTENTION_MARKERS_PER_DOCUMENT {
+                        inspection.failure = Some(format!(
+                            "Markdown emphasis delimiter work exceeds the {MAX_MARKDOWN_ATTENTION_MARKERS_PER_DOCUMENT}-marker-code-unit pre-parse safety limit. Reduce or split the document, then retry."
+                        ));
+                        return inspection;
+                    }
+                    index += 1;
+                }
+                continue;
+            }
+            if bytes[index] == b'!' && bytes.get(index + 1) == Some(&b'[') {
+                media_depth += 1;
+                if media_depth > MAX_MARKDOWN_MEDIA_NESTING_DEPTH {
+                    inspection.failure = Some(format!(
+                        "Markdown link and image label nesting exceeds the {MAX_MARKDOWN_MEDIA_NESTING_DEPTH}-level pre-parse safety limit. Reduce nesting, then retry."
+                    ));
+                    return inspection;
+                }
+                index += 2;
+                continue;
+            }
+            if bytes[index] == b'[' {
+                media_depth += 1;
+                if media_depth > MAX_MARKDOWN_MEDIA_NESTING_DEPTH {
+                    inspection.failure = Some(format!(
+                        "Markdown link and image label nesting exceeds the {MAX_MARKDOWN_MEDIA_NESTING_DEPTH}-level pre-parse safety limit. Reduce nesting, then retry."
+                    ));
+                    return inspection;
+                }
+            } else if bytes[index] == b']' {
+                let closing_count = bytes[index..]
+                    .iter()
+                    .take_while(|byte| **byte == b']')
+                    .count();
+                let closing_work = closing_count.saturating_mul(closing_count.saturating_sub(1));
+                if closing_work
+                    > MAX_MARKDOWN_LABEL_END_WORK_UNITS_PER_DOCUMENT
+                        .saturating_sub(inspection.label_end_work_units)
+                {
+                    inspection.label_end_work_units =
+                        MAX_MARKDOWN_LABEL_END_WORK_UNITS_PER_DOCUMENT + 1;
+                    inspection.failure = Some(format!(
+                        "Markdown link-label closing work exceeds the {MAX_MARKDOWN_LABEL_END_WORK_UNITS_PER_DOCUMENT}-unit per-document pre-parse safety limit. Reduce or split the document, then retry."
+                    ));
+                    return inspection;
+                }
+                inspection.label_end_work_units += closing_work;
+                media_depth = media_depth.saturating_sub(1);
+                index += closing_count;
+                continue;
+            }
+            index += 1;
+        }
+    }
+    inspection.attention_work_units = attention_runs.saturating_mul(spans.len());
+    let parser = Parser::new_ext(body, Options::ENABLE_STRIKETHROUGH);
+    inspection.link_candidates = parser.reference_definitions().iter().count();
+    let media_candidates = parser
+        .filter(|event| matches!(event, Event::Start(Tag::Link { .. } | Tag::Image { .. })))
+        .count();
+    inspection.link_candidates += media_candidates;
+    if media_candidates > MAX_MARKDOWN_LINKS_PER_DOCUMENT {
+        inspection.failure = Some(format!(
+            "Markdown contains more than {MAX_MARKDOWN_LINKS_PER_DOCUMENT} links and images, exceeding the pre-parse safety limit. Reduce or split the document, then retry."
         ));
     }
+    inspection
+}
+
+fn markdown_inline_work_failure(body: &str) -> Option<String> {
+    markdown_work_inspection(body).failure
+}
+
+fn markdown_indentation_columns(line: &str) -> usize {
+    line.chars()
+        .take_while(|character| matches!(character, ' ' | '\t'))
+        .fold(0usize, |columns, character| {
+            if character == '\t' {
+                columns + (4 - columns % 4)
+            } else {
+                columns + 1
+            }
+        })
+}
+
+fn markdown_container_attempt(line: &str) -> bool {
+    line.starts_with(['>', '*', '+', '-']) || {
+        let digits = line
+            .as_bytes()
+            .iter()
+            .take(9)
+            .take_while(|byte| byte.is_ascii_digit())
+            .count();
+        digits > 0
+            && line
+                .as_bytes()
+                .get(digits)
+                .is_some_and(|marker| matches!(marker, b'.' | b')'))
+    }
+}
+
+fn markdown_inline_code_end(bytes: &[u8], mut index: usize, marker_count: usize) -> Option<usize> {
+    while index < bytes.len() {
+        if bytes[index] != b'`' {
+            index += 1;
+            continue;
+        }
+        let candidate_count = bytes[index..]
+            .iter()
+            .take_while(|byte| **byte == b'`')
+            .count();
+        if candidate_count == marker_count {
+            return Some(index + candidate_count);
+        }
+        index += candidate_count;
+    }
     None
+}
+
+fn markdown_fence_opener(line: &str) -> Option<(char, usize)> {
+    let marker = line
+        .chars()
+        .next()
+        .filter(|marker| matches!(marker, '`' | '~'))?;
+    let marker_count = line
+        .chars()
+        .take_while(|character| *character == marker)
+        .count();
+    if marker_count < 3 {
+        return None;
+    }
+    let remainder = &line[marker_count..];
+    (marker != '`' || !remainder.contains('`')).then_some((marker, marker_count))
 }
 
 fn markdown_definition_destination(value: &str) -> Option<(&str, &str)> {
@@ -12580,31 +13328,31 @@ fn markdown_definition_destination(value: &str) -> Option<(&str, &str)> {
     (end > 0 && parenthesis_depth == 0).then_some((&value[..end], &value[end..]))
 }
 
-fn markdown_definition_title_is_valid(value: &str) -> bool {
+fn markdown_definition_title_bytes(value: &str) -> Option<usize> {
     let value = value.trim_start();
     if value.is_empty() {
-        return true;
+        return Some(0);
     }
     let Some(opening) = value.chars().next() else {
-        return true;
+        return Some(0);
     };
     let closing = match opening {
         '"' | '\'' => opening,
         '(' => ')',
-        _ => return false,
+        _ => return None,
     };
     let mut escaped = false;
     for (offset, character) in value[opening.len_utf8()..].char_indices() {
         if character == closing && !escaped {
             let end = opening.len_utf8() + offset + character.len_utf8();
-            return value[end..].trim().is_empty();
+            return value[end..].trim().is_empty().then_some(offset);
         }
         escaped = character == '\\' && !escaped;
         if character != '\\' {
             escaped = false;
         }
     }
-    false
+    None
 }
 
 fn markdown_container_content(line: &str) -> &str {
@@ -12627,6 +13375,9 @@ fn markdown_container_content_and_depth(mut line: &str) -> (&str, usize) {
             line = after_quote.strip_prefix([' ', '\t']).unwrap_or(after_quote);
             continue;
         }
+        if markdown_thematic_break(candidate) {
+            return (line, depth);
+        }
         if let Some(after_marker) = markdown_list_item_content(candidate) {
             depth += 1;
             line = after_marker;
@@ -12634,6 +13385,25 @@ fn markdown_container_content_and_depth(mut line: &str) -> (&str, usize) {
         }
         return (line, depth);
     }
+}
+
+fn markdown_thematic_break(line: &str) -> bool {
+    let mut marker = None;
+    let mut count = 0usize;
+    for character in line.chars() {
+        if character.is_whitespace() {
+            continue;
+        }
+        if !matches!(character, '*' | '-' | '_') {
+            return false;
+        }
+        if marker.is_some_and(|expected| expected != character) {
+            return false;
+        }
+        marker = Some(character);
+        count += 1;
+    }
+    count >= 3
 }
 
 fn markdown_list_item_content(line: &str) -> Option<&str> {
@@ -12782,13 +13552,14 @@ fn markdown_html_block_start(line: &str) -> Option<MarkdownHtmlBlock> {
     let after_open = after_open.strip_prefix('/').unwrap_or(after_open);
     let tag_end = after_open
         .bytes()
-        .position(|byte| !(byte.is_ascii_alphanumeric() || byte == b'-'))?;
+        .position(|byte| !(byte.is_ascii_alphanumeric() || byte == b'-'))
+        .unwrap_or(after_open.len());
     if tag_end == 0 {
         return None;
     }
     let tag = &after_open[..tag_end];
     let boundary = &after_open[tag_end..];
-    if !boundary.starts_with([' ', '\t', '>', '/']) {
+    if !boundary.is_empty() && !boundary.starts_with([' ', '\t', '>', '/']) {
         return None;
     }
     if !closing_tag
@@ -12922,7 +13693,7 @@ fn resolve_link(
     let fragment = fragment.map(str::to_owned);
     let query = query.map(str::to_owned);
     let external = has_uri_scheme(path) || path.starts_with("//");
-    let (classification, target_id) = if raw.is_empty() || has_control_character(&raw) {
+    let (classification, target_id) = if raw.is_empty() || has_link_control_character(&raw) {
         (LinkClassification::Invalid, None)
     } else if external {
         (LinkClassification::External, None)
@@ -12989,7 +13760,7 @@ fn normalize_link_path(source_path: &str, target: &str) -> LinkPathResult {
         return LinkPathResult::Invalid;
     };
     let decoded = decoded.replace('\\', "/");
-    if has_control_character(&decoded) {
+    if has_link_control_character(&decoded) {
         return LinkPathResult::Invalid;
     }
     let base = if decoded.starts_with('/') {
@@ -13072,6 +13843,13 @@ pub(crate) fn has_control_character(value: &str) -> bool {
     value.chars().any(|character| {
         let code = u32::from(character);
         code <= 0x1f || (0x7f..=0x9f).contains(&code)
+    })
+}
+
+fn has_link_control_character(value: &str) -> bool {
+    value.chars().any(|character| {
+        let code = u32::from(character);
+        code <= 0x1f || code == 0x7f
     })
 }
 
@@ -13351,6 +14129,7 @@ mod tests {
             content: Some(DocumentContent::Text(content.to_owned())),
             content_hash: None,
             identity_only_failure: None,
+            invalid_utf16_fields: None,
         }
     }
 
@@ -13358,6 +14137,7 @@ mod tests {
     fn parses_concepts_and_document_relative_links() {
         let bundle = parse_bundle(ParseBundleInput {
             root_uri: "file:///bundle".to_owned(),
+            invalid_root_uri_utf16: None,
             revision: 2,
             documents: vec![
                 document("index.md", "---\nokf_version: \"0.1\"\n---\n"),
@@ -13386,10 +14166,56 @@ mod tests {
         input.content = Some(DocumentContent::Bytes(vec![0xff]));
         let bundle = parse_bundle(ParseBundleInput {
             root_uri: "file:///bundle".to_owned(),
+            invalid_root_uri_utf16: None,
             revision: 1,
             documents: vec![input],
         });
         assert_eq!(bundle.failures[0].reason, ParseFailureReason::Decode);
+    }
+
+    #[test]
+    fn isolates_invalid_utf16_abi_identities_without_losing_siblings() {
+        let mut invalid_uri = document("invalid.md", "---\ntype: reference\n---\n");
+        invalid_uri.uri = "<provider-uri-invalid-unicode>".to_owned();
+        invalid_uri.invalid_utf16_fields = Some(crate::InvalidUtf16DocumentFields {
+            uri: true,
+            ..crate::InvalidUtf16DocumentFields::default()
+        });
+        let bundle = parse_bundle(ParseBundleInput {
+            root_uri: "file:///bundle".to_owned(),
+            invalid_root_uri_utf16: None,
+            revision: 1,
+            documents: vec![
+                invalid_uri,
+                document("sibling.md", "---\ntype: note\n---\n"),
+            ],
+        });
+        assert_eq!(
+            bundle
+                .concepts
+                .iter()
+                .map(|concept| concept.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["sibling"]
+        );
+        assert_eq!(bundle.failures.len(), 1);
+        assert_eq!(
+            bundle.failures[0].message,
+            "Source URI contains an unpaired UTF-16 surrogate."
+        );
+
+        let root = parse_bundle(ParseBundleInput {
+            root_uri: "<bundle-root-uri-invalid-unicode>".to_owned(),
+            invalid_root_uri_utf16: Some(true),
+            revision: 1,
+            documents: vec![document("sibling.md", "---\ntype: note\n---\n")],
+        });
+        assert!(root.concepts.is_empty());
+        assert_eq!(root.failures[0].scope.as_deref(), Some("bundle"));
+        assert_eq!(
+            root.failures[0].message,
+            "Bundle root URI contains an unpaired UTF-16 surrogate."
+        );
     }
 
     #[test]
@@ -13398,6 +14224,7 @@ mod tests {
             "---\ntype: reference\nx: !!set\n  ? !!map\n    ?\n    : one\n---\n# Invalid\n";
         let bundle = parse_bundle(ParseBundleInput {
             root_uri: "file:///bundle".to_owned(),
+            invalid_root_uri_utf16: None,
             revision: 1,
             documents: vec![document("invalid.md", source)],
         });
@@ -13494,6 +14321,7 @@ mod tests {
         );
         let deferred_key_bundle = parse_bundle(ParseBundleInput {
             root_uri: "file:///bundle".to_owned(),
+            invalid_root_uri_utf16: None,
             revision: 1,
             documents: vec![document("deferred-key.md", deferred_key_source)],
         });
@@ -13509,6 +14337,7 @@ mod tests {
             "---\ntype: reference\ncustom: !!map\n  ? !!str\n  : one\n---\n# Empty\n";
         let bundle = parse_bundle(ParseBundleInput {
             root_uri: "file:///bundle".to_owned(),
+            invalid_root_uri_utf16: None,
             revision: 1,
             documents: vec![document("empty.md", document_source)],
         });
@@ -13561,6 +14390,54 @@ mod tests {
     }
 
     #[test]
+    fn terminal_empty_field_range_stops_before_its_line_break() {
+        let text = "type: reference\nstatus:\n";
+        let ranges = top_level_field_ranges(text, 0, text.len());
+        assert_eq!(
+            ranges
+                .get("status")
+                .and_then(|range| range.get("end"))
+                .and_then(|end| end.get("offset"))
+                .and_then(Value::as_u64),
+            Some((text.len() - 1) as u64)
+        );
+    }
+
+    #[test]
+    fn converts_radix_integers_across_chunk_boundaries() {
+        for (digits, radix, expected) in [
+            ("fffffff", 16, "268435455"),
+            ("ffffffff", 16, "4294967295"),
+            ("1ffffffff", 16, "8589934591"),
+            ("7777777777", 8, "1073741823"),
+            ("77777777777", 8, "8589934591"),
+            ("177777777777", 8, "17179869183"),
+            ("000000000", 16, "0"),
+        ] {
+            assert_eq!(decimal_from_radix(digits, radix).as_deref(), Some(expected));
+        }
+        assert_eq!(decimal_from_radix("g", 16), None);
+    }
+
+    #[test]
+    fn plain_scalar_ranges_do_not_hide_tagged_flow_collections() {
+        let source = concat!(
+            "integer_looking_float: !!float 1\n",
+            "anchored_null: &anchored-null !!null \"\"\n",
+            "anchored_null_copy: *anchored-null\n",
+            "tagged_alias_seed: &tagged-alias !!str \"x\"\n",
+            "tagged_alias_set: !!set { ? *tagged-alias, ? *tagged-alias }\n",
+            "tagged_alias_direct_set: !!set { ? *tagged-alias, ? !!str \"x\" }\n",
+        );
+        let brace = source.find('{').expect("flow set has an opening brace");
+        let plain = plain_scalar_value_ranges(source);
+        assert!(!sorted_range_contains(&plain, brace), "{plain:#?}");
+        let flow = flow_collection_ranges(source);
+        assert!(flow.iter().any(|(start, _)| *start == brace), "{flow:#?}");
+        assert_eq!(alias_mapping_key_range(source, &[]), None);
+    }
+
+    #[test]
     fn preserves_block_and_flow_provenance_boundaries() {
         let source = [
             "---",
@@ -13596,6 +14473,7 @@ mod tests {
         .join("\n");
         let bundle = parse_bundle(ParseBundleInput {
             root_uri: "file:///bundle".to_owned(),
+            invalid_root_uri_utf16: None,
             revision: 1,
             documents: vec![document("boundaries.md", &source)],
         });
@@ -13632,6 +14510,7 @@ mod tests {
             let source = format!("---\ntype: reference\n{fields}\n---\n# Boundaries\n");
             let bundle = parse_bundle(ParseBundleInput {
                 root_uri: "file:///bundle".to_owned(),
+                invalid_root_uri_utf16: None,
                 revision: 1,
                 documents: vec![document("boundaries.md", &source)],
             });
@@ -13652,6 +14531,7 @@ mod tests {
         let source = format!("---\ntype: reference\n{fields}\n---\n# Boundaries\n");
         let bundle = parse_bundle(ParseBundleInput {
             root_uri: "file:///bundle".to_owned(),
+            invalid_root_uri_utf16: None,
             revision: 1,
             documents: vec![document("boundaries.md", &source)],
         });
@@ -13703,6 +14583,7 @@ mod tests {
     fn reports_invalid_reserved_frontmatter() {
         let bundle = parse_bundle(ParseBundleInput {
             root_uri: "file:///bundle".to_owned(),
+            invalid_root_uri_utf16: None,
             revision: 1,
             documents: vec![document(
                 "index.md",
@@ -13792,6 +14673,7 @@ mod tests {
             .collect();
         let markdown = parse_bundle(ParseBundleInput {
             root_uri: "file:///bundle".to_owned(),
+            invalid_root_uri_utf16: None,
             revision: 1,
             documents: markdown_documents,
         });

@@ -483,7 +483,7 @@ describe('buildGraphPayload', () => {
   it('counts escaped JSON bytes exactly without materializing a serialized payload', () => {
     const special = concept('special', {
       type: 'quote"slash\\line\n',
-      tags: ['雪', '\u0001', '\ud800'],
+      tags: ['雪', '\u0001', '😀'],
     });
     const graph = buildGraphPayload(bundle([special]));
 
@@ -498,6 +498,9 @@ describe('buildGraphPayload', () => {
   });
 
   it('fails closed on one-over graph string and cardinality limits', () => {
+    expect(() =>
+      buildGraphPayload(bundle([concept('invalid-unicode', { tags: ['\uD800'] })])),
+    ).toThrow('Concept tag contains an unpaired UTF-16 surrogate.');
     expect(
       buildGraphPayload(
         bundle([

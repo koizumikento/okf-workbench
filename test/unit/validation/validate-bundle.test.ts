@@ -407,6 +407,32 @@ describe('validateBundle', () => {
     expect(findings).toEqual([]);
   });
 
+  it('rejects extra root-index frontmatter at its exact field while retaining the parsed value', () => {
+    const parsed = parseBundle({
+      rootUri,
+      revision: 10,
+      documents: [document('index.md', '---\nokf_version: "0.2"\ntitle: extra\n---\n# Root\n')],
+    });
+
+    expect(parsed.reservedDocuments[0]?.frontmatter?.raw.title).toBe('extra');
+    expect(validateBundle(parsed, { now: '2026-07-22T00:00:00Z' })).toEqual([
+      {
+        code: VALIDATION_CODES.reservedFrontmatter,
+        category: 'conformance',
+        severity: 'error',
+        uri: `${rootUri}/index.md`,
+        range: {
+          start: { offset: 23, line: 2, character: 0 },
+          end: { offset: 35, line: 2, character: 12 },
+        },
+        message:
+          'OKF conformance: bundle-root index.md frontmatter may contain only `okf_version`; unexpected field "title" is not allowed.',
+        correctiveAction:
+          'Remove the extra root-index frontmatter field. Workbench retains it until you explicitly repair the document.',
+      },
+    ]);
+  });
+
   it('validates actor conventions, computation exclusivity, and safe usage counts', () => {
     const parsed = parseBundle({
       rootUri,

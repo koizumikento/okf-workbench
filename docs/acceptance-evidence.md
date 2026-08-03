@@ -6,19 +6,18 @@
 - Component harness: `test/acceptance/vitest.config.ts`
 - Historical hosted packaged lifecycle run: [Compatibility 29900868002](https://github.com/koizumikento/okf-workbench/actions/runs/29900868002)
 - Historical hosted package byte-identity run: [Package smoke 29901183164](https://github.com/koizumikento/okf-workbench/actions/runs/29901183164)
-- Latest retained `0.2.1` predecessor hosted qualification:
-  [Compatibility 30335399539](https://github.com/koizumikento/okf-workbench/actions/runs/30335399539)
-  and
-  [Package smoke 30335400890](https://github.com/koizumikento/okf-workbench/actions/runs/30335400890)
-  passed every configured lane and aggregate check for revision
-  `80ae7d560337cbe8d97af864c77aee410d5e5988`. The current OKF-v0.2 source candidate includes the
-  Rust/Wasm migration and does not inherit these receipts; fresh Compatibility and package-smoke
-  qualification is pending.
+- Current `0.3.0` hosted qualification:
+  [Compatibility 30804352708](https://github.com/koizumikento/okf-workbench/actions/runs/30804352708)
+  passed acceptance/Webview and all seven packaged lifecycle lanes, and
+  [Package smoke 30804007918](https://github.com/koizumikento/okf-workbench/actions/runs/30804007918)
+  passed the browser boundary, all four target packages, and aggregate consistency for
+  packaged-input revision `802e400c5bfec9174131b44e42fab6db3ee2fec0`. Upgrade used the
+  published `v0.2.1` universal VSIX with its verified digest.
 - Latest retained schema-v3 headed Webview observation: a current-candidate `0.3.0` VS Code
-  `1.129.1` capture recorded QR-002 at `862 ms` p95 across 20 samples, selected `d3` for QR-003,
+  `1.129.1` capture recorded QR-002 at `873 ms` p95 across 20 samples, selected `d3` for QR-003,
   and recorded zero remote HTTP(S)/WS or other-scheme Webview requests. The
   [raw record](evidence/performance/vscode-1.129.1-0.3.0.json), SHA-256
-  `9b1ca57310da715de1ba5cc83b92ba28e9faaf6fdcc7f7111c7f96696f1c20d7`, and
+  `3514a963459ac213728d6baed1d697f8ae75da676b2d386c3c66bb1eb5cd3985`, and
   [generated report](evidence/performance/vscode-1.129.1-0.3.0.md) pass the strict evaluator for
   the recorded current production/build/harness identities.
 - Preserved predecessor-candidate local evidence: `docs/evidence/compatibility/`
@@ -26,7 +25,6 @@
   package and activation coverage, and manual VS Code `1.129.1` dark/light/high-contrast,
   orphan/warning distinction, hidden-graph refresh, and Resources-tree keyboard-focus evidence.
   The hosted lifecycle does not drive sidebar items or establish external-provider UI behavior.
-  Fresh hosted compatibility and package-smoke qualification for the current candidate is pending.
 
 ## Evidence semantics
 
@@ -35,6 +33,17 @@ packaged lifecycle automation, and full user-scenario evidence.
 
 - **Component automated** means a checked-in Vitest scenario exercises the repository's pure core, an injectable command/workspace boundary, or Webview presentation state. The command tests use in-memory doubles, not VS Code UI. A passing result supports only the assertions named in the table.
 - **Development Extension Host provider automated** means the built development extension ran in a real VS Code Extension Host against a test-owned, registered, read-only `okfmem:` `FileSystemProvider`. It proves the read-only command boundary named below, but it is neither a packaged-VSIX result nor evidence for an external remote provider.
+- **Current `0.3.0` packaged lifecycle automated** means the exact `1,309,227`-byte universal VSIX
+  with SHA-256 `d96aa19cc3ada5d4e34618d41bedc4195efa368e2b51b8ff8977984e815caf57`
+  passed the seven-lane hosted matrix for packaged-input revision
+  `802e400c5bfec9174131b44e42fab6db3ee2fec0`. Each report binds that revision, extension
+  `straydog.okf-workbench@0.3.0`, and candidate digest. The lanes prove clean, untrusted, genuine
+  published-`v0.2.1` upgrade, and uninstall lifecycles; request-correlated Validate Bundle and Open
+  3D Graph completion; refusal of all five write commands in an untrusted workspace; and zero
+  calls through the listed CommonJS-owner/global hooks during the observed active phases, with the
+  hooks retained until Extension Host exit. The target-package run separately proves the browser
+  boundary, canonical Wasm, native CLI/VSIX byte parity, and aggregate completeness. These claims
+  remain specific to the named revision, packages, editor versions, and hosted lanes.
 - **Retained `0.2.1` predecessor packaged lifecycle automated** means the exact `978168`-byte universal VSIX with
   SHA-256 `6c45cd00e620730d9c023764e822077a4444264ac1f3d4f88e8139a9df79dc32`
   passed the then-current seven-lane hosted matrix for revision
@@ -89,12 +98,12 @@ asserts that Validate Bundle and Open 3D Graph make no provider mutation. It doe
 write command, an external remote extension, or packaged installation.
 
 The hosted packaged matrix and preserved local records are linked from the
-[compatibility matrix](compatibility-matrix.md). The retained predecessor run closes the cross-platform
+[compatibility matrix](compatibility-matrix.md). The current `0.3.0` run closes the cross-platform
 lifecycle, request-correlated read-command completion, untrusted write-command refusal, and guarded
 Extension Host CommonJS-owner/global hook subset for its exact candidate. It does not complete the
 manual UI/provider clauses in the table or establish full user-scenario acceptance.
 
-The retained predecessor lifecycle harness reports its exact intercepted-property/global inventory. It replaces
+The current lifecycle harness reports its exact intercepted-property/global inventory. It replaces
 these properties on the CommonJS builtin export-owner objects returned by `require`:
 `node:http.get/request`, `node:https.get/request`, `node:http2.connect`,
 `node:net.connect/createConnection`, `node:tls.connect`,
@@ -105,22 +114,22 @@ references, prototypes, raw bindings, `dns.promises`, child processes, editor-ow
 persisted attempt list ends when the report is created; the hooks remain installed to deny later
 tail calls until process exit. The post-uninstall phase installs no observer and records network attempts and guarded quiescence as
 not observed; that phase proves extension API absence only. The current retained run attributes
-the stricter schema and exhaustive four-command untrusted refusal probe to its exact predecessor
-candidate. No current-candidate packaged lifecycle claim is made until the fresh matrix passes.
+the stricter schema and exhaustive five-command untrusted refusal probe to its exact `0.3.0`
+candidate.
 
 ## Scenario evidence map
 
 | ID | Component-automated assertions | Packaged-editor proof still required | Overall |
 | --- | --- | --- | --- |
-| AC-001 | Injectable command handlers initialize the Minimal preset and create one concept through guarded create-only application with no preview or confirmation, select the root, request both generated URIs be opened, and produce a bundle with no conformance error in an in-memory workspace. The retained predecessor hosted matrix additionally proves clean packaged activation, the six-command catalog, and request-correlated Validate Bundle completion for its exact candidate. | Actual QuickPick/input UI, physical or remote no-overwrite workspace creates, active-editor state, the under-two-minute first-use target, and fresh current-candidate hosted qualification. | Partial — component + retained predecessor packaged lifecycle |
+| AC-001 | Injectable command handlers initialize the Minimal preset and create one concept through guarded create-only application with no preview or confirmation, select the root, request both generated URIs be opened, and produce a bundle with no conformance error in an in-memory workspace. The current hosted matrix additionally proves clean packaged activation, the seven-command catalog, and request-correlated Validate Bundle completion for its exact candidate. | Actual QuickPick/input UI, physical or remote no-overwrite workspace creates, active-editor state, and the under-two-minute first-use target. | Partial — component + current packaged lifecycle |
 | AC-002 | A custom `experiment-result` type and nested producer fields survive parse → index regeneration → reparse unchanged; unknown values cause no finding. | A real supported command/write flow against workspace storage, including byte-level verification after save and reload. | Partial — component |
-| AC-003 | Invalid YAML and a broken link produce category/severity/URI/range-addressable findings; a repaired revision clears both findings. The development Extension Host additionally publishes the broken-link Problems diagnostic at the exact registered `okfmem:` provider URI. The retained predecessor hosted matrix proves request-correlated Validate Bundle diagnostics/runtime publication for its exact packaged candidate. | Problems-panel navigation, save-event debounce, watcher convergence, packaged non-`file:` execution, external provider coverage, and fresh current-candidate hosted qualification. | Partial — component + development provider boundary + retained predecessor packaged lifecycle |
+| AC-003 | Invalid YAML and a broken link produce category/severity/URI/range-addressable findings; a repaired revision clears both findings. The development Extension Host additionally publishes the broken-link Problems diagnostic at the exact registered `okfmem:` provider URI. The current hosted matrix proves request-correlated Validate Bundle diagnostics/runtime publication for its exact packaged candidate. | Problems-panel navigation, save-event debounce, watcher convergence, packaged non-`file:` execution, and external provider coverage. | Partial — component + development provider boundary + current packaged lifecycle |
 | AC-004 | The injectable index command previews and applies one managed-region update in memory, preserves bytes outside the region, and returns unchanged without a second preview/write. | Diff preview rendering, cancellation/apply behavior through actual editor UI, and physical or remote workspace writes. | Partial — component |
-| AC-005 | The graph model exposes directed backlinks, broken-link counts, and orphan state; Webview state supports NFKC search, type/tag filters, selection, and focus without mutating source input. The development Extension Host additionally waits for the graph render acknowledgement for the same provider-backed revision and observes no provider write. The retained predecessor hosted matrix proves request-correlated Open 3D Graph data application and no five-file workspace change for its exact packaged candidate. | Actual 3D/Webview interaction, keyboard-only traversal, details UI, source opening, packaged external-provider execution, and fresh current-candidate hosted qualification. | Partial — component + development provider boundary + retained predecessor packaged lifecycle |
+| AC-005 | The graph model exposes directed backlinks, broken-link counts, and orphan state; Webview state supports NFKC search, type/tag filters, selection, and focus without mutating source input. The development Extension Host additionally waits for the graph render acknowledgement for the same provider-backed revision and observes no provider write. The current hosted matrix proves request-correlated Open 3D Graph data application and no five-file workspace change for its exact packaged candidate. | Actual 3D/Webview interaction, keyboard-only traversal, details UI, source opening, and packaged external-provider execution. | Partial — component + development provider boundary + current packaged lifecycle |
 | AC-006 | Successive create, edit, rename, and delete graph revisions converge in presentation state; renamed/deleted selection clears; stale delivery is ignored. | Workspace file watchers, the 250 ms debounce, extension-to-Webview delivery, rendered details convergence, and extension-host continuity. | Partial — component |
 | AC-007 | The injectable agent command previews, approves, and applies both outputs in memory, preserves unrelated `AGENTS.md` text, and returns unchanged on its second run. A root-level bundle reload proves that the generated root `AGENTS.md` and `.agents/` Skill stay outside the concept and conformance inventory. The packaged lifecycle also preserves pre-existing `AGENTS.md` and Skill sentinels through upgrade and uninstall, but does not execute the authoring command. | Actual preview/confirmation UI, physical or remote workspace application, collision handling, and a differing-Skill replacement decision in a packaged editor. | Partial — component + lifecycle preservation |
-| AC-008 | Representative template, parse, validation, index, graph-state, and agent-plan components complete while the JavaScript `fetch` boundary is disabled. The current-candidate headed VS Code record observed zero remote HTTP(S)/WS and other-scheme requests for its exact `0.3.0` inputs. In all seven retained predecessor hosted lanes, activation and request-correlated Validate/Open completion made zero calls through the listed CommonJS builtin export-owner/global hooks; the hooks remained installed until Extension Host exit, and all four write commands were refused in the untrusted-workspace probe. | Execute every trusted write-command flow under the hooks and repeat hosted packaged qualification for the current candidate. ESM named bindings, cached references, raw/prototype bindings, `dns.promises`, child processes, and editor-owned traffic remain outside the Extension Host hook assertion. | Partial — component + current headed/predecessor package observations |
-| AC-009 | Unit and dedicated acceptance-component coverage verify deterministic folder-first sidebar hierarchy, summary counts, unknown type visibility, reserved documents, orphan separation, and bounded text labels. Manifest coverage verifies the Activity Bar container, three native views, empty-state/actions content, command menus, and packaged SVG requirement. The New Concept command test verifies a validated folder-originated initial destination. The retained manual review covers dark, light, and dark high-contrast themes, confirms orphan-only items remain separate from curation warnings, verifies hidden-graph refresh without an interaction-error dialog, and traverses the Resources tree with keyboard focus; the predecessor hosted matrix proves packaged activation and command registration across all seven lanes. | Current/stale item source opening, complete keyboard/screen-reader traversal of Actions, watcher convergence, untrusted actions, provider-backed URIs, 3D Graph handoff, and fresh current-candidate qualification in packaged VS Code/VSCodium. | Partial — component + retained manual/predecessor packaged evidence |
+| AC-008 | Representative template, parse, validation, index, graph-state, and agent-plan components complete while the JavaScript `fetch` boundary is disabled. The current-candidate headed VS Code record observed zero remote HTTP(S)/WS and other-scheme requests for its exact `0.3.0` inputs. In all seven current hosted lanes, activation and request-correlated Validate/Open completion made zero calls through the listed CommonJS builtin export-owner/global hooks; the hooks remained installed until Extension Host exit, and all five write commands were refused in the untrusted-workspace probe. | Execute every trusted write-command flow under the hooks. ESM named bindings, cached references, raw/prototype bindings, `dns.promises`, child processes, and editor-owned traffic remain outside the Extension Host hook assertion. | Partial — component + current headed/package observations |
+| AC-009 | Unit and dedicated acceptance-component coverage verify deterministic folder-first sidebar hierarchy, summary counts, unknown type visibility, reserved documents, orphan separation, and bounded text labels. Manifest coverage verifies the Activity Bar container, three native views, empty-state/actions content, command menus, and packaged SVG requirement. The New Concept command test verifies a validated folder-originated initial destination. The retained manual review covers dark, light, and dark high-contrast themes, confirms orphan-only items remain separate from curation warnings, verifies hidden-graph refresh without an interaction-error dialog, and traverses the Resources tree with keyboard focus; the current hosted matrix proves packaged activation and command registration across all seven lanes. | Current/stale item source opening, complete keyboard/screen-reader traversal of Actions, watcher convergence, untrusted actions, provider-backed URIs, and 3D Graph handoff. | Partial — component + retained manual/current packaged evidence |
 
 ## Remaining release evidence
 

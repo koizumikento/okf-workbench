@@ -948,8 +948,10 @@ fn capture_missing_root_anchor(path: &Path) -> Result<Arc<PlannedRootAnchor>, St
 
 #[cfg(windows)]
 fn capture_missing_root_anchor(path: &Path) -> Result<Arc<PlannedRootAnchor>, String> {
-    let (_absolute, mut locks) = windows_anchor_directory(path, false)?;
-    locks.push(open_windows_directory_strict_mutation_lock(path)?);
+    // Retain the identity-bound ancestor without sharing DELETE, so it cannot be replaced while
+    // planning or publishing. Its READ/WRITE sharing is required because Windows opens the rename
+    // target directory for FILE_WRITE_DATA relative to this handle during publication.
+    let (_absolute, locks) = windows_anchor_directory(path, false)?;
     Ok(Arc::new(PlannedRootAnchor { locks }))
 }
 
@@ -1017,13 +1019,12 @@ fn capture_planned_index(
 
 #[cfg(windows)]
 fn capture_windows_planned_parent(parent: &Path) -> Result<Arc<WindowsPlannedParent>, String> {
-    let (path, mut locks) = windows_anchor_directory(parent, false).map_err(|error| {
+    let (path, locks) = windows_anchor_directory(parent, false).map_err(|error| {
         format!(
             "generated parent {} must already exist for an atomic existing-root create: {error}",
             parent.display()
         )
     })?;
-    locks.push(open_windows_directory_strict_mutation_lock(&path)?);
     let identity = file_object_identity(
         locks
             .last()

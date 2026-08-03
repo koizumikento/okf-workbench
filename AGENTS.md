@@ -17,14 +17,13 @@ initialize -> create -> edit -> validate -> explore -> repair
 ## Current state
 
 The deterministic Rust core, capability-free Wasm Extension Host adapter, native CLI, platform
-VSIX CLI integration, six MVP
+VSIX CLI integration, seven MVP
 extension command workflows, diagnostics, URI-first workspace runtime, 3D Webview, agent-template
-generation, and release-candidate harnesses are implemented. A retained schema-v3 headed VS Code
-1.129.1 capture for the predecessor `0.2.1` inputs recorded QR-002 at 677 ms p95 across 20 samples,
-`d3` as the QR-003 selection, and zero remote HTTP(S)/WS or other-scheme Webview requests. Strict
-re-evaluation rejects its input identities for the current Rust/Wasm source candidate, so fresh
-headed evidence is pending. The retained VS Code 1.127.0 capture predates the strict contract and
-is historical-only. An earlier candidate passed the required hosted VS Code and VSCodium lifecycle
+generation, and release-candidate harnesses are implemented. A genuine schema-v3 headed VS Code
+1.129.1 capture for the `0.3.0` candidate passes QR-002 at 862 ms p95 across 20 samples, selects
+`d3` for QR-003, and records zero remote HTTP(S)/WS or other-scheme Webview requests under the
+strict current-input contract. The retained VS Code 1.127.0 capture predates that contract and is
+historical-only. An earlier candidate passed the required hosted VS Code and VSCodium lifecycle
 matrix on Ubuntu, macOS, and Windows; the Rust/Wasm migration and current packaged-resource changes
 require a fresh hosted qualification before they can inherit that claim. The repository, issue
 tracker, security-advisory route, and GitHub Pages trust pages are public, and the hosted

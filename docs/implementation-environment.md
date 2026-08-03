@@ -81,9 +81,11 @@ across all four target packages plus aggregate consistency. Those receipts do no
 current Rust/Wasm source candidate; fresh hosted and package-smoke qualification is pending. The
 retained VS Code `1.127.0` headed capture is historical after strengthening the schema-v3 evidence
 contract. The retained `0.2.1` VS Code `1.129.1` headed capture recorded QR-002 at `677 ms` p95
-across 20 samples, `d3` as its QR-003 selection, and zero remote HTTP(S)/WS or other-scheme Webview
-requests on its recorded hardware. The current strict evaluator exits `2` because the record does
-not satisfy current-source binding checks; fresh current-candidate headed evidence is pending.
+across 20 samples, but remains predecessor-only evidence. The fresh `0.3.0` capture on the same
+editor version passes the current strict evaluator at `862 ms` p95 across 20 samples, selects `d3`,
+and records zero remote HTTP(S)/WS or other-scheme Webview requests. Its versioned raw JSON and
+generated Markdown are retained under `docs/evidence/performance/`; fresh hosted and package-smoke
+qualification is still pending.
 
 ## Repository and package management
 

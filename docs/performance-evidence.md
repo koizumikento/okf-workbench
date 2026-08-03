@@ -1,12 +1,34 @@
 # Performance evidence
 
-- Status: **retained predecessor-bound local headed observation**; the current strict evaluator
-  exits `2` for that record, and fresh evidence for the current Rust/Wasm source candidate is pending
-- Date: 2026-07-28
+- Status: **current-candidate local headed qualification passes**; hosted compatibility and package
+  qualification remain separate release gates
+- Date: 2026-08-03
 - Governing decision:
   [ADR 0005, OQ-008](decisions/0005-resolve-mvp-implementation-questions.md#oq-008--performance-fixtures-and-thresholds)
 
-## Retained schema-v3 measurement and binding status
+## Current-candidate schema-v3 measurement and binding status
+
+The current-candidate [generated report](evidence/performance/vscode-1.129.1-0.3.0.md) and
+[raw samples](evidence/performance/vscode-1.129.1-0.3.0.json), SHA-256
+`9b1ca57310da715de1ba5cc83b92ba28e9faaf6fdcc7f7111c7f96696f1c20d7`, were captured in one
+genuine headed VS Code `1.129.1` session on 2026-08-03. The strict evaluator exits `0` and binds
+the result to OKF Workbench `0.3.0`, production runtime snapshot
+`6fbcc3b2f004dcfd0f30bfcedd80aea76f79cd4c4e07a07edbf57596d64ab2b4`, build-input snapshot
+`c7c5189af35dc80c5ebdf1c92e6617dc3b2ec21f561c5f061c532d8742d06d6b`, and the recorded
+diagnostics and QR-003 harness identities.
+
+| Target | Current-candidate status | Evidence |
+| --- | --- | --- |
+| QR-002 — update p95 at or below 1,000 ms | **Pass** | `862.00 ms` nearest-rank p95 across 20 create/change/rename/delete samples, with runtime-originated same-revision Problems and graph correlation. |
+| QR-003 — representative graph remains interactive | **Pass** | `d3` first-frame maximum `298.00 ms`, cooldown mean `2,494.40 ms`, interaction p95 values `9.20/24.10/2.00/0.80 ms`, and zero idle frames. |
+| Headed Webview network | **Pass** | Strict pre-navigation CDP observation recorded zero remote HTTP(S)/WS requests, two packaged-resource loads, two internal Webview navigations, and zero other-scheme requests. |
+| Release force-engine default | **`d3` selected** | Same-Electron comparison passed `d3`; `ngraph` recorded a structured WebGL draw timeout after 5,000 ms and was not selected. |
+
+This local record applies only to the recorded Mac16,7 / Apple M4 Pro environment, VS Code
+`1.129.1` commit `8a7abeba6e03ea3af87bfbce9a1b7e48fed567b8`, and the exact bound inputs. It does not
+replace hosted compatibility, packaged lifecycle, manual UI, license, or publication gates.
+
+## Retained predecessor schema-v3 measurement
 
 The tracked [schema-v3 report](evidence/performance/vscode-1.129.1.md) and
 [raw samples](evidence/performance/vscode-1.129.1.json), SHA-256
@@ -595,8 +617,6 @@ Any change to these defaults requires a new headed engine comparison.
 
 The tagged predecessor run completes the strengthened headed gate for its exact published `0.2.1`
 inputs: strict evaluation exits `0`, all three rows pass, and regenerated Markdown is byte-identical
-to the tracked report. It recorded `677 ms` QR-002 p95 and selected `d3`. The same raw JSON does not
-bind the current Rust/Wasm source candidate; current-candidate strict evaluation exits `2` because
-the production/runtime, build, and harness identities differ. A fresh schema-v3 capture must bind
-those current identities and pass all three strict rows before any current-candidate performance
-claim is made.
+to the tracked predecessor report. It recorded `677 ms` QR-002 p95 and selected `d3`. Evaluating
+that predecessor JSON against the `0.3.0` candidate still exits `2`; the separate current-candidate
+pair retained above supplies the required matching identities and passing strict evaluation.

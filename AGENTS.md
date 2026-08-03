@@ -17,7 +17,7 @@ initialize -> create -> edit -> validate -> explore -> repair
 ## Current state
 
 The deterministic Rust core, capability-free Wasm Extension Host adapter, native CLI, platform
-VSIX CLI integration, six MVP
+VSIX CLI integration, seven MVP
 extension command workflows, diagnostics, URI-first workspace runtime, 3D Webview, agent-template
 generation, and release-candidate harnesses are implemented. A genuine schema-v3 headed VS Code
 1.129.1 capture for the `0.3.0` candidate passes QR-002 at 862 ms p95 across 20 samples, selects

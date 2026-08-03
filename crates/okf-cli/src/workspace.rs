@@ -39,7 +39,7 @@ use windows_sys::Win32::Storage::FileSystem::{
     FILE_DISPOSITION_FLAG_DELETE, FILE_DISPOSITION_FLAG_POSIX_SEMANTICS, FILE_DISPOSITION_INFO_EX,
     FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_GENERIC_READ,
     FILE_GENERIC_WRITE, FILE_READ_ATTRIBUTES, FILE_RENAME_INFO, FILE_RENAME_INFO_0,
-    FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE, FileDispositionInfoEx, FileRenameInfoEx,
+    FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE, FileDispositionInfoEx, FileRenameInfo,
     GetFileInformationByHandle, SYNCHRONIZE, SetFileInformationByHandle,
 };
 #[cfg(windows)]
@@ -710,6 +710,8 @@ fn plan_files_with_expected(
     expected_contents: Option<&BTreeMap<String, String>>,
 ) -> Result<Vec<PlannedChange>, String> {
     let planned_root = capture_planned_root_identity(root)?;
+    #[cfg(windows)]
+    let mut planned_parents = BTreeMap::<PathBuf, Arc<WindowsPlannedParent>>::new();
     let mut plan = Vec::new();
     for file in files {
         if matches!(mode, PlanMode::ReplaceExisting) {
@@ -823,11 +825,17 @@ fn plan_files_with_expected(
         let planned_parent = if existing.is_none()
             && matches!(planned_root.as_ref(), PlannedRootIdentity::Existing { .. })
         {
-            Some(capture_windows_planned_parent(
-                target
-                    .parent()
-                    .ok_or_else(|| format!("{} has no parent", target.display()))?,
-            )?)
+            let parent = target
+                .parent()
+                .ok_or_else(|| format!("{} has no parent", target.display()))?;
+            let absolute_parent = platform_absolute_root(parent)?;
+            if let Some(planned_parent) = planned_parents.get(&absolute_parent) {
+                Some(planned_parent.clone())
+            } else {
+                let planned_parent = capture_windows_planned_parent(parent)?;
+                planned_parents.insert(absolute_parent, planned_parent.clone());
+                Some(planned_parent)
+            }
         } else {
             None
         };
@@ -2213,6 +2221,9 @@ fn create_windows_temporary(parent: &Path) -> Result<(PathBuf, File), String> {
     let path = parent.join(".okf-workbench-staging.tmp");
     let file = OpenOptions::new()
         .create_new(true)
+        // `access_mode` controls the Win32 access mask, while Rust still requires an explicit
+        // write intent before it will allow a create disposition.
+        .write(true)
         .access_mode(FILE_GENERIC_READ | FILE_GENERIC_WRITE | DELETE | SYNCHRONIZE)
         .share_mode(FILE_SHARE_READ)
         .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
@@ -2231,6 +2242,15 @@ fn create_windows_temporary(parent: &Path) -> Result<(PathBuf, File), String> {
 }
 
 #[cfg(windows)]
+fn windows_rename_buffer_bytes(name_bytes: usize) -> Result<usize, String> {
+    std::mem::offset_of!(FILE_RENAME_INFO, FileName)
+        .checked_add(name_bytes)
+        // Keep one zeroed WCHAR after the counted name. `FileNameLength` excludes this slot.
+        .and_then(|length| length.checked_add(std::mem::size_of::<u16>()))
+        .ok_or_else(|| "replacement filename is too long".to_owned())
+}
+
+#[cfg(windows)]
 fn rename_windows_handle(file: &File, parent: &File, leaf: &OsStr) -> Result<(), String> {
     let name = leaf.encode_wide().collect::<Vec<_>>();
     let name_bytes = name
@@ -2238,16 +2258,18 @@ fn rename_windows_handle(file: &File, parent: &File, leaf: &OsStr) -> Result<(),
         .checked_mul(std::mem::size_of::<u16>())
         .ok_or_else(|| "replacement filename is too long".to_owned())?;
     let header_bytes = std::mem::offset_of!(FILE_RENAME_INFO, FileName);
-    let buffer_bytes = header_bytes
-        .checked_add(name_bytes)
-        .ok_or_else(|| "replacement filename is too long".to_owned())?;
+    let buffer_bytes = windows_rename_buffer_bytes(name_bytes)?;
     let words = buffer_bytes.div_ceil(std::mem::size_of::<usize>());
     let mut buffer = vec![0usize; words];
     let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFO>();
-    // SAFETY: `buffer` is word-aligned and large enough for the fixed header plus `name_bytes`.
-    // Both file handles remain live for the call and the UTF-16 filename contains no terminator.
+    // SAFETY: `buffer` is word-aligned and large enough for the fixed header, `name_bytes`, and
+    // one zeroed trailing WCHAR. Both file handles remain live for the call.
     let succeeded = unsafe {
-        (*info).Anonymous = FILE_RENAME_INFO_0 { Flags: 0 };
+        // This is an ordinary atomic no-replace rename. The extended information class is only
+        // needed for extended flags such as POSIX replacement semantics.
+        (*info).Anonymous = FILE_RENAME_INFO_0 {
+            ReplaceIfExists: false,
+        };
         (*info).RootDirectory = parent.as_raw_handle();
         (*info).FileNameLength =
             u32::try_from(name_bytes).map_err(|_| "replacement filename is too long".to_owned())?;
@@ -2258,7 +2280,7 @@ fn rename_windows_handle(file: &File, parent: &File, leaf: &OsStr) -> Result<(),
         );
         SetFileInformationByHandle(
             file.as_raw_handle(),
-            FileRenameInfoEx,
+            FileRenameInfo,
             buffer.as_ptr().cast(),
             u32::try_from(buffer_bytes)
                 .map_err(|_| "replacement filename is too long".to_owned())?,
@@ -3522,6 +3544,7 @@ mod tests {
         assert!(!moved.join("new.md").exists());
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn root_replacement_during_confirmation_fails_before_any_write() {
         let directory = tempdir().unwrap();
@@ -3729,6 +3752,12 @@ mod tests {
             PlanMode::CreateOnly,
         )
         .unwrap();
+
+        #[cfg(windows)]
+        assert!(Arc::ptr_eq(
+            plan[0].planned_parent.as_ref().unwrap(),
+            plan[1].planned_parent.as_ref().unwrap()
+        ));
 
         let error = apply_plan(&root, &plan).unwrap_err();
 
@@ -4255,6 +4284,11 @@ mod tests {
         .unwrap_err();
         assert!(first_error.contains("injected handled failure"));
         assert!(!root.exists());
+
+        // Windows retains a strict mutation guard in the plan. Release that completed attempt
+        // before preparing an independent retry against the retained staging residue.
+        #[cfg(windows)]
+        drop(plan);
 
         let retry = plan_files(&root, vec![rendered()], PlanMode::CreateOnly).unwrap();
         let error = apply_plan(&root, &retry).unwrap_err();
@@ -4830,6 +4864,18 @@ mod tests {
             "concurrent\n"
         );
         assert!(!root.join(".okf-workbench-staging.tmp").exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_rename_layout_reserves_an_uncounted_trailing_wchar() {
+        let name_bytes = "new.md".encode_utf16().count() * std::mem::size_of::<u16>();
+        let header_bytes = std::mem::offset_of!(FILE_RENAME_INFO, FileName);
+
+        assert_eq!(
+            windows_rename_buffer_bytes(name_bytes).unwrap(),
+            header_bytes + name_bytes + std::mem::size_of::<u16>()
+        );
     }
 
     #[test]

@@ -30,7 +30,8 @@ use std::os::windows::{
 use windows_sys::Wdk::{
     Foundation::OBJECT_ATTRIBUTES,
     Storage::FileSystem::{
-        FILE_CREATE, FILE_DIRECTORY_FILE, FILE_SYNCHRONOUS_IO_NONALERT, NtCreateFile,
+        FILE_CREATE, FILE_DIRECTORY_FILE, FILE_RENAME_INFORMATION, FILE_RENAME_INFORMATION_0,
+        FILE_SYNCHRONOUS_IO_NONALERT, FileRenameInformation, NtCreateFile, NtSetInformationFile,
     },
 };
 #[cfg(windows)]
@@ -38,9 +39,8 @@ use windows_sys::Win32::Storage::FileSystem::{
     BY_HANDLE_FILE_INFORMATION, DELETE, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT,
     FILE_DISPOSITION_FLAG_DELETE, FILE_DISPOSITION_FLAG_POSIX_SEMANTICS, FILE_DISPOSITION_INFO_EX,
     FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_GENERIC_READ,
-    FILE_GENERIC_WRITE, FILE_READ_ATTRIBUTES, FILE_RENAME_INFO, FILE_RENAME_INFO_0,
-    FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE, FileDispositionInfoEx, FileRenameInfo,
-    GetFileInformationByHandle, SYNCHRONIZE, SetFileInformationByHandle,
+    FILE_GENERIC_WRITE, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE,
+    FileDispositionInfoEx, GetFileInformationByHandle, SYNCHRONIZE, SetFileInformationByHandle,
 };
 #[cfg(windows)]
 use windows_sys::Win32::{
@@ -948,8 +948,10 @@ fn capture_missing_root_anchor(path: &Path) -> Result<Arc<PlannedRootAnchor>, St
 
 #[cfg(windows)]
 fn capture_missing_root_anchor(path: &Path) -> Result<Arc<PlannedRootAnchor>, String> {
-    let (_absolute, mut locks) = windows_anchor_directory(path, false)?;
-    locks.push(open_windows_directory_strict_mutation_lock(path)?);
+    // Retain the identity-bound ancestor without sharing DELETE, so it cannot be replaced while
+    // planning or publishing. Its READ/WRITE sharing is required because Windows opens the rename
+    // target directory for FILE_WRITE_DATA relative to this handle during publication.
+    let (_absolute, locks) = windows_anchor_directory(path, false)?;
     Ok(Arc::new(PlannedRootAnchor { locks }))
 }
 
@@ -1017,13 +1019,12 @@ fn capture_planned_index(
 
 #[cfg(windows)]
 fn capture_windows_planned_parent(parent: &Path) -> Result<Arc<WindowsPlannedParent>, String> {
-    let (path, mut locks) = windows_anchor_directory(parent, false).map_err(|error| {
+    let (path, locks) = windows_anchor_directory(parent, false).map_err(|error| {
         format!(
             "generated parent {} must already exist for an atomic existing-root create: {error}",
             parent.display()
         )
     })?;
-    locks.push(open_windows_directory_strict_mutation_lock(&path)?);
     let identity = file_object_identity(
         locks
             .last()
@@ -2243,10 +2244,11 @@ fn create_windows_temporary(parent: &Path) -> Result<(PathBuf, File), String> {
 
 #[cfg(windows)]
 fn windows_rename_buffer_bytes(name_bytes: usize) -> Result<usize, String> {
-    std::mem::offset_of!(FILE_RENAME_INFO, FileName)
+    // The native FILE_RENAME_INFORMATION contract requires the buffer to include the complete
+    // declared structure plus the counted filename bytes. This is intentionally larger than the
+    // FileName offset plus one trailing WCHAR because the x64 structure has tail padding.
+    std::mem::size_of::<FILE_RENAME_INFORMATION>()
         .checked_add(name_bytes)
-        // Keep one zeroed WCHAR after the counted name. `FileNameLength` excludes this slot.
-        .and_then(|length| length.checked_add(std::mem::size_of::<u16>()))
         .ok_or_else(|| "replacement filename is too long".to_owned())
 }
 
@@ -2257,17 +2259,20 @@ fn rename_windows_handle(file: &File, parent: &File, leaf: &OsStr) -> Result<(),
         .len()
         .checked_mul(std::mem::size_of::<u16>())
         .ok_or_else(|| "replacement filename is too long".to_owned())?;
-    let header_bytes = std::mem::offset_of!(FILE_RENAME_INFO, FileName);
+    let header_bytes = std::mem::offset_of!(FILE_RENAME_INFORMATION, FileName);
     let buffer_bytes = windows_rename_buffer_bytes(name_bytes)?;
     let words = buffer_bytes.div_ceil(std::mem::size_of::<usize>());
     let mut buffer = vec![0usize; words];
-    let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFO>();
-    // SAFETY: `buffer` is word-aligned and large enough for the fixed header, `name_bytes`, and
-    // one zeroed trailing WCHAR. Both file handles remain live for the call.
-    let succeeded = unsafe {
-        // This is an ordinary atomic no-replace rename. The extended information class is only
-        // needed for extended flags such as POSIX replacement semantics.
-        (*info).Anonymous = FILE_RENAME_INFO_0 {
+    let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFORMATION>();
+    let mut io_status = IO_STATUS_BLOCK::default();
+    // SAFETY: the union is initialized as an NTSTATUS before NtSetInformationFile writes it.
+    io_status.Anonymous.Status = STATUS_PENDING;
+    // SAFETY: `buffer` is word-aligned and large enough for the complete declared structure plus
+    // `name_bytes`. Both file handles and the counted name remain live for the synchronous call.
+    let status = unsafe {
+        // The native information class accepts a verified directory handle plus a relative leaf.
+        // ReplaceIfExists=false preserves atomic no-overwrite publication.
+        (*info).Anonymous = FILE_RENAME_INFORMATION_0 {
             ReplaceIfExists: false,
         };
         (*info).RootDirectory = parent.as_raw_handle();
@@ -2278,18 +2283,21 @@ fn rename_windows_handle(file: &File, parent: &File, leaf: &OsStr) -> Result<(),
             buffer.as_mut_ptr().cast::<u8>().add(header_bytes),
             name_bytes,
         );
-        SetFileInformationByHandle(
+        NtSetInformationFile(
             file.as_raw_handle(),
-            FileRenameInfo,
+            &mut io_status,
             buffer.as_ptr().cast(),
             u32::try_from(buffer_bytes)
                 .map_err(|_| "replacement filename is too long".to_owned())?,
+            FileRenameInformation,
         )
     };
-    if succeeded != 0 {
+    if status == STATUS_SUCCESS {
         Ok(())
     } else {
-        Err(std::io::Error::last_os_error().to_string())
+        // SAFETY: the status was returned by NtSetInformationFile and is valid for conversion.
+        let code = unsafe { RtlNtStatusToDosError(status) };
+        Err(std::io::Error::from_raw_os_error(code.cast_signed()).to_string())
     }
 }
 
@@ -4825,6 +4833,44 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    fn windows_absent_leaf_is_published_through_its_staging_handle() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        fs::create_dir(&root).unwrap();
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+
+        create_windows_file(
+            &root,
+            plan[0]
+                .planned_parent
+                .as_ref()
+                .unwrap()
+                .locks
+                .last()
+                .unwrap(),
+            OsStr::new("new.md"),
+            &plan[0],
+        )
+        .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root.join("new.md")).unwrap(),
+            "generated\n"
+        );
+        assert!(!root.join(".okf-workbench-staging.tmp").exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
     fn windows_leaf_appearing_after_staging_is_never_overwritten() {
         let directory = tempdir().unwrap();
         let root = directory.path().join("bundle");
@@ -4868,13 +4914,12 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn windows_rename_layout_reserves_an_uncounted_trailing_wchar() {
+    fn windows_rename_layout_includes_the_complete_structure_and_counted_name() {
         let name_bytes = "new.md".encode_utf16().count() * std::mem::size_of::<u16>();
-        let header_bytes = std::mem::offset_of!(FILE_RENAME_INFO, FileName);
 
         assert_eq!(
             windows_rename_buffer_bytes(name_bytes).unwrap(),
-            header_bytes + name_bytes + std::mem::size_of::<u16>()
+            std::mem::size_of::<FILE_RENAME_INFORMATION>() + name_bytes
         );
     }
 

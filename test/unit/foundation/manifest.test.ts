@@ -193,6 +193,7 @@ describe('extension manifest', () => {
       'okfWorkbench.newConcept',
       'okfWorkbench.regenerateIndexes',
       'okfWorkbench.setupAgentIntegration',
+      'okfWorkbench.migrateBundle',
     ]);
   });
 
@@ -274,7 +275,7 @@ describe('extension manifest', () => {
     });
   });
 
-  test('exposes all six commands from Explorer folders as explicit bundle entry points', async () => {
+  test('exposes all seven commands from Explorer folders as explicit bundle entry points', async () => {
     const manifest = await readManifest();
     const commandIds = expectedCommands.map(([id]) => id).sort();
     const explorer = manifest.contributes?.menus?.['explorer/context'] ?? [];
@@ -291,6 +292,7 @@ describe('extension manifest', () => {
       'navigation@13',
       'navigation@14',
       'navigation@15',
+      'navigation@16',
     ]);
   });
 });

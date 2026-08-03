@@ -10,6 +10,7 @@ use std::fs::OpenOptions;
 #[cfg(unix)]
 use std::os::unix::{ffi::OsStringExt, fs::MetadataExt};
 use std::{
+    collections::BTreeMap,
     ffi::{OsStr, OsString},
     fs::{self, File},
     io::{Read, Seek, SeekFrom, Write},
@@ -144,6 +145,7 @@ pub enum PlanMode {
         update_existing_regions: bool,
     },
     MergeAgent,
+    ReplaceExisting,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -685,10 +687,36 @@ pub fn plan_files(
     files: Vec<RenderedFile>,
     mode: PlanMode,
 ) -> Result<Vec<PlannedChange>, String> {
+    plan_files_with_expected(root, files, mode, None)
+}
+
+pub fn plan_replacement_files(
+    root: &Path,
+    files: Vec<RenderedFile>,
+    expected_contents: &BTreeMap<String, String>,
+) -> Result<Vec<PlannedChange>, String> {
+    plan_files_with_expected(
+        root,
+        files,
+        PlanMode::ReplaceExisting,
+        Some(expected_contents),
+    )
+}
+
+fn plan_files_with_expected(
+    root: &Path,
+    files: Vec<RenderedFile>,
+    mode: PlanMode,
+    expected_contents: Option<&BTreeMap<String, String>>,
+) -> Result<Vec<PlannedChange>, String> {
     let planned_root = capture_planned_root_identity(root)?;
     let mut plan = Vec::new();
     for file in files {
-        validate_relative_path(&file.relative_path)?;
+        if matches!(mode, PlanMode::ReplaceExisting) {
+            validate_existing_relative_path(&file.relative_path)?;
+        } else {
+            validate_relative_path(&file.relative_path)?;
+        }
         let target = root.join(&file.relative_path);
         ensure_contained(root, &target)?;
         ensure_safe_parent_chain(root, &target)?;
@@ -724,6 +752,22 @@ pub fn plan_files(
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(error) => return Err(error.to_string()),
         };
+        if matches!(mode, PlanMode::ReplaceExisting) {
+            let expected = expected_contents
+                .and_then(|contents| contents.get(&file.relative_path))
+                .ok_or_else(|| {
+                    format!(
+                        "{} is missing its migration source snapshot; no file was changed",
+                        target.display()
+                    )
+                })?;
+            if existing.as_ref() != Some(expected) {
+                return Err(format!(
+                    "{} changed after migration planning; no file was changed",
+                    target.display()
+                ));
+            }
+        }
         let content = match (&existing, mode, file.relative_path.as_str()) {
             (Some(existing), PlanMode::CreateOnly, _) if existing != &file.content => {
                 return Err(format!(
@@ -762,6 +806,13 @@ pub fn plan_files(
                 "<!-- okf-workbench:end -->",
             )?,
             (Some(_), PlanMode::MergeAgent, _) => file.content,
+            (Some(_), PlanMode::ReplaceExisting, _) => file.content,
+            (None, PlanMode::ReplaceExisting, _) => {
+                return Err(format!(
+                    "{} no longer exists; no file was changed",
+                    target.display()
+                ));
+            }
             (Some(_), _, _) => file.content,
             (None, _, _) => file.content,
         };
@@ -797,7 +848,9 @@ pub fn plan_files(
             planned_parent,
         });
     }
-    plan.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+    if !matches!(mode, PlanMode::ReplaceExisting) {
+        plan.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+    }
     Ok(plan)
 }
 
@@ -3244,6 +3297,52 @@ pub fn validate_relative_path(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Validates a bounded path that was obtained by enumerating an existing bundle.
+///
+/// Unlike generated paths, an existing provider identity follows the host filesystem's naming
+/// rules. In particular, POSIX filenames may contain `:`, end in a dot or space, or match a
+/// Windows device basename. Windows keeps rejecting those spellings because Win32 may interpret
+/// them as invalid or as aliases rather than the enumerated leaf.
+fn validate_existing_relative_path(path: &str) -> Result<(), String> {
+    const MAX_PATH_UNITS: usize = 4_096;
+    const MAX_SEGMENTS: usize = 64;
+    #[cfg(windows)]
+    let normalized = path.replace('\\', "/");
+    #[cfg(not(windows))]
+    let normalized = path;
+    let segments = normalized.split('/').collect::<Vec<_>>();
+    let invalid_common = normalized.is_empty()
+        || normalized.len() > MAX_PATH_UNITS
+        || normalized.encode_utf16().count() > MAX_PATH_UNITS
+        || segments.len() > MAX_SEGMENTS
+        || normalized.starts_with('/')
+        || segments
+            .iter()
+            .any(|segment| segment.is_empty() || matches!(*segment, "." | ".."))
+        || normalized.chars().any(char::is_control)
+        || Path::new(path).components().any(|component| {
+            matches!(
+                component,
+                Component::CurDir
+                    | Component::ParentDir
+                    | Component::RootDir
+                    | Component::Prefix(_)
+            )
+        });
+    #[cfg(windows)]
+    let invalid_platform = segments
+        .iter()
+        .any(|segment| !is_portable_generated_segment(segment));
+    #[cfg(not(windows))]
+    let invalid_platform = false;
+    if invalid_common || invalid_platform {
+        return Err(format!(
+            "existing bundle path {path:?} is unsafe or ambiguous on this platform"
+        ));
+    }
+    Ok(())
+}
+
 fn ensure_contained(root: &Path, target: &Path) -> Result<(), String> {
     if target.starts_with(root) {
         Ok(())
@@ -3330,6 +3429,37 @@ mod tests {
             assert!(validate_relative_path(path).is_ok(), "{path:?}");
         }
         assert!(validate_relative_path(&format!("{}.md", "a".repeat(252))).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn existing_posix_paths_keep_host_filesystem_identity() {
+        for path in [
+            "notes:2026.md",
+            "CON.md",
+            "folder/trailing.",
+            "folder/trailing ",
+        ] {
+            assert!(validate_existing_relative_path(path).is_ok(), "{path:?}");
+        }
+        for path in ["", "/outside.md", "../outside.md", "folder//file.md"] {
+            assert!(validate_existing_relative_path(path).is_err(), "{path:?}");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn existing_windows_paths_reject_device_and_normalization_aliases() {
+        for path in [
+            "CON.md",
+            "folder/AUX.txt",
+            "folder/trailing.",
+            "folder/trailing ",
+            "folder/name:stream.md",
+        ] {
+            assert!(validate_existing_relative_path(path).is_err(), "{path:?}");
+        }
+        assert!(validate_existing_relative_path("folder/ordinary.md").is_ok());
     }
 
     #[test]
@@ -4700,6 +4830,29 @@ mod tests {
             "concurrent\n"
         );
         assert!(!root.join(".okf-workbench-staging.tmp").exists());
+    }
+
+    #[test]
+    fn migration_rejects_a_target_changed_after_source_loading() {
+        let directory = tempdir().unwrap();
+        let root = directory.path();
+        let target = root.join("concept.md");
+        fs::write(&target, "user changed after bundle load\n").unwrap();
+        let expected = BTreeMap::from([("concept.md".to_owned(), "loaded source\n".to_owned())]);
+        let result = plan_replacement_files(
+            root,
+            vec![RenderedFile {
+                relative_path: "concept.md".to_owned(),
+                encoding: "utf8",
+                content: "migrated source\n".to_owned(),
+            }],
+            &expected,
+        );
+        assert!(result.is_err());
+        assert_eq!(
+            fs::read_to_string(target).unwrap(),
+            "user changed after bundle load\n"
+        );
     }
 
     #[test]

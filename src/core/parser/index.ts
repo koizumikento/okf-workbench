@@ -1,6 +1,7 @@
 export { parseBundle } from './parser.js';
 export {
   EXACT_YAML_INTEGER_KEY,
+  isValidActor,
   semanticFrontmatterString,
   YAML_TAGGED_VALUE_KEY,
 } from './frontmatter.js';

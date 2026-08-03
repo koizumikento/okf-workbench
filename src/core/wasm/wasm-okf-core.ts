@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 import { GraphResourceLimitError } from '../graph/index.js';
 import { hasUnpairedUtf16Surrogate, type JsonValue, type ParseFailure } from '../model/index.js';
+import type { MigrationPlan } from '../migration/index.js';
 import type { ParseBundleInput } from '../parser/index.js';
 import type {
   BundleDirectoryInput,
@@ -163,6 +164,13 @@ export function createWasmOkfCore(bytes: Uint8Array): OkfCore {
           },
         }),
       ),
+    migrate: (input: ParseBundleInput, actor: string): MigrationPlan => {
+      const result = callCore(exports, {
+        operation: 'migrate',
+        input: { bundle: jsonBundleInput(input), actor },
+      });
+      return decodeMigrationPlanResult(result);
+    },
   };
 }
 
@@ -375,6 +383,80 @@ function isRenderedFile(value: unknown): value is RenderedTemplateFile {
     typeof value['relativePath'] === 'string' &&
     value['encoding'] === 'utf8' &&
     typeof value['content'] === 'string'
+  );
+}
+
+export function decodeMigrationPlanResult(value: unknown): MigrationPlan {
+  if (
+    !isObject(value) ||
+    (value['fromVersion'] !== '0.1' && value['fromVersion'] !== '0.2') ||
+    value['toVersion'] !== '0.2' ||
+    !Array.isArray(value['files']) ||
+    !value['files'].every(isRenderedFile) ||
+    !Array.isArray(value['documents']) ||
+    !value['documents'].every(isMigrationDocumentResult)
+  ) {
+    throw new OkfCoreUnavailableError('The OKF core returned an invalid migration plan.');
+  }
+  const files = value['files'];
+  const documents = value['documents'];
+  const filePaths = new Set(files.map((file) => file.relativePath));
+  const changedDocuments = documents.filter((document) => document.changed);
+  const rootDocument = documents.find((document) => document.relativePath === 'index.md');
+  if (
+    filePaths.size !== files.length ||
+    new Set(documents.map((document) => document.relativePath)).size !== documents.length ||
+    changedDocuments.length !== files.length ||
+    changedDocuments.some((document) => !filePaths.has(document.relativePath)) ||
+    documents.some(
+      (document) =>
+        document.changed !== document.actions.length > 0 ||
+        document.manualFollowUp !== document.manualReasons.length > 0,
+    ) ||
+    (value['fromVersion'] === '0.1' &&
+      (!filePaths.has('index.md') ||
+        rootDocument?.changed !== true ||
+        !rootDocument.actions.includes('root-version-to-0.2'))) ||
+    files.some(
+      (file, index) =>
+        file.relativePath.length === 0 ||
+        (file.relativePath === 'index.md' && index !== files.length - 1) ||
+        !documents.some(
+          (document) => document.relativePath === file.relativePath && document.changed,
+        ),
+    )
+  ) {
+    throw new OkfCoreUnavailableError('The OKF core returned an invalid migration plan.');
+  }
+  return value as unknown as MigrationPlan;
+}
+
+function isMigrationDocumentResult(value: unknown): boolean {
+  const actions = isObject(value) ? value['actions'] : undefined;
+  const citations = isObject(value) ? value['citationCandidates'] : undefined;
+  const manualReasons = isObject(value) ? value['manualReasons'] : undefined;
+  return (
+    isObject(value) &&
+    typeof value['relativePath'] === 'string' &&
+    value['relativePath'].length > 0 &&
+    typeof value['changed'] === 'boolean' &&
+    typeof value['manualFollowUp'] === 'boolean' &&
+    Array.isArray(manualReasons) &&
+    manualReasons.every(
+      (reason) =>
+        reason === 'timestamp-requires-manual-migration' ||
+        reason === 'citations-require-manual-review',
+    ) &&
+    new Set(manualReasons).size === manualReasons.length &&
+    Array.isArray(actions) &&
+    actions.every(
+      (action) =>
+        action === 'root-version-to-0.2' ||
+        action === 'timestamp-to-generated' ||
+        action === 'citations-to-sources',
+    ) &&
+    Array.isArray(citations) &&
+    citations.every((candidate) => typeof candidate === 'string')
   );
 }
 

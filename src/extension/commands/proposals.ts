@@ -1,5 +1,6 @@
 import type { ChangeSetProposal, FileChangeProposal } from '../../core/model/index.js';
 import type { IndexChange } from '../../core/indexes/index.js';
+import type { MigrationPlan } from '../../core/migration/index.js';
 import type { AgentIntegrationPlan, RenderedTemplateFile } from '../../core/templates/index.js';
 import type { WorkspaceUriCodec } from '../workspace/uriCodec.js';
 
@@ -187,6 +188,36 @@ export function providerIndexChangesToProposal<TUri>(
           value: expected.sha256,
           byteLength: expected.byteLength,
         },
+      };
+    }),
+  };
+}
+
+/** Converts a migration plan derived from provider bytes into guarded in-place updates. */
+export function providerMigrationPlanToProposal<TUri>(
+  root: TUri,
+  plan: MigrationPlan,
+  uris: WorkspaceUriCodec<TUri>,
+  options: ExpectedContentSnapshotOptions & WorkspaceSafetyRootOptions<TUri>,
+): ChangeSetProposal {
+  return {
+    operation: 'migrate-bundle-to-v0.2',
+    workspaceSafetyRootUri: uris.serialize(options.workspaceSafetyRoot ?? root),
+    writeRootUri: uris.serialize(root),
+    changes: plan.files.map((file): FileChangeProposal => {
+      const expected = expectedContentSnapshot(file.relativePath, options.expectedContentSnapshots);
+      return {
+        targetUri: providerTargetFor(root, file.relativePath, uris),
+        relativePath: file.relativePath,
+        pathIdentity: 'provider',
+        operation: 'update',
+        expected: {
+          kind: 'sha256',
+          value: expected.sha256,
+          byteLength: expected.byteLength,
+        },
+        encoding: 'utf8',
+        proposedText: file.content,
       };
     }),
   };

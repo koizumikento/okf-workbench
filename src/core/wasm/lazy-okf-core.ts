@@ -26,5 +26,6 @@ export function createLazyOkfCore(load: () => OkfCore): OkfCore {
     renderConcept: (...arguments_) => get().renderConcept(...arguments_),
     renderIndexes: (...arguments_) => get().renderIndexes(...arguments_),
     renderAgent: (...arguments_) => get().renderAgent(...arguments_),
+    migrate: (...arguments_) => get().migrate(...arguments_),
   };
 }

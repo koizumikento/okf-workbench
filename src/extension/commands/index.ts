@@ -4,6 +4,10 @@ export {
 } from './initialize-bundle.js';
 export { createNewConceptCommand, type NewConceptCommandDependencies } from './new-concept.js';
 export {
+  createMigrateBundleCommand,
+  type MigrateBundleCommandDependencies,
+} from './migrate-bundle.js';
+export {
   collectWorkspaceIndexSource,
   createRegenerateIndexesCommand,
   type RegenerateIndexesCommandDependencies,
@@ -20,6 +24,7 @@ export {
   createProposalChange,
   existingFileProposal,
   indexChangesToProposal,
+  providerMigrationPlanToProposal,
 } from './proposals.js';
 export {
   problemsMessage,

@@ -97,6 +97,7 @@ Accepted decisions are recorded under [decisions/](decisions/):
 - [0008 — Bundle the native CLI in platform VSIX packages and distribute it separately](decisions/0008-bundle-native-cli-in-platform-vsix.md)
 - [0009 — Preview only proposals that may change existing files](decisions/0009-preview-only-existing-file-changes.md)
 - [0010 — Support OKF v0.2 with a v0.1 compatibility fallback](decisions/0010-adopt-okf-v0.2-with-v0.1-fallback.md)
+- [0011 — Provide explicit assisted v0.2 migration](decisions/0011-explicit-assisted-v0.2-migration.md)
 
 ## Documentation rules
 

@@ -6,6 +6,7 @@ import {
   bundleFilesToProposal,
   indexChangesToProposal,
   providerIndexChangesToProposal,
+  providerMigrationPlanToProposal,
 } from '../../../src/extension/commands/proposals.js';
 import { sha256Content } from '../../../src/extension/workspace/contentHash.js';
 import { stringUriCodec } from '../extension-workspace/fakes.js';
@@ -149,6 +150,55 @@ describe('command plan conversion', () => {
         expected: expect.objectContaining({ kind: 'sha256' }),
       }),
     ]);
+  });
+
+  it('hash-guards provider-derived migration updates', () => {
+    const original = new TextEncoder().encode('before\n');
+    const proposal = providerMigrationPlanToProposal(
+      root,
+      {
+        fromVersion: '0.1',
+        toVersion: '0.2',
+        files: [
+          {
+            relativePath: 'team%20knowledge.md',
+            encoding: 'utf8',
+            content: 'after\n',
+          },
+        ],
+        documents: [],
+      },
+      stringUriCodec,
+      {
+        expectedContentSnapshots: new Map([
+          [
+            'team%20knowledge.md',
+            { sha256: sha256Content(original), byteLength: original.byteLength },
+          ],
+        ]),
+      },
+    );
+
+    expect(proposal).toEqual({
+      operation: 'migrate-bundle-to-v0.2',
+      workspaceSafetyRootUri: root,
+      writeRootUri: root,
+      changes: [
+        {
+          targetUri: `${root}/team%20knowledge.md`,
+          relativePath: 'team%20knowledge.md',
+          pathIdentity: 'provider',
+          operation: 'update',
+          expected: {
+            kind: 'sha256',
+            value: sha256Content(original),
+            byteLength: original.byteLength,
+          },
+          encoding: 'utf8',
+          proposedText: 'after\n',
+        },
+      ],
+    });
   });
 
   it('omits unchanged agent outputs and includes a replacement only when explicitly requested', () => {

@@ -7,6 +7,7 @@ import { beforeAll, describe, expect, test } from 'vitest';
 import { GraphResourceLimitError } from '../../../src/core/graph/index.js';
 import {
   createWasmOkfCore,
+  decodeMigrationPlanResult,
   typescriptOkfCore,
   type OkfCore,
 } from '../../../src/core/wasm/index.js';
@@ -63,6 +64,421 @@ describe('Rust/Wasm core boundary', () => {
     expect(WebAssembly.Module.imports(module)).toEqual([]);
     expect(core.abiVersion).toBe(1);
     expect(core.coreVersion).toBe('0.2.1');
+  });
+
+  test('has exact migration-plan parity with the TypeScript oracle', () => {
+    const migrationInput = inputFor(
+      [
+        ['index.md', ['---', 'okf_version: "0.1"', '---', '# Root', ''].join('\n')],
+        [
+          'legacy.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Legacy',
+            'description: Legacy provenance',
+            'timestamp: "2026-07-22T10:00:00Z"',
+            '---',
+            '# Legacy',
+            '',
+            '# Citations',
+            '',
+            '- https://example.com/source',
+            '',
+          ].join('\n'),
+        ],
+      ],
+      'fixture:/migration-parity',
+    );
+    expect(core.migrate(migrationInput, 'okf-workbench/0.2.1')).toEqual(
+      typescriptOkfCore.migrate(migrationInput, 'okf-workbench/0.2.1'),
+    );
+  });
+
+  test.each([
+    { fromVersion: '0.1', toVersion: '0.2', files: [{}], documents: [] },
+    {
+      fromVersion: '0.1',
+      toVersion: '0.2',
+      files: [],
+      documents: [
+        {
+          relativePath: 'index.md',
+          changed: 'yes',
+          manualFollowUp: false,
+          manualReasons: [],
+          actions: [],
+          citationCandidates: [],
+        },
+      ],
+    },
+    {
+      fromVersion: '0.1',
+      toVersion: '0.2',
+      files: [
+        { relativePath: 'index.md', encoding: 'utf8', content: 'root' },
+        { relativePath: 'concept.md', encoding: 'utf8', content: 'concept' },
+      ],
+      documents: [
+        {
+          relativePath: 'index.md',
+          changed: true,
+          manualFollowUp: false,
+          manualReasons: [],
+          actions: ['root-version-to-0.2'],
+          citationCandidates: [],
+        },
+        {
+          relativePath: 'concept.md',
+          changed: true,
+          manualFollowUp: false,
+          manualReasons: [],
+          actions: ['timestamp-to-generated'],
+          citationCandidates: [],
+        },
+      ],
+    },
+    {
+      fromVersion: '0.1',
+      toVersion: '0.2',
+      files: [],
+      documents: [
+        {
+          relativePath: 'concept.md',
+          changed: false,
+          manualFollowUp: false,
+          manualReasons: [],
+          actions: [42],
+          citationCandidates: [],
+        },
+      ],
+    },
+    {
+      fromVersion: '0.1',
+      toVersion: '0.2',
+      files: [],
+      documents: [
+        {
+          relativePath: 'index.md',
+          changed: true,
+          manualFollowUp: false,
+          manualReasons: [],
+          actions: ['root-version-to-0.2'],
+          citationCandidates: [],
+        },
+      ],
+    },
+  ])('rejects malformed migration result %#', (result) => {
+    expect(() => decodeMigrationPlanResult(result)).toThrow('invalid migration plan');
+  });
+
+  test('keeps migration parity for ordinal paths, fences, CR-only text, and RFC3339 variants', () => {
+    const rootUri = 'fixture:/migration-adversarial';
+    const migrationInput = inputFor(
+      [
+        ['index.md', '---\rokf_version: "0.1"\r---\r# Root\r'],
+        [
+          'B.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Fenced',
+            'description: Fenced example',
+            '---',
+            '# Fenced',
+            '',
+            '```md',
+            '# Citations',
+            '- https://example.com/not-a-source',
+            '```',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'a.md',
+          '---\rtype: Reference\rtitle: CR\rdescription: CR-only\rtimestamp: "2026-07-22t10:00:60z"\r---\r# CR\r\r# Citations\r\r- https://example.com/source\r',
+        ],
+        [
+          '�.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Replacement character',
+            'description: UTF-8 ordering',
+            'timestamp: "2026-07-22T10:00:00Z"',
+            '---',
+            '# Replacement',
+            '',
+          ].join('\n'),
+        ],
+        [
+          '😀.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Emoji',
+            'description: UTF-8 ordering',
+            'timestamp: "2026-07-22T10:00:00Z"',
+            '---',
+            '# Emoji',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'space.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Space separator',
+            'description: Strict RFC3339',
+            'timestamp: "2026-07-22 10:00:00Z"',
+            '---',
+            '# Space',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'anchored.md',
+          [
+            '---',
+            'type: Reference',
+            'timestamp: &when "2026-07-22T10:00:00Z"',
+            'producer_time: *when',
+            '---',
+            '# Anchored',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'multiline.md',
+          [
+            '---',
+            'type: Reference',
+            'timestamp: >-',
+            '  2026-07-22T10:00:00Z',
+            '---',
+            '# Multiline',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'tagged-anchored.md',
+          [
+            '---',
+            'type: Reference',
+            'timestamp: !<tag:yaml.org,2002:str> &when "2026-07-22T10:00:00Z"',
+            'producer_time: *when',
+            '---',
+            '# Tagged anchored',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'tag-only-line.md',
+          [
+            '---',
+            'type: Reference',
+            'timestamp: !!str',
+            '  2026-07-22T10:00:00Z',
+            '---',
+            '# Tag only line',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'tagged-block.md',
+          [
+            '---',
+            'type: Reference',
+            'timestamp: !<tag:yaml.org,2002:str> >-',
+            '  2026-07-22T10:00:00Z',
+            '---',
+            '# Tagged block',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'comment-continuation.md',
+          [
+            '---',
+            'type: Reference',
+            'timestamp: !!str # retained',
+            '  2026-07-22T10:00:00Z',
+            '---',
+            '# Comment continuation',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'quoted-continuation.md',
+          [
+            '---',
+            'type: Reference',
+            'timestamp: "2026-07-22T10:00:' + '\\',
+            '  00Z"',
+            '---',
+            '# Quoted continuation',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'indented.md',
+          [
+            '---',
+            'type: Reference',
+            '---',
+            '# Citations',
+            '',
+            '    - https://example.com/code',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'not-heading.md',
+          [
+            '---',
+            'type: Reference',
+            '---',
+            '# Citations#',
+            '',
+            '- https://example.com/not-a-citation',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'control-url.md',
+          [
+            '---',
+            'type: Reference',
+            '---',
+            '# Citations',
+            '',
+            '- https://example.com/\u0001',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'tabbed.md',
+          [
+            '---',
+            'type: Reference',
+            '---',
+            '# Citations',
+            '',
+            '\t- https://example.com/tab-code',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'three-space-tab.md',
+          [
+            '---',
+            'type: Reference',
+            '---',
+            '# Citations',
+            '',
+            '   \t- https://example.com/tab-code',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'indented-fence-close.md',
+          [
+            '---',
+            'type: Reference',
+            '---',
+            '```md',
+            '    ```',
+            '# Citations',
+            '- https://example.com/not-a-source',
+            '```',
+            '',
+          ].join('\n'),
+        ],
+      ],
+      rootUri,
+    );
+    expect(core.migrate(migrationInput, 'human:reviewer')).toEqual(
+      typescriptOkfCore.migrate(migrationInput, 'human:reviewer'),
+    );
+  });
+
+  test('keeps migration parity for quoted root and timestamp keys', () => {
+    const migrationInput = inputFor(
+      [
+        ['index.md', ['---', '"okf_version": "0.1"', '---', '# Root', ''].join('\n')],
+        [
+          'quoted.md',
+          [
+            '---',
+            'type: Reference',
+            '\'timestamp\': "2026-07-22T10:00:00Z"',
+            '---',
+            '# Quoted',
+            '',
+          ].join('\n'),
+        ],
+      ],
+      'fixture:/migration-quoted',
+    );
+    expect(core.migrate(migrationInput, 'human:reviewer')).toEqual(
+      typescriptOkfCore.migrate(migrationInput, 'human:reviewer'),
+    );
+  });
+
+  test('keeps migration parity for BOM offsets and conservative Citations analysis', () => {
+    const encoder = new TextEncoder();
+    const longUrl = `https://example.com/${'a'.repeat(65_500)}`;
+    const cases: readonly ParseBundleInput[] = [
+      inputFor(
+        [
+          ['index.md', '\uFEFF---\r\nokf_version: "0.1"\r\n---\r\n# Root\r\n'],
+          [
+            'bom-text.md',
+            '\uFEFF---\r\ntype: Reference\r\ntimestamp: "2026-07-22T10:00:00Z"\r\n---\r\n# Citations\r\n- https://example.com/text\r\n',
+          ],
+          [
+            'bom-bytes.md',
+            encoder.encode(
+              '\uFEFF---\rtype: Reference\rtimestamp: "2026-07-22T10:00:00Z"\r---\r# Citations\r- https://example.com/bytes\r',
+            ),
+          ],
+        ],
+        'fixture:/migration-bom-parity',
+      ),
+      inputFor(
+        [
+          ['index.md', '---\nokf_version: "0.1"\n---\n# Root\n'],
+          [
+            'multiple.md',
+            '---\ntype: Reference\n---\n# Citations\n- https://example.com/one\n# Notes\ntext\n# Citations\n- https://example.com/two\n',
+          ],
+          [
+            'html.md',
+            '---\ntype: Reference\n---\n<!--\n# Citations\n- https://example.com/not-a-source\n-->\n',
+          ],
+          [
+            'script.md',
+            '---\ntype: Reference\n---\n<script>\n\n# Citations\n- https://example.com/not-a-source\n</script>\n',
+          ],
+          [
+            'existing.md',
+            '---\ntype: Reference\nsources:\n  - resource: "https://example.com/existing"\n---\n# Citations\n- [Named](https://example.com/named)\n',
+          ],
+          [
+            'bom-url.md',
+            '---\ntype: Reference\n---\n# Citations\n- https://example.com/a\uFEFFb\n',
+          ],
+          ['long.md', `---\ntype: Reference\n---\n# Citations\n- ${longUrl}\n- ${longUrl}\n`],
+        ],
+        'fixture:/migration-citations-parity',
+      ),
+    ];
+    for (const migrationInput of cases) {
+      expect(core.migrate(migrationInput, 'human:reviewer')).toEqual(
+        typescriptOkfCore.migrate(migrationInput, 'human:reviewer'),
+      );
+    }
   });
 
   test.each(fixtureNames)('%s preserves the canonical semantic projection', async (name) => {

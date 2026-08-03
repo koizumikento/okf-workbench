@@ -21,6 +21,32 @@ for legacy bundles.
   reserved-document conformance error for explicit repair.
 - Workbench never rewrites an existing `0.1` declaration merely because it can read v0.2.
 
+## Explicit migration
+
+Migration is optional and user-invoked through `OKF: Migrate Bundle to v0.2` or
+`okf migrate <bundle-root> --to 0.2 --actor <actor> --check`. It is never triggered by
+opening, validating, editing, or indexing a v0.1 bundle.
+
+- The caller supplies `generated.by` as `human:<id>`, `process:<id>`, or
+  `<producer>/<version>`; Workbench never infers an actor.
+- A valid legacy `timestamp` becomes `generated.at` only when `generated` is absent.
+- Anchored or multiline target scalars are left for manual follow-up so aliases and complete YAML
+  nodes cannot be damaged.
+- Manual follow-up results carry a bounded user-visible document path and a stable timestamp or
+  Citations reason; a zero-change result is not presented as already migrated while any such result
+  remains.
+- Simple URL bullets under `# Citations` may produce `sources`, while the original Citations body
+  remains unchanged. Named links, prose, empty sections, and other ambiguous forms are reported for
+  manual follow-up; indented code is never treated as a citation bullet.
+- Unknown frontmatter and Markdown body content remain source-preserved.
+- In an extension multi-file apply, `index.md` is written last so a later target failure cannot
+  advertise v0.2 before the preceding concept changes have completed.
+- The complete existing-file proposal is previewed and explicitly approved in the extension. CLI
+  migration is preview-only: required `--check` writes nothing, and `--apply` is not a supported
+  migrate argument while FR-104 requires native existing-file updates to fail closed.
+- The root `okf_version` update is part of the same complete plan, and a second run is idempotent.
+- Migration does not invent verification, computation, execution, receipt, or attestation claims.
+
 ## Bundle and concept model
 
 The v0.1 bundle structure remains in force: UTF-8 Markdown, reserved `index.md` and `log.md`, POSIX
@@ -105,6 +131,6 @@ computation fields do not create invented semantic edges.
 
 ## Safety invariants
 
-The v0.2 migration does not change the local-first boundary, URI-first workspace access, guarded
+v0.2 adoption and explicit migration do not change the local-first boundary, URI-first workspace access, guarded
 proposal workflow, source-preserving merge rules, restrictive Webview CSP, or no-network/no-AI
 core behavior.

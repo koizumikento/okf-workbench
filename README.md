@@ -24,6 +24,8 @@ initialize -> create -> edit -> validate -> explore -> repair
 - Reports OKF conformance errors separately from actionable curation warnings in the Problems
   panel, while keeping valid orphan concepts free of editor warning decorations.
 - Regenerates managed `index.md` regions without replacing unrelated content.
+- Offers an explicit, previewed v0.1-to-v0.2 migration that preserves legacy Citations and reports
+  ambiguous cases for manual follow-up.
 - Builds a read-only, searchable 3D graph of concepts and directed internal Markdown links.
 - Shows details, backlinks, broken-link warnings, orphan state, type, tag, and folder-subtree
   filters, clickable folder breadcrumbs, and an accessible non-spatial node list.
@@ -48,6 +50,7 @@ initialize -> create -> edit -> validate -> explore -> repair
 | `OKF: Regenerate Indexes` | `okfWorkbench.regenerateIndexes` |
 | `OKF: Open 3D Graph` | `okfWorkbench.openGraph` |
 | `OKF: Set Up Agent Integration` | `okfWorkbench.setupAgentIntegration` |
+| `OKF: Migrate Bundle to v0.2` | `okfWorkbench.migrateBundle` |
 | `OKF: Review Pending Changes` | `okfWorkbench.reviewPendingChanges` |
 | `OKF: Select Bundle` | `okfWorkbench.selectBundle` |
 | `OKF: Refresh Bundle` | `okfWorkbench.refreshBundle` |
@@ -56,7 +59,7 @@ initialize -> create -> edit -> validate -> explore -> repair
 
 Open the **OKF Workbench** icon in the Activity Bar to select a bundle, inspect current counts,
 browse nested concepts and reserved documents, open source, and launch the existing 3D Graph.
-The same six core `OKF:` workflows remain available from the Command Palette or an Explorer folder
+The same seven core `OKF:` workflows remain available from the Command Palette or an Explorer folder
 context menu. Authoring commands require a trusted workspace. Validation, resource navigation, and
 graph inspection remain read-only. While an authoring preview awaits a decision, the status bar shows
 `OKF changes awaiting review`; activate it, or run `OKF: Review Pending Changes`, to bring back the
@@ -76,8 +79,8 @@ cargo build --locked --release --bin okf
 ./target/release/okf --help
 ```
 
-The CLI provides `init`, `new`, `validate`, `index`, `graph`, `agent`, and `version`. Read commands
-never write. Write commands first report a complete plan; non-interactive writes require
+The CLI provides `init`, `new`, `validate`, `index`, `graph`, `agent`, `migrate`, and `version`. Read commands
+never write. Supported write commands first report a complete plan; non-interactive writes require
 `--apply`, and `--check` reports whether changes are needed without modifying the workspace.
 A single-create plan for an existing bundle can be applied. An all-create plan for a missing bundle
 root is built privately and published as one no-replace directory operation. Existing-root plans
@@ -85,6 +88,14 @@ with multiple creates, and every plan containing an existing-file update, fail c
 write because the supported filesystems do not expose the required complete-plan transaction or
 generation-CAS and metadata-preserving replacement primitives.
 `validate --format json` and `graph --format json` emit a versioned JSON envelope for automation.
+Migration is always explicit:
+
+```sh
+okf migrate <bundle-root> --to 0.2 --actor human:<id> --check
+```
+
+Native migration is preview-only and does not accept `--apply`; use the extension command to review
+and approve the guarded existing-file proposal.
 
 Open VSX selects a target package for macOS arm64/x64, Linux x64, or Windows x64 when supported.
 The bundled CLI is appended to `PATH` for new integrated terminals, without changing shell profile

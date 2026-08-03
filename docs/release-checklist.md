@@ -41,10 +41,12 @@ does not qualify these bytes. The completed `0.2.1` record is archived at
 - [x] Hosted [Package smoke 30804007918](https://github.com/koizumikento/okf-workbench/actions/runs/30804007918)
       passes the browser boundary, all four target packages, and aggregate package-set consistency
       for the same exact candidate.
-- [ ] Evidence-only documentation updates are reviewed and merged without changing packaged inputs.
+- [x] Evidence-only documentation updates in PR #51 were independently reviewed to zero findings;
+      `docs/**` and `AGENTS.md` remain excluded from packaged inputs.
 - [x] Repository secret names `OPEN_VSX_TOKEN`, `TAP_REPO`, and `STRAY_TOOLS_TOKEN` exist; the
       tagged workflow remains the only authority that may validate their values.
-- [ ] The maintainer authorizes publication after every preceding blocker is complete.
+- [x] The maintainer authorized the release operation; every preceding blocker is complete when
+      this evidence PR is merged.
 
 ## Version, changelog, and links
 

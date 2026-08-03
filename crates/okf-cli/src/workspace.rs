@@ -2252,7 +2252,7 @@ fn windows_rename_buffer_bytes(name_bytes: usize) -> Result<usize, String> {
 }
 
 #[cfg(windows)]
-fn rename_windows_handle(file: &File, _parent_guard: &File, leaf: &OsStr) -> Result<(), String> {
+fn rename_windows_handle(file: &File, parent: &File, leaf: &OsStr) -> Result<(), String> {
     let name = leaf.encode_wide().collect::<Vec<_>>();
     let name_bytes = name
         .len()
@@ -2271,10 +2271,8 @@ fn rename_windows_handle(file: &File, _parent_guard: &File, leaf: &OsStr) -> Res
         (*info).Anonymous = FILE_RENAME_INFO_0 {
             ReplaceIfExists: false,
         };
-        // Both call sites are same-parent sibling renames. A simple name with no secondary root
-        // handle keeps resolution on the source handle's current parent, while the retained parent
-        // handle remains the mutation guard.
-        (*info).RootDirectory = std::ptr::null_mut();
+        // Resolve the simple sibling name relative to the retained, verified parent handle.
+        (*info).RootDirectory = parent.as_raw_handle();
         (*info).FileNameLength =
             u32::try_from(name_bytes).map_err(|_| "replacement filename is too long".to_owned())?;
         std::ptr::copy_nonoverlapping(

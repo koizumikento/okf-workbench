@@ -4825,7 +4825,7 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn windows_parent_guard_blocks_leaf_appearing_after_staging() {
+    fn windows_leaf_appearing_after_staging_is_never_overwritten() {
         let directory = tempdir().unwrap();
         let root = directory.path().join("bundle");
         fs::create_dir(&root).unwrap();
@@ -4840,8 +4840,7 @@ mod tests {
         )
         .unwrap();
 
-        let concurrent_create_succeeded = std::cell::Cell::new(false);
-        create_windows_file_with_writer(
+        let result = create_windows_file_with_writer(
             &root,
             plan[0]
                 .planned_parent
@@ -4856,18 +4855,13 @@ mod tests {
                 file.write_all(b"generated\n")
                     .map_err(|error| error.to_string())
             },
-            || {
-                concurrent_create_succeeded
-                    .set(fs::write(root.join("new.md"), "concurrent\n").is_ok());
-                Ok(())
-            },
-        )
-        .unwrap();
+            || fs::write(root.join("new.md"), "concurrent\n").map_err(|error| error.to_string()),
+        );
 
-        assert!(!concurrent_create_succeeded.get());
+        assert!(result.is_err());
         assert_eq!(
             fs::read_to_string(root.join("new.md")).unwrap(),
-            "generated\n"
+            "concurrent\n"
         );
         assert!(!root.join(".okf-workbench-staging.tmp").exists());
     }

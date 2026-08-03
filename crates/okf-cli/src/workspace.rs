@@ -1781,7 +1781,7 @@ fn apply_missing_root_plan_windows_with_staging_name_and_hook(
     // an explicit platform boundary in FR-104.
     drop(staged_leaf_bindings);
     drop(staged_directory_locks);
-    rename_windows_handle(&staging_handle, parent_handle, first).map_err(|error| {
+    rename_windows_handle(&staging_handle, parent_handle, &final_path).map_err(|error| {
         format!(
             "cannot atomically publish the complete new root; concurrent content was preserved and bounded staging remains for inspection: {error}"
         )
@@ -2012,7 +2012,7 @@ fn create_windows_file_with_writer(
         write_content(&mut temporary)?;
         temporary.sync_all().map_err(|error| error.to_string())?;
         before_publish()?;
-        rename_windows_handle(&temporary, parent_handle, leaf).map_err(|error| {
+        rename_windows_handle(&temporary, parent_handle, &parent.join(leaf)).map_err(|error| {
             format!(
                 "{} appeared after planning; no file was published: {error}",
                 change.target.display()
@@ -2252,8 +2252,11 @@ fn windows_rename_buffer_bytes(name_bytes: usize) -> Result<usize, String> {
 }
 
 #[cfg(windows)]
-fn rename_windows_handle(file: &File, parent: &File, leaf: &OsStr) -> Result<(), String> {
-    let name = leaf.encode_wide().collect::<Vec<_>>();
+fn rename_windows_handle(file: &File, _parent_guard: &File, target: &Path) -> Result<(), String> {
+    if !target.is_absolute() {
+        return Err("replacement path must be absolute".to_owned());
+    }
+    let name = target.as_os_str().encode_wide().collect::<Vec<_>>();
     let name_bytes = name
         .len()
         .checked_mul(std::mem::size_of::<u16>())
@@ -2271,8 +2274,9 @@ fn rename_windows_handle(file: &File, parent: &File, leaf: &OsStr) -> Result<(),
         (*info).Anonymous = FILE_RENAME_INFO_0 {
             ReplaceIfExists: false,
         };
-        // Resolve the simple sibling name relative to the retained, verified parent handle.
-        (*info).RootDirectory = parent.as_raw_handle();
+        // The Win32 wrapper accepts an absolute destination when no secondary root handle is used.
+        // The retained parent handle remains the mutation guard.
+        (*info).RootDirectory = std::ptr::null_mut();
         (*info).FileNameLength =
             u32::try_from(name_bytes).map_err(|_| "replacement filename is too long".to_owned())?;
         std::ptr::copy_nonoverlapping(

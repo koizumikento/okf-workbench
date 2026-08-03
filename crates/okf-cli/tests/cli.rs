@@ -282,6 +282,38 @@ fn graph_is_semantic_json_not_a_terminal_renderer() {
 }
 
 #[test]
+fn graph_refuses_bundle_scoped_parser_resource_failures() {
+    let directory = tempdir().unwrap();
+    initialize(directory.path());
+    let body = "x".repeat(256 * 1024);
+    for index in 0..33 {
+        fs::write(
+            directory.path().join(format!("large-{index:02}.md")),
+            format!("---\ntype: concept\n---\n{body}"),
+        )
+        .unwrap();
+    }
+
+    let output = okf()
+        .args([
+            "graph",
+            directory.path().to_str().unwrap(),
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(output.stdout.is_empty(), "{output:?}");
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("bundle-scoped resource failure prevents graph publication"),
+        "{output:?}"
+    );
+}
+
+#[test]
 fn version_and_new_use_the_stable_json_envelope() {
     let version = okf().arg("version").output().unwrap();
     assert!(version.status.success(), "{version:?}");

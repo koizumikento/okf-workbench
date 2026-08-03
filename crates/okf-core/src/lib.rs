@@ -9,7 +9,7 @@ mod parser;
 mod templates;
 mod validation;
 
-pub use graph::build_graph_payload;
+pub use graph::build_graph_payload_checked;
 pub use model::*;
 pub use parser::parse_bundle;
 pub use templates::{
@@ -192,13 +192,15 @@ pub fn dispatch_json(request_json: &str) -> String {
             });
             let findings = validate_bundle(&bundle, &input.now);
             bundle.findings.clone_from(&findings);
-            if let Some(message) = graph::bounded_graph_input_error(&bundle) {
-                return serialize_response(CoreResponse::failure("graph-resource-limit", message));
-            }
-            let graph = build_graph_payload(&bundle);
-            if let Some(message) = graph::graph_payload_size_error(&graph) {
-                return serialize_response(CoreResponse::failure("graph-resource-limit", message));
-            }
+            let graph = match build_graph_payload_checked(&bundle) {
+                Ok(graph) => graph,
+                Err(message) => {
+                    return serialize_response(CoreResponse::failure(
+                        "graph-resource-limit",
+                        message,
+                    ));
+                }
+            };
             CoreResponse::success(Inspection {
                 bundle,
                 findings,
@@ -218,15 +220,9 @@ pub fn dispatch_json(request_json: &str) -> String {
         }
         CoreRequest::Graph(input) => {
             let bundle = parse_bundle(input);
-            if let Some(message) = graph::bounded_graph_input_error(&bundle) {
-                CoreResponse::failure("graph-resource-limit", message)
-            } else {
-                let graph = build_graph_payload(&bundle);
-                if let Some(message) = graph::graph_payload_size_error(&graph) {
-                    CoreResponse::failure("graph-resource-limit", message)
-                } else {
-                    CoreResponse::success(graph)
-                }
+            match build_graph_payload_checked(&bundle) {
+                Ok(graph) => CoreResponse::success(graph),
+                Err(message) => CoreResponse::failure("graph-resource-limit", message),
             }
         }
         CoreRequest::RenderBundle(input) => {

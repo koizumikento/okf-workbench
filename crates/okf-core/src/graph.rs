@@ -347,7 +347,7 @@ pub(crate) fn bounded_graph_input_error(bundle: &ParsedBundle) -> Option<String>
     None
 }
 
-pub(crate) fn graph_payload_size_error(payload: &GraphPayload) -> Option<String> {
+fn graph_payload_size_error(payload: &GraphPayload) -> Option<String> {
     let mut writer = CappedWriter::new(MAX_GRAPH_PAYLOAD_BYTES);
     if serde_json::to_writer(&mut writer, payload).is_err() || writer.exceeded {
         return Some(format!(
@@ -453,7 +453,7 @@ impl std::io::Write for CappedWriter {
     }
 }
 
-pub fn build_graph_payload(bundle: &ParsedBundle) -> GraphPayload {
+fn build_graph_payload(bundle: &ParsedBundle) -> GraphPayload {
     let concept_ids = bundle
         .concepts
         .iter()
@@ -631,6 +631,19 @@ pub fn build_graph_payload(bundle: &ParsedBundle) -> GraphPayload {
         broken_links,
         statistics,
     }
+}
+
+/// Build a graph only when the parsed bundle and serialized payload both fit the
+/// shared publication envelope.
+pub fn build_graph_payload_checked(bundle: &ParsedBundle) -> Result<GraphPayload, String> {
+    if let Some(message) = bounded_graph_input_error(bundle) {
+        return Err(message);
+    }
+    let payload = build_graph_payload(bundle);
+    if let Some(message) = graph_payload_size_error(&payload) {
+        return Err(message);
+    }
+    Ok(payload)
 }
 
 fn compare_utf16(left: &str, right: &str) -> std::cmp::Ordering {

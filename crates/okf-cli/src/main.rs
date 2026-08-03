@@ -4,7 +4,7 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use okf_core::{
     AgentTarget, BundlePreset, CORE_VERSION, ConceptTemplateInput, IndexMode, RenderedFile,
-    agent_files, build_graph_payload, bundle_preset_files, concept_template_file_checked,
+    agent_files, build_graph_payload_checked, bundle_preset_files, concept_template_file_checked,
     index_files, is_future_minor_version, parse_bundle, validate_bundle,
 };
 use serde::Serialize;
@@ -315,7 +315,7 @@ fn run(cli: Cli) -> Result<u8, String> {
                 return Err("`okf graph` supports only `--format json`; 3D rendering belongs to the editor Webview.".to_owned());
             }
             let bundle = parse_bundle(load_bundle(&args.root)?);
-            let graph = build_graph_payload(&bundle);
+            let graph = build_graph_payload_checked(&bundle)?;
             write_json(&JsonEnvelope {
                 schema_version: 1,
                 command: "graph",

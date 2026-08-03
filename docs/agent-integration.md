@@ -17,7 +17,9 @@ OKF Workbench does not embed an AI model or call an AI provider. It helps existi
 - The OKF bundle is located at `knowledge/`.
 - Read `knowledge/index.md` before tasks that require project-wide context.
 - Update the relevant concept when a change affects durable project knowledge.
-- When an `okf` executable is available for a local bundle, prefer it for validation, new-concept planning, and managed-index updates; review `--check` output before `--apply`.
+- When an `okf` executable is available for a local bundle, prefer it for validation, new-concept
+  and managed-index planning, and create-only publication; review `--check` output before `--apply`,
+  and use the editor workflow or manual editing when the plan updates an existing file.
 - Preserve unknown YAML frontmatter fields.
 - Use bundle-relative Markdown links between concepts.
 - Do not add speculative or temporary information to the bundle.
@@ -67,7 +69,7 @@ The body covers:
 - Timestamp discipline.
 - Index regeneration.
 - Conformance and curation checks.
-- Optional CLI-assisted validation, concept planning, and managed-index updates.
+- Optional CLI-assisted validation, concept and managed-index planning, and create-only publication.
 
 The generated Skill treats the CLI as an optional local-filesystem accelerator rather than a
 prerequisite. It instructs agents to use editor commands and the documented Markdown rules when
@@ -82,8 +84,10 @@ okf index <bundle-root> --mode missing --check
 ```
 
 Write examples start with `--check`; the Skill permits replacing it with `--apply` only after the
-reported paths and changes have been reviewed. Existing concept Markdown remains directly editable
-so unknown frontmatter can be preserved.
+reported paths and changes have been reviewed and only when every change creates a new file. A plan
+that updates an existing file fails closed before writing and must be completed through the editor
+workflow or careful manual editing. Existing concept Markdown remains directly editable so unknown
+frontmatter can be preserved.
 
 ## Safe merge behavior
 

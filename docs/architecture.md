@@ -92,8 +92,9 @@ mismatch, trap, or malformed response.
 
 The Extension Host continues to own URI-first reads, Workspace Trust, previews, guarded writes,
 diagnostics, watchers, and the Webview lifecycle. The native CLI owns local path resolution,
-interactive confirmation, atomic local writes, and stdout/stderr. The Webview receives only the
-bounded presentation payload and never instantiates Wasm.
+interactive confirmation, identity-anchored no-overwrite creates, fail-closed existing-file update
+handling, and stdout/stderr. The Webview receives only the bounded presentation payload and never
+instantiates Wasm.
 
 Supported target-platform VSIX packages add one native CLI at the distribution boundary, while the
 universal fallback remains CLI-free. The exact same executable is also shipped in a standalone

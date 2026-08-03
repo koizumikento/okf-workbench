@@ -108,7 +108,7 @@ export function createWasmOkfCore(bytes: Uint8Array): OkfCore {
         input: {
           bundle: jsonBundleInput(input),
           now: now instanceof Date ? now.toISOString() : now,
-          failures: failures as unknown as JsonValue,
+          failures: jsonFailures(failures),
         },
       });
       if (
@@ -221,6 +221,25 @@ function jsonBundleInput(input: ParseBundleInput): JsonValue {
       };
     }),
   };
+}
+
+function jsonFailures(failures: readonly ParseFailure[]): JsonValue {
+  return failures.map((failure) => {
+    if (hasUnpairedUtf16Surrogate(failure.uri)) {
+      throw new GraphResourceLimitError('Parse failure URI contains an unpaired UTF-16 surrogate.');
+    }
+    if (failure.bundlePath.length > 0 && hasUnpairedUtf16Surrogate(failure.bundlePath)) {
+      throw new GraphResourceLimitError(
+        'Parse failure path contains an unpaired UTF-16 surrogate.',
+      );
+    }
+    return {
+      ...failure,
+      message: hasUnpairedUtf16Surrogate(failure.message)
+        ? 'Parse failure detail contains an unpaired UTF-16 surrogate.'
+        : failure.message,
+    } as unknown as JsonValue;
+  });
 }
 
 function fallbackUtf16ContentHash(text: string): string {

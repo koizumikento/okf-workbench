@@ -5,9 +5,10 @@ use crate::{
     ReservedDocument, SourceDocument, SourcePosition, SourceRange, UsageWindow, VerificationEvent,
 };
 use chrono::{DateTime, Duration, FixedOffset, NaiveDate, SecondsFormat};
-use pulldown_cmark::{Event, Options, Parser, Tag};
+use pulldown_cmark::{Event, LinkType, Options, Parser, Tag};
 use serde_json::{Map, Number, Value};
-use std::collections::BTreeSet;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet};
 
 const MAX_DOCUMENTS: usize = 2_000;
 const MAX_DOCUMENT_BYTES: usize = 320 * 1024 + 16;
@@ -56,10 +57,10 @@ const MAX_MARKDOWN_CONTAINER_WORK_UNITS_PER_DOCUMENT: usize = 65_536;
 const MAX_MARKDOWN_MEDIA_NESTING_DEPTH: usize = 64;
 const MAX_MARKDOWN_LABEL_END_WORK_UNITS_PER_DOCUMENT: usize = 8 * 1024 * 1024;
 const MAX_LINK_TEXT_UNITS_PER_DOCUMENT: usize = 1024 * 1024;
-const MAX_MARKDOWN_REFERENCE_EXPANSION_BYTES: usize = 2 * 1024 * 1024;
 const MAX_LINK_TARGET_BYTES: usize = 2_048;
 const MAX_LINK_TARGET_CODE_UNITS: usize = 2_048;
 const MAX_LINK_LABEL_BYTES: usize = 512;
+const MAX_RADIX_DECIMAL_CACHE_BYTES: usize = 1024 * 1024;
 const MAX_LINK_LABEL_CODE_UNITS: usize = 512;
 const MAX_TYPE_BYTES: usize = 256;
 const MAX_TYPE_CODE_UNITS: usize = 256;
@@ -105,6 +106,20 @@ struct MarkdownWorkInspection {
     link_candidates: usize,
 }
 
+#[derive(Clone, Debug)]
+struct MarkdownReferenceDefinition {
+    destination: String,
+    label: String,
+    span: std::ops::Range<usize>,
+    title: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MarkdownMediaKind {
+    Image,
+    Link,
+}
+
 #[derive(Debug)]
 struct FrontmatterError {
     message: String,
@@ -119,7 +134,18 @@ struct FrontmatterWork {
     structural_tokens: usize,
 }
 
+#[derive(Default)]
+struct RadixDecimalCache {
+    bytes: usize,
+    entries: BTreeMap<(u32, String), String>,
+}
+
+thread_local! {
+    static RADIX_DECIMAL_CACHE: RefCell<RadixDecimalCache> = RefCell::new(RadixDecimalCache::default());
+}
+
 pub fn parse_bundle(mut input: ParseBundleInput) -> ParsedBundle {
+    RADIX_DECIMAL_CACHE.with(|cache| *cache.borrow_mut() = RadixDecimalCache::default());
     if input.invalid_root_uri_utf16 == Some(true) {
         return ParsedBundle {
             root_uri: "<bundle-root-uri-invalid-unicode>".to_owned(),
@@ -1315,6 +1341,17 @@ fn parse_frontmatter(
                     NodePropertyKind::Anchor => "anchor",
                 }
             ),
+            range: Some(range_for(
+                text,
+                opening_end + relative_start,
+                opening_end + relative_end,
+            )),
+            resource_limit: false,
+        });
+    }
+    if let Some((relative_start, relative_end)) = duplicate_mapping_key_range(yaml_source) {
+        return Err(FrontmatterError {
+            message: "Invalid YAML frontmatter: Map keys must be unique".to_owned(),
             range: Some(range_for(
                 text,
                 opening_end + relative_start,
@@ -3884,6 +3921,7 @@ fn invalid_explicit_timestamp_range(source: &str) -> Option<(usize, usize)> {
                     split_node_properties(prefix[property_start..].trim_start());
                 let follows_anchor_property =
                     property_remainder.is_empty() && property_anchor.is_some();
+                let follows_deferred_node = follows_deferred_block_node(source, &spans, line_index);
                 let timestamp_mapping_key = non_string_key.is_some_and(|(key_start, key_end)| {
                     absolute < key_start
                         && source[absolute + tag.len()..key_start].trim().is_empty()
@@ -3895,8 +3933,7 @@ fn invalid_explicit_timestamp_range(source: &str) -> Option<(usize, usize)> {
                     || previous.is_some_and(|character| {
                         !matches!(character, '[' | '{' | ',' | ':' | '?' | '-')
                     }) && !follows_anchor_property
-                    || (previous.is_none()
-                        && !follows_deferred_block_node(source, &spans, line_index))
+                    || (previous.is_none() && !follows_deferred_node)
                 {
                     search_start = offset + tag.len();
                     continue;
@@ -3908,6 +3945,11 @@ fn invalid_explicit_timestamp_range(source: &str) -> Option<(usize, usize)> {
                     continue;
                 }
                 let parent_indent = line.len() - line.trim_start_matches([' ', '\t']).len();
+                let parent_indent = if follows_deferred_node {
+                    parent_indent.saturating_sub(1)
+                } else {
+                    parent_indent
+                };
                 let lexical = if remainder.is_empty() || remainder.starts_with('#') {
                     tagged_lexical_source(
                         source,
@@ -3963,6 +4005,7 @@ fn rewrite_standard_sets_for_serde(source: &str) -> String {
     let spans = line_spans(source);
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
+    excluded_ranges.extend(plain_scalar_value_ranges(source));
     normalize_ranges(&mut excluded_ranges);
     let mut occurrences = source
         .match_indices("!!set")
@@ -4400,7 +4443,8 @@ fn normalize_hash_anchor_names(source: &str) -> String {
         }
     }
     let mut normalized = source.to_owned();
-    for (start, end, replacement) in replacements.into_iter().rev() {
+    replacements.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| right.1.cmp(&left.1)));
+    for (start, end, replacement) in replacements {
         normalized.replace_range(start..end, &replacement);
     }
     normalized
@@ -4410,11 +4454,38 @@ fn normalize_tight_flow_plain_keys(source: &str) -> String {
     let spans = line_spans(source);
     let mut replacements = Vec::new();
     let plain_scalar_ranges = plain_scalar_value_ranges(source);
-    let mut flow_depth = 0usize;
+    for (flow_start, flow_end) in flow_collection_ranges(source) {
+        if !source[flow_start..].starts_with('{') {
+            continue;
+        }
+        for (entry_start, entry_end) in top_level_flow_entries(source, flow_start, flow_end) {
+            if flow_top_level_mapping_colon(source, entry_start, entry_end).is_some() {
+                continue;
+            }
+            let entry_source = &source[entry_start..entry_end];
+            let leading = entry_source.len() - entry_source.trim_start().len();
+            let entry = entry_source.trim();
+            if entry.contains(':')
+                && entry.chars().all(|value| {
+                    !value.is_whitespace()
+                        && !matches!(value, '[' | ']' | '{' | '}' | '"' | '\'' | '!' | '&' | '*')
+                })
+                && let Ok(quoted) = serde_json::to_string(entry)
+            {
+                replacements.push((
+                    entry_start + leading,
+                    entry_start + leading + entry.len(),
+                    quoted,
+                ));
+            }
+        }
+    }
+    let mut flow_stack = Vec::new();
     let mut quote = None;
     let mut escaped = false;
     let mut comment = false;
     let mut node_boundary = false;
+    let mut after_mapping_colon = false;
     let mut cursor = 0usize;
     while cursor < source.len() {
         let character = source[cursor..]
@@ -4460,18 +4531,27 @@ fn normalize_tight_flow_plain_keys(source: &str) -> String {
                 comment = true;
             }
             '[' | '{' => {
-                flow_depth += 1;
+                flow_stack.push(character);
                 node_boundary = true;
+                after_mapping_colon = false;
             }
             ']' | '}' => {
-                flow_depth = flow_depth.saturating_sub(1);
+                let opening = if character == ']' { '[' } else { '{' };
+                if flow_stack.last() == Some(&opening) {
+                    flow_stack.pop();
+                }
                 node_boundary = false;
+                after_mapping_colon = false;
             }
-            ',' => node_boundary = flow_depth > 0,
+            ',' => {
+                node_boundary = !flow_stack.is_empty();
+                after_mapping_colon = false;
+            }
             ':' => {
                 let next = source[cursor + width..].chars().next();
-                if flow_depth > 0
+                if !flow_stack.is_empty()
                     && node_boundary
+                    && (flow_stack.last() == Some(&'[') || after_mapping_colon)
                     && next.is_some_and(|value| {
                         !value.is_whitespace() && !matches!(value, ',' | ']' | '}')
                     })
@@ -4480,8 +4560,7 @@ fn normalize_tight_flow_plain_keys(source: &str) -> String {
                         + width
                         + source[cursor + width..]
                             .find(|value: char| {
-                                value.is_whitespace()
-                                    || matches!(value, ',' | ']' | '}' | ':' | '#')
+                                value.is_whitespace() || matches!(value, ',' | ']' | '}' | '#')
                             })
                             .unwrap_or(source.len() - cursor - width);
                     let token = &source[cursor..end];
@@ -4490,18 +4569,45 @@ fn normalize_tight_flow_plain_keys(source: &str) -> String {
                     }
                     cursor = end;
                     node_boundary = false;
+                    after_mapping_colon = false;
                     continue;
                 }
-                let structural_colon = flow_depth > 0
+                let structural_colon = !flow_stack.is_empty()
                     && next.is_none_or(|value| {
                         value.is_whitespace() || matches!(value, ',' | ']' | '}' | '[' | '{')
                     });
-                if structural_colon && next.is_some_and(|value| matches!(value, '[' | '{')) {
+                if structural_colon && flow_stack.last() == Some(&'{') {
+                    let entry_start = source[..cursor]
+                        .char_indices()
+                        .rev()
+                        .find_map(|(index, value)| matches!(value, '{' | ',').then_some(index + 1))
+                        .unwrap_or(0);
+                    let key_source = source[entry_start..cursor].trim();
+                    if key_source.ends_with(':')
+                        && !key_source.is_empty()
+                        && key_source.chars().all(|value| {
+                            !value.is_whitespace()
+                                && !matches!(value, '[' | ']' | '{' | '}' | '"' | '\'')
+                        })
+                        && let Ok(quoted) = serde_json::to_string(key_source)
+                    {
+                        let leading = source[entry_start..cursor].len()
+                            - source[entry_start..cursor].trim_start().len();
+                        replacements.push((entry_start + leading, cursor, quoted));
+                    }
+                }
+                if structural_colon
+                    && next.is_some_and(|value| matches!(value, ',' | ']' | '}' | '[' | '{'))
+                {
                     replacements.push((cursor + width, cursor + width, " ".to_owned()));
                 }
                 node_boundary = structural_colon;
+                after_mapping_colon = structural_colon && flow_stack.last() == Some(&'{');
             }
-            '?' if flow_depth > 0 && node_boundary => {
+            '?' if !flow_stack.is_empty()
+                && node_boundary
+                && (flow_stack.last() == Some(&'[') || after_mapping_colon) =>
+            {
                 let next = source[cursor + width..].chars().next();
                 if next.is_some_and(|value| {
                     !value.is_whitespace() && !matches!(value, ',' | ']' | '}')
@@ -4510,8 +4616,7 @@ fn normalize_tight_flow_plain_keys(source: &str) -> String {
                         + width
                         + source[cursor + width..]
                             .find(|value: char| {
-                                value.is_whitespace()
-                                    || matches!(value, ',' | ']' | '}' | ':' | '#')
+                                value.is_whitespace() || matches!(value, ',' | ']' | '}' | '#')
                             })
                             .unwrap_or(source.len() - cursor - width);
                     let token = &source[cursor..end];
@@ -4520,6 +4625,7 @@ fn normalize_tight_flow_plain_keys(source: &str) -> String {
                     }
                     cursor = end;
                     node_boundary = false;
+                    after_mapping_colon = false;
                     continue;
                 }
                 node_boundary = true;
@@ -4559,7 +4665,8 @@ fn normalize_tight_flow_plain_keys(source: &str) -> String {
         replacements.push((key_start, key_end, quoted));
     }
     let mut normalized = source.to_owned();
-    for (start, end, replacement) in replacements.into_iter().rev() {
+    replacements.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| right.1.cmp(&left.1)));
+    for (start, end, replacement) in replacements {
         normalized.replace_range(start..end, &replacement);
     }
     normalized
@@ -4569,6 +4676,7 @@ fn mask_invalid_standard_scalar_tags(source: &str) -> String {
     let mut replacements = Vec::new();
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
+    excluded_ranges.extend(plain_scalar_value_ranges(source));
     normalize_ranges(&mut excluded_ranges);
     let spans = line_spans(source);
     for (line_index, span) in spans.iter().enumerate() {
@@ -4788,6 +4896,8 @@ fn follows_deferred_block_node(source: &str, spans: &[LineSpan], line_index: usi
         }
     } else if let Some(colon) = mapping_key_colon(trimmed) {
         trimmed[colon + 1..].trim_start()
+    } else if matches!(trimmed.chars().next(), Some('&' | '!')) {
+        trimmed
     } else {
         return false;
     };
@@ -5394,7 +5504,11 @@ fn non_string_flow_mapping_key_range(
                     let explicit_key = entry.strip_prefix('?');
                     let key = explicit_key.map(str::trim_start).unwrap_or(entry);
                     let key_start = entry_start + leading + entry.len().saturating_sub(key.len());
+                    let collection_key_colon = matches!(key.chars().next(), Some('[' | '{'))
+                        .then(|| flow_value_end(source, key_start))
+                        .filter(|end| *end < entry_end && source[*end..].starts_with(':'));
                     let Some(colon) = flow_top_level_mapping_colon(source, key_start, entry_end)
+                        .or(collection_key_colon)
                     else {
                         continue;
                     };
@@ -5409,6 +5523,19 @@ fn non_string_flow_mapping_key_range(
                             entry_start
                         };
                         return Some((marker, marker));
+                    }
+                    if key_source.ends_with(':')
+                        && key_source.chars().all(|value| {
+                            !value.is_whitespace()
+                                && !matches!(value, '[' | ']' | '{' | '}' | '"' | '\'')
+                        })
+                    {
+                        continue;
+                    }
+                    let leading = key_source.len() - key_source.trim_start().len();
+                    if matches!(key_source.trim_start().chars().next(), Some('[' | '{')) {
+                        let start = key_start + leading;
+                        return Some((start, key_start + flow_value_end(key_source, leading)));
                     }
                     if let Some(range) = non_string_key_source_range(key_source, key_start) {
                         return Some(range);
@@ -5971,15 +6098,33 @@ fn contains_untagged_nonfinite_number(source: &str) -> bool {
                     matches!(value, '[' | '{' | ',' | ':' | '?').then_some(index + 1)
                 })
                 .unwrap_or(0);
+            let property_source = prefix[property_start..].trim_start();
+            let property_source = property_source
+                .strip_prefix('-')
+                .filter(|remainder| {
+                    remainder.is_empty()
+                        || remainder.chars().next().is_some_and(char::is_whitespace)
+                })
+                .map(str::trim_start)
+                .unwrap_or(property_source);
             let (property_remainder, anchor_name, tag_name) =
-                split_node_properties(prefix[property_start..].trim_start());
+                split_node_properties(property_source);
+            let block_member_prefix = prefix.trim_start();
+            let nested_collection_member = block_member_prefix
+                .strip_prefix(['-', '?'])
+                .is_some_and(|remainder| {
+                    remainder.is_empty()
+                        || remainder.chars().next().is_some_and(char::is_whitespace)
+                })
+                || mapping_key_colon(block_member_prefix).is_some();
+            let deferred_tag = (!nested_collection_member
+                && (property_source.is_empty()
+                    || (property_remainder.is_empty() && anchor_name.is_some())))
+            .then(|| deferred_standard_tag_name(source, &line_spans(source), span.start))
+            .flatten();
             if tag_name.is_some()
                 || prefix.contains("!<tag:yaml.org,2002:")
-                || ((prefix.trim().is_empty()
-                    || (property_remainder.is_empty() && anchor_name.is_some()))
-                    && deferred_standard_tag_name(source, &line_spans(source), span.start)
-                        .as_deref()
-                        == Some("float"))
+                || deferred_tag.is_some()
             {
                 continue;
             }
@@ -6003,6 +6148,9 @@ fn deferred_standard_tag_name(
         let body = &source[previous.start..previous.content_end];
         let syntax = yaml_comment_start(body).map_or(body, |comment| &body[..comment]);
         let trimmed = syntax.trim();
+        let property_boundary = trimmed.strip_prefix(['-', '?']).is_some_and(|remainder| {
+            remainder.is_empty() || remainder.chars().next().is_some_and(char::is_whitespace)
+        }) || mapping_key_colon(trimmed).is_some();
         let node_source = if let Some(item) = trimmed.strip_prefix("- ") {
             if let Some(colon) = mapping_key_colon(item) {
                 item[colon + 1..].trim_start()
@@ -6029,18 +6177,239 @@ fn deferred_standard_tag_name(
             return Some(tag.to_owned());
         }
         anchor.as_ref()?;
+        if property_boundary {
+            return None;
+        }
     }
     None
 }
 
+const NTT_MODULUS: u64 = 998_244_353;
+const NTT_PRIMITIVE_ROOT: u64 = 3;
+const NTT_MAX_LENGTH: usize = 1 << 23;
+const BASE_100_SCHOOLBOOK_THRESHOLD: usize = 64;
+const RADIX_CHUNK_SCHOOLBOOK_THRESHOLD: usize = 512;
+
+fn modular_power(mut value: u64, mut exponent: u64) -> u64 {
+    let mut result = 1_u64;
+    while exponent > 0 {
+        if exponent & 1 == 1 {
+            result = result * value % NTT_MODULUS;
+        }
+        value = value * value % NTT_MODULUS;
+        exponent >>= 1;
+    }
+    result
+}
+
+fn number_theoretic_transform(values: &mut [u64], inverse: bool) {
+    let mut target = 0usize;
+    for index in 1..values.len() {
+        let mut bit = values.len() >> 1;
+        while target & bit != 0 {
+            target ^= bit;
+            bit >>= 1;
+        }
+        target ^= bit;
+        if index < target {
+            values.swap(index, target);
+        }
+    }
+    let mut width = 2usize;
+    while width <= values.len() {
+        let mut root = modular_power(NTT_PRIMITIVE_ROOT, (NTT_MODULUS - 1) / width as u64);
+        if inverse {
+            root = modular_power(root, NTT_MODULUS - 2);
+        }
+        for start in (0..values.len()).step_by(width) {
+            let mut factor = 1_u64;
+            for offset in 0..width / 2 {
+                let left = values[start + offset];
+                let right = values[start + offset + width / 2] * factor % NTT_MODULUS;
+                values[start + offset] = (left + right) % NTT_MODULUS;
+                values[start + offset + width / 2] = (left + NTT_MODULUS - right) % NTT_MODULUS;
+                factor = factor * root % NTT_MODULUS;
+            }
+        }
+        width <<= 1;
+    }
+    if inverse {
+        let inverse_length = modular_power(values.len() as u64, NTT_MODULUS - 2);
+        for value in values {
+            *value = *value * inverse_length % NTT_MODULUS;
+        }
+    }
+}
+
+fn trim_base_100(value: &mut Vec<u8>) {
+    while value.len() > 1 && value.last() == Some(&0) {
+        value.pop();
+    }
+}
+
+fn schoolbook_base_100_multiply(left: &[u8], right: &[u8]) -> Vec<u8> {
+    let mut coefficients = vec![0_u64; left.len() + right.len()];
+    for (left_index, left_value) in left.iter().enumerate() {
+        for (right_index, right_value) in right.iter().enumerate() {
+            coefficients[left_index + right_index] +=
+                u64::from(*left_value) * u64::from(*right_value);
+        }
+    }
+    let mut result = Vec::with_capacity(coefficients.len() + 1);
+    let mut carry = 0_u64;
+    for coefficient in coefficients {
+        let value = coefficient + carry;
+        result.push((value % 100) as u8);
+        carry = value / 100;
+    }
+    while carry > 0 {
+        result.push((carry % 100) as u8);
+        carry /= 100;
+    }
+    trim_base_100(&mut result);
+    result
+}
+
+fn multiply_base_100(left: &[u8], right: &[u8]) -> Option<Vec<u8>> {
+    if left == [0] || right == [0] {
+        return Some(vec![0]);
+    }
+    let coefficient_bound = left.len().min(right.len()).checked_mul(99 * 99)?;
+    let convolution_length = left.len().checked_add(right.len())?.checked_sub(1)?;
+    let transform_length = convolution_length.checked_next_power_of_two()?;
+    if left.len().min(right.len()) <= BASE_100_SCHOOLBOOK_THRESHOLD
+        || coefficient_bound as u64 >= NTT_MODULUS
+        || transform_length > NTT_MAX_LENGTH
+    {
+        return Some(schoolbook_base_100_multiply(left, right));
+    }
+    let mut left_transform = vec![0_u64; transform_length];
+    let mut right_transform = vec![0_u64; transform_length];
+    for (target, source) in left_transform.iter_mut().zip(left) {
+        *target = u64::from(*source);
+    }
+    for (target, source) in right_transform.iter_mut().zip(right) {
+        *target = u64::from(*source);
+    }
+    number_theoretic_transform(&mut left_transform, false);
+    number_theoretic_transform(&mut right_transform, false);
+    for (left_value, right_value) in left_transform.iter_mut().zip(right_transform) {
+        *left_value = *left_value * right_value % NTT_MODULUS;
+    }
+    number_theoretic_transform(&mut left_transform, true);
+    let mut result = Vec::with_capacity(convolution_length + 1);
+    let mut carry = 0_u64;
+    for coefficient in left_transform.into_iter().take(convolution_length) {
+        let value = coefficient + carry;
+        result.push((value % 100) as u8);
+        carry = value / 100;
+    }
+    while carry > 0 {
+        result.push((carry % 100) as u8);
+        carry /= 100;
+    }
+    trim_base_100(&mut result);
+    Some(result)
+}
+
+fn add_base_100(mut left: Vec<u8>, right: &[u8]) -> Vec<u8> {
+    left.resize(left.len().max(right.len()), 0);
+    let mut carry = 0_u16;
+    for (index, left_value) in left.iter_mut().enumerate() {
+        let value = u16::from(*left_value) + right.get(index).copied().map_or(0, u16::from) + carry;
+        *left_value = (value % 100) as u8;
+        carry = value / 100;
+    }
+    if carry > 0 {
+        left.push(carry as u8);
+    }
+    left
+}
+
+fn base_100_from_u64(mut value: u64) -> Vec<u8> {
+    let mut result = Vec::new();
+    while value > 0 {
+        result.push((value % 100) as u8);
+        value /= 100;
+    }
+    if result.is_empty() {
+        result.push(0);
+    }
+    result
+}
+
+fn base_100_power(
+    exponent: usize,
+    chunk_base: &[u8],
+    cache: &mut BTreeMap<usize, Vec<u8>>,
+) -> Option<Vec<u8>> {
+    if let Some(value) = cache.get(&exponent) {
+        return Some(value.clone());
+    }
+    let value = if exponent == 0 {
+        vec![1]
+    } else if exponent == 1 {
+        chunk_base.to_vec()
+    } else {
+        let half = base_100_power(exponent / 2, chunk_base, cache)?;
+        let square = multiply_base_100(&half, &half)?;
+        if exponent.is_multiple_of(2) {
+            square
+        } else {
+            multiply_base_100(&square, chunk_base)?
+        }
+    };
+    cache.insert(exponent, value.clone());
+    Some(value)
+}
+
+fn base_100_from_radix_chunks(
+    chunks: &[u64],
+    chunk_base_value: u64,
+    chunk_base: &[u8],
+    power_cache: &mut BTreeMap<usize, Vec<u8>>,
+) -> Option<Vec<u8>> {
+    if chunks.len() <= RADIX_CHUNK_SCHOOLBOOK_THRESHOLD {
+        let mut result = vec![0_u8];
+        for chunk in chunks {
+            let mut carry = *chunk;
+            for digit in &mut result {
+                let value = u64::from(*digit) * chunk_base_value + carry;
+                *digit = (value % 100) as u8;
+                carry = value / 100;
+            }
+            while carry > 0 {
+                result.push((carry % 100) as u8);
+                carry /= 100;
+            }
+        }
+        trim_base_100(&mut result);
+        return Some(result);
+    }
+    let middle = chunks.len() / 2;
+    let high =
+        base_100_from_radix_chunks(&chunks[..middle], chunk_base_value, chunk_base, power_cache)?;
+    let low =
+        base_100_from_radix_chunks(&chunks[middle..], chunk_base_value, chunk_base, power_cache)?;
+    let power = base_100_power(chunks.len() - middle, chunk_base, power_cache)?;
+    Some(add_base_100(multiply_base_100(&high, &power)?, &low))
+}
+
 fn decimal_from_radix(digits: &str, radix: u32) -> Option<String> {
-    const DECIMAL_LIMB_BASE: u64 = 1_000_000_000;
-    let mut decimal = vec![0_u32];
+    let cache_key = (digits.len() >= 1024).then(|| (radix, digits.to_owned()));
+    if let Some(value) = cache_key
+        .as_ref()
+        .and_then(|key| RADIX_DECIMAL_CACHE.with(|cache| cache.borrow().entries.get(key).cloned()))
+    {
+        return Some(value);
+    }
     let chunk_digits = match radix {
         16 => 8,
         8 => 11,
         _ => 1,
     };
+    let chunk_base_value = u64::from(radix).checked_pow(chunk_digits as u32)?;
+    let mut chunks = Vec::with_capacity(digits.len().div_ceil(chunk_digits));
     let mut cursor = 0usize;
     while cursor < digits.len() {
         let remaining = digits.len() - cursor;
@@ -6056,27 +6425,30 @@ fn decimal_from_radix(digits: &str, radix: u32) -> Option<String> {
                 .checked_mul(u64::from(radix))?
                 .checked_add(u64::from(character.to_digit(radix)?))?;
         }
-        let factor = u64::from(radix).checked_pow(width as u32)?;
-        let mut carry = chunk;
-        for value in &mut decimal {
-            let product = u64::from(*value) * factor + carry;
-            *value = (product % DECIMAL_LIMB_BASE) as u32;
-            carry = product / DECIMAL_LIMB_BASE;
-        }
-        while carry > 0 {
-            decimal.push((carry % DECIMAL_LIMB_BASE) as u32);
-            carry /= DECIMAL_LIMB_BASE;
-        }
+        chunks.push(chunk);
         cursor += width;
     }
-    while decimal.len() > 1 && decimal.last() == Some(&0) {
-        decimal.pop();
-    }
+    let chunk_base = base_100_from_u64(chunk_base_value);
+    let mut power_cache = BTreeMap::new();
+    let decimal =
+        base_100_from_radix_chunks(&chunks, chunk_base_value, &chunk_base, &mut power_cache)?;
     let mut limbs = decimal.into_iter().rev();
     let mut value = limbs.next().unwrap_or_default().to_string();
     for limb in limbs {
         use std::fmt::Write as _;
-        write!(value, "{limb:09}").expect("writing to a string cannot fail");
+        write!(value, "{limb:02}").expect("writing to a string cannot fail");
+    }
+    if let Some(key) = cache_key {
+        let entry_bytes = key.1.len().saturating_add(value.len());
+        if entry_bytes <= MAX_RADIX_DECIMAL_CACHE_BYTES {
+            RADIX_DECIMAL_CACHE.with(|cache| {
+                let mut cache = cache.borrow_mut();
+                if cache.bytes.saturating_add(entry_bytes) <= MAX_RADIX_DECIMAL_CACHE_BYTES {
+                    cache.bytes += entry_bytes;
+                    cache.entries.insert(key, value.clone());
+                }
+            });
+        }
     }
     Some(value)
 }
@@ -7139,19 +7511,30 @@ fn provenance_continuation_ranges(source: &str) -> Vec<(usize, usize)> {
     ranges
 }
 
+fn yaml_plain_scalar_can_start(value: &str) -> bool {
+    let Some(first) = value.chars().next() else {
+        return false;
+    };
+    if first == '#'
+        || matches!(first, '"' | '\'' | '|' | '>' | '{' | '[' | '*' | '&' | '!')
+        || mapping_key_colon(value).is_some()
+    {
+        return false;
+    }
+    if matches!(first, '?' | ':' | '-') {
+        let remainder = &value[first.len_utf8()..];
+        return remainder
+            .chars()
+            .next()
+            .is_some_and(|next| !next.is_whitespace());
+    }
+    true
+}
+
 fn plain_scalar_continuation_ranges(source: &str) -> Vec<(usize, usize)> {
     let spans = line_spans(source);
     let block_scalar_ranges = block_scalar_body_ranges(source);
     let mut ranges = Vec::new();
-    let is_plain_scalar = |value: &str| {
-        !value.is_empty()
-            && !value.starts_with('#')
-            && !matches!(
-                value.chars().next(),
-                Some('"' | '\'' | '|' | '>' | '{' | '[' | '*' | '&' | '!' | '?' | ':' | '-')
-            )
-            && mapping_key_colon(value).is_none()
-    };
     for (line_index, span) in spans.iter().enumerate() {
         if sorted_range_contains(&block_scalar_ranges, span.start) {
             continue;
@@ -7173,7 +7556,7 @@ fn plain_scalar_continuation_ranges(source: &str) -> Vec<(usize, usize)> {
             continue;
         };
         let (remainder, anchor, tag) = split_node_properties(value_source);
-        let (continuation_start, scan_index) = if is_plain_scalar(remainder) {
+        let (continuation_start, scan_index) = if yaml_plain_scalar_can_start(remainder) {
             (span.end, line_index + 1)
         } else if remainder.is_empty()
             && anchor.is_none()
@@ -7196,7 +7579,7 @@ fn plain_scalar_continuation_ranges(source: &str) -> Vec<(usize, usize)> {
             let first_body = &source[first.start..first.content_end];
             let first_trimmed = first_body.trim_start_matches([' ', '\t']);
             let first_indent = first_body.len() - first_trimmed.len();
-            if first_indent <= parent_indent || !is_plain_scalar(first_trimmed) {
+            if first_indent <= parent_indent || !yaml_plain_scalar_can_start(first_trimmed) {
                 continue;
             }
             (first.end, first_index + 1)
@@ -7232,15 +7615,6 @@ fn plain_scalar_value_ranges(source: &str) -> Vec<(usize, usize)> {
     let spans = line_spans(source);
     let block_scalar_ranges = block_scalar_body_ranges(source);
     let mut ranges = Vec::new();
-    let is_plain_scalar = |value: &str| {
-        !value.is_empty()
-            && !value.starts_with('#')
-            && !matches!(
-                value.chars().next(),
-                Some('"' | '\'' | '|' | '>' | '{' | '[' | '*' | '&' | '!' | '?' | ':' | '-')
-            )
-            && mapping_key_colon(value).is_none()
-    };
     for (line_index, span) in spans.iter().enumerate() {
         if sorted_range_contains(&block_scalar_ranges, span.start) {
             continue;
@@ -7262,7 +7636,7 @@ fn plain_scalar_value_ranges(source: &str) -> Vec<(usize, usize)> {
             continue;
         };
         let (remainder, anchor, tag) = split_node_properties(value_source);
-        let (scalar_start, scan_index) = if is_plain_scalar(remainder) {
+        let (scalar_start, scan_index) = if yaml_plain_scalar_can_start(remainder) {
             let relative = body
                 .find(value_source)
                 .unwrap_or_else(|| body.len().saturating_sub(value_source.len()))
@@ -7289,7 +7663,7 @@ fn plain_scalar_value_ranges(source: &str) -> Vec<(usize, usize)> {
             let first_body = &source[first.start..first.content_end];
             let first_trimmed = first_body.trim_start_matches([' ', '\t']);
             let first_indent = first_body.len() - first_trimmed.len();
-            if first_indent <= parent_indent || !is_plain_scalar(first_trimmed) {
+            if first_indent <= parent_indent || !yaml_plain_scalar_can_start(first_trimmed) {
                 continue;
             }
             (first.start + first_indent, first_index + 1)
@@ -8711,8 +9085,10 @@ fn flow_collection_ranges(source: &str) -> Vec<(usize, usize)> {
 }
 
 fn standard_tag_semantic(tag_name: &str, source_value: &str, existing: Value) -> Value {
-    if matches!(tag_name, "str" | "timestamp" | "binary" | "int" | "float")
-        && matches!(existing, Value::Array(_) | Value::Object(_))
+    if matches!(
+        tag_name,
+        "str" | "timestamp" | "binary" | "int" | "float" | "bool" | "null"
+    ) && matches!(existing, Value::Array(_) | Value::Object(_))
     {
         return existing;
     }
@@ -12628,17 +13004,15 @@ fn markdown_links(
     if let Some(message) = markdown_inline_work_failure(body) {
         return Err(message);
     }
-    let maximum_definition_expansion = markdown_definition_inspection(body)?;
-    let bracket_count = body.bytes().filter(|byte| *byte == b'[').count();
-    let estimated_reference_expansion = bracket_count.saturating_mul(maximum_definition_expansion);
-    if estimated_reference_expansion > MAX_MARKDOWN_REFERENCE_EXPANSION_BYTES {
-        return Err(format!(
-            "Markdown reference expansion exceeds the {MAX_MARKDOWN_REFERENCE_EXPANSION_BYTES}-byte parser-work safety limit. Reduce repeated references or definition titles, then retry."
-        ));
-    }
-    let desired_parser_capacity = estimated_reference_expansion;
-    let parser_padding = if desired_parser_capacity > body.len().max(100_000) {
-        desired_parser_capacity.saturating_sub(body.len())
+    markdown_definition_inspection(body)?;
+    let (all_reference_definitions, reference_definitions) = markdown_reference_definitions(body);
+    let reference_expansion_bytes = markdown_reference_expansion_bytes(
+        body,
+        &all_reference_definitions,
+        &reference_definitions,
+    );
+    let parser_padding = if reference_expansion_bytes > body.len().max(100_000) {
+        reference_expansion_bytes.saturating_sub(body.len() + 2)
     } else {
         0
     };
@@ -12650,27 +13024,18 @@ fn markdown_links(
         padded
     });
     let parser_body = padded_body.as_deref().unwrap_or(body);
-    let reference_parser = Parser::new_ext(body, Options::ENABLE_STRIKETHROUGH);
-    let reference_definitions = reference_parser
-        .reference_definitions()
-        .iter()
-        .map(|(label, definition)| {
-            (
-                normalize_reference_identifier(label),
-                definition.dest.to_string(),
-                definition
-                    .title
-                    .as_ref()
-                    .map_or_else(String::new, ToString::to_string),
-            )
-        })
-        .collect::<Vec<_>>();
+    let callback_reference_definitions = reference_definitions.clone();
     let reference_callback = move |broken: pulldown_cmark::BrokenLink<'_>| {
         let identifier = normalize_reference_identifier(&broken.reference);
-        reference_definitions
+        callback_reference_definitions
             .iter()
-            .find(|(label, _, _)| *label == identifier)
-            .map(|(_, destination, title)| (destination.clone().into(), title.clone().into()))
+            .find(|definition| definition.label == identifier)
+            .map(|definition| {
+                (
+                    definition.destination.clone().into(),
+                    definition.title.clone().into(),
+                )
+            })
     };
     let parser = Parser::new_with_broken_link_callback(
         parser_body,
@@ -12679,31 +13044,84 @@ fn markdown_links(
     )
     .into_offset_iter();
     let positions = source_position_index(full_text);
-    let mut stack: Vec<(String, String, std::ops::Range<usize>)> = Vec::new();
+    let mut stack: Vec<(MarkdownMediaKind, String, String, std::ops::Range<usize>)> = Vec::new();
     let mut result = Vec::new();
     let mut retained_text_units = 0usize;
     for (event, range) in parser {
         match event {
-            Event::Start(Tag::Link { dest_url, .. }) => {
-                stack.push((String::new(), dest_url.into_string(), range));
+            Event::Start(Tag::Link {
+                link_type,
+                dest_url,
+                id,
+                ..
+            }) => {
+                let target = if matches!(
+                    link_type,
+                    LinkType::Reference
+                        | LinkType::ReferenceUnknown
+                        | LinkType::Collapsed
+                        | LinkType::CollapsedUnknown
+                        | LinkType::Shortcut
+                        | LinkType::ShortcutUnknown
+                ) {
+                    let identifier = normalize_reference_identifier(&id);
+                    reference_definitions
+                        .iter()
+                        .find(|definition| definition.label == identifier)
+                        .map_or_else(
+                            || dest_url.into_string(),
+                            |definition| definition.destination.clone(),
+                        )
+                } else {
+                    dest_url.into_string()
+                };
+                stack.push((MarkdownMediaKind::Link, String::new(), target, range));
+            }
+            Event::Start(Tag::Image {
+                link_type,
+                dest_url,
+                id,
+                ..
+            }) => {
+                let target = if markdown_reference_link_type(link_type) {
+                    let identifier = normalize_reference_identifier(&id);
+                    reference_definitions
+                        .iter()
+                        .find(|definition| definition.label == identifier)
+                        .map_or_else(
+                            || dest_url.into_string(),
+                            |definition| definition.destination.clone(),
+                        )
+                } else {
+                    dest_url.into_string()
+                };
+                stack.push((MarkdownMediaKind::Image, String::new(), target, range));
             }
             Event::Text(text) | Event::Code(text) => {
-                if let Some((label, _, _)) = stack.last_mut() {
+                for (_, label, _, _) in &mut stack {
                     label.push_str(&text);
                 }
             }
             Event::SoftBreak => {
-                if let Some((label, _, _)) = stack.last_mut() {
+                for (_, label, _, _) in &mut stack {
                     label.push_str(&body[range.start..range.end]);
                 }
             }
             Event::HardBreak => {
-                if let Some((label, _, _)) = stack.last_mut() {
+                for (_, label, _, _) in &mut stack {
                     label.push(' ');
                 }
             }
-            Event::End(pulldown_cmark::TagEnd::Link) => {
-                if let Some((label, target, start_range)) = stack.pop() {
+            Event::End(end @ (pulldown_cmark::TagEnd::Link | pulldown_cmark::TagEnd::Image)) => {
+                if let Some((kind, label, target, start_range)) = stack.pop() {
+                    debug_assert_eq!(
+                        kind,
+                        if end == pulldown_cmark::TagEnd::Link {
+                            MarkdownMediaKind::Link
+                        } else {
+                            MarkdownMediaKind::Image
+                        }
+                    );
                     let label = trim_ecmascript_whitespace(&label);
                     if let Some(message) = bounded_link_text_failure(
                         &target,
@@ -12720,6 +13138,9 @@ fn markdown_links(
                         "link label",
                     ) {
                         return Err(message);
+                    }
+                    if kind == MarkdownMediaKind::Image {
+                        continue;
                     }
                     if result.len() >= MAX_MARKDOWN_LINKS_PER_DOCUMENT {
                         return Err(format!(
@@ -12803,7 +13224,136 @@ fn normalize_reference_identifier(value: &str) -> String {
     result.to_uppercase().to_lowercase()
 }
 
-fn markdown_definition_inspection(body: &str) -> Result<usize, String> {
+fn markdown_reference_definitions(
+    body: &str,
+) -> (
+    Vec<MarkdownReferenceDefinition>,
+    Vec<MarkdownReferenceDefinition>,
+) {
+    let parser = Parser::new_ext(body, Options::ENABLE_STRIKETHROUGH);
+    let mut all = parser
+        .reference_definitions()
+        .iter()
+        .map(|(label, definition)| MarkdownReferenceDefinition {
+            destination: definition.dest.to_string(),
+            label: normalize_reference_identifier(label),
+            span: definition.span.clone(),
+            title: definition
+                .title
+                .as_ref()
+                .map_or_else(String::new, ToString::to_string),
+        })
+        .collect::<Vec<_>>();
+    all.sort_by_key(|definition| definition.span.start);
+    let mut seen = BTreeSet::new();
+    let first = all
+        .iter()
+        .filter(|definition| seen.insert(definition.label.clone()))
+        .cloned()
+        .collect();
+    (all, first)
+}
+
+fn markdown_reference_expansion_bytes(
+    body: &str,
+    all_definitions: &[MarkdownReferenceDefinition],
+    first_definitions: &[MarkdownReferenceDefinition],
+) -> usize {
+    if first_definitions.is_empty() {
+        return 0;
+    }
+    let mut inspection_body = body.as_bytes().to_vec();
+    for definition in all_definitions {
+        let end = definition.span.end.min(inspection_body.len());
+        let mut escaped = false;
+        let mut label_end = None;
+        for (index, byte) in inspection_body
+            .iter()
+            .enumerate()
+            .take(end)
+            .skip(definition.span.start.saturating_add(1))
+        {
+            match byte {
+                b']' if !escaped => {
+                    label_end = Some(index);
+                    break;
+                }
+                b'\\' => escaped = !escaped,
+                _ => escaped = false,
+            }
+        }
+        let Some(colon) = label_end
+            .and_then(|label_end| inspection_body.get(label_end + 1).map(|_| label_end + 1))
+            .filter(|colon| inspection_body.get(*colon) == Some(&b':'))
+        else {
+            continue;
+        };
+        let mut replacement = None;
+        for (index, byte) in inspection_body
+            .iter_mut()
+            .enumerate()
+            .take(end)
+            .skip(colon + 1)
+        {
+            if !matches!(*byte, b'\r' | b'\n') {
+                *byte = b' ';
+                replacement.get_or_insert(index);
+            }
+        }
+        if let Some(replacement) = replacement {
+            inspection_body[replacement] = b'x';
+        }
+    }
+    let Ok(inspection_body) = String::from_utf8(inspection_body) else {
+        return 0;
+    };
+    let callback_definitions = first_definitions
+        .iter()
+        .map(|definition| definition.label.clone())
+        .collect::<BTreeSet<_>>();
+    let callback = move |broken: pulldown_cmark::BrokenLink<'_>| {
+        callback_definitions
+            .contains(&normalize_reference_identifier(&broken.reference))
+            .then(|| ("x".into(), "".into()))
+    };
+    Parser::new_with_broken_link_callback(
+        &inspection_body,
+        Options::ENABLE_STRIKETHROUGH,
+        Some(callback),
+    )
+    .filter_map(|event| match event {
+        Event::Start(Tag::Link { link_type, id, .. } | Tag::Image { link_type, id, .. })
+            if markdown_reference_link_type(link_type) =>
+        {
+            let identifier = normalize_reference_identifier(&id);
+            first_definitions
+                .iter()
+                .find(|definition| definition.label == identifier)
+                .map(|definition| {
+                    definition
+                        .destination
+                        .len()
+                        .saturating_add(definition.title.len())
+                })
+        }
+        _ => None,
+    })
+    .fold(0usize, usize::saturating_add)
+}
+
+fn markdown_reference_link_type(link_type: LinkType) -> bool {
+    matches!(
+        link_type,
+        LinkType::Reference
+            | LinkType::ReferenceUnknown
+            | LinkType::Collapsed
+            | LinkType::CollapsedUnknown
+            | LinkType::Shortcut
+            | LinkType::ShortcutUnknown
+    )
+}
+
+fn markdown_definition_inspection(body: &str) -> Result<(), String> {
     let definition_parser = Parser::new_ext(body, Options::ENABLE_STRIKETHROUGH);
     let parsed_definitions = definition_parser
         .reference_definitions()
@@ -12812,7 +13362,6 @@ fn markdown_definition_inspection(body: &str) -> Result<usize, String> {
         .collect::<Vec<_>>();
     let spans = line_spans(body);
     let mut definition_count = 0usize;
-    let mut maximum_expansion_bytes = 0usize;
     let mut seen_definition_labels = BTreeSet::new();
     let mut fence: Option<(char, usize, usize)> = None;
     let mut html_block: Option<(MarkdownHtmlBlock, usize)> = None;
@@ -12897,7 +13446,7 @@ fn markdown_definition_inspection(body: &str) -> Result<usize, String> {
             continue;
         }
         let after_label = &trimmed[closing + 1..];
-        let Some(after_colon) = after_label.strip_prefix(':') else {
+        let Some(_) = after_label.strip_prefix(':') else {
             line_index += 1;
             continue;
         };
@@ -12915,9 +13464,6 @@ fn markdown_definition_inspection(body: &str) -> Result<usize, String> {
                 ));
             }
             seen_definition_labels.insert(normalized_label);
-            let title_bytes = definition.title.as_ref().map_or(0, |title| title.len());
-            maximum_expansion_bytes =
-                maximum_expansion_bytes.max(definition.dest.len().saturating_add(title_bytes));
             if let Some(message) = bounded_link_text_failure(
                 label,
                 MAX_LINK_LABEL_CODE_UNITS,
@@ -12946,26 +13492,13 @@ fn markdown_definition_inspection(body: &str) -> Result<usize, String> {
             line_index += 1;
             continue;
         }
-        let mut definition_tail = after_colon.trim_start();
-        if definition_tail.is_empty()
-            && let Some(next) = spans.get(line_index + 1)
-        {
-            let continuation = markdown_container_content(&body[next.start..next.content_end]);
-            let continuation_indent = continuation
-                .chars()
-                .take_while(|character| *character == ' ')
-                .count();
-            if continuation_indent <= 3 {
-                definition_tail = continuation.trim_start();
-                line_index += 1;
-            }
-        }
-        let Some((destination, remainder)) = markdown_definition_destination(definition_tail)
-        else {
-            line_index += 1;
-            continue;
-        };
-        let Some(title_bytes) = markdown_definition_title_bytes(remainder) else {
+        let Some((destination, consumed_lines)) = markdown_duplicate_definition_candidate(
+            body,
+            &spans,
+            line_index,
+            trimmed,
+            &normalized_label,
+        ) else {
             line_index += 1;
             continue;
         };
@@ -12975,8 +13508,6 @@ fn markdown_definition_inspection(body: &str) -> Result<usize, String> {
                 "Markdown contains more than {MAX_MARKDOWN_DEFINITIONS_PER_DOCUMENT} link definitions, exceeding the pre-parse safety limit. Reduce or split the document, then retry."
             ));
         }
-        maximum_expansion_bytes =
-            maximum_expansion_bytes.max(destination.len().saturating_add(title_bytes));
         if let Some(message) = bounded_link_text_failure(
             label,
             MAX_LINK_LABEL_CODE_UNITS,
@@ -12986,16 +13517,52 @@ fn markdown_definition_inspection(body: &str) -> Result<usize, String> {
             return Err(message);
         }
         if let Some(message) = bounded_link_text_failure(
-            destination,
+            &destination,
             MAX_LINK_TARGET_CODE_UNITS,
             MAX_LINK_TARGET_BYTES,
             "link target",
         ) {
             return Err(message);
         }
-        line_index += 1;
+        line_index += consumed_lines + 1;
     }
-    Ok(maximum_expansion_bytes)
+    Ok(())
+}
+
+fn markdown_duplicate_definition_candidate(
+    body: &str,
+    spans: &[LineSpan],
+    line_index: usize,
+    first_line: &str,
+    expected_label: &str,
+) -> Option<(String, usize)> {
+    let mut fragment = String::new();
+    fragment.push_str(first_line);
+    fragment.push('\n');
+    for offset in 1..=2 {
+        let Some(span) = spans.get(line_index + offset) else {
+            break;
+        };
+        fragment.push_str(markdown_container_content(
+            &body[span.start..span.content_end],
+        ));
+        fragment.push('\n');
+    }
+    let parser = Parser::new_ext(&fragment, Options::ENABLE_STRIKETHROUGH);
+    parser
+        .reference_definitions()
+        .iter()
+        .filter(|(label, _)| normalize_reference_identifier(label) == expected_label)
+        .min_by_key(|(_, definition)| definition.span.start)
+        .map(|(_, definition)| {
+            (
+                definition.dest.to_string(),
+                fragment[..definition.span.end.min(fragment.len())]
+                    .bytes()
+                    .filter(|byte| *byte == b'\n')
+                    .count(),
+            )
+        })
 }
 
 fn markdown_syntax_candidate_count(body: &str) -> usize {
@@ -13015,7 +13582,15 @@ fn markdown_work_inspection(body: &str) -> MarkdownWorkInspection {
     let mut active_container_depth = 0usize;
     let mut fence: Option<(char, usize, usize)> = None;
     let mut html_block: Option<(MarkdownHtmlBlock, usize)> = None;
+    let mut inline_code_end_offset: Option<usize> = None;
+    let mut paragraph_depth = None;
     let spans = line_spans(body);
+    let definition_parser = Parser::new_ext(body, Options::ENABLE_STRIKETHROUGH);
+    let definition_spans = definition_parser
+        .reference_definitions()
+        .iter()
+        .map(|(_, definition)| definition.span.clone())
+        .collect::<Vec<_>>();
     for span in &spans {
         let source_line = &body[span.start..span.content_end];
         let (line, container_depth) = markdown_container_content_and_depth(source_line);
@@ -13051,6 +13626,9 @@ fn markdown_work_inspection(body: &str) -> MarkdownWorkInspection {
             .take_while(|character| *character == ' ')
             .count();
         let trimmed = &line[leading_spaces.min(line.len())..];
+        if paragraph_depth.is_some_and(|depth| depth != container_depth) {
+            paragraph_depth = None;
+        }
         if let Some((marker, minimum, opening_depth)) = fence {
             if container_depth < opening_depth {
                 fence = None;
@@ -13066,6 +13644,7 @@ fn markdown_work_inspection(body: &str) -> MarkdownWorkInspection {
                         fence = None;
                     }
                 }
+                paragraph_depth = None;
                 continue;
             }
         }
@@ -13076,6 +13655,7 @@ fn markdown_work_inspection(body: &str) -> MarkdownWorkInspection {
                 if active_html_block.ends_on(trimmed) {
                     html_block = None;
                 }
+                paragraph_depth = None;
                 continue;
             }
         }
@@ -13085,29 +13665,54 @@ fn markdown_work_inspection(body: &str) -> MarkdownWorkInspection {
             ));
             return inspection;
         }
-        if leading_spaces >= 4 {
+        if leading_spaces >= 4 && paragraph_depth.is_none() {
             continue;
         }
         if let Some((marker, marker_count)) = markdown_fence_opener(trimmed) {
             fence = Some((marker, marker_count, container_depth));
+            paragraph_depth = None;
             continue;
         }
-        if let Some(started_html_block) = markdown_html_block_start(trimmed) {
+        if let Some(started_html_block) = markdown_html_block_start(trimmed)
+            && (paragraph_depth.is_none() || started_html_block.can_interrupt_paragraph())
+        {
             if !started_html_block.ends_on(trimmed) {
                 html_block = Some((started_html_block, container_depth));
             }
+            paragraph_depth = None;
             continue;
         }
         if markdown_thematic_break(trimmed) {
+            paragraph_depth = None;
             continue;
         }
         if trimmed.is_empty() {
             media_depth = 0;
+            paragraph_depth = None;
+            continue;
+        }
+        if definition_spans
+            .iter()
+            .any(|definition| definition.start < span.end && definition.end > span.start)
+        {
+            paragraph_depth = None;
             continue;
         }
 
         let bytes = trimmed.as_bytes();
+        let trimmed_start = span.start + source_line.len() - line.len() + leading_spaces;
         let mut index = 0usize;
+        if let Some(end) = inline_code_end_offset {
+            if end > span.content_end {
+                paragraph_depth = Some(container_depth);
+                continue;
+            }
+            inline_code_end_offset = None;
+            index = end
+                .checked_sub(trimmed_start)
+                .filter(|end| *end <= bytes.len())
+                .unwrap_or(0);
+        }
         while index < bytes.len() {
             if bytes[index] == b'\\' {
                 index = (index + 2).min(bytes.len());
@@ -13118,13 +13723,25 @@ fn markdown_work_inspection(body: &str) -> MarkdownWorkInspection {
                     .iter()
                     .take_while(|byte| **byte == b'`')
                     .count();
-                if let Some(end) =
-                    markdown_inline_code_end(bytes, index + marker_count, marker_count)
-                {
-                    index = end;
+                if let Some(end) = markdown_inline_code_end(
+                    body.as_bytes(),
+                    trimmed_start + index + marker_count,
+                    marker_count,
+                ) {
+                    if end > span.content_end {
+                        inline_code_end_offset = Some(end);
+                        break;
+                    }
+                    index = end.saturating_sub(trimmed_start);
                     continue;
                 }
                 index += marker_count;
+                continue;
+            }
+            if bytes[index] == b'<'
+                && let Some(end) = markdown_inline_angle_end(trimmed, index)
+            {
+                index = end;
                 continue;
             }
             if matches!(bytes[index], b'*' | b'_') {
@@ -13197,10 +13814,16 @@ fn markdown_work_inspection(body: &str) -> MarkdownWorkInspection {
                 inspection.label_end_work_units += closing_work;
                 media_depth = media_depth.saturating_sub(1);
                 index += closing_count;
+                if closing_count == 1
+                    && let Some(end) = markdown_link_suffix_end(bytes, index)
+                {
+                    index = end;
+                }
                 continue;
             }
             index += 1;
         }
+        paragraph_depth = Some(container_depth);
     }
     inspection.attention_work_units = attention_runs.saturating_mul(spans.len());
     let parser = Parser::new_ext(body, Options::ENABLE_STRIKETHROUGH);
@@ -13267,6 +13890,102 @@ fn markdown_inline_code_end(bytes: &[u8], mut index: usize, marker_count: usize)
     None
 }
 
+fn markdown_inline_angle_end(line: &str, index: usize) -> Option<usize> {
+    let bytes = line.as_bytes();
+    let mut cursor = index + 1;
+    let mut quote = None;
+    while cursor < bytes.len() {
+        match (bytes[cursor], quote) {
+            (b'"' | b'\'', None) => quote = Some(bytes[cursor]),
+            (character, Some(active)) if character == active => quote = None,
+            (b'>', None) => break,
+            _ => {}
+        }
+        cursor += 1;
+    }
+    if bytes.get(cursor) != Some(&b'>') {
+        return None;
+    }
+    let content = &line[index + 1..cursor];
+    let autolink = !content.chars().any(char::is_whitespace)
+        && (content.split_once(':').is_some_and(|(scheme, _)| {
+            scheme
+                .chars()
+                .next()
+                .is_some_and(|character| character.is_ascii_alphabetic())
+                && scheme.chars().all(|character| {
+                    character.is_ascii_alphanumeric() || matches!(character, '+' | '-' | '.')
+                })
+        }) || content
+            .split_once('@')
+            .is_some_and(|(local, domain)| !local.is_empty() && domain.contains('.')));
+    let tag = content
+        .strip_prefix('/')
+        .unwrap_or(content)
+        .chars()
+        .next()
+        .is_some_and(|character| character.is_ascii_alphabetic());
+    let special_html = content.starts_with('!') || content.starts_with('?');
+    (autolink || tag || special_html).then_some(cursor + 1)
+}
+
+fn markdown_link_suffix_end(bytes: &[u8], index: usize) -> Option<usize> {
+    if bytes.get(index) == Some(&b'[') {
+        let mut cursor = index + 1;
+        let mut escaped = false;
+        while cursor < bytes.len() {
+            if bytes[cursor] == b']' && !escaped {
+                return Some(cursor + 1);
+            }
+            escaped = bytes[cursor] == b'\\' && !escaped;
+            if bytes[cursor] != b'\\' {
+                escaped = false;
+            }
+            cursor += 1;
+        }
+        return None;
+    }
+    if bytes.get(index) != Some(&b'(') {
+        return None;
+    }
+    let mut cursor = index + 1;
+    let mut depth = 1usize;
+    let mut escaped = false;
+    let mut quote = None;
+    while cursor < bytes.len() {
+        let character = bytes[cursor];
+        if escaped {
+            escaped = false;
+            cursor += 1;
+            continue;
+        }
+        if character == b'\\' {
+            escaped = true;
+            cursor += 1;
+            continue;
+        }
+        if let Some(active) = quote {
+            if character == active {
+                quote = None;
+            }
+        } else {
+            match character {
+                b'"' | b'\'' => quote = Some(character),
+                b'(' => depth += 1,
+                b')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(cursor + 1);
+                    }
+                }
+                _ => {}
+            }
+        }
+        cursor += 1;
+    }
+    None
+}
+
 fn markdown_fence_opener(line: &str) -> Option<(char, usize)> {
     let marker = line
         .chars()
@@ -13281,78 +14000,6 @@ fn markdown_fence_opener(line: &str) -> Option<(char, usize)> {
     }
     let remainder = &line[marker_count..];
     (marker != '`' || !remainder.contains('`')).then_some((marker, marker_count))
-}
-
-fn markdown_definition_destination(value: &str) -> Option<(&str, &str)> {
-    if let Some(angled) = value.strip_prefix('<') {
-        let mut escaped = false;
-        for (offset, character) in angled.char_indices() {
-            if character == '>' && !escaped {
-                return Some((&angled[..offset], &angled[offset + 1..]));
-            }
-            if character == '<' && !escaped {
-                return None;
-            }
-            escaped = character == '\\' && !escaped;
-            if character != '\\' {
-                escaped = false;
-            }
-        }
-        return None;
-    }
-    let mut escaped = false;
-    let mut parenthesis_depth = 0usize;
-    let mut end = value.len();
-    for (offset, character) in value.char_indices() {
-        if character.is_whitespace() && !escaped {
-            end = offset;
-            break;
-        }
-        if !escaped {
-            match character {
-                '(' => {
-                    parenthesis_depth += 1;
-                    if parenthesis_depth > 32 {
-                        return None;
-                    }
-                }
-                ')' => parenthesis_depth = parenthesis_depth.checked_sub(1)?,
-                _ => {}
-            }
-        }
-        escaped = character == '\\' && !escaped;
-        if character != '\\' {
-            escaped = false;
-        }
-    }
-    (end > 0 && parenthesis_depth == 0).then_some((&value[..end], &value[end..]))
-}
-
-fn markdown_definition_title_bytes(value: &str) -> Option<usize> {
-    let value = value.trim_start();
-    if value.is_empty() {
-        return Some(0);
-    }
-    let Some(opening) = value.chars().next() else {
-        return Some(0);
-    };
-    let closing = match opening {
-        '"' | '\'' => opening,
-        '(' => ')',
-        _ => return None,
-    };
-    let mut escaped = false;
-    for (offset, character) in value[opening.len_utf8()..].char_indices() {
-        if character == closing && !escaped {
-            let end = opening.len_utf8() + offset + character.len_utf8();
-            return value[end..].trim().is_empty().then_some(offset);
-        }
-        escaped = character == '\\' && !escaped;
-        if character != '\\' {
-            escaped = false;
-        }
-    }
-    None
 }
 
 fn markdown_container_content(line: &str) -> &str {
@@ -13447,6 +14094,7 @@ fn markdown_list_item_content(line: &str) -> Option<&str> {
 
 #[derive(Clone, Debug)]
 enum MarkdownHtmlBlock {
+    CustomUntilBlankLine,
     RawTag(&'static str),
     Until(&'static str),
     UntilBlankLine,
@@ -13460,8 +14108,12 @@ impl MarkdownHtmlBlock {
                 ascii_case_insensitive_contains(line, &closing)
             }
             Self::Until(terminator) => line.contains(terminator),
-            Self::UntilBlankLine => line.trim().is_empty(),
+            Self::CustomUntilBlankLine | Self::UntilBlankLine => line.trim().is_empty(),
         }
+    }
+
+    fn can_interrupt_paragraph(&self) -> bool {
+        !matches!(self, Self::CustomUntilBlankLine)
     }
 }
 
@@ -13575,7 +14227,7 @@ fn markdown_html_block_start(line: &str) -> Option<MarkdownHtmlBlock> {
     {
         return Some(MarkdownHtmlBlock::UntilBlankLine);
     }
-    markdown_complete_html_tag(line).then_some(MarkdownHtmlBlock::UntilBlankLine)
+    markdown_complete_html_tag(line).then_some(MarkdownHtmlBlock::CustomUntilBlankLine)
 }
 
 fn ascii_case_insensitive_contains(value: &str, needle: &str) -> bool {
@@ -14417,6 +15069,28 @@ mod tests {
             assert_eq!(decimal_from_radix(digits, radix).as_deref(), Some(expected));
         }
         assert_eq!(decimal_from_radix("g", 16), None);
+    }
+
+    #[test]
+    fn ntt_base_100_multiplication_matches_schoolbook() {
+        let left = (0..257)
+            .map(|index| ((index * 37 + 11) % 100) as u8)
+            .collect::<Vec<_>>();
+        let right = (0..193)
+            .map(|index| ((index * 61 + 7) % 100) as u8)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            multiply_base_100(&left, &right).as_deref(),
+            Some(schoolbook_base_100_multiply(&left, &right).as_slice())
+        );
+    }
+
+    #[test]
+    fn converts_maximum_review_radix_value_exactly() {
+        let decimal = decimal_from_radix(&"F".repeat(59_000), 16).expect("valid hexadecimal");
+        assert_eq!(decimal.len(), 71_044);
+        assert!(decimal.starts_with("11994349502494639648262453586151"));
+        assert!(decimal.ends_with("64003829073951065465285693669375"));
     }
 
     #[test]

@@ -1,5 +1,7 @@
 # Open VSX listing record and future-release boundary
 
+## Published `0.2.1` record
+
 - Published status: **`straydog.okf-workbench@0.2.1` was published on 2026-07-28; this does not
   qualify or publish the current Rust/Wasm source candidate**
 - Published version recorded here: `0.2.1`
@@ -10,9 +12,9 @@
 - Release record: the [completed `0.2.1` checklist](release-checklist.md) links the signed tag,
   workflow, GitHub Release, public Open VSX listing, and post-publication checks.
 
-## Listing metadata
+### Published listing metadata
 
-| Field | Candidate value |
+| Field | Published `0.2.1` value |
 | --- | --- |
 | Display name | OKF Workbench |
 | Short description | Create, validate, index, and explore Open Knowledge Format bundles locally. |
@@ -26,13 +28,32 @@
 | License | MIT; VSCE packages the canonical root `LICENSE` as `extension/LICENSE.txt` |
 | Third-party notices | Packaged as `extension/THIRD_PARTY_NOTICES.md` and linked from the public project site |
 
-The manifest, README, changelog, icon, license identifier, candidate version, and exact public URLs
-must match this table before the package is approved. The public source repository provides the
-issue tracker and security-advisory route, while GitHub Pages provides durable privacy, support,
-security, license, and notice pages. The packaged README and changelog contain no excluded
-documentation or speculative release-tag links.
+The published `0.2.1` manifest, README, changelog, icon, license identifier, version, and public URLs
+were checked against this table. The public source repository provides the issue tracker and
+security-advisory route, while GitHub Pages provides durable privacy, support, security, license,
+and notice pages.
 
-## Suggested listing copy
+### Published package-resource record
+
+- `README.md` described implemented `0.2.1` behavior, the local-first privacy boundary, MIT
+  licensing, and bundled third-party notices.
+- `CHANGELOG.md` contained the dated published `0.2.1` entry.
+- `assets/icon.png` was included and referenced by the manifest.
+- The published packages contained exactly one project-license entry,
+  `extension/LICENSE.txt`, whose bytes matched the canonical root `LICENSE`; their packaged JSON
+  manifests declared exactly `MIT`, and `extension.vsixmanifest` pointed both license metadata
+  entries to that canonical path.
+- The packaged manifest contained the approved public `repository`, `bugs`, and `homepage` values;
+  the generated VSIX manifest contained only their corresponding marketplace resource links.
+- The README and changelog contained no excluded documentation or speculative release-tag link.
+- The packages contained public `SECURITY.md` and no local development artifact, secret, source
+  map, or unapproved license claim.
+
+## Unpublished future listing copy
+
+> Draft only. The following OKF v0.2 and eight-template copy is proposed for a future package. It
+> is not a record of the text published for `0.2.1`, and it must not be presented as available on
+> Open VSX until a newly qualified candidate is published.
 
 ### Create, validate, and explore OKF knowledge without leaving your editor
 
@@ -73,12 +94,15 @@ re-evaluation rejects its input identities for the current Rust/Wasm source cand
 Code `1.127.0` measurements are historical only. Fresh headed, hosted compatibility, and packaged
 lifecycle qualification remain pending for the exact release candidate.
 
-## Required resources in the packaged listing
+### Future candidate approval requirements
 
-- `README.md` describes implemented behavior, the local-first privacy boundary, MIT licensing, and
-  bundled third-party notices.
-- `CHANGELOG.md` contains the dated published `0.2.1` entry.
-- `assets/icon.png` is included and referenced by the manifest.
+- Reapprove every metadata value above for the future version; unchanged values are not inherited
+  merely because they were published for `0.2.1`.
+- `README.md` must describe only behavior implemented by the future candidate, including the
+  local-first privacy boundary, MIT licensing, and bundled third-party notices.
+- `CHANGELOG.md` must contain a dated entry for that future version; the published `0.2.1` entry is
+  historical and does not satisfy this requirement.
+- `assets/icon.png` must be included and referenced by the candidate manifest.
 - A future candidate must contain exactly one project-license entry, `extension/LICENSE.txt`, whose
   bytes match the canonical root `LICENSE`; its packaged JSON manifest declares exactly `MIT`, and
   `extension.vsixmanifest` points both license metadata entries to that same canonical path.
@@ -86,9 +110,10 @@ lifecycle qualification remain pending for the exact release candidate.
   values; the generated VSIX manifest contains only their corresponding marketplace resource
   links.
 - The README and changelog contain no excluded documentation or uncreated release-tag link.
-- The README states privacy behavior, project licensing, and bundled-notice availability inline.
-- The package contains the public `SECURITY.md` but no local development artifact, secret, source
-  map, or unapproved license claim.
+- The future README must state privacy behavior, project licensing, and bundled-notice availability
+  inline.
+- The future package must contain public `SECURITY.md` but no local development artifact, secret,
+  source map, or unapproved license claim.
 
 ## Publication boundary
 

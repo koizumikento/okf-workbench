@@ -125,8 +125,9 @@ mise x node@24.18.0 -- npm run benchmark:report -- --measurements /absolute/path
 mise x node@24.18.0 -- node test/benchmarks/headed-editor-evidence.mjs --vscode-executable /absolute/path/to/VS-Code-executable --output artifacts/performance/headed-editor.json
 ```
 
-The current qualification was captured with the full comparison against the pinned VS Code
-1.129.1 executable. Re-run the same commands whenever a bound input changes:
+The retained predecessor qualification was captured with the full comparison against the pinned VS
+Code 1.129.1 executable. It is not current-candidate qualification. Re-run the same commands and
+retain a new strict-passing pair whenever a bound input changes:
 
 ```sh
 mise x node@24.18.0 -- node test/benchmarks/headed-editor-evidence.mjs \
@@ -485,26 +486,53 @@ and candidate bytes produce byte-identical output.
 Every headed run records `qr003.capturedAt` and
 `qr003.provenance: { "kind": "captured" }`. The runner always measures both engines in the current
 headed editor process; it has no QR-003 reuse mode. Review the generated JSON and Markdown in
-`artifacts/performance/`; replace the tracked evidence only after strict evaluation passes and the
-evidence is approved. Do not overwrite the retained tracked files during an exploratory run. For
-the approved VS Code 1.129.1 pair, promote the exact published bytes and re-evaluate the tracked
-JSON:
+`artifacts/performance/`; replace tracked current-candidate evidence only after strict evaluation
+passes and the evidence is approved. Do not overwrite retained evidence during an exploratory run.
+
+The tracked VS Code 1.129.1 pair is the immutable capture-time report for the published `v0.2.1`
+candidate, not a report for the current Rust/Wasm source candidate. Its generated Markdown
+therefore retains the capture-time `pass` statuses. Interpret those statuses only through the
+predecessor scope stated above; do not hand-edit the generated report with current-candidate
+commentary. To prove that the tracked Markdown is still the deterministic rendering of its raw JSON,
+reconstruct the exact tagged candidate in a private temporary directory and compare the generated
+bytes:
 
 ```sh
-cp artifacts/performance/vscode-1.129.1-final.json docs/evidence/performance/vscode-1.129.1.json
-cp artifacts/performance/vscode-1.129.1-final.md docs/evidence/performance/vscode-1.129.1.md
-cmp artifacts/performance/vscode-1.129.1-final.json docs/evidence/performance/vscode-1.129.1.json
-cmp artifacts/performance/vscode-1.129.1-final.md docs/evidence/performance/vscode-1.129.1.md
+proof_root=$(mktemp -d "${TMPDIR:-/tmp}/okf-v021-proof.XXXXXX")
+git archive v0.2.1 | tar -x -C "$proof_root"
+cmp docs/evidence/performance/vscode-1.129.1.json \
+  "$proof_root/docs/evidence/performance/vscode-1.129.1.json"
+(
+  cd "$proof_root"
+  mise x node@24.18.0 -- npm ci --ignore-scripts
+  mise x node@24.18.0 -- npm run build
+)
+mise x node@24.18.0 -- node "$proof_root/scripts/benchmark-report.mjs" \
+  --candidate-root "$proof_root" \
+  --measurements docs/evidence/performance/vscode-1.129.1.json \
+  --require-passing \
+  > "$proof_root/vscode-1.129.1-regenerated.md"
+cmp docs/evidence/performance/vscode-1.129.1.md \
+  "$proof_root/vscode-1.129.1-regenerated.md"
+```
+
+Both `cmp` commands and the tagged strict evaluator must succeed. The first comparison binds the
+tracked raw JSON to the tagged evidence record; the second proves the tracked Markdown is generated,
+not editorialized. The temporary directory contains a dependency install and build and may be
+discarded after the comparison.
+
+Evaluate that same raw JSON against the current checked-out candidate separately:
+
+```sh
 mise x node@24.18.0 -- node scripts/benchmark-report.mjs \
   --measurements docs/evidence/performance/vscode-1.129.1.json \
   --require-passing \
-  > artifacts/performance/vscode-1.129.1-release-check.md
-cmp docs/evidence/performance/vscode-1.129.1.md artifacts/performance/vscode-1.129.1-release-check.md
+  > artifacts/performance/vscode-1.129.1-current-candidate-check.md
 ```
 
-All six commands must succeed. The two `cmp` checks before evaluation prove promotion did not
-transform either file; the final `cmp` proves the tracked Markdown is the deterministic rendering
-of the tracked JSON and current frozen candidate.
+For the current Rust/Wasm source candidate this command exits `2`, reports QR-002 and QR-003 as
+unmeasured, and must not be compared with or copied over the predecessor report. Fresh headed
+evidence must instead produce a new strict-passing JSON/Markdown pair bound to the exact candidate.
 
 ## Force-engine selection
 

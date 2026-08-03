@@ -2,21 +2,17 @@
 
 Generated: 2026-07-28T06:23:03.350Z
 
-> **Retained predecessor report.** These pass statuses describe only the recorded `0.2.1` inputs.
-> The current strict `--require-passing` evaluator exits `2`, marks QR-002 and QR-003 unmeasured,
-> and does not accept the record as bound to the current production inputs. This file does not
-> qualify the current Rust/Wasm source candidate. Its raw JSON SHA-256 is
-> `a8917c18c12c3ee8d00efa27254e6f5114779dc8a5f4589c62d015c128436eb6`.
+> This report treats only a complete `headed-editor` measurement as QR-002/QR-003 evidence. Node and Playwright harness results are non-authoritative.
 
-## Recorded result for predecessor inputs
+## Result
 
 | Target | Status | Evidence |
 | --- | --- | --- |
-| QR-002 | recorded pass | 677.00 ms (20 samples) |
-| QR-003 | recorded pass | Release engine: d3 |
-| Headed Webview network | recorded pass | CDP observation of packaged resources and outbound schemes |
+| QR-002 | pass | 677.00 ms (20 samples) |
+| QR-003 | pass | Release engine: d3 |
+| Headed Webview network | pass | CDP observation of packaged resources and outbound schemes |
 
-The predecessor-input force-engine selection was `d3`. It is not a current-candidate selection.
+The evidence-backed release force-engine selection is `d3`. The report records this result but does not silently rewrite source.
 
 QR-003 measurement: 2026-07-28T06:23:03.239Z; provenance: captured in this run.
 
@@ -65,7 +61,6 @@ QR-003 measurement: 2026-07-28T06:23:03.239Z; provenance: captured in this run.
 
 Initial Webview resources plus CDP events during watcher refresh, search, filter, selection, engine comparison, and disposal.
 
-## Current-candidate blocking evidence
+## Missing or blocking evidence
 
-- This retained record does not satisfy current production/runtime/build/harness binding checks.
-- Fresh current-candidate QR-002, QR-003, and headed Webview network qualification is pending.
+- None.

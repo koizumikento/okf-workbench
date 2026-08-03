@@ -47,6 +47,19 @@ fn explicit_apply_initializes_then_validates_offline() {
 }
 
 #[test]
+fn relative_missing_root_can_be_initialized_from_its_captured_absolute_anchor() {
+    let directory = tempdir().unwrap();
+    let output = okf()
+        .current_dir(directory.path())
+        .args(["init", "bundle", "--apply"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "{output:?}");
+    assert!(directory.path().join("bundle/index.md").is_file());
+}
+
+#[test]
 fn documented_bundle_preset_names_are_accepted() {
     for preset in ["minimal", "software-project", "data-analytics"] {
         let directory = tempdir().unwrap();
@@ -302,45 +315,41 @@ fn index_refuses_partial_parse_results_without_writing() {
 }
 
 #[test]
-fn index_adds_v02_declaration_to_an_existing_versionless_root() {
+fn index_existing_versionless_root_fails_closed_without_replacement_cas() {
     let directory = tempdir().unwrap();
     initialize(directory.path());
-    fs::write(
-        directory.path().join("index.md"),
-        "# Knowledge\n\nHuman introduction.\n",
-    )
-    .unwrap();
+    let index = directory.path().join("index.md");
+    let original = "# Knowledge\n\nHuman introduction.\n";
+    fs::write(&index, original).unwrap();
     let output = okf()
         .args(["index", directory.path().to_str().unwrap(), "--apply"])
         .output()
         .unwrap();
-    assert!(output.status.success(), "{output:?}");
-    let root = fs::read_to_string(directory.path().join("index.md")).unwrap();
-    assert!(root.starts_with("---\nokf_version: \"0.2\"\n---\n"));
-    assert!(root.contains("Human introduction."));
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("generation-CAS"));
+    assert_eq!(fs::read_to_string(index).unwrap(), original);
 }
 
 #[cfg(unix)]
 #[test]
-fn index_update_preserves_existing_file_mode() {
+fn rejected_index_update_does_not_change_existing_file_mode() {
     use std::os::unix::fs::PermissionsExt;
 
     let directory = tempdir().unwrap();
     initialize(directory.path());
     let index = directory.path().join("index.md");
+    let original = "# Versionless knowledge\n";
+    fs::write(&index, original).unwrap();
     fs::set_permissions(&index, fs::Permissions::from_mode(0o644)).unwrap();
-    fs::write(
-        directory.path().join("alpha.md"),
-        "---\ntype: reference\ntitle: Alpha\n---\n",
-    )
-    .unwrap();
 
     let output = okf()
         .args(["index", directory.path().to_str().unwrap(), "--apply"])
         .output()
         .unwrap();
 
-    assert!(output.status.success(), "{output:?}");
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("generation-CAS"));
+    assert_eq!(fs::read_to_string(&index).unwrap(), original);
     assert_eq!(
         fs::metadata(index).unwrap().permissions().mode() & 0o777,
         0o644
@@ -349,17 +358,14 @@ fn index_update_preserves_existing_file_mode() {
 
 #[cfg(target_os = "macos")]
 #[test]
-fn index_update_preserves_macos_extended_metadata() {
+fn rejected_macos_update_leaves_acl_xattr_and_timestamps_untouched() {
     use std::os::unix::fs::MetadataExt;
 
     let directory = tempdir().unwrap();
     initialize(directory.path());
     let index = directory.path().join("index.md");
-    fs::write(
-        directory.path().join("alpha.md"),
-        "---\ntype: reference\ntitle: Alpha\n---\n",
-    )
-    .unwrap();
+    let original = "# Versionless knowledge\n";
+    fs::write(&index, original).unwrap();
     let xattr = "com.okf-workbench.metadata-test";
     let set_xattr = Command::new("/usr/bin/xattr")
         .args(["-w", xattr, "retained", index.to_str().unwrap()])
@@ -371,16 +377,27 @@ fn index_update_preserves_macos_extended_metadata() {
         .output()
         .unwrap();
     assert!(set_acl.status.success(), "{set_acl:?}");
+    let set_old_mtime = Command::new("/usr/bin/touch")
+        .args(["-t", "200001010000", index.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(set_old_mtime.status.success(), "{set_old_mtime:?}");
     let before = fs::metadata(&index).unwrap();
 
     let output = okf()
         .args(["index", directory.path().to_str().unwrap(), "--apply"])
         .output()
         .unwrap();
-    assert!(output.status.success(), "{output:?}");
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("generation-CAS"));
 
     let after = fs::metadata(&index).unwrap();
     assert_eq!((after.uid(), after.gid()), (before.uid(), before.gid()));
+    assert_eq!(
+        (after.mode(), after.mtime(), after.mtime_nsec()),
+        (before.mode(), before.mtime(), before.mtime_nsec())
+    );
+    assert_eq!(fs::read_to_string(&index).unwrap(), original);
     let retained_xattr = Command::new("/usr/bin/xattr")
         .args(["-p", xattr, index.to_str().unwrap()])
         .output()
@@ -403,7 +420,7 @@ fn index_update_preserves_macos_extended_metadata() {
 
 #[cfg(target_os = "linux")]
 #[test]
-fn index_update_preserves_linux_owner_group_acl_and_user_xattr() {
+fn rejected_linux_update_leaves_owner_group_acl_and_user_xattr_untouched() {
     use rustix::fs::{XattrFlags, getxattr, setxattr};
     use std::os::unix::fs::MetadataExt;
 
@@ -417,11 +434,8 @@ fn index_update_preserves_linux_owner_group_acl_and_user_xattr() {
     let directory = tempdir().unwrap();
     initialize(directory.path());
     let index = directory.path().join("index.md");
-    fs::write(
-        directory.path().join("alpha.md"),
-        "---\ntype: reference\ntitle: Alpha\n---\n",
-    )
-    .unwrap();
+    let original = "# Versionless knowledge\n";
+    fs::write(&index, original).unwrap();
     let user_xattr = "user.okf-workbench.metadata-test";
     setxattr(&index, user_xattr, b"retained", XattrFlags::empty()).unwrap();
 
@@ -455,7 +469,8 @@ fn index_update_preserves_linux_owner_group_acl_and_user_xattr() {
         .args(["index", directory.path().to_str().unwrap(), "--apply"])
         .output()
         .unwrap();
-    assert!(output.status.success(), "{output:?}");
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("generation-CAS"));
 
     let after = fs::metadata(&index).unwrap();
     assert_eq!((after.uid(), after.gid()), (before.uid(), before.gid()));
@@ -464,27 +479,69 @@ fn index_update_preserves_linux_owner_group_acl_and_user_xattr() {
     if let Some(expected_acl) = expected_acl {
         assert_eq!(read_xattr(&index, acl_name), expected_acl);
     }
+    assert_eq!(fs::read_to_string(index).unwrap(), original);
 }
 
+#[cfg(windows)]
 #[test]
-fn index_adds_v02_declaration_to_an_explicit_key_root_map() {
+fn rejected_windows_update_leaves_sddl_attributes_and_ads_untouched() {
+    use std::os::windows::fs::MetadataExt;
+
+    fn sddl(path: &Path) -> String {
+        let output = Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "(Get-Acl -LiteralPath $args[0]).Sddl",
+                path.to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        String::from_utf8(output.stdout).unwrap()
+    }
+
     let directory = tempdir().unwrap();
     initialize(directory.path());
-    fs::write(
-        directory.path().join("index.md"),
-        "---\n!!map\n? type\n: bundle\n? title\n: Knowledge\n---\n# Knowledge\n",
-    )
-    .unwrap();
+    let index = directory.path().join("index.md");
+    let original = "# Versionless knowledge\n";
+    fs::write(&index, original).unwrap();
+    let ads = format!("{}:okf-workbench-metadata-test", index.display());
+    fs::write(&ads, "retained").unwrap();
+    let before = fs::metadata(&index).unwrap();
+    let before_sddl = sddl(&index);
 
     let output = okf()
         .args(["index", directory.path().to_str().unwrap(), "--apply"])
         .output()
         .unwrap();
 
-    assert!(output.status.success(), "{output:?}");
-    let root = fs::read_to_string(directory.path().join("index.md")).unwrap();
-    assert!(root.starts_with("---\n!!map\nokf_version: \"0.2\"\n? type\n"));
-    assert!(root.contains("? title\n: Knowledge\n"));
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("generation-CAS"));
+    let after = fs::metadata(&index).unwrap();
+    assert_eq!(after.file_attributes(), before.file_attributes());
+    assert_eq!(sddl(&index), before_sddl);
+    assert_eq!(fs::read_to_string(&ads).unwrap(), "retained");
+    assert_eq!(fs::read_to_string(index).unwrap(), original);
+}
+
+#[test]
+fn index_explicit_key_root_map_fails_closed_without_replacement_cas() {
+    let directory = tempdir().unwrap();
+    initialize(directory.path());
+    let index = directory.path().join("index.md");
+    let original = "---\n!!map\n? type\n: bundle\n? title\n: Knowledge\n---\n# Knowledge\n";
+    fs::write(&index, original).unwrap();
+
+    let output = okf()
+        .args(["index", directory.path().to_str().unwrap(), "--apply"])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("generation-CAS"));
+    assert_eq!(fs::read_to_string(index).unwrap(), original);
 }
 
 #[test]
@@ -518,33 +575,28 @@ fn missing_index_mode_supports_an_inline_tagged_empty_flow_root() {
         ])
         .output()
         .unwrap();
-    assert!(apply.status.success(), "{apply:?}");
-    assert!(
-        fs::read_to_string(index)
-            .unwrap()
-            .contains("!!map \n{okf_version: \"0.2\"}")
-    );
+    assert_eq!(apply.status.code(), Some(2), "{apply:?}");
+    assert!(String::from_utf8_lossy(&apply.stderr).contains("generation-CAS"));
+    assert_eq!(fs::read_to_string(index).unwrap(), original);
 }
 
 #[test]
-fn missing_index_mode_only_adds_the_root_version_to_an_existing_index() {
+fn missing_index_mode_fails_closed_before_updating_an_existing_index() {
     let directory = tempdir().unwrap();
     initialize(directory.path());
-    fs::write(
-        directory.path().join("index.md"),
-        [
-            "# Knowledge",
-            "",
-            "<!-- okf-workbench:index:start -->",
-            "## Contents",
-            "",
-            "- [Stale](./stale.md)",
-            "<!-- okf-workbench:index:end -->",
-            "",
-        ]
-        .join("\n"),
-    )
-    .unwrap();
+    let index = directory.path().join("index.md");
+    let original = [
+        "# Knowledge",
+        "",
+        "<!-- okf-workbench:index:start -->",
+        "## Contents",
+        "",
+        "- [Stale](./stale.md)",
+        "<!-- okf-workbench:index:end -->",
+        "",
+    ]
+    .join("\n");
+    fs::write(&index, &original).unwrap();
     fs::write(
         directory.path().join("alpha.md"),
         "---\ntype: reference\ntitle: Alpha\n---\n",
@@ -561,11 +613,9 @@ fn missing_index_mode_only_adds_the_root_version_to_an_existing_index() {
         ])
         .output()
         .unwrap();
-    assert!(output.status.success(), "{output:?}");
-    let root = fs::read_to_string(directory.path().join("index.md")).unwrap();
-    assert!(root.starts_with("---\nokf_version: \"0.2\"\n---\n"));
-    assert!(root.contains("- [Stale](./stale.md)"));
-    assert!(!root.contains("- [Alpha](./alpha.md)"));
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("generation-CAS"));
+    assert_eq!(fs::read_to_string(index).unwrap(), original);
 }
 
 #[cfg(unix)]

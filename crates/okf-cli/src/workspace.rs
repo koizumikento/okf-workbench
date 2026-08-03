@@ -2,47 +2,37 @@ use okf_core::{
     BundleDocumentInput, DocumentContent, ParseBundleInput, RenderedFile, parse_bundle,
 };
 use serde::Serialize;
-#[cfg(target_os = "linux")]
-use std::collections::BTreeMap;
-#[cfg(unix)]
-use std::ffi::OsString;
 #[cfg(not(unix))]
 use std::fs::OpenOptions;
 #[cfg(unix)]
 use std::os::unix::{ffi::OsStringExt, fs::MetadataExt};
 use std::{
-    ffi::OsStr,
+    ffi::{OsStr, OsString},
     fs::{self, File},
     io::{Read, Write},
     path::{Component, Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
 };
-#[cfg(all(not(unix), not(windows)))]
-use tempfile::NamedTempFile;
 #[cfg(all(not(unix), not(windows)))]
 use walkdir::WalkDir;
 
 #[cfg(windows)]
 use std::os::windows::{
     ffi::OsStrExt,
-    fs::{MetadataExt as WindowsMetadataExt, OpenOptionsExt},
+    fs::{MetadataExt as _, OpenOptionsExt},
     io::AsRawHandle,
 };
 #[cfg(windows)]
 use windows_sys::Win32::Storage::FileSystem::{
-    DELETE, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT, FILE_DISPOSITION_FLAG_DELETE,
-    FILE_DISPOSITION_FLAG_POSIX_SEMANTICS, FILE_DISPOSITION_INFO_EX, FILE_FLAG_BACKUP_SEMANTICS,
-    FILE_FLAG_OPEN_REPARSE_POINT, FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_READ_ATTRIBUTES,
-    FILE_RENAME_INFO, FILE_RENAME_INFO_0, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE,
-    FileDispositionInfoEx, FileRenameInfoEx, SYNCHRONIZE, SetFileInformationByHandle,
+    BY_HANDLE_FILE_INFORMATION, DELETE, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT,
+    FILE_DISPOSITION_FLAG_DELETE, FILE_DISPOSITION_FLAG_POSIX_SEMANTICS, FILE_DISPOSITION_INFO_EX,
+    FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_GENERIC_READ,
+    FILE_GENERIC_WRITE, FILE_READ_ATTRIBUTES, FILE_RENAME_INFO, FILE_RENAME_INFO_0,
+    FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE, FileDispositionInfoEx, FileRenameInfoEx,
+    GetFileInformationByHandle, SYNCHRONIZE, SetFileInformationByHandle,
 };
 
 #[cfg(target_os = "linux")]
-use rustix::fs::{
-    Gid, Uid, XattrFlags, fchmod, fchown, fgetxattr, flistxattr, fremovexattr, fsetxattr,
-};
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use rustix::fs::{RenameFlags, renameat_with};
+use rustix::fs::{AtFlags, linkat};
 #[cfg(unix)]
 use rustix::{
     fs::{Mode, OFlags, mkdirat, open, openat},
@@ -74,6 +64,30 @@ pub struct PlannedChange {
     pub content: String,
     #[serde(skip)]
     expected_content: Option<String>,
+    #[serde(skip)]
+    planned_root: Option<PlannedRootIdentity>,
+    #[serde(skip)]
+    expected_identity: Option<ObjectIdentity>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ObjectIdentity {
+    first: u64,
+    second: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum PlannedRootIdentity {
+    Existing {
+        requested: PathBuf,
+        identity: ObjectIdentity,
+    },
+    Missing {
+        requested: PathBuf,
+        anchor: PathBuf,
+        anchor_identity: ObjectIdentity,
+        components: Vec<OsString>,
+    },
 }
 
 pub fn load_bundle(root: &Path) -> Result<ParseBundleInput, String> {
@@ -162,7 +176,7 @@ fn load_bundle_ambient(root: &Path) -> Result<ParseBundleInput, String> {
 fn load_bundle_windows(root: &Path) -> Result<ParseBundleInput, String> {
     let (root, mut locks) = windows_anchor_directory(root, false)?;
     let mut documents = Vec::new();
-    collect_windows_documents(&root, &root, Path::new(""), &mut locks, &mut documents)?;
+    collect_windows_documents(&root, Path::new(""), &mut locks, &mut documents)?;
     Ok(ParseBundleInput {
         root_uri: file_uri(&root),
         invalid_root_uri_utf16: None,
@@ -173,7 +187,6 @@ fn load_bundle_windows(root: &Path) -> Result<ParseBundleInput, String> {
 
 #[cfg(windows)]
 fn collect_windows_documents(
-    root: &Path,
     directory: &Path,
     relative_directory: &Path,
     locks: &mut Vec<File>,
@@ -200,7 +213,7 @@ fn collect_windows_documents(
         }
         if metadata.is_dir() {
             locks.push(open_windows_directory_lock(&path)?);
-            collect_windows_documents(root, &path, &relative, locks, documents)?;
+            collect_windows_documents(&path, &relative, locks, documents)?;
             continue;
         }
         if !metadata.is_file()
@@ -546,23 +559,41 @@ pub fn plan_files(
     files: Vec<RenderedFile>,
     mode: PlanMode,
 ) -> Result<Vec<PlannedChange>, String> {
-    if root.exists() {
-        ensure_safe_root(root)?;
-    } else {
-        ensure_plannable_root(root)?;
-    }
+    let planned_root = capture_planned_root_identity(root)?;
     let mut plan = Vec::new();
     for file in files {
         validate_relative_path(&file.relative_path)?;
         let target = root.join(&file.relative_path);
         ensure_contained(root, &target)?;
         ensure_safe_parent_chain(root, &target)?;
+        let mut expected_identity = None;
         let existing = match fs::symlink_metadata(&target) {
             Ok(metadata) => {
                 if metadata.file_type().is_symlink() || !metadata.is_file() {
                     return Err(format!("unsafe existing target {}", target.display()));
                 }
-                Some(fs::read_to_string(&target).map_err(|error| error.to_string())?)
+                let identity = path_object_identity(&target)?;
+                let content = fs::read_to_string(&target).map_err(|error| error.to_string())?;
+                let after = fs::symlink_metadata(&target).map_err(|error| {
+                    format!(
+                        "cannot revalidate planned target {}: {error}",
+                        target.display()
+                    )
+                })?;
+                if after.file_type().is_symlink() || !after.is_file() {
+                    return Err(format!(
+                        "{} changed to an unsafe target while the plan was being prepared",
+                        target.display()
+                    ));
+                }
+                if path_object_identity(&target)? != identity {
+                    return Err(format!(
+                        "{} changed while the plan was being prepared",
+                        target.display()
+                    ));
+                }
+                expected_identity = Some(identity);
+                Some(content)
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(error) => return Err(error.to_string()),
@@ -622,10 +653,123 @@ pub fn plan_files(
             byte_length: content.len(),
             content,
             expected_content: existing,
+            planned_root: Some(planned_root.clone()),
+            expected_identity,
         });
     }
     plan.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
     Ok(plan)
+}
+
+fn capture_planned_root_identity(root: &Path) -> Result<PlannedRootIdentity, String> {
+    match fs::symlink_metadata(root) {
+        Ok(_) => {
+            ensure_safe_root(root)?;
+            Ok(PlannedRootIdentity::Existing {
+                requested: root.to_path_buf(),
+                identity: path_object_identity(root)?,
+            })
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let absolute_root = std::path::absolute(root)
+                .map_err(|error| format!("cannot make {} absolute: {error}", root.display()))?;
+            let mut anchor = absolute_root.as_path();
+            loop {
+                anchor = anchor.parent().ok_or_else(|| {
+                    format!("{} has no existing directory ancestor", root.display())
+                })?;
+                match fs::symlink_metadata(anchor) {
+                    Ok(metadata) if metadata.file_type().is_symlink() => {
+                        if is_trusted_platform_path_alias(anchor) {
+                            break;
+                        }
+                        return Err(format!("{} is not a real directory", anchor.display()));
+                    }
+                    Ok(metadata) if metadata.is_dir() => break,
+                    Ok(_) => return Err(format!("{} is not a real directory", anchor.display())),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error.to_string()),
+                }
+            }
+            ensure_safe_root(anchor)?;
+            let canonical_anchor = anchor
+                .canonicalize()
+                .map_err(|error| format!("cannot anchor {}: {error}", anchor.display()))?;
+            let anchor_identity = path_object_identity(&canonical_anchor)?;
+            let components = absolute_root
+                .strip_prefix(anchor)
+                .map_err(|_| "new root escapes its existing ancestor".to_owned())?
+                .components()
+                .map(|component| match component {
+                    Component::Normal(value) => Ok(value.to_os_string()),
+                    _ => Err("new root contains a non-relative component".to_owned()),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(PlannedRootIdentity::Missing {
+                requested: root.to_path_buf(),
+                anchor: canonical_anchor,
+                anchor_identity,
+                components,
+            })
+        }
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[cfg(unix)]
+fn path_object_identity(path: &Path) -> Result<ObjectIdentity, String> {
+    let metadata = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
+    Ok(ObjectIdentity {
+        first: metadata.dev(),
+        second: metadata.ino(),
+    })
+}
+
+#[cfg(windows)]
+fn path_object_identity(path: &Path) -> Result<ObjectIdentity, String> {
+    let file = OpenOptions::new()
+        .access_mode(FILE_READ_ATTRIBUTES | SYNCHRONIZE)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+        .map_err(|error| format!("cannot open {} for identity: {error}", path.display()))?;
+    file_object_identity(&file)
+}
+
+#[cfg(all(not(unix), not(windows)))]
+fn path_object_identity(_path: &Path) -> Result<ObjectIdentity, String> {
+    Err("stable filesystem identity is unavailable on this platform".to_owned())
+}
+
+#[cfg(unix)]
+fn file_object_identity(file: &File) -> Result<ObjectIdentity, String> {
+    let metadata = file.metadata().map_err(|error| error.to_string())?;
+    Ok(ObjectIdentity {
+        first: metadata.dev(),
+        second: metadata.ino(),
+    })
+}
+
+#[cfg(windows)]
+fn file_object_identity(file: &File) -> Result<ObjectIdentity, String> {
+    let mut information = std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::zeroed();
+    // SAFETY: `file` is live and the output points to initialized, writable storage of the
+    // structure size required by GetFileInformationByHandle.
+    let succeeded =
+        unsafe { GetFileInformationByHandle(file.as_raw_handle(), information.as_mut_ptr()) };
+    if succeeded == 0 {
+        return Err(format!(
+            "cannot read Windows file identity: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    // SAFETY: a successful call initializes the entire output structure.
+    let information = unsafe { information.assume_init() };
+    Ok(ObjectIdentity {
+        first: u64::from(information.dwVolumeSerialNumber),
+        second: (u64::from(information.nFileIndexHigh) << 32)
+            | u64::from(information.nFileIndexLow),
+    })
 }
 
 fn insert_root_version(existing: &str) -> Result<String, String> {
@@ -857,6 +1001,22 @@ fn root_frontmatter(content: &str) -> Result<serde_json::Map<String, serde_json:
 }
 
 pub fn apply_plan(root: &Path, plan: &[PlannedChange]) -> Result<(), String> {
+    if plan
+        .iter()
+        .any(|change| change.expected_content.is_some() && change.expected_identity.is_none())
+    {
+        return Err("write plan is missing an existing-file identity".to_owned());
+    }
+    if plan.iter().any(|change| change.expected_content.is_some()) {
+        return Err(
+            "conditional replacement is unavailable without a filesystem generation-CAS primitive; no changes were written"
+                .to_owned(),
+        );
+    }
+    if plan.is_empty() {
+        return Ok(());
+    }
+
     #[cfg(unix)]
     {
         apply_plan_anchored(root, plan)
@@ -877,6 +1037,20 @@ pub fn apply_plan(root: &Path, plan: &[PlannedChange]) -> Result<(), String> {
     }
 }
 
+fn planned_root_for_apply(plan: &[PlannedChange]) -> Result<&PlannedRootIdentity, String> {
+    let planned = plan
+        .first()
+        .and_then(|change| change.planned_root.as_ref())
+        .ok_or_else(|| "write plan is missing its root identity".to_owned())?;
+    if plan
+        .iter()
+        .any(|change| change.planned_root.as_ref() != Some(planned))
+    {
+        return Err("write plan contains inconsistent root identities".to_owned());
+    }
+    Ok(planned)
+}
+
 #[cfg(all(not(unix), not(windows)))]
 fn apply_plan_ambient(root: &Path, plan: &[PlannedChange]) -> Result<(), String> {
     for change in plan {
@@ -894,44 +1068,28 @@ fn apply_plan_ambient(root: &Path, plan: &[PlannedChange]) -> Result<(), String>
         }
         ensure_safe_parent_chain(root, &change.target)?;
         verify_unchanged(change)?;
-        if change.operation == "create" {
-            let mut file = OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(&change.target)
-                .map_err(|error| format!("cannot create {}: {error}", change.target.display()))?;
-            file.write_all(change.content.as_bytes())
-                .and_then(|_| file.sync_all())
-                .map_err(|error| error.to_string())?;
-        } else {
-            let mut temporary = NamedTempFile::new_in(parent).map_err(|error| error.to_string())?;
-            temporary
-                .write_all(change.content.as_bytes())
-                .map_err(|error| error.to_string())?;
-            let permissions = fs::symlink_metadata(&change.target)
-                .map_err(|error| {
-                    format!(
-                        "cannot preserve permissions for {}: {error}",
-                        change.target.display()
-                    )
-                })?
-                .permissions();
-            temporary
-                .as_file()
-                .set_permissions(permissions)
-                .and_then(|_| temporary.as_file().sync_all())
-                .map_err(|error| error.to_string())?;
-            temporary
-                .persist(&change.target)
-                .map_err(|error| error.error.to_string())?;
+        if change.operation != "create" {
+            return Err(
+                "conditional replacement is unavailable on this platform; no file was changed"
+                    .to_owned(),
+            );
         }
+        let mut file = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&change.target)
+            .map_err(|error| format!("cannot create {}: {error}", change.target.display()))?;
+        file.write_all(change.content.as_bytes())
+            .and_then(|_| file.sync_all())
+            .map_err(|error| error.to_string())?;
     }
     Ok(())
 }
 
 #[cfg(windows)]
 fn apply_plan_windows(root: &Path, plan: &[PlannedChange]) -> Result<(), String> {
-    let (root, _root_locks) = windows_anchor_directory(root, true)?;
+    let (root, _root_locks) =
+        windows_open_or_create_planned_root(root, planned_root_for_apply(plan)?)?;
     for change in plan {
         ensure_contained(&root, &root.join(&change.relative_path))?;
         validate_relative_path(&change.relative_path)?;
@@ -941,6 +1099,69 @@ fn apply_plan_windows(root: &Path, plan: &[PlannedChange]) -> Result<(), String>
         apply_windows_change(&root, change)?;
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn windows_open_or_create_planned_root(
+    root: &Path,
+    planned: &PlannedRootIdentity,
+) -> Result<(PathBuf, Vec<File>), String> {
+    match planned {
+        PlannedRootIdentity::Existing {
+            requested,
+            identity,
+        } => {
+            if requested != root {
+                return Err("write plan root does not match the requested root".to_owned());
+            }
+            let (absolute, locks) = windows_anchor_directory(root, false)?;
+            let anchored = locks
+                .last()
+                .ok_or_else(|| "Windows root anchor is empty".to_owned())?;
+            if file_object_identity(anchored)? != *identity {
+                return Err(format!(
+                    "bundle root {} changed after planning; no changes were written",
+                    root.display()
+                ));
+            }
+            Ok((absolute, locks))
+        }
+        PlannedRootIdentity::Missing {
+            requested,
+            anchor,
+            anchor_identity,
+            components,
+        } => {
+            if requested != root {
+                return Err("write plan root does not match the requested root".to_owned());
+            }
+            let (_anchor, mut locks) = windows_anchor_directory(anchor, false)?;
+            let anchored = locks
+                .last()
+                .ok_or_else(|| "Windows root ancestor anchor is empty".to_owned())?;
+            if file_object_identity(anchored)? != *anchor_identity {
+                return Err(format!(
+                    "root ancestor {} changed after planning; no changes were written",
+                    anchor.display()
+                ));
+            }
+            let mut current = anchor.clone();
+            for component in components {
+                current.push(component);
+                fs::create_dir(&current).map_err(|error| {
+                    if error.kind() == std::io::ErrorKind::AlreadyExists {
+                        format!(
+                            "root component {component:?} appeared after planning; no changes were written"
+                        )
+                    } else {
+                        format!("cannot create {}: {error}", current.display())
+                    }
+                })?;
+                locks.push(open_windows_directory_lock(&current)?);
+            }
+            Ok((root.to_path_buf(), locks))
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -969,22 +1190,8 @@ fn preflight_windows_change(root: &Path, change: &PlannedChange) -> Result<(), S
             )),
             Err(error) => Err(format!("cannot revalidate {}: {error}", target.display())),
         },
-        Some(expected) => {
-            let mut existing = open_windows_read_handle(&target)
-                .map_err(|error| format!("cannot revalidate {}: {error}", target.display()))?;
-            ensure_windows_regular_file(&existing, &target)?;
-            let mut current = String::new();
-            existing
-                .read_to_string(&mut current)
-                .map_err(|error| error.to_string())?;
-            if current == *expected {
-                Ok(())
-            } else {
-                Err(format!(
-                    "{} changed after planning; no replacement was attempted",
-                    target.display()
-                ))
-            }
+        Some(_) => {
+            Err("conditional replacement is unavailable on Windows; no file was changed".to_owned())
         }
     }
 }
@@ -1001,12 +1208,34 @@ fn apply_windows_change(root: &Path, change: &PlannedChange) -> Result<(), Strin
         .ok_or_else(|| format!("{} has no filename", target.display()))?;
     match &change.expected_content {
         None => create_windows_file(&parent, leaf, change),
-        Some(expected) => replace_windows_file(&parent, leaf, expected, change),
+        Some(_) => {
+            Err("conditional replacement is unavailable on Windows; no file was changed".to_owned())
+        }
     }
 }
 
 #[cfg(windows)]
 fn create_windows_file(parent: &Path, leaf: &OsStr, change: &PlannedChange) -> Result<(), String> {
+    create_windows_file_with_writer(
+        parent,
+        leaf,
+        change,
+        |file| {
+            file.write_all(change.content.as_bytes())
+                .map_err(|error| error.to_string())
+        },
+        || Ok(()),
+    )
+}
+
+#[cfg(windows)]
+fn create_windows_file_with_writer(
+    parent: &Path,
+    leaf: &OsStr,
+    change: &PlannedChange,
+    write_content: impl FnOnce(&mut File) -> Result<(), String>,
+    before_publish: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
     match open_windows_read_handle(&parent.join(leaf)) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Ok(_) => {
@@ -1025,69 +1254,15 @@ fn create_windows_file(parent: &Path, leaf: &OsStr, change: &PlannedChange) -> R
     let parent_handle = open_windows_directory_mutation_handle(parent)?;
     let (_temporary_path, mut temporary) = create_windows_temporary(parent)?;
     let result = (|| {
-        temporary
-            .write_all(change.content.as_bytes())
-            .and_then(|_| temporary.sync_all())
-            .map_err(|error| error.to_string())?;
-        rename_windows_handle(&temporary, &parent_handle, leaf, false).map_err(|error| {
+        write_content(&mut temporary)?;
+        temporary.sync_all().map_err(|error| error.to_string())?;
+        before_publish()?;
+        rename_windows_handle(&temporary, &parent_handle, leaf).map_err(|error| {
             format!(
                 "{} appeared after planning; no file was published: {error}",
                 change.target.display()
             )
         })
-    })();
-    match result {
-        Ok(()) => Ok(()),
-        Err(primary) => match dispose_windows_handle(&temporary) {
-            Ok(()) => Err(primary),
-            Err(cleanup) => Err(format!(
-                "{primary}; additionally, the staged temporary file could not be removed: {cleanup}"
-            )),
-        },
-    }
-}
-
-#[cfg(windows)]
-fn replace_windows_file(
-    parent: &Path,
-    leaf: &OsStr,
-    expected: &str,
-    change: &PlannedChange,
-) -> Result<(), String> {
-    let target = parent.join(leaf);
-    let mut existing = open_windows_read_handle(&target)
-        .map_err(|error| format!("cannot revalidate {}: {error}", target.display()))?;
-    ensure_windows_regular_file(&existing, &target)?;
-    let mut current = String::new();
-    existing
-        .read_to_string(&mut current)
-        .map_err(|error| error.to_string())?;
-    if current != expected {
-        return Err(format!(
-            "{} changed after planning; no replacement was attempted",
-            target.display()
-        ));
-    }
-    let parent_handle = open_windows_directory_mutation_handle(parent)?;
-    let (_temporary_path, mut temporary) = create_windows_temporary(parent)?;
-    let result = (|| {
-        temporary
-            .write_all(change.content.as_bytes())
-            .map_err(|error| error.to_string())?;
-        temporary
-            .set_permissions(
-                existing
-                    .metadata()
-                    .map_err(|error| error.to_string())?
-                    .permissions(),
-            )
-            .and_then(|_| temporary.sync_all())
-            .map_err(|error| error.to_string())?;
-        // The verified target remains open without FILE_SHARE_WRITE or FILE_SHARE_DELETE until
-        // this single kernel operation. POSIX rename semantics either replaces that exact entry
-        // or fails closed; there is no ambient delete-then-rename window.
-        rename_windows_handle(&temporary, &parent_handle, leaf, true)
-            .map_err(|error| format!("cannot replace {}: {error}", target.display()))
     })();
     match result {
         Ok(()) => Ok(()),
@@ -1222,52 +1397,37 @@ fn open_windows_read_lock(path: &Path) -> Result<File, String> {
 }
 
 #[cfg(windows)]
-fn ensure_windows_regular_file(file: &File, path: &Path) -> Result<(), String> {
-    let metadata = file.metadata().map_err(|error| error.to_string())?;
-    if windows_metadata_is_reparse(&metadata) || !metadata.is_file() {
-        return Err(format!("{} changed to an unsafe target", path.display()));
-    }
-    Ok(())
-}
-
-#[cfg(windows)]
 fn windows_metadata_is_reparse(metadata: &fs::Metadata) -> bool {
     metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
 }
 
 #[cfg(windows)]
 fn create_windows_temporary(parent: &Path) -> Result<(PathBuf, File), String> {
-    static NEXT_TEMPORARY: AtomicU64 = AtomicU64::new(0);
-    for _ in 0..128 {
-        let sequence = NEXT_TEMPORARY.fetch_add(1, Ordering::Relaxed);
-        let path = parent.join(format!(
-            ".okf-workbench-{}-{sequence}.tmp",
-            std::process::id()
-        ));
-        match OpenOptions::new()
-            .create_new(true)
-            .access_mode(FILE_GENERIC_READ | FILE_GENERIC_WRITE | DELETE | SYNCHRONIZE)
-            .share_mode(FILE_SHARE_READ)
-            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
-            .open(&path)
-        {
-            Ok(file) => return Ok((path, file)),
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(error) => return Err(format!("cannot reserve temporary file: {error}")),
-        }
-    }
-    Err("cannot reserve a unique temporary file name".to_owned())
+    // One fixed reservation bounds interruption residue to at most one pathname per directory.
+    // A pre-existing reservation is never removed by pathname: it may belong to another process,
+    // so this attempt fails closed instead of racing its cleanup.
+    let path = parent.join(".okf-workbench-staging.tmp");
+    let file = OpenOptions::new()
+        .create_new(true)
+        .access_mode(FILE_GENERIC_READ | FILE_GENERIC_WRITE | DELETE | SYNCHRONIZE)
+        .share_mode(FILE_SHARE_READ)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(&path)
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::AlreadyExists {
+                format!(
+                    "bounded staging reservation {} already exists; confirm no okf process is using it, remove it, and retry; no file was written",
+                    path.display()
+                )
+            } else {
+                format!("cannot reserve bounded temporary file: {error}")
+            }
+        })?;
+    Ok((path, file))
 }
 
 #[cfg(windows)]
-fn rename_windows_handle(
-    file: &File,
-    parent: &File,
-    leaf: &OsStr,
-    replace: bool,
-) -> Result<(), String> {
-    const FILE_RENAME_FLAG_REPLACE_IF_EXISTS: u32 = 0x1;
-    const FILE_RENAME_FLAG_POSIX_SEMANTICS: u32 = 0x2;
+fn rename_windows_handle(file: &File, parent: &File, leaf: &OsStr) -> Result<(), String> {
     let name = leaf.encode_wide().collect::<Vec<_>>();
     let name_bytes = name
         .len()
@@ -1280,15 +1440,10 @@ fn rename_windows_handle(
     let words = buffer_bytes.div_ceil(std::mem::size_of::<usize>());
     let mut buffer = vec![0usize; words];
     let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFO>();
-    let flags = if replace {
-        FILE_RENAME_FLAG_POSIX_SEMANTICS | FILE_RENAME_FLAG_REPLACE_IF_EXISTS
-    } else {
-        0
-    };
     // SAFETY: `buffer` is word-aligned and large enough for the fixed header plus `name_bytes`.
     // Both file handles remain live for the call and the UTF-16 filename contains no terminator.
     let succeeded = unsafe {
-        (*info).Anonymous = FILE_RENAME_INFO_0 { Flags: flags };
+        (*info).Anonymous = FILE_RENAME_INFO_0 { Flags: 0 };
         (*info).RootDirectory = parent.as_raw_handle();
         (*info).FileNameLength =
             u32::try_from(name_bytes).map_err(|_| "replacement filename is too long".to_owned())?;
@@ -1335,7 +1490,7 @@ fn dispose_windows_handle(file: &File) -> Result<(), String> {
 
 #[cfg(unix)]
 fn apply_plan_anchored(root: &Path, plan: &[PlannedChange]) -> Result<(), String> {
-    let root_directory = open_or_create_anchored_root(root)?;
+    let root_directory = open_or_create_anchored_root(root, planned_root_for_apply(plan)?)?;
     for change in plan {
         ensure_contained(root, &change.target)?;
         validate_relative_path(&change.relative_path)?;
@@ -1348,79 +1503,79 @@ fn apply_plan_anchored(root: &Path, plan: &[PlannedChange]) -> Result<(), String
 }
 
 #[cfg(unix)]
-fn open_or_create_anchored_root(root: &Path) -> Result<File, String> {
-    open_or_create_anchored_root_with_hook(root, || Ok(()))
+fn open_or_create_anchored_root(
+    root: &Path,
+    planned: &PlannedRootIdentity,
+) -> Result<File, String> {
+    open_or_create_anchored_root_with_hook(root, planned, || Ok(()))
 }
 
 #[cfg(unix)]
 fn open_or_create_anchored_root_with_hook(
     root: &Path,
+    planned: &PlannedRootIdentity,
     after_anchor: impl FnOnce() -> Result<(), String>,
 ) -> Result<File, String> {
-    match fs::symlink_metadata(root) {
-        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
-            return Err(format!("{} is not a real directory", root.display()));
-        }
-        Ok(_) => return open_anchored_root(root),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error.to_string()),
-    }
-
-    let mut existing = root;
-    loop {
-        existing = existing
-            .parent()
-            .ok_or_else(|| format!("{} has no existing directory ancestor", root.display()))?;
-        match fs::symlink_metadata(existing) {
-            Ok(metadata) if metadata.file_type().is_symlink() => {
-                if is_trusted_platform_path_alias(existing) {
-                    break;
-                }
-                return Err(format!("{} is not a real directory", existing.display()));
+    match planned {
+        PlannedRootIdentity::Existing {
+            requested,
+            identity,
+        } => {
+            if requested != root {
+                return Err("write plan root does not match the requested root".to_owned());
             }
-            Ok(metadata) if metadata.is_dir() => break,
-            Ok(_) => return Err(format!("{} is not a real directory", existing.display())),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error.to_string()),
-        }
-    }
-    ensure_safe_root(existing)?;
-    let canonical_existing = existing
-        .canonicalize()
-        .map_err(|error| format!("cannot anchor {}: {error}", existing.display()))?;
-    let mut directory = open_anchored_root(&canonical_existing)?;
-    let missing = root
-        .strip_prefix(existing)
-        .map_err(|_| "new root escapes its existing ancestor".to_owned())?
-        .components()
-        .map(|component| match component {
-            Component::Normal(value) => Ok(value.to_os_string()),
-            _ => Err("new root contains a non-relative component".to_owned()),
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    after_anchor()?;
-    for component in missing {
-        match mkdirat(&directory, &component, Mode::from_raw_mode(0o755)) {
-            Ok(()) | Err(Errno::EXIST) => {}
-            Err(error) => {
+            let directory = open_anchored_root(root)?;
+            if file_object_identity(&directory)? != *identity {
                 return Err(format!(
-                    "cannot create root component {component:?}: {error}"
+                    "bundle root {} changed after planning; no changes were written",
+                    root.display()
                 ));
             }
+            after_anchor()?;
+            Ok(directory)
         }
-        directory = File::from(
-            openat(
-                &directory,
-                &component,
-                OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-                Mode::empty(),
-            )
-            .map_err(|error| {
-                format!("cannot open new root component {component:?} safely: {error}")
-            })?,
-        );
+        PlannedRootIdentity::Missing {
+            requested,
+            anchor,
+            anchor_identity,
+            components,
+        } => {
+            if requested != root {
+                return Err("write plan root does not match the requested root".to_owned());
+            }
+            let mut directory = open_anchored_root(anchor)?;
+            if file_object_identity(&directory)? != *anchor_identity {
+                return Err(format!(
+                    "root ancestor {} changed after planning; no changes were written",
+                    anchor.display()
+                ));
+            }
+            after_anchor()?;
+            for component in components {
+                mkdirat(&directory, component, Mode::from_raw_mode(0o755)).map_err(|error| {
+                    if error == Errno::EXIST {
+                        format!(
+                            "root component {component:?} appeared after planning; no changes were written"
+                        )
+                    } else {
+                        format!("cannot create root component {component:?}: {error}")
+                    }
+                })?;
+                directory = File::from(
+                    openat(
+                        &directory,
+                        component,
+                        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+                        Mode::empty(),
+                    )
+                    .map_err(|error| {
+                        format!("cannot open new root component {component:?} safely: {error}")
+                    })?,
+                );
+            }
+            Ok(directory)
+        }
     }
-    Ok(directory)
 }
 
 #[cfg(unix)]
@@ -1523,7 +1678,10 @@ fn apply_anchored_change(root: &File, change: &PlannedChange) -> Result<(), Stri
         .ok_or_else(|| "cannot create the generated parent chain".to_owned())?;
     match &change.expected_content {
         None => create_anchored_file(&parent, &leaf, change),
-        Some(expected) => replace_anchored_file(&parent, &leaf, expected, change),
+        Some(_) => Err(
+            "conditional replacement is unavailable on this Unix platform; no file was changed"
+                .to_owned(),
+        ),
     }
 }
 
@@ -1556,41 +1714,10 @@ fn preflight_anchored_change(root: &File, change: &PlannedChange) -> Result<(), 
                 change.target.display()
             )),
         },
-        Some(expected) => {
-            let mut existing = File::from(
-                openat(
-                    &parent,
-                    &leaf,
-                    OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-                    Mode::empty(),
-                )
-                .map_err(|error| {
-                    format!("cannot revalidate {}: {error}", change.target.display())
-                })?,
-            );
-            if !existing
-                .metadata()
-                .map_err(|error| error.to_string())?
-                .is_file()
-            {
-                return Err(format!(
-                    "{} changed to an unsafe target after planning",
-                    change.target.display()
-                ));
-            }
-            let mut current = String::new();
-            existing
-                .read_to_string(&mut current)
-                .map_err(|error| error.to_string())?;
-            if current == *expected {
-                Ok(())
-            } else {
-                Err(format!(
-                    "{} changed after planning; no replacement was attempted",
-                    change.target.display()
-                ))
-            }
-        }
+        Some(_) => Err(
+            "conditional replacement is unavailable on this Unix platform; no file was changed"
+                .to_owned(),
+        ),
     }
 }
 
@@ -1602,304 +1729,73 @@ fn create_anchored_file(parent: &File, leaf: &OsStr, change: &PlannedChange) -> 
     })
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn create_anchored_file_with_writer(
     parent: &File,
     leaf: &OsStr,
     change: &PlannedChange,
     write_content: impl FnOnce(&mut File) -> Result<(), String>,
 ) -> Result<(), String> {
-    let (temporary_name, mut temporary) = create_anchored_temporary(parent)?;
-    (|| {
-        write_content(&mut temporary)?;
-        temporary.sync_all().map_err(|error| error.to_string())?;
-        publish_anchored_new(parent, &temporary_name, leaf).map_err(|error| {
-            format!(
-                "{} appeared after planning; no file was published: {error}",
-                change.target.display()
-            )
-        })
-    })()
-}
-
-#[cfg(unix)]
-fn replace_anchored_file(
-    parent: &File,
-    leaf: &OsStr,
-    expected: &str,
-    change: &PlannedChange,
-) -> Result<(), String> {
-    replace_anchored_file_with_hook(parent, leaf, expected, change, || Ok(()))
-}
-
-#[cfg(unix)]
-fn replace_anchored_file_with_hook(
-    parent: &File,
-    leaf: &OsStr,
-    expected: &str,
-    change: &PlannedChange,
-    before_exchange: impl FnOnce() -> Result<(), String>,
-) -> Result<(), String> {
-    let mut existing = File::from(
+    let mut temporary = File::from(
         openat(
             parent,
-            leaf,
-            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-            Mode::empty(),
+            ".",
+            OFlags::RDWR | OFlags::TMPFILE | OFlags::CLOEXEC,
+            Mode::from_raw_mode(0o666),
         )
         .map_err(|error| {
-            format!(
-                "cannot revalidate {} through its anchored parent: {error}",
-                change.target.display()
-            )
+            format!("anonymous staging is unavailable in the target directory: {error}")
         })?,
     );
-    if !existing
-        .metadata()
-        .map_err(|error| error.to_string())?
-        .is_file()
-    {
-        return Err(format!(
-            "{} changed to an unsafe target after planning",
+    write_content(&mut temporary)?;
+    temporary.sync_all().map_err(|error| error.to_string())?;
+    linkat(&temporary, "", parent, leaf, AtFlags::EMPTY_PATH).map_err(|error| {
+        format!(
+            "{} appeared after planning; no file was published: {error}",
             change.target.display()
-        ));
-    }
-    let mut current = String::new();
-    existing
-        .read_to_string(&mut current)
-        .map_err(|error| error.to_string())?;
-    if current != expected {
-        return Err(format!(
-            "{} changed after planning; no replacement was attempted",
-            change.target.display()
-        ));
-    }
-    let existing_identity = file_identity(&existing)?;
-
-    let (temporary_name, mut temporary) = create_anchored_temporary(parent)?;
-    let temporary_identity = file_identity(&temporary)?;
-    (|| {
-        temporary
-            .write_all(change.content.as_bytes())
-            .map_err(|error| error.to_string())?;
-        preserve_replacement_metadata(&existing, &temporary)?;
-        temporary.sync_all().map_err(|error| error.to_string())?;
-        before_exchange()?;
-        exchange_anchored_names(parent, &temporary_name, leaf)
-            .map_err(|error| format!("cannot replace {}: {error}", change.target.display()))?;
-
-        let exchanged_matches =
-            anchored_file_matches(parent, &temporary_name, existing_identity, expected);
-        if exchanged_matches {
-            // POSIX has no portable compare-and-unlink primitive. Retain the verified displaced
-            // file under the generated name: unlinking by pathname after a separate identity
-            // check could delete a concurrent actor's entry.
-            return Ok(());
-        }
-
-        exchange_anchored_names(parent, &temporary_name, leaf).map_err(|error| {
-            format!(
-                "{} changed during replacement and the atomic rollback failed: {error}",
-                change.target.display()
-            )
-        })?;
-        if !anchored_file_matches(parent, &temporary_name, temporary_identity, &change.content) {
-            return Err(format!(
-                "{} changed during replacement; the generated temporary file was retained to avoid deleting concurrent data",
-                change.target.display()
-            ));
-        }
-        Err(format!(
-            "{} changed during replacement; the concurrent file was restored and the staged file was retained for safe recovery",
-            change.target.display()
-        ))
-    })()
-}
-
-#[cfg(unix)]
-fn file_identity(file: &File) -> Result<(u64, u64), String> {
-    let metadata = file.metadata().map_err(|error| error.to_string())?;
-    Ok((metadata.dev(), metadata.ino()))
-}
-
-#[cfg(unix)]
-fn anchored_file_matches(
-    parent: &File,
-    leaf: &OsStr,
-    identity: (u64, u64),
-    expected: &str,
-) -> bool {
-    let mut file = match openat(
-        parent,
-        leaf,
-        OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-        Mode::empty(),
-    ) {
-        Ok(file) => File::from(file),
-        Err(_) => return false,
-    };
-    if file_identity(&file).ok() != Some(identity) {
-        return false;
-    }
-    let mut current = String::new();
-    file.read_to_string(&mut current).is_ok() && current == expected
-}
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-fn exchange_anchored_names(parent: &File, left: &OsStr, right: &OsStr) -> Result<(), String> {
-    renameat_with(parent, left, parent, right, RenameFlags::EXCHANGE)
-        .map_err(|error| error.to_string())
-}
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-fn publish_anchored_new(parent: &File, temporary: &OsStr, leaf: &OsStr) -> Result<(), String> {
-    renameat_with(parent, temporary, parent, leaf, RenameFlags::NOREPLACE)
-        .map_err(|error| error.to_string())
-}
-
-#[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
-fn publish_anchored_new(_parent: &File, _temporary: &OsStr, _leaf: &OsStr) -> Result<(), String> {
-    Err("atomic no-replace publication is unsupported on this Unix platform".to_owned())
-}
-
-#[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
-fn exchange_anchored_names(_parent: &File, _left: &OsStr, _right: &OsStr) -> Result<(), String> {
-    Err("atomic compare-and-replace is unsupported on this Unix platform".to_owned())
-}
-
-#[cfg(unix)]
-fn create_anchored_temporary(parent: &File) -> Result<(OsString, File), String> {
-    static NEXT_TEMPORARY: AtomicU64 = AtomicU64::new(0);
-    for _ in 0..128 {
-        let sequence = NEXT_TEMPORARY.fetch_add(1, Ordering::Relaxed);
-        let name = OsString::from(format!(
-            ".okf-workbench-{}-{sequence}.tmp",
-            std::process::id()
-        ));
-        match openat(
-            parent,
-            &name,
-            OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-            Mode::from_raw_mode(0o666),
-        ) {
-            Ok(file) => return Ok((name, File::from(file))),
-            Err(Errno::EXIST) => {}
-            Err(error) => return Err(format!("cannot reserve temporary file name: {error}")),
-        }
-    }
-    Err("cannot reserve a unique anchored temporary file name".to_owned())
-}
-
-#[cfg(target_os = "linux")]
-fn preserve_replacement_metadata(existing: &File, temporary: &File) -> Result<(), String> {
-    let source = existing.metadata().map_err(|error| error.to_string())?;
-    let destination = temporary.metadata().map_err(|error| error.to_string())?;
-    let owner = (source.uid() != destination.uid()).then(|| Uid::from_raw(source.uid()));
-    let group = (source.gid() != destination.gid()).then(|| Gid::from_raw(source.gid()));
-    if owner.is_some() || group.is_some() {
-        fchown(temporary, owner, group)
-            .map_err(|error| format!("cannot preserve replacement owner/group: {error}"))?;
-    }
-
-    let source_xattrs = linux_selected_xattrs(existing)?;
-    let destination_xattrs = linux_selected_xattrs(temporary)?;
-    for name in destination_xattrs.keys() {
-        if !source_xattrs.contains_key(name) {
-            let name = std::ffi::CString::new(name.as_slice())
-                .map_err(|_| "replacement xattr name contains NUL".to_owned())?;
-            fremovexattr(temporary, name.as_c_str()).map_err(|error| {
-                format!(
-                    "cannot remove inherited replacement xattr {:?}: {error}",
-                    name
-                )
-            })?;
-        }
-    }
-    for (name, value) in &source_xattrs {
-        if destination_xattrs.get(name) == Some(value) {
-            continue;
-        }
-        let name = std::ffi::CString::new(name.as_slice())
-            .map_err(|_| "source xattr name contains NUL".to_owned())?;
-        fsetxattr(temporary, name.as_c_str(), value, XattrFlags::empty())
-            .map_err(|error| format!("cannot preserve replacement xattr {:?}: {error}", name))?;
-    }
-
-    fchmod(temporary, Mode::from_raw_mode(source.mode() & 0o7777))
-        .map_err(|error| format!("cannot preserve replacement mode: {error}"))
-}
-
-#[cfg(target_os = "linux")]
-fn linux_selected_xattrs(file: &File) -> Result<BTreeMap<Vec<u8>, Vec<u8>>, String> {
-    const MAX_XATTR_BYTES: usize = 64 * 1024;
-    let mut names = vec![0u8; MAX_XATTR_BYTES];
-    let names_length = flistxattr(file, &mut names[..])
-        .map_err(|error| format!("cannot list replacement xattrs: {error}"))?;
-    names.truncate(names_length);
-    let mut selected = BTreeMap::new();
-    let mut start = 0usize;
-    while start < names.len() {
-        let Some(relative_end) = names[start..].iter().position(|byte| *byte == 0) else {
-            return Err("replacement xattr list is not NUL-terminated".to_owned());
-        };
-        let end = start + relative_end;
-        if end == start {
-            return Err("replacement xattr list contains an empty name".to_owned());
-        }
-        let name = &names[start..end];
-        if is_preserved_linux_xattr(name) {
-            let c_name = std::ffi::CString::new(name)
-                .map_err(|_| "replacement xattr name contains NUL".to_owned())?;
-            let mut value = vec![0u8; MAX_XATTR_BYTES];
-            let value_length = fgetxattr(file, c_name.as_c_str(), &mut value[..])
-                .map_err(|error| format!("cannot read replacement xattr {c_name:?}: {error}"))?;
-            value.truncate(value_length);
-            selected.insert(name.to_vec(), value);
-        }
-        start = end + 1;
-    }
-    Ok(selected)
-}
-
-#[cfg(target_os = "linux")]
-fn is_preserved_linux_xattr(name: &[u8]) -> bool {
-    name.starts_with(b"user.") || name == b"system.posix_acl_access" || name == b"security.selinux"
-}
-
-#[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
-fn preserve_replacement_metadata(existing: &File, temporary: &File) -> Result<(), String> {
-    temporary
-        .set_permissions(
-            existing
-                .metadata()
-                .map_err(|error| error.to_string())?
-                .permissions(),
         )
-        .map_err(|error| error.to_string())
+    })
 }
 
 #[cfg(target_os = "macos")]
-fn preserve_replacement_metadata(existing: &File, temporary: &File) -> Result<(), String> {
+fn create_anchored_file_with_writer(
+    parent: &File,
+    leaf: &OsStr,
+    change: &PlannedChange,
+    write_content: impl FnOnce(&mut File) -> Result<(), String>,
+) -> Result<(), String> {
     use std::os::fd::AsRawFd;
+    use std::os::unix::ffi::OsStrExt;
 
-    // SAFETY: both descriptors remain open regular files for the duration of this call, and a
-    // null copyfile state asks macOS to allocate and release its internal state for this copy.
-    let result = unsafe {
-        libc::fcopyfile(
-            existing.as_raw_fd(),
-            temporary.as_raw_fd(),
-            std::ptr::null_mut(),
-            libc::COPYFILE_METADATA,
-        )
-    };
+    let mut temporary = tempfile::tempfile().map_err(|error| error.to_string())?;
+    write_content(&mut temporary)?;
+    temporary.sync_all().map_err(|error| error.to_string())?;
+    let leaf = std::ffi::CString::new(leaf.as_bytes())
+        .map_err(|_| "generated filename contains NUL".to_owned())?;
+    // SAFETY: both descriptors are live, `leaf` is NUL-terminated, and flags=0 requests the
+    // platform's no-overwrite clone. The source is an already unlinked system temporary file, so
+    // no bundle-visible staging pathname can accumulate after interruption.
+    let result =
+        unsafe { libc::fclonefileat(temporary.as_raw_fd(), parent.as_raw_fd(), leaf.as_ptr(), 0) };
     if result == 0 {
         Ok(())
     } else {
         Err(format!(
-            "cannot preserve replacement metadata: {}",
+            "{} appeared after planning or atomic clone publication is unavailable: {}",
+            change.target.display(),
             std::io::Error::last_os_error()
         ))
     }
+}
+
+#[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
+fn create_anchored_file_with_writer(
+    _parent: &File,
+    _leaf: &OsStr,
+    _change: &PlannedChange,
+    _write_content: impl FnOnce(&mut File) -> Result<(), String>,
+) -> Result<(), String> {
+    Err("anonymous atomic create publication is unavailable on this Unix platform".to_owned())
 }
 
 #[cfg(all(not(unix), not(windows)))]
@@ -2014,6 +1910,7 @@ fn is_trusted_platform_path_alias(_path: &Path) -> bool {
     false
 }
 
+#[cfg(all(not(unix), not(windows)))]
 fn ensure_plannable_root(root: &Path) -> Result<(), String> {
     let mut candidate = root;
     loop {
@@ -2226,27 +2123,6 @@ mod tests {
         assert!(validate_relative_path(&format!("{}.md", "a".repeat(252))).is_ok());
     }
 
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn linux_metadata_selector_excludes_content_sensitive_security_xattrs() {
-        for name in [
-            b"user.okf-workbench".as_slice(),
-            b"system.posix_acl_access",
-            b"security.selinux",
-        ] {
-            assert!(is_preserved_linux_xattr(name));
-        }
-        for name in [
-            b"security.capability".as_slice(),
-            b"security.ima",
-            b"security.evm",
-            b"trusted.overlay.origin",
-            b"system.posix_acl_default",
-        ] {
-            assert!(!is_preserved_linux_xattr(name));
-        }
-    }
-
     #[test]
     fn changed_target_is_rejected_after_planning() {
         let directory = tempdir().unwrap();
@@ -2307,6 +2183,34 @@ mod tests {
         assert!(!moved.join("new.md").exists());
     }
 
+    #[test]
+    fn root_replacement_during_confirmation_fails_before_any_write() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        let planned_root = directory.path().join("planned-bundle");
+        fs::create_dir(&root).unwrap();
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "safe content\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+
+        // This is the same gap as an interactive plan/confirmation/apply sequence.
+        fs::rename(&root, &planned_root).unwrap();
+        fs::create_dir(&root).unwrap();
+
+        let error = apply_plan(&root, &plan).unwrap_err();
+
+        assert!(error.contains("changed after planning"), "{error}");
+        assert!(!root.join("new.md").exists());
+        assert!(!planned_root.join("new.md").exists());
+    }
+
     #[cfg(unix)]
     #[test]
     fn missing_root_symlink_interposition_fails_before_any_outside_write() {
@@ -2317,7 +2221,8 @@ mod tests {
         let outside = directory.path().join("outside");
         fs::create_dir(&outside).unwrap();
 
-        let result = open_or_create_anchored_root_with_hook(&root, || {
+        let planned = capture_planned_root_identity(&root).unwrap();
+        let result = open_or_create_anchored_root_with_hook(&root, &planned, || {
             symlink(&outside, &root).map_err(|error| error.to_string())
         });
 
@@ -2389,125 +2294,205 @@ mod tests {
         assert_eq!(fs::read_to_string(outside).unwrap(), "outside\n");
     }
 
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
-    fn atomic_exchange_restores_a_regular_leaf_swapped_after_verification() {
+    fn update_plan_fails_before_any_create_or_metadata_change() {
         let directory = tempdir().unwrap();
         let root = directory.path().join("bundle");
         fs::create_dir(&root).unwrap();
-        let target = root.join("target.md");
-        let displaced_original = root.join("original.md");
+        let target = root.join("z-existing.md");
         fs::write(&target, "before\n").unwrap();
+        let before = fs::metadata(&target).unwrap();
         let plan = plan_files(
             &root,
-            vec![RenderedFile {
-                relative_path: "target.md".to_owned(),
-                encoding: "utf8",
-                content: "generated\n".to_owned(),
-            }],
+            vec![
+                RenderedFile {
+                    relative_path: "a-new.md".to_owned(),
+                    encoding: "utf8",
+                    content: "new\n".to_owned(),
+                },
+                RenderedFile {
+                    relative_path: "z-existing.md".to_owned(),
+                    encoding: "utf8",
+                    content: "after\n".to_owned(),
+                },
+            ],
             PlanMode::MergeAgent,
         )
         .unwrap();
-        let root_directory = open_anchored_root(&root).unwrap();
-        let (parent, leaf) = open_anchored_parent(&root_directory, "target.md", false)
-            .unwrap()
-            .unwrap();
 
-        let result = replace_anchored_file_with_hook(&parent, &leaf, "before\n", &plan[0], || {
-            fs::rename(&target, &displaced_original).map_err(|error| error.to_string())?;
-            fs::write(&target, "concurrent\n").map_err(|error| error.to_string())
-        });
+        let error = apply_plan(&root, &plan).unwrap_err();
 
-        assert!(result.is_err());
-        assert_eq!(fs::read_to_string(&target).unwrap(), "concurrent\n");
-        assert_eq!(fs::read_to_string(displaced_original).unwrap(), "before\n");
-        let retained = fs::read_dir(root)
-            .unwrap()
-            .filter_map(Result::ok)
-            .find(|entry| {
-                entry
-                    .file_name()
-                    .to_string_lossy()
-                    .starts_with(".okf-workbench-")
-            })
-            .unwrap();
-        assert_eq!(fs::read_to_string(retained.path()).unwrap(), "generated\n");
+        assert!(error.contains("generation-CAS"), "{error}");
+        assert_eq!(fs::read_to_string(&target).unwrap(), "before\n");
+        assert_eq!(
+            fs::metadata(&target).unwrap().modified().unwrap(),
+            before.modified().unwrap()
+        );
+        assert!(!root.join("a-new.md").exists());
+        assert_eq!(fs::read_dir(root).unwrap().count(), 1);
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
-    fn atomic_exchange_retains_the_verified_displaced_file_instead_of_racy_cleanup() {
+    fn failed_create_write_has_no_visible_staging_or_partial_leaf() {
         let directory = tempdir().unwrap();
         let root = directory.path().join("bundle");
         fs::create_dir(&root).unwrap();
-        let target = root.join("target.md");
-        fs::write(&target, "before\n").unwrap();
-        let change = PlannedChange {
-            target: target.clone(),
-            relative_path: "target.md".to_owned(),
-            operation: "update",
-            byte_length: 6,
-            content: "after\n".to_owned(),
-            expected_content: Some("before\n".to_owned()),
-        };
-        let root_directory = open_anchored_root(&root).unwrap();
-        let (parent, leaf) = open_anchored_parent(&root_directory, "target.md", false)
-            .unwrap()
-            .unwrap();
-
-        replace_anchored_file(&parent, &leaf, "before\n", &change).unwrap();
-
-        assert_eq!(fs::read_to_string(target).unwrap(), "after\n");
-        let retained = fs::read_dir(root)
-            .unwrap()
-            .filter_map(Result::ok)
-            .find(|entry| {
-                entry
-                    .file_name()
-                    .to_string_lossy()
-                    .starts_with(".okf-workbench-")
-            })
-            .unwrap();
-        assert_eq!(fs::read_to_string(retained.path()).unwrap(), "before\n");
-    }
-
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
-    #[test]
-    fn failed_create_write_never_publishes_a_partial_leaf() {
-        let directory = tempdir().unwrap();
-        let root = directory.path().join("bundle");
-        fs::create_dir(&root).unwrap();
-        let change = PlannedChange {
-            target: root.join("new.md"),
-            relative_path: "new.md".to_owned(),
-            operation: "create",
-            byte_length: 9,
-            content: "complete\n".to_owned(),
-            expected_content: None,
-        };
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "complete\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+        let change = &plan[0];
         let root_directory = open_anchored_root(&root).unwrap();
         let (parent, leaf) = open_anchored_parent(&root_directory, "new.md", false)
             .unwrap()
             .unwrap();
 
-        let result = create_anchored_file_with_writer(&parent, &leaf, &change, |file| {
+        let result = create_anchored_file_with_writer(&parent, &leaf, change, |file| {
             file.write_all(b"partial").unwrap();
+            assert!(!root.join("new.md").exists());
+            assert_eq!(fs::read_dir(&root).unwrap().count(), 0);
             Err("injected write failure".to_owned())
         });
 
         assert!(result.is_err());
         assert!(!root.join("new.md").exists());
-        let retained = fs::read_dir(root)
+        assert_eq!(fs::read_dir(root).unwrap().count(), 0);
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn leaf_appearing_after_staging_is_never_overwritten() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        fs::create_dir(&root).unwrap();
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+        let root_directory = open_anchored_root(&root).unwrap();
+        let (parent, leaf) = open_anchored_parent(&root_directory, "new.md", false)
             .unwrap()
-            .filter_map(Result::ok)
-            .find(|entry| {
-                entry
-                    .file_name()
-                    .to_string_lossy()
-                    .starts_with(".okf-workbench-")
-            })
             .unwrap();
-        assert_eq!(fs::read(retained.path()).unwrap(), b"partial");
+
+        let result = create_anchored_file_with_writer(&parent, &leaf, &plan[0], |file| {
+            file.write_all(b"generated\n").unwrap();
+            fs::write(root.join("new.md"), "concurrent\n").map_err(|error| error.to_string())
+        });
+
+        assert!(result.is_err());
+        assert_eq!(
+            fs::read_to_string(root.join("new.md")).unwrap(),
+            "concurrent\n"
+        );
+        assert_eq!(fs::read_dir(root).unwrap().count(), 1);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_existing_staging_reservation_is_not_removed_or_overwritten() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        fs::create_dir(&root).unwrap();
+        let reservation = root.join(".okf-workbench-staging.tmp");
+        fs::write(&reservation, "other process\n").unwrap();
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+
+        let error = create_windows_file(&root, OsStr::new("new.md"), &plan[0]).unwrap_err();
+
+        assert!(error.contains("already exists"), "{error}");
+        assert_eq!(fs::read_to_string(reservation).unwrap(), "other process\n");
+        assert!(!root.join("new.md").exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_handled_write_failure_removes_its_staging_reservation() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        fs::create_dir(&root).unwrap();
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+
+        let result = create_windows_file_with_writer(
+            &root,
+            OsStr::new("new.md"),
+            &plan[0],
+            |file| {
+                file.write_all(b"partial").unwrap();
+                Err("injected write failure".to_owned())
+            },
+            || Ok(()),
+        );
+
+        assert!(result.is_err());
+        assert!(!root.join("new.md").exists());
+        assert!(!root.join(".okf-workbench-staging.tmp").exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_leaf_appearing_after_staging_is_never_overwritten() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        fs::create_dir(&root).unwrap();
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+
+        let result = create_windows_file_with_writer(
+            &root,
+            OsStr::new("new.md"),
+            &plan[0],
+            |file| {
+                file.write_all(b"generated\n")
+                    .map_err(|error| error.to_string())
+            },
+            || fs::write(root.join("new.md"), "concurrent\n").map_err(|error| error.to_string()),
+        );
+
+        assert!(result.is_err());
+        assert_eq!(
+            fs::read_to_string(root.join("new.md")).unwrap(),
+            "concurrent\n"
+        );
+        assert!(!root.join(".okf-workbench-staging.tmp").exists());
     }
 
     #[test]

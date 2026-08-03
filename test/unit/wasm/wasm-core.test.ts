@@ -34,6 +34,7 @@ const fixtureNames = [
   'yaml-standard-tags',
 ];
 let core: OkfCore;
+let wasmBytes: Uint8Array<ArrayBuffer>;
 
 beforeAll(() => {
   execFileSync(
@@ -49,9 +50,10 @@ beforeAll(() => {
     ],
     { stdio: 'pipe' },
   );
-  core = createWasmOkfCore(
+  wasmBytes = Uint8Array.from(
     readFileSync(resolve('target/wasm32-unknown-unknown/release/okf_wasm.wasm')),
   );
+  core = createWasmOkfCore(wasmBytes);
 }, 60_000);
 
 describe('Rust/Wasm core boundary', () => {
@@ -491,6 +493,152 @@ describe('Rust/Wasm core boundary', () => {
     );
   });
 
+  test('graph and inspect apply the JavaScript safe-integer revision contract', () => {
+    for (const revision of [0, Number.MAX_SAFE_INTEGER]) {
+      const input = { ...inputFor([], 'fixture:/revision-boundary'), revision };
+      expect(core.inspect(input, '2026-07-22T12:00:00Z')).toEqual(
+        typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'),
+      );
+      expect(rawWasmRequest({ operation: 'graph', input }).result).toMatchObject({ revision });
+    }
+
+    for (const revision of [-1, -0.5]) {
+      const input = { ...inputFor([], 'fixture:/revision-boundary'), revision };
+      expectGraphLimitParity(input);
+      expect(rawWasmRequest({ operation: 'graph', input }).error).toEqual({
+        code: 'graph-resource-limit',
+        message: 'The graph revision must be a non-negative safe integer.',
+      });
+      expect(
+        rawWasmRequest({
+          operation: 'inspect',
+          input: { bundle: input, now: '2026-07-22T12:00:00Z', failures: [] },
+        }).error,
+      ).toEqual({
+        code: 'graph-resource-limit',
+        message: 'The graph revision must be a non-negative safe integer.',
+      });
+    }
+  });
+
+  test('orders equal-identity external failures by reason like the TypeScript oracle', () => {
+    const input = inputFor([], 'fixture:/failure-order');
+    const failure = {
+      kind: 'parse-failure' as const,
+      uri: 'fixture:/failure-order/same.md',
+      bundlePath: 'same.md',
+      message: 'Same provider failure.',
+    };
+    const failures: readonly ParseFailure[] = [
+      { ...failure, reason: 'read' },
+      { ...failure, reason: 'decode' },
+    ];
+    const actual = core.inspect(input, '2026-07-22T12:00:00Z', failures);
+    const expected = typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z', failures);
+    expect(actual).toEqual(expected);
+    expect(actual.bundle.failures.map(({ reason }) => reason)).toEqual(['decode', 'read']);
+  });
+
+  test('orders astral and BMP external failure identities by UTF-16 code units', () => {
+    const input = inputFor([], 'fixture:/failure-utf16-order');
+    const failure = {
+      kind: 'parse-failure' as const,
+      reason: 'read' as const,
+      message: 'Provider failure.',
+    };
+    const pathFailures: readonly ParseFailure[] = [
+      { ...failure, uri: 'fixture:/same', bundlePath: '\uE000.md' },
+      { ...failure, uri: 'fixture:/same', bundlePath: '😀.md' },
+    ];
+    const pathActual = core.inspect(input, '2026-07-22T12:00:00Z', pathFailures);
+    expect(pathActual).toEqual(
+      typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z', pathFailures),
+    );
+    expect(pathActual.bundle.failures.map(({ bundlePath }) => bundlePath)).toEqual([
+      '😀.md',
+      '\uE000.md',
+    ]);
+
+    const uriFailures: readonly ParseFailure[] = [
+      { ...failure, uri: 'fixture:/\uE000', bundlePath: 'same.md' },
+      { ...failure, uri: 'fixture:/😀', bundlePath: 'same.md' },
+    ];
+    const uriActual = core.inspect(input, '2026-07-22T12:00:00Z', uriFailures);
+    expect(uriActual).toEqual(
+      typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z', uriFailures),
+    );
+    expect(uriActual.bundle.failures.map(({ uri }) => uri)).toEqual([
+      'fixture:/😀',
+      'fixture:/\uE000',
+    ]);
+  });
+
+  test('deduplicates external failure findings by offsets rather than line metadata', () => {
+    const input = inputFor([], 'fixture:/finding-range-dedupe');
+    const failure = {
+      kind: 'parse-failure' as const,
+      uri: 'fixture:/finding-range-dedupe/same.md',
+      bundlePath: 'same.md',
+      reason: 'read' as const,
+      message: 'Same ranged failure.',
+    };
+    const failures: readonly ParseFailure[] = [
+      {
+        ...failure,
+        range: {
+          start: { offset: 4, line: 1, character: 2 },
+          end: { offset: 8, line: 1, character: 6 },
+        },
+      },
+      {
+        ...failure,
+        range: {
+          start: { offset: 4, line: 99, character: 40 },
+          end: { offset: 8, line: 100, character: 1 },
+        },
+      },
+    ];
+    const actual = core.inspect(input, '2026-07-22T12:00:00Z', failures);
+    const expected = typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z', failures);
+    expect(actual).toEqual(expected);
+    expect(actual.bundle.failures).toHaveLength(2);
+    expect(actual.findings).toHaveLength(1);
+  });
+
+  test('fails closed or sanitizes lone surrogates in external parse failures', () => {
+    const input = inputFor([], 'fixture:/external-failure-unicode');
+    const failure: ParseFailure = {
+      kind: 'parse-failure',
+      uri: 'fixture:/external-failure-unicode/failure.md',
+      bundlePath: 'failure.md',
+      reason: 'read',
+      message: 'Provider failure.',
+    };
+    expect(() =>
+      core.inspect(input, '2026-07-22T12:00:00Z', [{ ...failure, uri: `${failure.uri}\uD800` }]),
+    ).toThrowError(
+      new GraphResourceLimitError('Parse failure URI contains an unpaired UTF-16 surrogate.'),
+    );
+    expect(() =>
+      core.inspect(input, '2026-07-22T12:00:00Z', [
+        { ...failure, bundlePath: `${failure.bundlePath}\uD800` },
+      ]),
+    ).toThrowError(
+      new GraphResourceLimitError('Parse failure path contains an unpaired UTF-16 surrogate.'),
+    );
+
+    const sanitizedMessage = 'Parse failure detail contains an unpaired UTF-16 surrogate.';
+    const actual = core.inspect(input, '2026-07-22T12:00:00Z', [
+      { ...failure, message: `${failure.message}\uD800` },
+    ]);
+    const expected = typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z', [
+      { ...failure, message: sanitizedMessage },
+    ]);
+    expect(actual).toEqual(expected);
+    expect(actual.bundle.failures[0]?.message).toBe(sanitizedMessage);
+    expect(JSON.stringify(actual)).not.toContain('\\ud800');
+  });
+
   test('validation quoting, ordering, trimming, and date-only reference times match', () => {
     const rootUri = 'fixture:/validation-edge-parity';
     const longId = `${'a'.repeat(158)}😀b`;
@@ -798,12 +946,25 @@ describe('Rust/Wasm core boundary', () => {
       ['multiline-plain-flow-lookalike.md', 'custom: word [\n  ?x\n'],
       ['deferred-plain-flow-lookalike.md', 'custom:\n  word [ *x\n'],
       ['tagged-deferred-plain-flow-lookalike.md', 'custom: !!str\n  word [ !ostr\n'],
+      ['leading-question-plain-flow-lookalike.md', 'custom: ?x [ :y\n'],
+      ['leading-colon-plain-tag-lookalike.md', 'custom: :x [ !!str 0xF\n'],
+      ['leading-dash-plain-set-lookalike.md', 'custom: -x [ !!set { ? a }\n'],
+      ['leading-question-plain-alias-lookalike.md', 'custom: ?x [ *x\n'],
       [
         'flow-double-colon-plain-scalar.md',
         'verified: { by: provider::region/model::v2, at: 2026-07-22T12:00:00Z }\n',
       ],
       ['tight-flow-sequence-value.md', 'custom: [a:[b]]\n'],
       ['tight-flow-mapping-value.md', 'custom: [a:{b}]\n'],
+      ['tight-flow-leading-double-colon.md', 'custom: [::x]\n'],
+      ['tight-flow-leading-colon-with-colon.md', 'custom: [:x:y]\n'],
+      ['tight-flow-key-ending-colon.md', 'custom: {a:: b}\n'],
+      ['tight-flow-question-with-colons.md', 'custom: [?x::y]\n'],
+      ['tight-flow-map-question-colon.md', 'custom: {?a:b}\n'],
+      ['tight-flow-map-colon-value.md', 'custom: {a: ::b}\n'],
+      ['mixed-tight-flow-replacement-order.md', 'custom: {?a:b}\nother: [::x]\nmore: {?c:d}\n'],
+      ['duplicate-block-boolean-key.md', 'custom:\n  true: one\n  true: two\n'],
+      ['nonstring-flow-sequence-key-range.md', 'custom: {[a]:a}\n'],
       ['plain-fake-anchor.md', 'literal: prefix &a suffix\nbefore: *a\n'],
       ['quoted-fake-set.md', 'literal: "!!set { ? a: b }"\n'],
       ['escaped-quoted-fake-duplicate-set.md', 'literal: "x \\" y: !!set { ? x, ? x }"\n'],
@@ -1216,6 +1377,32 @@ describe('Rust/Wasm core boundary', () => {
       ['scalar-string-tagged-flow-map.md', 'custom: !!str { child: value }\n'],
       ['scalar-binary-tagged-flow-sequence.md', 'custom: !!binary [one, two]\n'],
       ['scalar-timestamp-tagged-flow-map.md', 'custom: !!timestamp { child: value }\n'],
+      ['scalar-bool-tagged-flow-sequence.md', 'custom: !!bool [true, false]\n'],
+      ['scalar-null-tagged-flow-map.md', 'custom: !!null {child: value}\n'],
+      ['tagged-string-nonfinite-sequence.md', 'items:\n  - !!str .inf\n'],
+      ['deferred-tagged-string-nonfinite.md', 'custom: !!str\n  .inf\n'],
+      ['collection-tagged-string-nonfinite-sequence.md', 'custom: !!str\n  - .inf\n'],
+      ['collection-tagged-string-nonfinite-mapping.md', 'custom: !!str\n  child: .inf\n'],
+      [
+        'collection-tagged-anchor-nonfinite-sequence.md',
+        'custom: !!str\n  - &a\n    .inf\ncopy: *a\n',
+      ],
+      [
+        'collection-tagged-anchor-nonfinite-mapping.md',
+        'custom: !!str\n  child: &a\n    .inf\ncopy: *a\n',
+      ],
+      [
+        'collection-member-own-deferred-string-tag.md',
+        'custom: !!str\n  - &a\n    !!str\n    .inf\ncopy: *a\n',
+      ],
+      [
+        'split-anchor-valid-timestamp.md',
+        'custom: &a # property\n  !!timestamp # property\n  2001-2-3T4:5:6Z\ncopy: *a\n',
+      ],
+      [
+        'standalone-anchor-invalid-timestamp.md',
+        'custom:\n  &a\n  !!timestamp\n  plain\ncopy: *a\n',
+      ],
       ['scalar-integer-tagged-block-map.md', 'custom: !!int\n  child: value\n'],
       ['scalar-string-tagged-block-sequence.md', 'custom: !!str\n  - one\n  - two\n'],
       ['scalar-integer-boolean.md', 'custom: !!int true\n'],
@@ -1632,6 +1819,47 @@ describe('Rust/Wasm core boundary', () => {
     );
   });
 
+  test('tight-flow omitted values match the TypeScript oracle across 45 shape and line-ending cases', () => {
+    const shapes = [
+      '[value:]',
+      '{a:}',
+      '[value:, next]',
+      '[first, value:]',
+      '{a:, b: value}',
+      '{a: value, b:}',
+      '[[value:]]',
+      '[{a:}]',
+      '{outer: [value:]}',
+      '{outer: {a:}}',
+      '[a:[b], value:]',
+      '[a:{b}, value:]',
+      '{actor: provider::region/model::v2, omitted:}',
+      '[before,\n  value:\n]',
+      '{before: value,\n  omitted:\n}',
+    ] as const;
+    const lineEndings = [
+      ['lf', '\n'],
+      ['crlf', '\r\n'],
+      ['cr', '\r'],
+    ] as const;
+    expect(shapes).toHaveLength(15);
+    for (const [shapeIndex, shape] of shapes.entries()) {
+      for (const [endingName, lineEnding] of lineEndings) {
+        const path = `tight-omitted-${String(shapeIndex).padStart(2, '0')}-${endingName}.md`;
+        const content = concept('', `custom: ${shape}\n`).replaceAll('\n', lineEnding);
+        const input = inputFor([[path, content]], `fixture:/yaml-parity/${path}`);
+        const actual = core.inspect(input, '2026-07-22T12:00:00Z');
+        expect(actual, path).toEqual(typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'));
+        if (endingName === 'lf' && shapeIndex < 2) {
+          expect(actual.bundle.failures, path).toEqual([]);
+          expect(actual.bundle.concepts[0]?.frontmatter.raw.custom, path).toEqual(
+            shapeIndex === 0 ? [{ value: null }] : { a: null },
+          );
+        }
+      }
+    }
+  });
+
   test('matches Markdown definition limits and multiline link labels', () => {
     const exactDefinitionBody = Array.from(
       { length: 5_000 },
@@ -1742,6 +1970,66 @@ describe('Rust/Wasm core boundary', () => {
       ['dotless-reference-normalization.md', '[I]\n\n[ı]: target.md\n'],
       ['dotted-reference-normalization.md', '[İ]\n\n[i]: target.md\n'],
       ['nfc-reference-normalization.md', '[é]\n\n[e\u0301]: target.md\n'],
+      [
+        'canonical-first-definition-wins.md',
+        '[i]: first.md\n[middle]: middle.md\n[ı]: second.md\n\n[ı]\n',
+      ],
+      [
+        'casefold-first-definition-wins.md',
+        '[SS]: first.md\n[middle]: middle.md\n[ß]: second.md\n\n[ß]\n',
+      ],
+      [
+        'large-valid-reference-expansion.md',
+        `${'[x]\n'.repeat(1_025)}\n[x]: x "${'t'.repeat(2_045)}"\n`,
+      ],
+      [
+        'unused-definition-title.md',
+        `${'[missing]\n'.repeat(1_025)}\n[unused]: x "${'t'.repeat(2_045)}"\n`,
+      ],
+      [
+        'paragraph-custom-html-attention-limit.md',
+        `paragraph\n<x-custom data-value="ok">\n${'*a* '.repeat(1_025)}\n`,
+      ],
+      ['lazy-indented-attention-limit.md', `paragraph\n    ${'*a* '.repeat(1_025)}\n`],
+      ['multiline-code-span-attention-lookalike.md', `\`\`code\n${'*a* '.repeat(1_025)}\n\`\`\n`],
+      ['autolink-attention-lookalike.md', `<https://example.test/${'_'.repeat(1_025)}>\n`],
+      [
+        'inline-html-attribute-attention-lookalike.md',
+        `<span data-value="${'_'.repeat(1_025)}">text</span>\n`,
+      ],
+      ['inline-link-target-attention-lookalike.md', `[x](target-${'_'.repeat(1_025)}.md)\n`],
+      [
+        'duplicate-multiline-definition-target-limit.md',
+        `[d]: x\n[d]: ${'a'.repeat(2_049)} "first\n second"\n`,
+      ],
+      ['inline-link-label-limit.md', `[${'x'.repeat(513)}](i)\n`],
+      ['inline-link-target-limit.md', `[x](${'a'.repeat(2_049)})\n`],
+      ['reference-link-label-limit.md', `[${'x'.repeat(513)}][d]\n\n[d]: i\n`],
+      ['reference-link-target-limit.md', `[x][d]\n\n[d]: ${'a'.repeat(2_049)}\n`],
+      ['inline-image-label-limit.md', `![${'x'.repeat(513)}](i)\n`],
+      ['inline-image-target-limit.md', `![x](${'a'.repeat(2_049)})\n`],
+      ['reference-image-label-limit.md', `![${'x'.repeat(513)}][d]\n\n[d]: i\n`],
+      ['reference-image-target-limit.md', `![x][d]\n\n[d]: ${'a'.repeat(2_049)}\n`],
+      [
+        'opaque-media-limits.md',
+        `\`![${'x'.repeat(513)}](${'a'.repeat(2_049)})\`\n\n\`[${'x'.repeat(513)}](${'a'.repeat(2_049)})\`\n`,
+      ],
+      [
+        'fenced-opaque-media-limits.md',
+        `\`\`\`\n![${'x'.repeat(513)}](${'a'.repeat(2_049)})\n[${'x'.repeat(513)}](${'a'.repeat(2_049)})\n\`\`\`\n`,
+      ],
+      [
+        'html-opaque-media-limits.md',
+        `<div>\n![${'x'.repeat(513)}](${'a'.repeat(2_049)})\n[${'x'.repeat(513)}](${'a'.repeat(2_049)})\n</div>\n`,
+      ],
+      [
+        'indented-opaque-media-limits.md',
+        `    ![${'x'.repeat(513)}](${'a'.repeat(2_049)})\n    [${'x'.repeat(513)}](${'a'.repeat(2_049)})\n`,
+      ],
+      [
+        'reference-opaque-media-limits.md',
+        `\`![${'x'.repeat(513)}][d]\`\n\n\`[${'x'.repeat(513)}][d]\`\n\n[d]: target.md\n`,
+      ],
     ] as const;
     for (const [path, body] of cases) {
       const input = inputFor([[path, concept(body)]], `fixture:/markdown-parity/${path}`);
@@ -1772,6 +2060,46 @@ describe('Rust/Wasm core boundary', () => {
     expect(
       core.inspect(referenceExpansionInput, '2026-07-22T12:00:00Z').bundle.concepts[0]?.links,
     ).toHaveLength(50);
+    const largeExpansionInput = inputFor(
+      [
+        [
+          'large-valid-reference-expansion.md',
+          concept(`${'[x]\n'.repeat(1_025)}\n[x]: x "${'t'.repeat(2_045)}"\n`),
+        ],
+      ],
+      'fixture:/markdown-parity/large-valid-reference-expansion.md',
+    );
+    expect(
+      core.inspect(largeExpansionInput, '2026-07-22T12:00:00Z').bundle.concepts[0]?.links,
+    ).toHaveLength(1_025);
+    const firstWinsInput = inputFor(
+      [
+        [
+          'canonical-first-definition-wins.md',
+          concept('[i]: first.md\n[middle]: middle.md\n[ı]: second.md\n\n[ı]\n'),
+        ],
+      ],
+      'fixture:/markdown-parity/canonical-first-definition-wins.md',
+    );
+    expect(
+      core.inspect(firstWinsInput, '2026-07-22T12:00:00Z').bundle.concepts[0]?.links[0]?.rawTarget,
+    ).toBe('first.md');
+    for (const [path, body] of [
+      [
+        'paragraph-custom-html-attention-limit.md',
+        `paragraph\n<x-custom data-value="ok">\n${'*a* '.repeat(1_025)}\n`,
+      ],
+      ['lazy-indented-attention-limit.md', `paragraph\n    ${'*a* '.repeat(1_025)}\n`],
+      ['inline-image-label-limit.md', `![${'x'.repeat(513)}](i)\n`],
+      ['inline-image-target-limit.md', `![x](${'a'.repeat(2_049)})\n`],
+      ['reference-image-label-limit.md', `![${'x'.repeat(513)}][d]\n\n[d]: i\n`],
+      ['reference-image-target-limit.md', `![x][d]\n\n[d]: ${'a'.repeat(2_049)}\n`],
+    ] as const) {
+      const input = inputFor([[path, concept(body)]], `fixture:/markdown-parity/${path}`);
+      expect(core.inspect(input, '2026-07-22T12:00:00Z').bundle.failures, path).toEqual([
+        expect.objectContaining({ reason: 'resource-limit' }),
+      ]);
+    }
   });
 
   test('matches YAML resource and YAML 1.2 shape boundaries', () => {
@@ -1870,7 +2198,7 @@ describe('Rust/Wasm core boundary', () => {
     }
     const radixAggregate = inputFor(
       Array.from(
-        { length: 10 },
+        { length: 100 },
         (_, index) =>
           [
             `radix-${String(index)}.md`,
@@ -3703,4 +4031,33 @@ function expectGraphLimitParity(
   expect(actual).toBeInstanceOf(GraphResourceLimitError);
   expect(expected).toBeInstanceOf(GraphResourceLimitError);
   expect((actual as Error).message).toBe((expected as Error).message);
+}
+
+function rawWasmRequest(request: unknown): {
+  readonly result?: unknown;
+  readonly error?: { readonly code: string; readonly message: string };
+} {
+  const instance = new WebAssembly.Instance(new WebAssembly.Module(wasmBytes), {});
+  const exports = instance.exports as unknown as {
+    readonly memory: WebAssembly.Memory;
+    readonly okf_alloc: (length: number) => number;
+    readonly okf_call: (pointer: number, length: number) => bigint;
+    readonly okf_dealloc: (pointer: number, length: number) => void;
+  };
+  const bytes = new TextEncoder().encode(JSON.stringify(request));
+  const pointer = exports.okf_alloc(bytes.byteLength);
+  new Uint8Array(exports.memory.buffer, pointer, bytes.byteLength).set(bytes);
+  const packed = exports.okf_call(pointer, bytes.byteLength);
+  const responsePointer = Number(packed >> 32n);
+  const responseLength = Number(packed & 0xffff_ffffn);
+  const response = JSON.parse(
+    new TextDecoder('utf-8', { fatal: true }).decode(
+      new Uint8Array(exports.memory.buffer, responsePointer, responseLength),
+    ),
+  ) as {
+    readonly result?: unknown;
+    readonly error?: { readonly code: string; readonly message: string };
+  };
+  exports.okf_dealloc(responsePointer, responseLength);
+  return response;
 }

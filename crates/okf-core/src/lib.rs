@@ -146,6 +146,12 @@ pub fn dispatch_json(request_json: &str) -> String {
     let request = match serde_json::from_str::<CoreRequest>(request_json) {
         Ok(request) => request,
         Err(error) => {
+            if graph_request_has_invalid_revision(request_json) {
+                return serialize_response(CoreResponse::failure(
+                    "graph-resource-limit",
+                    "The graph revision must be a non-negative safe integer.",
+                ));
+            }
             return serialize_response(CoreResponse::failure(
                 "invalid-request",
                 format!("The OKF core request is invalid: {error}"),
@@ -180,9 +186,9 @@ pub fn dispatch_json(request_json: &str) -> String {
                 return serialize_response(CoreResponse::failure("graph-resource-limit", message));
             }
             bundle.failures.sort_by(|left, right| {
-                left.bundle_path
-                    .cmp(&right.bundle_path)
-                    .then_with(|| left.uri.cmp(&right.uri))
+                compare_utf16(&left.bundle_path, &right.bundle_path)
+                    .then_with(|| compare_utf16(&left.uri, &right.uri))
+                    .then_with(|| left.reason.cmp(&right.reason))
             });
             let findings = validate_bundle(&bundle, &input.now);
             bundle.findings.clone_from(&findings);
@@ -264,6 +270,37 @@ pub fn dispatch_json(request_json: &str) -> String {
     serialize_response(response)
 }
 
+fn graph_request_has_invalid_revision(request_json: &str) -> bool {
+    let Ok(request) = serde_json::from_str::<Value>(request_json) else {
+        return false;
+    };
+    let revision = match request.get("operation").and_then(Value::as_str) {
+        Some("graph") => request.get("input").and_then(|input| input.get("revision")),
+        Some("inspect") => request
+            .get("input")
+            .and_then(|input| input.get("bundle"))
+            .and_then(|bundle| bundle.get("revision")),
+        _ => return false,
+    };
+    let Some(revision) = revision else {
+        return true;
+    };
+    if let Some(revision) = revision.as_u64() {
+        return revision > 9_007_199_254_740_991;
+    }
+    let Some(revision) = revision.as_f64() else {
+        return true;
+    };
+    !revision.is_finite()
+        || revision < 0.0
+        || revision.fract() != 0.0
+        || revision > 9_007_199_254_740_991.0
+}
+
+fn compare_utf16(left: &str, right: &str) -> std::cmp::Ordering {
+    left.encode_utf16().cmp(right.encode_utf16())
+}
+
 fn serialize_response(response: CoreResponse) -> String {
     serde_json::to_string(&response).unwrap_or_else(|_| {
         r#"{"abiVersion":1,"coreVersion":"unknown","error":{"code":"serialization-failed","message":"The OKF core response could not be serialized."}}"#.to_owned()
@@ -300,5 +337,22 @@ mod tests {
             response["error"]["message"],
             "The graph revision must be a non-negative safe integer."
         );
+    }
+
+    #[test]
+    fn graph_operations_normalize_negative_and_fractional_revision_errors() {
+        for request in [
+            r#"{"operation":"graph","input":{"rootUri":"","revision":-1,"documents":[]}}"#,
+            r#"{"operation":"graph","input":{"rootUri":"","revision":-0.5,"documents":[]}}"#,
+            r#"{"operation":"inspect","input":{"bundle":{"rootUri":"","revision":-1,"documents":[]},"now":"2026-08-03T00:00:00Z","failures":[]}}"#,
+            r#"{"operation":"inspect","input":{"bundle":{"rootUri":"","revision":-0.5,"documents":[]},"now":"2026-08-03T00:00:00Z","failures":[]}}"#,
+        ] {
+            let response: Value = serde_json::from_str(&dispatch_json(request)).unwrap();
+            assert_eq!(response["error"]["code"], "graph-resource-limit");
+            assert_eq!(
+                response["error"]["message"],
+                "The graph revision must be a non-negative safe integer."
+            );
+        }
     }
 }

@@ -469,7 +469,13 @@ pub fn validate_bundle(bundle: &ParsedBundle, now: &str) -> Vec<Finding> {
     });
     findings.dedup_by(|left, right| {
         left.uri == right.uri
-            && left.range == right.range
+            && match (&left.range, &right.range) {
+                (Some(left), Some(right)) => {
+                    left.start.offset == right.start.offset && left.end.offset == right.end.offset
+                }
+                (None, None) => true,
+                _ => false,
+            }
             && left.category == right.category
             && left.severity == right.severity
             && left.code == right.code

@@ -79,6 +79,9 @@ cargo build --locked --release --bin okf
 The CLI provides `init`, `new`, `validate`, `index`, `graph`, `agent`, and `version`. Read commands
 never write. Write commands first report a complete plan; non-interactive writes require
 `--apply`, and `--check` reports whether changes are needed without modifying the workspace.
+Create-only plans can be applied. A plan containing an existing-file update fails closed before any
+write because the supported filesystems do not expose the required generation-CAS and complete
+metadata-preserving replacement primitive.
 `validate --format json` and `graph --format json` emit a versioned JSON envelope for automation.
 
 Open VSX selects a target package for macOS arm64/x64, Linux x64, or Windows x64 when supported.

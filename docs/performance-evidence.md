@@ -1,19 +1,20 @@
 # Performance evidence
 
-- Status: **current local headed evidence passes**; hosted compatibility and release gates remain
-  separate
+- Status: **retained predecessor-bound local headed evidence passes**; fresh evidence for the
+  current Rust/Wasm source candidate is pending
 - Date: 2026-07-28
 - Governing decision:
   [ADR 0005, OQ-008](decisions/0005-resolve-mvp-implementation-questions.md#oq-008--performance-fixtures-and-thresholds)
 
-## Current schema-v3 measurement and binding status
+## Retained schema-v3 measurement and binding status
 
-The tracked [current schema-v3 report](evidence/performance/vscode-1.129.1.md) and
-[current raw samples](evidence/performance/vscode-1.129.1.json) were captured in a genuine headed
+The tracked [schema-v3 report](evidence/performance/vscode-1.129.1.md) and
+[raw samples](evidence/performance/vscode-1.129.1.json) were captured in a genuine headed
 VS Code `1.129.1` session on 2026-07-28 and pass the strict current-input evaluator. The record is
 bound to the production runtime, build inputs, diagnostics observer, QR-003 harness inputs and
 definition, injected harness bytes, and editor/runtime metadata recorded in those files. Samples
-were captured in one run; none were copied or synthesized.
+were captured in one run; none were copied or synthesized. They are retained for their exact
+recorded inputs and do not qualify the current OKF-v0.2 Rust/Wasm source candidate.
 
 | Target | Current status | Evidence |
 | --- | --- | --- |
@@ -24,7 +25,7 @@ were captured in one run; none were copied or synthesized.
 
 This local record applies only to the recorded Mac16,7 / Apple M4 Pro environment, VS Code
 `1.129.1` commit `8a7abeba6e03ea3af87bfbce9a1b7e48fed567b8`, and the exact bound inputs. It is
-not a guarantee for other machines, editors, or future candidate bytes, and it does not replace
+not a guarantee for other machines, editors, current source, or future candidate bytes, and it does not replace
 the separate hosted compatibility, packaged lifecycle, manual UI, license, or publication gates.
 A unit test, Node benchmark, or headless Chromium run must not be relabeled as headed-editor
 evidence.

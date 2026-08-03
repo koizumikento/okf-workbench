@@ -72,15 +72,19 @@ References:
 - [VS Code 1.121 source manifest](https://github.com/microsoft/vscode/blob/1.121.0/package.json)
 - [VSCodium releases](https://github.com/VSCodium/vscodium/releases)
 
-The current-stable test pin is refreshed for each release candidate. The current matrix is pinned
-to VS Code `1.129.1`. Revision `80ae7d560337cbe8d97af864c77aee410d5e5988` passed
+The current-stable test pin is refreshed for each release candidate and is pinned to VS Code
+`1.129.1`. Predecessor revision `80ae7d560337cbe8d97af864c77aee410d5e5988` passed
 [Compatibility run 30335399539](https://github.com/koizumikento/okf-workbench/actions/runs/30335399539)
 across all seven VS Code/VSCodium lifecycle lanes and
 [Package smoke run 30335400890](https://github.com/koizumikento/okf-workbench/actions/runs/30335400890)
-across all four target packages plus aggregate consistency. The retained VS Code `1.127.0` headed
+across all four target packages plus aggregate consistency. Those receipts do not qualify the
+current Rust/Wasm source candidate; fresh hosted and package-smoke qualification is pending. The
+retained VS Code `1.127.0` headed
 capture is historical after strengthening the schema-v3 evidence contract. The fresh `0.2.1`
 VS Code `1.129.1` headed capture passes QR-002 at `677 ms` p95 across 20 samples, QR-003 with `d3`
-selected, and the strict zero-remote-request Webview network gate on its recorded hardware.
+selected, and the strict zero-remote-request Webview network gate on its recorded hardware. That
+capture is bound to its recorded predecessor inputs; fresh current-candidate headed evidence is
+pending.
 
 ## Repository and package management
 

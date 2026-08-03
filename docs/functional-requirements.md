@@ -198,9 +198,11 @@ below and remains candidate- and environment-specific.
 | QR-004 | VSCodium desktop is included in MVP compatibility testing. | Package installation and core acceptance scenarios pass on a documented VSCodium version. |
 | QR-005 | Webview content meets the keyboard navigation behavior in FR-060 even when the 3D canvas itself is not accessible. | Keyboard-only acceptance test. |
 
-QR-001 remains a hypothesis until a timed first-use study is retained. QR-002 and QR-003 pass for
-the genuine current-input schema-v3 headed VS Code `1.129.1` capture on its recorded hardware:
-QR-002 is `832 ms` p95 across 20 samples and QR-003 selects `d3`. The older VS Code `1.127.0`
+QR-001 remains a hypothesis until a timed first-use study is retained. A strengthened-contract
+schema-v3 headed VS Code `1.129.1` run on its recorded hardware measured QR-002 at `832 ms` p95
+across 20 samples and selected `d3` for QR-003. The separately retained predecessor-bound report
+measures `677 ms`; neither record qualifies the current Rust/Wasm source candidate, whose fresh
+capture is pending. The older VS Code `1.127.0`
 capture is historical and no longer passes the current strict evaluator. See
 [Performance evidence](performance-evidence.md). QR-004 and QR-005 become release claims only when
 the required compatibility and packaged acceptance evidence is retained. No release documentation

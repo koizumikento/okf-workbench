@@ -320,6 +320,33 @@ fn index_adds_v02_declaration_to_an_existing_versionless_root() {
     assert!(root.contains("Human introduction."));
 }
 
+#[cfg(unix)]
+#[test]
+fn index_update_preserves_existing_file_mode() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let directory = tempdir().unwrap();
+    initialize(directory.path());
+    let index = directory.path().join("index.md");
+    fs::set_permissions(&index, fs::Permissions::from_mode(0o644)).unwrap();
+    fs::write(
+        directory.path().join("alpha.md"),
+        "---\ntype: reference\ntitle: Alpha\n---\n",
+    )
+    .unwrap();
+
+    let output = okf()
+        .args(["index", directory.path().to_str().unwrap(), "--apply"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        fs::metadata(index).unwrap().permissions().mode() & 0o777,
+        0o644
+    );
+}
+
 #[test]
 fn index_adds_v02_declaration_to_an_explicit_key_root_map() {
     let directory = tempdir().unwrap();
@@ -616,6 +643,37 @@ fn symbolic_link_bundle_root_ancestor_is_refused_before_writing() {
     assert_eq!(output.status.code(), Some(2), "{output:?}");
     assert!(String::from_utf8_lossy(&output.stderr).contains("not a real directory"));
     assert!(!real_root.join("outside.md").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn check_refuses_a_symbolic_link_in_the_generated_parent_chain() {
+    use std::os::unix::fs::symlink;
+
+    let directory = tempdir().unwrap();
+    let root = directory.path().join("bundle");
+    fs::create_dir(&root).unwrap();
+    initialize(&root);
+    let outside = directory.path().join("outside");
+    fs::create_dir(&outside).unwrap();
+    symlink(&outside, root.join("linked-parent")).unwrap();
+
+    let output = okf()
+        .args([
+            "new",
+            root.to_str().unwrap(),
+            "--title",
+            "Must not escape",
+            "--path",
+            "linked-parent/outside.md",
+            "--check",
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("unsafe parent"));
+    assert!(!outside.join("outside.md").exists());
 }
 
 fn initialize(root: &Path) {

@@ -156,6 +156,7 @@ pub fn plan_files(
         validate_relative_path(&file.relative_path)?;
         let target = root.join(&file.relative_path);
         ensure_contained(root, &target)?;
+        ensure_safe_parent_chain(root, &target)?;
         let existing = if target.exists() {
             let metadata = fs::symlink_metadata(&target).map_err(|error| error.to_string())?;
             if metadata.file_type().is_symlink() || !metadata.is_file() {
@@ -463,6 +464,18 @@ pub fn apply_plan(root: &Path, plan: &[PlannedChange]) -> Result<(), String> {
             let mut temporary = NamedTempFile::new_in(parent).map_err(|error| error.to_string())?;
             temporary
                 .write_all(change.content.as_bytes())
+                .map_err(|error| error.to_string())?;
+            let permissions = fs::symlink_metadata(&change.target)
+                .map_err(|error| {
+                    format!(
+                        "cannot preserve permissions for {}: {error}",
+                        change.target.display()
+                    )
+                })?
+                .permissions();
+            temporary
+                .as_file()
+                .set_permissions(permissions)
                 .and_then(|_| temporary.as_file().sync_all())
                 .map_err(|error| error.to_string())?;
             temporary
@@ -661,6 +674,7 @@ pub fn validate_relative_path(path: &str) -> Result<(), String> {
         || segments
             .iter()
             .any(|segment| segment.is_empty() || matches!(*segment, "." | ".."))
+        || normalized.contains(':')
         || normalized.chars().any(char::is_control)
         || Path::new(path).components().any(|component| {
             matches!(
@@ -729,6 +743,7 @@ mod tests {
         assert!(validate_relative_path(r"..\outside.md").is_err());
         assert!(validate_relative_path("/outside.md").is_err());
         assert!(validate_relative_path(r"C:\outside.md").is_err());
+        assert!(validate_relative_path("folder/file.md:payload").is_err());
     }
 
     #[test]

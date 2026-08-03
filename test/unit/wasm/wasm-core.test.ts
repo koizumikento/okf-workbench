@@ -932,6 +932,7 @@ describe('Rust/Wasm core boundary', () => {
         'custom: { ? !!str # key\n  : one, ? !!str "" : two }\n',
       ],
       ['semantic-tagged-flow-key-duplicate.md', 'custom: { same: one, !!str same: two }\n'],
+      ['semantic-tagged-block-key-duplicate.md', 'custom:\n  !!str same: one\n  same: two\n'],
       [
         'multiline-commented-flow-key-duplicate-range.md',
         'custom: { ? same : one, ? &a # anchor\n  !!str # tag\n  same : two }\n',
@@ -966,12 +967,55 @@ describe('Rust/Wasm core boundary', () => {
         'deferred-plain-scalar-property-like-text.md',
         'custom:\n  first\n  !!str text\nafter: ok\n',
       ],
+      ['deferred-plain-scalar-alias-text.md', 'custom:\n  first\n  *alias text\nafter: ok\n'],
+      [
+        'deferred-plain-scalar-custom-tag-text.md',
+        'custom:\n  first\n  !ostr internal\nafter: ok\n',
+      ],
+      ['deferred-plain-scalar-unknown-tag-text.md', 'custom:\n  first\n  !!foo text\nafter: ok\n'],
       ['sequence-map-tagged-empty-key.md', 'items:\n  - !!map\n    !!str : one\n'],
       ['scalar-string-tagged-flow-map.md', 'custom: !!str { child: value }\n'],
       ['scalar-binary-tagged-flow-sequence.md', 'custom: !!binary [one, two]\n'],
       ['scalar-timestamp-tagged-flow-map.md', 'custom: !!timestamp { child: value }\n'],
       ['scalar-integer-tagged-block-map.md', 'custom: !!int\n  child: value\n'],
       ['scalar-string-tagged-block-sequence.md', 'custom: !!str\n  - one\n  - two\n'],
+      ['scalar-integer-boolean.md', 'custom: !!int true\n'],
+      ['scalar-integer-null.md', 'custom: !!int null\n'],
+      ['scalar-float-boolean.md', 'custom: !!float true\n'],
+      ['scalar-float-null.md', 'custom: !!float null\n'],
+      ['scalar-boolean-null.md', 'custom: !!bool null\n'],
+      ['scalar-null-boolean.md', 'custom: !!null true\n'],
+      ['scalar-string-nonfinite.md', 'custom: !!str .inf\n'],
+      [
+        'anchor-before-scalar-tags.md',
+        'integer: &integer !!int plain\ninteger_copy: *integer\ntime: &time !!timestamp plain\ntime_copy: *time\n',
+      ],
+      [
+        'anchor-before-invalid-integer.md',
+        'integer: &integer !!int plain\ninteger_copy: *integer\n',
+      ],
+      [
+        'anchor-before-valid-timestamp.md',
+        'time: &time !!timestamp 2001-12-15T02:59:43Z\ntime_copy: *time\n',
+      ],
+      [
+        'explicit-scalar-tagged-mapping-keys.md',
+        '? !!int plain\n: integer\n? !!float plain\n: float\n? !!bool plain\n: boolean\n? !!null plain\n: null\n? !!int true\n: integer-boolean\n? !!float null\n: float-null\n? !!bool null\n: boolean-null\n? !!null true\n: null-boolean\n',
+      ],
+      ['explicit-invalid-integer-key.md', '? !!int plain\n: value\n'],
+      ['explicit-boolean-shaped-integer-key.md', '? !!int true\n: value\n'],
+      ['explicit-valid-integer-key.md', '? !!int 1\n: value\n'],
+      ['explicit-invalid-float-key.md', '? !!float plain\n: value\n'],
+      ['explicit-valid-float-key.md', '? !!float 1.5\n: value\n'],
+      ['explicit-invalid-boolean-key.md', '? !!bool plain\n: value\n'],
+      ['explicit-valid-boolean-key.md', '? !!bool true\n: value\n'],
+      ['explicit-invalid-null-key.md', '? !!null plain\n: value\n'],
+      ['explicit-valid-null-key.md', '? !!null null\n: value\n'],
+      [
+        'split-property-collection-provenance.md',
+        'custom: !!str # tag\n  &collection {child: value}\ncopy: *collection\n',
+      ],
+      ['empty-nested-mapping-field-range.md', 'outer:\n  empty:\nafter: value\n'],
       ['duplicate-tag-empty-implicit-key.md', 'custom: !!map\n  !!str !!int : one\n'],
       ['block-scalar-flow-like-empty-key.md', 'custom: |-\n  - !!str : one\n'],
       ['block-scalar-implicit-empty-duplicates.md', 'custom: |-\n  : one\n  : two\n'],
@@ -1315,6 +1359,20 @@ describe('Rust/Wasm core boundary', () => {
   });
 
   test('matches Markdown definition limits and multiline link labels', () => {
+    const exactDefinitionBody = Array.from(
+      { length: 5_000 },
+      (_, index) => `[d${String(index)}]: x`,
+    ).join('\n');
+    const exactDefinitionInput = inputFor(
+      [['definition-limit-exact.md', concept(exactDefinitionBody)]],
+      'fixture:/markdown-parity/definition-limit-exact.md',
+    );
+    const exactDefinitionResult = core.inspect(exactDefinitionInput, '2026-07-22T12:00:00Z');
+    expect(exactDefinitionResult.bundle.failures).toEqual([]);
+    expect(exactDefinitionResult).toEqual(
+      typescriptOkfCore.inspect(exactDefinitionInput, '2026-07-22T12:00:00Z'),
+    );
+
     const cases = [
       ['soft-break.md', '[first\nsecond](target.md)\n'],
       ['hard-break-spaces.md', '[first  \nsecond](target.md)\n'],
@@ -1332,9 +1390,79 @@ describe('Rust/Wasm core boundary', () => {
         'indented-definition-lookalikes.md',
         Array.from({ length: 5_001 }, () => '    [d]: x').join('\n'),
       ],
+      [
+        'blockquote-definition-limit.md',
+        Array.from({ length: 5_001 }, (_, index) => `> [d${String(index)}]: x`).join('\n'),
+      ],
+      ['unclosed-definition-target-lookalike.md', `[d]: <${'x'.repeat(2_049)}\n`],
+      ['html-definition-lookalike.md', `<div>\n[${'x'.repeat(513)}]: t.md\n</div>\n`],
     ] as const;
     for (const [path, body] of cases) {
       const input = inputFor([[path, concept(body)]], `fixture:/markdown-parity/${path}`);
+      expect(core.inspect(input, '2026-07-22T12:00:00Z'), path).toEqual(
+        typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'),
+      );
+    }
+    const overDefinitionInput = inputFor(
+      [['definition-limit.md', concept(cases[3][1])]],
+      'fixture:/markdown-parity/definition-limit.md',
+    );
+    expect(core.inspect(overDefinitionInput, '2026-07-22T12:00:00Z').bundle.failures).toEqual([
+      expect.objectContaining({
+        bundlePath: 'definition-limit.md',
+        reason: 'resource-limit',
+        message: expect.stringContaining('link definitions'),
+      }),
+    ]);
+  });
+
+  test('matches YAML resource and YAML 1.2 shape boundaries', () => {
+    const aliases = (count: number, seed = 'x'): string =>
+      `seed: &a !!str ${seed}\ncustom: [${Array.from({ length: count }, () => '*a').join(',')}]\n`;
+    const nestedFlow = (depth: number): string =>
+      `custom: ${'['.repeat(depth)}leaf${']'.repeat(depth)}\n`;
+    const nestedBlockMapping = (depth: number): string =>
+      [
+        'custom:',
+        ...Array.from({ length: depth }, (_, index) => {
+          const level = index + 1;
+          return `${' '.repeat(level)}level-${String(level)}:${level === depth ? ' leaf' : ''}`;
+        }),
+        '',
+      ].join('\n');
+    const cases = [
+      ['alias-limit-exact.md', concept('', aliases(100))],
+      ['alias-limit-exceeded.md', concept('', aliases(101))],
+      ['alias-output-exceeded.md', concept('', aliases(100, 'x'.repeat(2_048)))],
+      [
+        'leading-zero-values.md',
+        concept('', 'zero: 00\none: 01\npositive: +0123\nnegative: -0123\n'),
+      ],
+      ['leading-zero-key.md', concept('', 'custom: { 01: value }\n')],
+      ['tight-flow-scalars.md', concept('', 'custom: [?foo, a?b, :foo]\n')],
+      ['nesting-exact.md', concept('', nestedFlow(64))],
+      ['nesting-exceeded.md', concept('', nestedFlow(65))],
+      ['block-nesting-exact.md', concept('', nestedBlockMapping(64))],
+      ['block-nesting-exceeded.md', concept('', nestedBlockMapping(65))],
+      ['compact-nesting-exact.md', concept('', `custom:\n  ${'- '.repeat(64)}leaf\n`)],
+      ['compact-nesting-exceeded.md', concept('', `custom:\n  ${'- '.repeat(65)}leaf\n`)],
+      [
+        'implicit-flow-map-nesting-exact.md',
+        concept('', `custom: ${'['.repeat(63)}key: value${']'.repeat(63)}\n`),
+      ],
+      [
+        'implicit-flow-map-nesting-exceeded.md',
+        concept('', `custom: ${'['.repeat(64)}key: value${']'.repeat(64)}\n`),
+      ],
+      ['yaml-bom.md', '---\n\uFEFFtype: reference\n---\n'],
+      ['multiple-yaml-documents.md', '---\ntype: reference\n...\nafter: x\n---\n'],
+      [
+        'deferred-plain-comment-gap.md',
+        concept('', 'custom:\n  first\n  # gap\n  !!str text\nafter: ok\n'),
+      ],
+    ] as const;
+    for (const [path, content] of cases) {
+      const input = inputFor([[path, content]], `fixture:/yaml-resource-parity/${path}`);
       expect(core.inspect(input, '2026-07-22T12:00:00Z'), path).toEqual(
         typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'),
       );

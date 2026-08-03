@@ -580,17 +580,7 @@ fn validate_bundle_directory(path: &str) -> Result<String, String> {
     if decoded == "." {
         return Ok(decoded);
     }
-    let has_scheme = decoded.find(':').is_some_and(|colon| {
-        colon > 0
-            && decoded[..colon]
-                .chars()
-                .next()
-                .is_some_and(|character| character.is_ascii_alphabetic())
-            && decoded[..colon].chars().all(|character| {
-                character.is_ascii_alphanumeric() || matches!(character, '+' | '-' | '.')
-            })
-    });
-    if decoded.starts_with('/') || has_scheme {
+    if decoded.starts_with('/') || decoded.contains(':') {
         return Err(format!("The path {path:?} is absolute or URI-like."));
     }
     if decoded
@@ -626,6 +616,11 @@ fn validate_provider_bundle_directory(path: &str) -> Result<String, String> {
         && (path.len() == 2 || path.as_bytes().get(2) == Some(&b'/'));
     if path.starts_with('/') || windows_absolute {
         return Err(format!("The provider path {path:?} is absolute."));
+    }
+    if path.contains(':') {
+        return Err(format!(
+            "The provider path {path:?} contains a colon that is not portable."
+        ));
     }
     if path == "." {
         return Ok(path.to_owned());
@@ -921,17 +916,7 @@ fn validate_concept_path(path: &str) -> Result<String, String> {
     if !bounded(&candidate, false) {
         return Err("The path exceeds the supported relative-path limit.".to_owned());
     }
-    let has_scheme = candidate.find(':').is_some_and(|colon| {
-        colon > 0
-            && candidate[..colon]
-                .chars()
-                .next()
-                .is_some_and(|character| character.is_ascii_alphabetic())
-            && candidate[..colon].chars().all(|character| {
-                character.is_ascii_alphanumeric() || matches!(character, '+' | '-' | '.')
-            })
-    });
-    if candidate.starts_with('/') || has_scheme {
+    if candidate.starts_with('/') || candidate.contains(':') {
         return Err(format!("The path {path:?} is absolute or URI-like."));
     }
     if candidate
@@ -1057,6 +1042,27 @@ mod tests {
             timestamp: None,
         });
         assert_eq!(file.relative_path, "folder/日本語.md");
+    }
+
+    #[test]
+    fn checked_paths_reject_windows_alternate_data_streams() {
+        let input = ConceptTemplateInput {
+            template: "generic-concept".to_owned(),
+            relative_path: "folder/file.md:payload".to_owned(),
+            r#type: "custom".to_owned(),
+            title: "A title".to_owned(),
+            description: None,
+            tags: vec![],
+            timestamp: None,
+        };
+        assert!(concept_template_file_checked(&input).is_err());
+
+        let mut encoded = input;
+        encoded.relative_path = "folder/file%3Astream.md".to_owned();
+        assert!(concept_template_file_checked(&encoded).is_err());
+
+        assert!(agent_files_checked(AgentTarget::Both, "folder:stream").is_err());
+        assert!(agent_files_provider_checked(AgentTarget::Both, "folder:stream").is_err());
     }
 
     #[test]

@@ -59,6 +59,37 @@ fn relative_missing_root_can_be_initialized_from_its_captured_absolute_anchor() 
     assert!(directory.path().join("bundle/index.md").is_file());
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_create_mode_respects_a_022_umask() {
+    use std::os::unix::{fs::PermissionsExt, process::CommandExt};
+
+    let directory = tempdir().unwrap();
+    let root = directory.path().join("bundle");
+    let mut command = okf();
+    command.args(["init", root.to_str().unwrap(), "--apply"]);
+    // SAFETY: `pre_exec` runs after fork in the child. `umask` is async-signal-safe and mutates
+    // only the child process before it immediately executes the CLI image.
+    unsafe {
+        command.pre_exec(|| {
+            libc::umask(0o022);
+            Ok(())
+        });
+    }
+
+    let output = command.output().unwrap();
+
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        fs::metadata(root.join("index.md"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o644
+    );
+}
+
 #[test]
 fn documented_bundle_preset_names_are_accepted() {
     for preset in ["minimal", "software-project", "data-analytics"] {
@@ -678,17 +709,28 @@ fn closed_stdout_is_a_clean_pipeline_termination() {
 fn agent_outputs_stay_outside_bundle_validation() {
     let directory = tempdir().unwrap();
     initialize(directory.path());
-    let agent = okf()
+    let agents_apply = okf()
         .args([
             "agent",
             directory.path().to_str().unwrap(),
             "--target",
-            "both",
+            "agents",
             "--apply",
         ])
         .output()
         .unwrap();
-    assert!(agent.status.success(), "{agent:?}");
+    assert!(agents_apply.status.success(), "{agents_apply:?}");
+    let skill_apply = okf()
+        .args([
+            "agent",
+            directory.path().to_str().unwrap(),
+            "--target",
+            "skill",
+            "--apply",
+        ])
+        .output()
+        .unwrap();
+    assert!(skill_apply.status.success(), "{skill_apply:?}");
     let agents = fs::read_to_string(directory.path().join("AGENTS.md")).unwrap();
     let skill = fs::read_to_string(
         directory
@@ -698,7 +740,8 @@ fn agent_outputs_stay_outside_bundle_validation() {
     .unwrap();
     assert!(agents.contains("When an `okf` executable is available for a local bundle"));
     assert!(skill.contains("okf validate <bundle-root> --format json"));
-    assert!(skill.contains("with `--apply` instead of `--check`"));
+    assert!(skill.contains("before replacing `--check` with `--apply`"));
+    assert!(skill.contains("Multiple creates in an existing root"));
 
     let validate = okf()
         .args([

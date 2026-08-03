@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
-use serde_json::{Map, Value};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error, ser::SerializeMap};
+use serde_json::{Map, Value, value::RawValue};
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -330,10 +330,88 @@ pub struct BundleDocumentInput {
 #[serde(rename_all = "camelCase")]
 pub struct ParseBundleInput {
     pub root_uri: String,
+    #[serde(deserialize_with = "deserialize_revision")]
     pub revision: u64,
     pub documents: Vec<BundleDocumentInput>,
     #[serde(default)]
     pub invalid_root_uri_utf16: Option<bool>,
+}
+
+fn deserialize_revision<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw = Box::<RawValue>::deserialize(deserializer)?;
+    if let Some(revision) = exact_integral_json_number(raw.get()) {
+        return Ok(revision);
+    }
+    let value = serde_json::from_str::<Value>(raw.get()).map_err(D::Error::custom)?;
+    if let Some(revision) = value.as_u64() {
+        return Ok(revision);
+    }
+    if let Some(revision) = value.as_f64()
+        && revision.is_finite()
+        && revision >= 0.0
+        && revision.fract() == 0.0
+        && revision <= u64::MAX as f64
+    {
+        return Ok(revision as u64);
+    }
+    Err(D::Error::custom(
+        "revision must be a non-negative integral JSON number",
+    ))
+}
+
+fn exact_integral_json_number(source: &str) -> Option<u64> {
+    let (negative, unsigned) = source
+        .strip_prefix('-')
+        .map_or((false, source), |value| (true, value));
+    let (coefficient, exponent) =
+        if let Some((coefficient, exponent)) = unsigned.split_once(['e', 'E']) {
+            (coefficient, exponent.parse::<i64>().ok()?)
+        } else {
+            (unsigned, 0)
+        };
+    let (whole, fraction) = coefficient.split_once('.').unwrap_or((coefficient, ""));
+    if whole.is_empty()
+        || !whole.bytes().all(|byte| byte.is_ascii_digit())
+        || !fraction.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+
+    let mut digits = String::with_capacity(whole.len().saturating_add(fraction.len()));
+    digits.push_str(whole);
+    digits.push_str(fraction);
+    if digits.bytes().all(|byte| byte == b'0') {
+        return Some(0);
+    }
+    let decimal_position = i64::try_from(whole.len()).ok()?.checked_add(exponent)?;
+    if decimal_position <= 0 {
+        return None;
+    }
+    let decimal_position = usize::try_from(decimal_position).ok()?;
+    if decimal_position < digits.len() {
+        if !digits.as_bytes()[decimal_position..]
+            .iter()
+            .all(|byte| *byte == b'0')
+        {
+            return None;
+        }
+        digits.truncate(decimal_position);
+    } else if decimal_position > digits.len() {
+        if decimal_position > 20 && digits.bytes().any(|byte| byte != b'0') {
+            return None;
+        }
+        digits.extend(std::iter::repeat_n('0', decimal_position - digits.len()));
+    }
+    let digits = digits.trim_start_matches('0');
+    let revision = if digits.is_empty() {
+        0
+    } else {
+        digits.parse::<u64>().ok()?
+    };
+    (!negative || revision == 0).then_some(revision)
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

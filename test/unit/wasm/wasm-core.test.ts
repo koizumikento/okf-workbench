@@ -571,6 +571,19 @@ describe('Rust/Wasm core boundary', () => {
       'fixture:/😀',
       'fixture:/\uE000',
     ]);
+
+    const caseFailures: readonly ParseFailure[] = [
+      { ...failure, uri: 'fixture:/same', bundlePath: 'a.md' },
+      { ...failure, uri: 'fixture:/same', bundlePath: 'A.md' },
+    ];
+    const caseActual = core.inspect(input, '2026-07-22T12:00:00Z', caseFailures);
+    expect(caseActual).toEqual(
+      typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z', caseFailures),
+    );
+    expect(caseActual.bundle.failures.map(({ bundlePath }) => bundlePath)).toEqual([
+      'A.md',
+      'a.md',
+    ]);
   });
 
   test('deduplicates external failure findings by offsets rather than line metadata', () => {
@@ -943,6 +956,13 @@ describe('Rust/Wasm core boundary', () => {
       ['plain-flow-tag-lookalike.md', 'custom: word [ !ostr\n'],
       ['plain-flow-standard-tag-lookalike.md', 'custom: word [ !!set\n'],
       ['plain-flow-unknown-tag-lookalike.md', 'custom: word [ !!foo\n'],
+      ['plain-flow-duplicate-anchor-lookalike.md', 'custom: word [ &x &x\n'],
+      ['plain-map-duplicate-anchor-lookalike.md', 'custom: word { &x &x\n'],
+      ['plain-flow-duplicate-tag-lookalike.md', 'custom: word [ !!str !!str\n'],
+      ['leading-question-plain-duplicate-anchor-lookalike.md', 'custom: ?x [ &x &x\n'],
+      ['leading-colon-plain-duplicate-tag-lookalike.md', 'custom: :x [ !!str !!str\n'],
+      ['leading-dash-plain-duplicate-anchor-lookalike.md', 'custom: -x [ &x &x\n'],
+      ['deferred-plain-duplicate-anchor-lookalike.md', 'custom:\n  ?x [ &x &x\n'],
       ['multiline-plain-flow-lookalike.md', 'custom: word [\n  ?x\n'],
       ['deferred-plain-flow-lookalike.md', 'custom:\n  word [ *x\n'],
       ['tagged-deferred-plain-flow-lookalike.md', 'custom: !!str\n  word [ !ostr\n'],
@@ -962,6 +982,15 @@ describe('Rust/Wasm core boundary', () => {
       ['tight-flow-question-with-colons.md', 'custom: [?x::y]\n'],
       ['tight-flow-map-question-colon.md', 'custom: {?a:b}\n'],
       ['tight-flow-map-colon-value.md', 'custom: {a: ::b}\n'],
+      ['tight-flow-question-key-collection-value.md', 'custom: {?a:[a]}\n'],
+      ['tight-flow-colon-key-collection-value.md', 'custom: {:a:[a]}\n'],
+      ['tight-flow-bare-question-key.md', 'custom: {?a}\n'],
+      ['tight-flow-explicit-key-control.md', 'custom: {? a: [a]}\n'],
+      ['tight-flow-quoted-explicit-key-control.md', 'custom: {? "a": [a]}\n'],
+      [
+        'nested-tight-flow-indicator-key-collection-values.md',
+        'custom: [{?a:[a]}, {outer: {:a:[a]}}]\n',
+      ],
       ['mixed-tight-flow-replacement-order.md', 'custom: {?a:b}\nother: [::x]\nmore: {?c:d}\n'],
       ['duplicate-block-boolean-key.md', 'custom:\n  true: one\n  true: two\n'],
       ['nonstring-flow-sequence-key-range.md', 'custom: {[a]:a}\n'],
@@ -998,6 +1027,81 @@ describe('Rust/Wasm core boundary', () => {
       ['commented-empty-tagged-string-set.md', 'set: !!set\n  ? !!str # empty\n'],
       ['empty-nested-set.md', 'set: !!set\n  ? !!set\n'],
       ['explicit-nonstring-int-key.md', '!!int "1": one\n'],
+      ['implicit-nonfinite-float-key.md', '!!float .inf: one\n'],
+      ['explicit-nonfinite-float-key.md', '? !!float .nan\n: one\n'],
+      ['flow-nonfinite-float-key.md', 'custom: { !!float .inf: one }\n'],
+      ['sequence-pair-nonfinite-float-key.md', 'custom:\n  - !!float .nan: one\n'],
+      ['implicit-invalid-timestamp-key.md', '!!timestamp foo: one\n'],
+      ['explicit-invalid-timestamp-key.md', '? !!timestamp foo\n: one\n'],
+      ['flow-invalid-timestamp-key.md', 'custom: { !!timestamp foo: one }\n'],
+      ['sequence-pair-invalid-timestamp-key.md', 'custom:\n  - !!timestamp foo: one\n'],
+      ['invalid-timestamp-after-boolean-key.md', 'true: one\n!!timestamp foo: two\n'],
+      ['invalid-timestamp-after-tagged-int-key.md', '!!int 1: one\n!!timestamp foo: two\n'],
+      [
+        'invalid-timestamp-after-flow-boolean-key.md',
+        'custom: { true: one }\n!!timestamp foo: two\n',
+      ],
+      [
+        'nested-invalid-timestamp-after-nonstring-key.md',
+        'outer:\n  true: one\n  !!timestamp foo: two\n',
+      ],
+      ['timestamp-compact-mapping-value.md', 'custom: !!timestamp foo: bar\n'],
+      ['timestamp-sequence-compact-mapping-value.md', 'custom:\n  - key: !!timestamp foo: bar\n'],
+      ['timestamp-flow-compact-mapping-value.md', 'custom: {a: !!timestamp foo: bar}\n'],
+      ['sequence-compact-nested-mapping.md', 'custom:\n  - key: value\n      nested: x\n'],
+      ['sequence-flow-item-missing-indicator.md', 'custom:\n  - {key: value}\n    nested: x\n'],
+      ['sequence-flow-item-misaligned-dash.md', 'custom:\n  - [one]\n    - two\n'],
+      ['sequence-flow-item-misaligned-bare-dash.md', 'custom:\n  - [one]\n    -\n      two\n'],
+      ['sequence-flow-item-misaligned-tab-dash.md', 'custom:\n  - [one]\n    -\ttwo\n'],
+      ['sequence-flow-item-nbsp-dash.md', 'custom:\n  - [one]\n    -\u00a0two\n'],
+      ['sequence-flow-item-em-space-dash.md', 'custom:\n  - [one]\n    -\u2003two\n'],
+      [
+        'sequence-flow-item-overindented-missing-indicator.md',
+        'custom:\n  - [one]\n      nested: y\n',
+      ],
+      ['implicit-tagged-flow-map-key-range.md', '!!str {k: v}: one\n'],
+      ['implicit-tagged-flow-sequence-key-range.md', '!!binary [a, b]: one\n'],
+      ['sequence-pair-tagged-flow-map-key-range.md', 'custom:\n  - !!timestamp {k: v}: one\n'],
+      ['sequence-pair-tagged-flow-sequence-key-range.md', 'custom:\n  - !!null [a, b]: one\n'],
+      ['implicit-binary-reserved-indicator-key.md', '!!binary @@: one\n'],
+      ['reserved-indicator-plain-value.md', 'custom: @x\n'],
+      ['reserved-indicator-tagged-value.md', 'custom: !!binary @@\n'],
+      ['reserved-indicator-sequence-value.md', 'items:\n  - !!binary @@\n'],
+      ['flow-set-tagged-sequence-member.md', 'custom: !!set { ? !!seq [one] }\n'],
+      ['flow-set-tagged-mapping-member.md', 'custom: !!set { ? !!map {one: two} }\n'],
+      ['flow-set-tagged-sequence-explicit-null.md', 'set: !!set { ? !!str [a, b]: }\n'],
+      ['flow-set-tagged-sequence-null-value.md', 'set: !!set { !!str [a, b]: null }\n'],
+      ['block-set-tagged-sequence-explicit-null.md', 'set: !!set\n  ? !!str [a, b]\n  :\n'],
+      [
+        'block-set-tagged-sequence-null-spelling.md',
+        'set: !!set\n  ? !!str [a, b]\n  : null\n  ? next\n',
+      ],
+      [
+        'block-set-tagged-sequence-tilde-spelling.md',
+        'set: !!set\n  ? !!str [a, b]\n  : ~\n  ? next\n',
+      ],
+      [
+        'block-set-comment-only-non-null.md',
+        'set: !!set\n  ? !!str [a, b]\n  : # comment\n  ? next\n',
+      ],
+      ['block-set-explicit-null-tag-value.md', 'set: !!set\n  ? a\n  : !!null null\n'],
+      ['block-set-explicit-null-tag-empty-value.md', 'set: !!set\n  ? a\n  : !!null ""\n'],
+      ['flow-set-explicit-null-tag-value.md', 'set: !!set { a: !!null null }\n'],
+      ['block-set-mixed-case-null-value.md', 'set: !!set\n  ? a\n  : nUlL\n'],
+      ['block-set-terminal-null-value.md', 'set: !!set\n  ? a\n  : null\n'],
+      ['block-set-terminal-tilde-value.md', 'set: !!set\n  ? a\n  : ~\n'],
+      ['block-set-terminal-anchored-null-value.md', 'set: !!set\n  ? a\n  : &n null\n'],
+      ['flow-set-comment-only-non-null.md', 'set: !!set { ? !!str [a, b]: # comment\n}\n'],
+      [
+        'block-set-deferred-tagged-map-member.md',
+        'set: !!set\n  ? !!map\n    k: v\n  :\n  ? next\n',
+      ],
+      ['flow-set-nested-collection-key-range.md', 'set: !!set { ? !!map { [x]: y } }\n'],
+      ['flow-set-untagged-nested-collection-key-range.md', 'set: !!set { ? { [x]: y } }\n'],
+      [
+        'flow-set-scalar-tagged-nested-collection-key-range.md',
+        'set: !!set { ? !!str { [x]: y } }\n',
+      ],
       ['set-explicit-nonstring-int-key.md', 'set: !!set\n  ? !!int "1": one\n'],
       ['flow-explicit-timestamp-key.md', 'map: { !!timestamp "2001-12-15": one }\n'],
       ['nested-flow-set-mapping.md', 'outer: !!set\n  ? !!set { ? {value: one} }\n'],
@@ -1379,6 +1483,12 @@ describe('Rust/Wasm core boundary', () => {
       ['scalar-timestamp-tagged-flow-map.md', 'custom: !!timestamp { child: value }\n'],
       ['scalar-bool-tagged-flow-sequence.md', 'custom: !!bool [true, false]\n'],
       ['scalar-null-tagged-flow-map.md', 'custom: !!null {child: value}\n'],
+      ['sequence-timestamp-tagged-flow-map.md', 'items:\n  - !!timestamp {k: v}\n'],
+      ['sequence-binary-tagged-flow-map.md', 'items:\n  - !!binary {k: v}\n'],
+      ['sequence-int-tagged-flow-map.md', 'items:\n  - !!int {k: v}\n'],
+      ['sequence-float-tagged-flow-sequence.md', 'items:\n  - !!float [1, 2]\n'],
+      ['sequence-timestamp-tagged-block-map.md', 'items:\n  - !!timestamp\n    k: v\n'],
+      ['sequence-binary-tagged-block-sequence.md', 'items:\n  - !!binary\n    - one\n'],
       ['tagged-string-nonfinite-sequence.md', 'items:\n  - !!str .inf\n'],
       ['deferred-tagged-string-nonfinite.md', 'custom: !!str\n  .inf\n'],
       ['collection-tagged-string-nonfinite-sequence.md', 'custom: !!str\n  - .inf\n'],
@@ -2030,6 +2140,88 @@ describe('Rust/Wasm core boundary', () => {
         'reference-opaque-media-limits.md',
         `\`![${'x'.repeat(513)}][d]\`\n\n\`[${'x'.repeat(513)}][d]\`\n\n[d]: target.md\n`,
       ],
+      ['invalid-inline-html-attention-limit.md', `<not html ${'*a* '.repeat(1_025)}>\n`],
+      ['unmatched-link-suffix-attention-limit.md', `[x](${'*a* '.repeat(1_025)}\n`],
+      [
+        'multiline-inline-comment-attention-lookalike.md',
+        `paragraph <!--\n${'*a* '.repeat(1_025)}\n-->\n`,
+      ],
+      [
+        'lazy-list-inline-comment-attention-lookalike.md',
+        `- paragraph <!--\ntext ${'*a* '.repeat(1_025)}\n-->\n`,
+      ],
+      [
+        'lazy-ordered-list-inline-comment-attention-lookalike.md',
+        `1. paragraph <!--\ntext ${'*a* '.repeat(1_025)}\n-->\n`,
+      ],
+      [
+        'lazy-blockquote-inline-comment-attention-lookalike.md',
+        `> paragraph <!--\ntext ${'*a* '.repeat(1_025)}\n-->\n`,
+      ],
+      [
+        'unterminated-inline-comment-attention-limit.md',
+        `paragraph <!--\n${'*a* '.repeat(1_025)}\n`,
+      ],
+      [
+        'blank-separated-inline-comment-attention-limit.md',
+        `paragraph <!--\n\n${'*a* '.repeat(1_025)}\n\n-->\n`,
+      ],
+      [
+        'long-multiline-duplicate-definition-target-limit.md',
+        `[d]: x\n[d]: ${'a'.repeat(2_049)} "first\n second\n third\n fourth"\n`,
+      ],
+      [
+        'duplicate-definition-title-bracket-lookalike.md',
+        `[d]: first.md\n[d]: second.md "${'['.repeat(65)}"\n\n[d]\n`,
+      ],
+      [
+        'cross-container-duplicate-title-attention-limit.md',
+        `[d]: first\n> [d]: second "title\n- ${'*a* '.repeat(1_025)}\n- end"\n`,
+      ],
+      [
+        'sibling-list-duplicate-title-attention-limit.md',
+        `[d]: first\n- [d]: second "title\n- ${'*a* '.repeat(1_025)}\n- end"\n`,
+      ],
+      [
+        'sibling-ordered-list-duplicate-title-attention-limit.md',
+        `[d]: first\n1. [d]: second "title\n2. ${'*a* '.repeat(1_025)}\n3. end"\n`,
+      ],
+      [
+        'wide-ordered-list-duplicate-title-attention-limit.md',
+        `[d]: first\n100. [d]: second "title\n  ${'*a* '.repeat(1_025)}\n  end"\n`,
+      ],
+      [
+        'tab-bullet-duplicate-definition-target-limit.md',
+        `[d]: first\n-\t[d]: ${'a'.repeat(2_049)} "title\nmore\nend"\n`,
+      ],
+      [
+        'tab-ordered-duplicate-definition-target-limit.md',
+        `[d]: first\n1.\t[d]: ${'a'.repeat(2_049)} "title\n more\n end"\n`,
+      ],
+      [
+        'tab-ordered-zero-indent-definition-target-limit.md',
+        `[d]: first\n1.\t[d]: ${'a'.repeat(2_049)} "title\nmore\nend"\n`,
+      ],
+      [
+        'tab-noninterrupting-ordered-definition-lookalike.md',
+        `[d]: first\n10.\t[d]: ${'a'.repeat(2_049)} "title\n  more\n  end"\n`,
+      ],
+      [
+        'wide-tab-ordered-definition-lookalike.md',
+        `[d]: first\n100.\t[d]: ${'a'.repeat(2_049)} "title\n     more\n     end"\n`,
+      ],
+      [
+        'escaped-angle-duplicate-definition-target-limit.md',
+        `[d]: first\n[d]: <a\\>${'b'.repeat(2_047)}> "first\n second\n third\n fourth"\n`,
+      ],
+      [
+        'sibling-list-inline-comment-attention-limit.md',
+        `- paragraph <!--\n- ${'*a* '.repeat(1_025)}\n- -->\n`,
+      ],
+      [
+        'cross-container-inline-comment-attention-limit.md',
+        `> paragraph <!--\n- ${'*a* '.repeat(1_025)}\n- -->\n`,
+      ],
     ] as const;
     for (const [path, body] of cases) {
       const input = inputFor([[path, concept(body)]], `fixture:/markdown-parity/${path}`);
@@ -2084,6 +2276,28 @@ describe('Rust/Wasm core boundary', () => {
     expect(
       core.inspect(firstWinsInput, '2026-07-22T12:00:00Z').bundle.concepts[0]?.links[0]?.rawTarget,
     ).toBe('first.md');
+    for (const count of [49, 50, 60, 100]) {
+      const input = inputFor(
+        [
+          [
+            `canonical-first-definition-fuel-${String(count)}.md`,
+            concept(
+              `${'[ı]\n'.repeat(count)}\n[i]: first.md\n[ı]: second.md "${'t'.repeat(2_045)}"\n`,
+            ),
+          ],
+        ],
+        `fixture:/markdown-parity/canonical-first-definition-fuel-${String(count)}.md`,
+      );
+      const inspection = core.inspect(input, '2026-07-22T12:00:00Z');
+      expect(inspection, String(count)).toEqual(
+        typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'),
+      );
+      expect(inspection.bundle.concepts[0]?.links, String(count)).toHaveLength(count);
+      expect(
+        inspection.bundle.concepts[0]?.links.every((link) => link.rawTarget === 'first.md'),
+        String(count),
+      ).toBe(true);
+    }
     for (const [path, body] of [
       [
         'paragraph-custom-html-attention-limit.md',
@@ -2094,11 +2308,121 @@ describe('Rust/Wasm core boundary', () => {
       ['inline-image-target-limit.md', `![x](${'a'.repeat(2_049)})\n`],
       ['reference-image-label-limit.md', `![${'x'.repeat(513)}][d]\n\n[d]: i\n`],
       ['reference-image-target-limit.md', `![x][d]\n\n[d]: ${'a'.repeat(2_049)}\n`],
+      ['invalid-inline-html-attention-limit.md', `<not html ${'*a* '.repeat(1_025)}>\n`],
+      ['unmatched-link-suffix-attention-limit.md', `[x](${'*a* '.repeat(1_025)}\n`],
+      [
+        'unterminated-inline-comment-attention-limit.md',
+        `paragraph <!--\n${'*a* '.repeat(1_025)}\n`,
+      ],
+      [
+        'blank-separated-inline-comment-attention-limit.md',
+        `paragraph <!--\n\n${'*a* '.repeat(1_025)}\n\n-->\n`,
+      ],
+      [
+        'cross-container-duplicate-title-attention-limit.md',
+        `[d]: first\n> [d]: second "title\n- ${'*a* '.repeat(1_025)}\n- end"\n`,
+      ],
+      [
+        'sibling-list-duplicate-title-attention-limit.md',
+        `[d]: first\n- [d]: second "title\n- ${'*a* '.repeat(1_025)}\n- end"\n`,
+      ],
+      [
+        'sibling-ordered-list-duplicate-title-attention-limit.md',
+        `[d]: first\n1. [d]: second "title\n2. ${'*a* '.repeat(1_025)}\n3. end"\n`,
+      ],
+      [
+        'wide-ordered-list-duplicate-title-attention-limit.md',
+        `[d]: first\n100. [d]: second "title\n  ${'*a* '.repeat(1_025)}\n  end"\n`,
+      ],
+      [
+        'tab-bullet-duplicate-definition-target-limit.md',
+        `[d]: first\n-\t[d]: ${'a'.repeat(2_049)} "title\nmore\nend"\n`,
+      ],
+      [
+        'tab-ordered-duplicate-definition-target-limit.md',
+        `[d]: first\n1.\t[d]: ${'a'.repeat(2_049)} "title\n more\n end"\n`,
+      ],
+      [
+        'tab-ordered-zero-indent-definition-target-limit.md',
+        `[d]: first\n1.\t[d]: ${'a'.repeat(2_049)} "title\nmore\nend"\n`,
+      ],
+      [
+        'escaped-angle-duplicate-definition-target-limit.md',
+        `[d]: first\n[d]: <a\\>${'b'.repeat(2_047)}> "first\n second\n third\n fourth"\n`,
+      ],
+      [
+        'sibling-list-inline-comment-attention-limit.md',
+        `- paragraph <!--\n- ${'*a* '.repeat(1_025)}\n- -->\n`,
+      ],
+      [
+        'cross-container-inline-comment-attention-limit.md',
+        `> paragraph <!--\n- ${'*a* '.repeat(1_025)}\n- -->\n`,
+      ],
+      [
+        'long-multiline-duplicate-definition-target-limit.md',
+        `[d]: x\n[d]: ${'a'.repeat(2_049)} "first\n second\n third\n fourth"\n`,
+      ],
     ] as const) {
       const input = inputFor([[path, concept(body)]], `fixture:/markdown-parity/${path}`);
       expect(core.inspect(input, '2026-07-22T12:00:00Z').bundle.failures, path).toEqual([
         expect.objectContaining({ reason: 'resource-limit' }),
       ]);
+    }
+    const boundedExpansionBody = `${'[x]\n'.repeat(4_500)}\n[x]: x "${'t'.repeat(235_000)}"\n`;
+    const boundedExpansionInput = inputFor(
+      [['bounded-reference-expansion.md', concept(boundedExpansionBody)]],
+      'fixture:/markdown-parity/bounded-reference-expansion.md',
+    );
+    const boundedExpansion = core.inspect(boundedExpansionInput, '2026-07-22T12:00:00Z');
+    expect(boundedExpansion).toEqual(
+      typescriptOkfCore.inspect(boundedExpansionInput, '2026-07-22T12:00:00Z'),
+    );
+    expect(boundedExpansion.bundle.concepts[0]?.links).toHaveLength(4_500);
+    const malformedDuplicateDefinitionsBody = `[d]: x\n${`[d]: x "${'a'.repeat(40)}\n`.repeat(4_500)}`;
+    const malformedDuplicateDefinitionsInput = inputFor(
+      [
+        [
+          'malformed-duplicate-definition-title-fuel.md',
+          concept(malformedDuplicateDefinitionsBody),
+        ],
+      ],
+      'fixture:/markdown-parity/malformed-duplicate-definition-title-fuel.md',
+    );
+    expect(core.inspect(malformedDuplicateDefinitionsInput, '2026-07-22T12:00:00Z')).toEqual(
+      typescriptOkfCore.inspect(malformedDuplicateDefinitionsInput, '2026-07-22T12:00:00Z'),
+    );
+    for (const [path, body] of [
+      [
+        'multiline-inline-comment-attention-lookalike.md',
+        `paragraph <!--\n${'*a* '.repeat(1_025)}\n-->\n`,
+      ],
+      [
+        'duplicate-definition-title-bracket-lookalike.md',
+        `[d]: first.md\n[d]: second.md "${'['.repeat(65)}"\n\n[d]\n`,
+      ],
+      [
+        'lazy-list-inline-comment-attention-lookalike.md',
+        `- paragraph <!--\ntext ${'*a* '.repeat(1_025)}\n-->\n`,
+      ],
+      [
+        'lazy-ordered-list-inline-comment-attention-lookalike.md',
+        `1. paragraph <!--\ntext ${'*a* '.repeat(1_025)}\n-->\n`,
+      ],
+      [
+        'lazy-blockquote-inline-comment-attention-lookalike.md',
+        `> paragraph <!--\ntext ${'*a* '.repeat(1_025)}\n-->\n`,
+      ],
+      [
+        'wide-tab-ordered-definition-lookalike.md',
+        `[d]: first\n100.\t[d]: ${'a'.repeat(2_049)} "title\n     more\n     end"\n`,
+      ],
+      [
+        'tab-noninterrupting-ordered-definition-lookalike.md',
+        `[d]: first\n10.\t[d]: ${'a'.repeat(2_049)} "title\n  more\n  end"\n`,
+      ],
+    ] as const) {
+      const input = inputFor([[path, concept(body)]], `fixture:/markdown-parity/${path}`);
+      expect(core.inspect(input, '2026-07-22T12:00:00Z').bundle.failures, path).toEqual([]);
     }
   });
 
@@ -2202,7 +2526,10 @@ describe('Rust/Wasm core boundary', () => {
         (_, index) =>
           [
             `radix-${String(index)}.md`,
-            concept('', `custom: !!set { ? 0x${'F'.repeat(59_000)} }\n`),
+            concept(
+              '',
+              `custom: !!set { ? 0x${'F'.repeat(58_996)}${index.toString(16).padStart(4, '0')} }\n`,
+            ),
           ] as const,
       ),
       'fixture:/yaml-resource-parity/radix-aggregate',

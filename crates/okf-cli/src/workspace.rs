@@ -1,16 +1,20 @@
 use okf_core::{
-    BundleDocumentInput, DocumentContent, ParseBundleInput, RenderedFile, parse_bundle,
+    BundleDocumentInput, DocumentContent, ParseBundleInput, RenderedFile, is_future_minor_version,
+    parse_bundle,
 };
 use serde::Serialize;
-#[cfg(not(unix))]
+#[cfg(windows)]
+use std::collections::HashSet;
+#[cfg(any(not(unix), target_os = "macos"))]
 use std::fs::OpenOptions;
 #[cfg(unix)]
 use std::os::unix::{ffi::OsStringExt, fs::MetadataExt};
 use std::{
     ffi::{OsStr, OsString},
     fs::{self, File},
-    io::{Read, Write},
+    io::{Read, Seek, SeekFrom, Write},
     path::{Component, Path, PathBuf},
+    sync::Arc,
 };
 #[cfg(all(not(unix), not(windows)))]
 use walkdir::WalkDir;
@@ -32,7 +36,9 @@ use windows_sys::Win32::Storage::FileSystem::{
 };
 
 #[cfg(target_os = "linux")]
-use rustix::fs::{AtFlags, linkat};
+use rustix::fs::{AtFlags, RenameFlags, linkat, renameat_with};
+#[cfg(target_os = "macos")]
+use rustix::fs::{RenameFlags, renameat_with};
 #[cfg(unix)]
 use rustix::{
     fs::{Mode, OFlags, mkdirat, open, openat},
@@ -65,9 +71,12 @@ pub struct PlannedChange {
     #[serde(skip)]
     expected_content: Option<String>,
     #[serde(skip)]
-    planned_root: Option<PlannedRootIdentity>,
+    planned_root: Option<Arc<PlannedRootIdentity>>,
     #[serde(skip)]
     expected_identity: Option<ObjectIdentity>,
+    #[cfg(windows)]
+    #[serde(skip)]
+    planned_parent: Option<Arc<WindowsPlannedParent>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -76,18 +85,47 @@ struct ObjectIdentity {
     second: u64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug)]
 enum PlannedRootIdentity {
     Existing {
         requested: PathBuf,
         identity: ObjectIdentity,
+        anchor: Arc<PlannedRootAnchor>,
+        index: PlannedIndexIdentity,
     },
     Missing {
         requested: PathBuf,
         anchor: PathBuf,
         anchor_identity: ObjectIdentity,
         components: Vec<OsString>,
+        handle: Arc<PlannedRootAnchor>,
     },
+}
+
+#[derive(Debug)]
+struct PlannedRootAnchor {
+    #[cfg(unix)]
+    directory: File,
+    #[cfg(windows)]
+    locks: Vec<File>,
+}
+
+#[derive(Debug)]
+enum PlannedIndexIdentity {
+    Missing,
+    Existing {
+        file: File,
+        identity: ObjectIdentity,
+        bytes: Vec<u8>,
+    },
+}
+
+#[cfg(windows)]
+#[derive(Debug)]
+struct WindowsPlannedParent {
+    path: PathBuf,
+    identity: ObjectIdentity,
+    locks: Vec<File>,
 }
 
 pub fn load_bundle(root: &Path) -> Result<ParseBundleInput, String> {
@@ -642,6 +680,18 @@ pub fn plan_files(
         if existing.as_deref() == Some(content.as_str()) {
             continue;
         }
+        #[cfg(windows)]
+        let planned_parent = if existing.is_none()
+            && matches!(planned_root.as_ref(), PlannedRootIdentity::Existing { .. })
+        {
+            Some(capture_windows_planned_parent(
+                target
+                    .parent()
+                    .ok_or_else(|| format!("{} has no parent", target.display()))?,
+            )?)
+        } else {
+            None
+        };
         plan.push(PlannedChange {
             target,
             relative_path: file.relative_path,
@@ -655,49 +705,50 @@ pub fn plan_files(
             expected_content: existing,
             planned_root: Some(planned_root.clone()),
             expected_identity,
+            #[cfg(windows)]
+            planned_parent,
         });
     }
     plan.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
     Ok(plan)
 }
 
-fn capture_planned_root_identity(root: &Path) -> Result<PlannedRootIdentity, String> {
-    match fs::symlink_metadata(root) {
+fn capture_planned_root_identity(root: &Path) -> Result<Arc<PlannedRootIdentity>, String> {
+    let absolute_root = platform_absolute_root(root)?;
+    match fs::symlink_metadata(&absolute_root) {
         Ok(_) => {
-            ensure_safe_root(root)?;
-            Ok(PlannedRootIdentity::Existing {
+            let anchor = capture_root_anchor(&absolute_root)?;
+            let identity = root_anchor_identity(&anchor)?;
+            let index = capture_planned_index(&anchor, &absolute_root)?;
+            Ok(Arc::new(PlannedRootIdentity::Existing {
                 requested: root.to_path_buf(),
-                identity: path_object_identity(root)?,
-            })
+                identity,
+                anchor,
+                index,
+            }))
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            let absolute_root = std::path::absolute(root)
-                .map_err(|error| format!("cannot make {} absolute: {error}", root.display()))?;
-            let mut anchor = absolute_root.as_path();
+            let mut anchor_path = absolute_root.as_path();
             loop {
-                anchor = anchor.parent().ok_or_else(|| {
+                anchor_path = anchor_path.parent().ok_or_else(|| {
                     format!("{} has no existing directory ancestor", root.display())
                 })?;
-                match fs::symlink_metadata(anchor) {
+                match fs::symlink_metadata(anchor_path) {
                     Ok(metadata) if metadata.file_type().is_symlink() => {
-                        if is_trusted_platform_path_alias(anchor) {
-                            break;
-                        }
-                        return Err(format!("{} is not a real directory", anchor.display()));
+                        return Err(format!("{} is not a real directory", anchor_path.display()));
                     }
                     Ok(metadata) if metadata.is_dir() => break,
-                    Ok(_) => return Err(format!("{} is not a real directory", anchor.display())),
+                    Ok(_) => {
+                        return Err(format!("{} is not a real directory", anchor_path.display()));
+                    }
                     Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                     Err(error) => return Err(error.to_string()),
                 }
             }
-            ensure_safe_root(anchor)?;
-            let canonical_anchor = anchor
-                .canonicalize()
-                .map_err(|error| format!("cannot anchor {}: {error}", anchor.display()))?;
-            let anchor_identity = path_object_identity(&canonical_anchor)?;
+            let handle = capture_missing_root_anchor(anchor_path)?;
+            let anchor_identity = root_anchor_identity(&handle)?;
             let components = absolute_root
-                .strip_prefix(anchor)
+                .strip_prefix(anchor_path)
                 .map_err(|_| "new root escapes its existing ancestor".to_owned())?
                 .components()
                 .map(|component| match component {
@@ -705,15 +756,187 @@ fn capture_planned_root_identity(root: &Path) -> Result<PlannedRootIdentity, Str
                     _ => Err("new root contains a non-relative component".to_owned()),
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(PlannedRootIdentity::Missing {
+            Ok(Arc::new(PlannedRootIdentity::Missing {
                 requested: root.to_path_buf(),
-                anchor: canonical_anchor,
+                anchor: anchor_path.to_path_buf(),
                 anchor_identity,
                 components,
-            })
+                handle,
+            }))
         }
         Err(error) => Err(error.to_string()),
     }
+}
+
+fn platform_absolute_root(root: &Path) -> Result<PathBuf, String> {
+    let absolute = std::path::absolute(root)
+        .map_err(|error| format!("cannot make {} absolute: {error}", root.display()))?;
+    #[cfg(target_os = "macos")]
+    {
+        for (alias, physical) in [
+            (Path::new("/tmp"), Path::new("/private/tmp")),
+            (Path::new("/var"), Path::new("/private/var")),
+        ] {
+            if let Ok(suffix) = absolute.strip_prefix(alias) {
+                return Ok(physical.join(suffix));
+            }
+        }
+    }
+    Ok(absolute)
+}
+
+#[cfg(unix)]
+fn capture_root_anchor(path: &Path) -> Result<Arc<PlannedRootAnchor>, String> {
+    Ok(Arc::new(PlannedRootAnchor {
+        directory: open_anchored_root(path)?,
+    }))
+}
+
+#[cfg(unix)]
+fn capture_missing_root_anchor(path: &Path) -> Result<Arc<PlannedRootAnchor>, String> {
+    capture_root_anchor(path)
+}
+
+#[cfg(windows)]
+fn capture_missing_root_anchor(path: &Path) -> Result<Arc<PlannedRootAnchor>, String> {
+    let (_absolute, mut locks) = windows_anchor_directory(path, false)?;
+    locks.push(open_windows_directory_strict_mutation_lock(path)?);
+    Ok(Arc::new(PlannedRootAnchor { locks }))
+}
+
+#[cfg(all(not(unix), not(windows)))]
+fn capture_missing_root_anchor(path: &Path) -> Result<Arc<PlannedRootAnchor>, String> {
+    capture_root_anchor(path)
+}
+
+#[cfg(windows)]
+fn capture_root_anchor(path: &Path) -> Result<Arc<PlannedRootAnchor>, String> {
+    let (_absolute, locks) = windows_anchor_directory(path, false)?;
+    Ok(Arc::new(PlannedRootAnchor { locks }))
+}
+
+#[cfg(all(not(unix), not(windows)))]
+fn capture_root_anchor(_path: &Path) -> Result<Arc<PlannedRootAnchor>, String> {
+    Err("stable filesystem anchors are unavailable on this platform".to_owned())
+}
+
+#[cfg(unix)]
+fn root_anchor_identity(anchor: &PlannedRootAnchor) -> Result<ObjectIdentity, String> {
+    file_object_identity(&anchor.directory)
+}
+
+#[cfg(windows)]
+fn root_anchor_identity(anchor: &PlannedRootAnchor) -> Result<ObjectIdentity, String> {
+    file_object_identity(
+        anchor
+            .locks
+            .last()
+            .ok_or_else(|| "Windows root anchor is empty".to_owned())?,
+    )
+}
+
+#[cfg(unix)]
+fn capture_planned_index(
+    anchor: &PlannedRootAnchor,
+    _root: &Path,
+) -> Result<PlannedIndexIdentity, String> {
+    match openat(
+        &anchor.directory,
+        "index.md",
+        OFlags::RDONLY | OFlags::NONBLOCK | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::empty(),
+    ) {
+        Ok(file) => {
+            let file = File::from(file);
+            if !file
+                .metadata()
+                .map_err(|error| error.to_string())?
+                .is_file()
+            {
+                return Err("write refused unsafe root index".to_owned());
+            }
+            Ok(PlannedIndexIdentity::Existing {
+                identity: file_object_identity(&file)?,
+                bytes: read_planned_index_bytes(&file)?,
+                file,
+            })
+        }
+        Err(Errno::NOENT) => Ok(PlannedIndexIdentity::Missing),
+        Err(error) => Err(format!("write refused unsafe root index: {error}")),
+    }
+}
+
+#[cfg(windows)]
+fn capture_windows_planned_parent(parent: &Path) -> Result<Arc<WindowsPlannedParent>, String> {
+    let (path, mut locks) = windows_anchor_directory(parent, false).map_err(|error| {
+        format!(
+            "generated parent {} must already exist for an atomic existing-root create: {error}",
+            parent.display()
+        )
+    })?;
+    locks.push(open_windows_directory_strict_mutation_lock(&path)?);
+    let identity = file_object_identity(
+        locks
+            .last()
+            .ok_or_else(|| "Windows generated parent anchor is empty".to_owned())?,
+    )?;
+    Ok(Arc::new(WindowsPlannedParent {
+        path,
+        identity,
+        locks,
+    }))
+}
+
+#[cfg(windows)]
+fn capture_planned_index(
+    _anchor: &PlannedRootAnchor,
+    root: &Path,
+) -> Result<PlannedIndexIdentity, String> {
+    match open_windows_read_handle(&root.join("index.md")) {
+        Ok(file) => {
+            let metadata = file.metadata().map_err(|error| error.to_string())?;
+            if windows_metadata_is_reparse(&metadata) || !metadata.is_file() {
+                return Err("write refused unsafe root index".to_owned());
+            }
+            Ok(PlannedIndexIdentity::Existing {
+                identity: file_object_identity(&file)?,
+                bytes: read_planned_index_bytes(&file)?,
+                file,
+            })
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Ok(PlannedIndexIdentity::Missing)
+        }
+        Err(error) => Err(format!("write refused unsafe root index: {error}")),
+    }
+}
+
+fn read_planned_index_bytes(file: &File) -> Result<Vec<u8>, String> {
+    let metadata = file.metadata().map_err(|error| error.to_string())?;
+    if !metadata.is_file() || metadata.len() > MAX_DOCUMENT_BYTES {
+        return Err("write refused because the root index is unsafe or too large".to_owned());
+    }
+    let mut reader = file.try_clone().map_err(|error| error.to_string())?;
+    reader
+        .seek(SeekFrom::Start(0))
+        .map_err(|error| error.to_string())?;
+    let mut bytes = Vec::new();
+    reader
+        .take(MAX_DOCUMENT_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes.len() as u64 > MAX_DOCUMENT_BYTES {
+        return Err("write refused because the root index is too large".to_owned());
+    }
+    Ok(bytes)
+}
+
+#[cfg(all(not(unix), not(windows)))]
+fn capture_planned_index(
+    _anchor: &PlannedRootAnchor,
+    _root: &Path,
+) -> Result<PlannedIndexIdentity, String> {
+    Ok(PlannedIndexIdentity::Missing)
 }
 
 #[cfg(unix)]
@@ -1016,6 +1239,21 @@ pub fn apply_plan(root: &Path, plan: &[PlannedChange]) -> Result<(), String> {
     if plan.is_empty() {
         return Ok(());
     }
+    let planned_root = planned_root_for_apply(plan)?;
+    let planned_requested = match planned_root {
+        PlannedRootIdentity::Existing { requested, .. }
+        | PlannedRootIdentity::Missing { requested, .. } => requested,
+    };
+    if planned_requested != root {
+        return Err("write plan root does not match the requested root".to_owned());
+    }
+    if plan.len() > 1 && matches!(planned_root, PlannedRootIdentity::Existing { .. }) {
+        return Err(
+            "multiple creates in an existing root cannot be committed atomically; no changes were written"
+                .to_owned(),
+        );
+    }
+    validate_planned_root_version(planned_root)?;
 
     #[cfg(unix)]
     {
@@ -1037,18 +1275,151 @@ pub fn apply_plan(root: &Path, plan: &[PlannedChange]) -> Result<(), String> {
     }
 }
 
+fn validate_planned_root_version(planned: &PlannedRootIdentity) -> Result<(), String> {
+    let PlannedRootIdentity::Existing {
+        requested,
+        anchor,
+        index,
+        ..
+    } = planned
+    else {
+        return Ok(());
+    };
+    let mut documents = Vec::new();
+    match index {
+        PlannedIndexIdentity::Missing => ensure_planned_index_absent(anchor, requested)?,
+        PlannedIndexIdentity::Existing {
+            file,
+            identity,
+            bytes: planned_bytes,
+        } => {
+            ensure_planned_index_identity(anchor, requested, identity)?;
+            let bytes = read_planned_index_bytes(file)?;
+            if bytes != *planned_bytes {
+                return Err(
+                    "root index bytes changed after planning; no changes were written".to_owned(),
+                );
+            }
+            ensure_planned_index_identity(anchor, requested, identity)?;
+            documents.push(BundleDocumentInput {
+                uri: file_uri(&platform_absolute_root(requested)?.join("index.md")),
+                bundle_path: "index.md".to_owned(),
+                content: Some(DocumentContent::Bytes(bytes)),
+                content_hash: None,
+                identity_only_failure: None,
+                invalid_utf16_fields: None,
+            });
+        }
+    }
+    let bundle = parse_bundle(ParseBundleInput {
+        root_uri: file_uri(&platform_absolute_root(requested)?),
+        invalid_root_uri_utf16: None,
+        revision: 1,
+        documents,
+    });
+    if let Some(failure) = bundle.failures.first() {
+        return Err(format!(
+            "write refused because the root index cannot be inspected: {}",
+            failure.message
+        ));
+    }
+    let Some(index) = bundle.reserved_documents.first() else {
+        return Ok(());
+    };
+    let Some(frontmatter) = &index.frontmatter else {
+        return Ok(());
+    };
+    let Some(raw_version) = frontmatter.raw.get("okf_version") else {
+        return Ok(());
+    };
+    let Some(version) = &index.okf_version else {
+        return Err(format!(
+            "write refused because `okf_version` is not a supported string: {raw_version}"
+        ));
+    };
+    if matches!(version.as_str(), "0.1" | "0.2") || is_future_minor_version(version) {
+        Ok(())
+    } else {
+        Err(format!(
+            "write refused because the bundle declares unsupported OKF version {version:?}"
+        ))
+    }
+}
+
+#[cfg(unix)]
+fn ensure_planned_index_absent(anchor: &PlannedRootAnchor, _root: &Path) -> Result<(), String> {
+    match openat(
+        &anchor.directory,
+        "index.md",
+        OFlags::RDONLY | OFlags::NONBLOCK | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::empty(),
+    ) {
+        Err(Errno::NOENT) => Ok(()),
+        Ok(_) => Err("root index appeared after planning; no changes were written".to_owned()),
+        Err(error) => Err(format!("cannot revalidate planned root index: {error}")),
+    }
+}
+
+#[cfg(unix)]
+fn ensure_planned_index_identity(
+    anchor: &PlannedRootAnchor,
+    _root: &Path,
+    expected: &ObjectIdentity,
+) -> Result<(), String> {
+    let current = File::from(
+        openat(
+            &anchor.directory,
+            "index.md",
+            OFlags::RDONLY | OFlags::NONBLOCK | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(|error| format!("cannot revalidate planned root index: {error}"))?,
+    );
+    if file_object_identity(&current)? == *expected {
+        Ok(())
+    } else {
+        Err("root index changed after planning; no changes were written".to_owned())
+    }
+}
+
+#[cfg(windows)]
+fn ensure_planned_index_absent(_anchor: &PlannedRootAnchor, root: &Path) -> Result<(), String> {
+    match open_windows_read_handle(&platform_absolute_root(root)?.join("index.md")) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Ok(_) => Err("root index appeared after planning; no changes were written".to_owned()),
+        Err(error) => Err(format!("cannot revalidate planned root index: {error}")),
+    }
+}
+
+#[cfg(windows)]
+fn ensure_planned_index_identity(
+    _anchor: &PlannedRootAnchor,
+    root: &Path,
+    expected: &ObjectIdentity,
+) -> Result<(), String> {
+    let current = open_windows_read_handle(&platform_absolute_root(root)?.join("index.md"))
+        .map_err(|error| format!("cannot revalidate planned root index: {error}"))?;
+    if file_object_identity(&current)? == *expected {
+        Ok(())
+    } else {
+        Err("root index changed after planning; no changes were written".to_owned())
+    }
+}
+
 fn planned_root_for_apply(plan: &[PlannedChange]) -> Result<&PlannedRootIdentity, String> {
     let planned = plan
         .first()
         .and_then(|change| change.planned_root.as_ref())
         .ok_or_else(|| "write plan is missing its root identity".to_owned())?;
-    if plan
-        .iter()
-        .any(|change| change.planned_root.as_ref() != Some(planned))
-    {
+    if plan.iter().any(|change| {
+        change
+            .planned_root
+            .as_ref()
+            .is_none_or(|candidate| !Arc::ptr_eq(candidate, planned))
+    }) {
         return Err("write plan contains inconsistent root identities".to_owned());
     }
-    Ok(planned)
+    Ok(planned.as_ref())
 }
 
 #[cfg(all(not(unix), not(windows)))]
@@ -1088,8 +1459,11 @@ fn apply_plan_ambient(root: &Path, plan: &[PlannedChange]) -> Result<(), String>
 
 #[cfg(windows)]
 fn apply_plan_windows(root: &Path, plan: &[PlannedChange]) -> Result<(), String> {
-    let (root, _root_locks) =
-        windows_open_or_create_planned_root(root, planned_root_for_apply(plan)?)?;
+    let planned = planned_root_for_apply(plan)?;
+    if matches!(planned, PlannedRootIdentity::Missing { .. }) {
+        return apply_missing_root_plan_windows(planned, plan);
+    }
+    let (root, _root_locks) = windows_open_or_create_planned_root(root, planned)?;
     for change in plan {
         ensure_contained(&root, &root.join(&change.relative_path))?;
         validate_relative_path(&change.relative_path)?;
@@ -1102,6 +1476,138 @@ fn apply_plan_windows(root: &Path, plan: &[PlannedChange]) -> Result<(), String>
 }
 
 #[cfg(windows)]
+fn apply_missing_root_plan_windows(
+    planned: &PlannedRootIdentity,
+    plan: &[PlannedChange],
+) -> Result<(), String> {
+    apply_missing_root_plan_windows_with_hook(planned, plan, || Ok(()))
+}
+
+#[cfg(windows)]
+fn apply_missing_root_plan_windows_with_hook(
+    planned: &PlannedRootIdentity,
+    plan: &[PlannedChange],
+    before_publish: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    const STAGING_NAME: &str = ".okf-workbench-root-staging";
+    let PlannedRootIdentity::Missing {
+        requested,
+        anchor,
+        anchor_identity,
+        components,
+        handle,
+        ..
+    } = planned
+    else {
+        return Err("missing-root staging requires a missing-root plan".to_owned());
+    };
+    if handle.locks.is_empty() || path_object_identity(anchor)? != *anchor_identity {
+        return Err("root ancestor changed after planning; no changes were written".to_owned());
+    }
+    let mut expected_root = anchor.clone();
+    expected_root.extend(components);
+    if expected_root != platform_absolute_root(requested)? {
+        return Err("missing-root plan no longer matches its requested root".to_owned());
+    }
+    let first = components
+        .first()
+        .ok_or_else(|| "missing-root plan has no missing component".to_owned())?;
+    let final_path = anchor.join(first);
+    let staging_path = anchor.join(STAGING_NAME);
+    for path in [&final_path, &staging_path] {
+        match fs::symlink_metadata(path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Ok(_) => {
+                return Err(format!(
+                    "root publication entry {} appeared after planning; no changes were written",
+                    path.display()
+                ));
+            }
+            Err(error) => return Err(format!("cannot preflight root publication: {error}")),
+        }
+    }
+    fs::create_dir(&staging_path).map_err(|error| {
+        format!(
+            "cannot reserve bounded root staging directory {}: {error}; no target was published",
+            staging_path.display()
+        )
+    })?;
+    let staging_handle = open_windows_directory_rename_handle(&staging_path)?;
+    let mut staged_root = staging_path.clone();
+    let mut staged_directory_paths = HashSet::new();
+    let mut staged_directory_locks = Vec::new();
+    for component in components.iter().skip(1) {
+        staged_root.push(component);
+        create_and_lock_windows_staged_directory(
+            &staged_root,
+            &mut staged_directory_paths,
+            &mut staged_directory_locks,
+        )?;
+    }
+    for change in plan {
+        validate_relative_path(&change.relative_path)?;
+        let parent = Path::new(&change.relative_path)
+            .parent()
+            .ok_or_else(|| format!("{} has no parent", change.relative_path))?;
+        let mut current = staged_root.clone();
+        for component in parent.components() {
+            let Component::Normal(component) = component else {
+                return Err(format!(
+                    "generated path {:?} is not relative",
+                    change.relative_path
+                ));
+            };
+            current.push(component);
+            create_and_lock_windows_staged_directory(
+                &current,
+                &mut staged_directory_paths,
+                &mut staged_directory_locks,
+            )?;
+        }
+    }
+    for change in plan {
+        let target = staged_root.join(&change.relative_path);
+        let mut file = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&target)
+            .map_err(|error| format!("cannot stage {}: {error}", target.display()))?;
+        file.write_all(change.content.as_bytes())
+            .and_then(|_| file.sync_all())
+            .map_err(|error| error.to_string())?;
+    }
+    before_publish()?;
+    let parent_handle = handle
+        .locks
+        .last()
+        .ok_or_else(|| "missing-root plan has no retained Windows ancestor handle".to_owned())?;
+    rename_windows_handle(&staging_handle, parent_handle, first).map_err(|error| {
+        format!(
+            "cannot atomically publish the complete new root; concurrent content was preserved and bounded staging remains for inspection: {error}"
+        )
+    })
+}
+
+#[cfg(windows)]
+fn create_and_lock_windows_staged_directory(
+    path: &Path,
+    created: &mut HashSet<PathBuf>,
+    locks: &mut Vec<File>,
+) -> Result<(), String> {
+    if !created.insert(path.to_path_buf()) {
+        return Ok(());
+    }
+    fs::create_dir(path).map_err(|error| {
+        format!(
+            "cannot create private staged directory {}: {error}; no target was published",
+            path.display()
+        )
+    })?;
+    locks.push(open_windows_directory_strict_mutation_lock(path)?);
+    Ok(())
+}
+
+#[cfg(windows)]
 fn windows_open_or_create_planned_root(
     root: &Path,
     planned: &PlannedRootIdentity,
@@ -1110,56 +1616,21 @@ fn windows_open_or_create_planned_root(
         PlannedRootIdentity::Existing {
             requested,
             identity,
+            ..
         } => {
             if requested != root {
                 return Err("write plan root does not match the requested root".to_owned());
             }
-            let (absolute, locks) = windows_anchor_directory(root, false)?;
-            let anchored = locks
-                .last()
-                .ok_or_else(|| "Windows root anchor is empty".to_owned())?;
-            if file_object_identity(anchored)? != *identity {
+            if path_object_identity(&platform_absolute_root(root)?)? != *identity {
                 return Err(format!(
                     "bundle root {} changed after planning; no changes were written",
                     root.display()
                 ));
             }
-            Ok((absolute, locks))
+            Ok((platform_absolute_root(root)?, Vec::new()))
         }
-        PlannedRootIdentity::Missing {
-            requested,
-            anchor,
-            anchor_identity,
-            components,
-        } => {
-            if requested != root {
-                return Err("write plan root does not match the requested root".to_owned());
-            }
-            let (_anchor, mut locks) = windows_anchor_directory(anchor, false)?;
-            let anchored = locks
-                .last()
-                .ok_or_else(|| "Windows root ancestor anchor is empty".to_owned())?;
-            if file_object_identity(anchored)? != *anchor_identity {
-                return Err(format!(
-                    "root ancestor {} changed after planning; no changes were written",
-                    anchor.display()
-                ));
-            }
-            let mut current = anchor.clone();
-            for component in components {
-                current.push(component);
-                fs::create_dir(&current).map_err(|error| {
-                    if error.kind() == std::io::ErrorKind::AlreadyExists {
-                        format!(
-                            "root component {component:?} appeared after planning; no changes were written"
-                        )
-                    } else {
-                        format!("cannot create {}: {error}", current.display())
-                    }
-                })?;
-                locks.push(open_windows_directory_lock(&current)?);
-            }
-            Ok((root.to_path_buf(), locks))
+        PlannedRootIdentity::Missing { .. } => {
+            Err("missing roots require complete staged publication".to_owned())
         }
     }
 }
@@ -1170,26 +1641,46 @@ fn preflight_windows_change(root: &Path, change: &PlannedChange) -> Result<(), S
     let parent = target
         .parent()
         .ok_or_else(|| format!("{} has no parent", target.display()))?;
-    if !parent.exists() {
-        return if change.expected_content.is_none() {
-            Ok(())
-        } else {
-            Err(format!(
-                "{} disappeared after planning; no write was attempted",
-                target.display()
-            ))
-        };
-    }
-    let (_parent, _locks) = windows_anchor_directory(parent, false)?;
     match &change.expected_content {
-        None => match open_windows_read_handle(&target) {
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Ok(_) => Err(format!(
-                "{} appeared after planning; no replacement was attempted",
-                target.display()
-            )),
-            Err(error) => Err(format!("cannot revalidate {}: {error}", target.display())),
-        },
+        None => {
+            let planned_parent = change
+                .planned_parent
+                .as_ref()
+                .ok_or_else(|| "write plan is missing its Windows parent anchor".to_owned())?;
+            if planned_parent.path != parent
+                || path_object_identity(parent)? != planned_parent.identity
+                || planned_parent.locks.is_empty()
+            {
+                return Err(format!(
+                    "generated parent {} changed after planning; no changes were written",
+                    parent.display()
+                ));
+            }
+            match open_windows_read_handle(&target) {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Ok(_) => {
+                    return Err(format!(
+                        "{} appeared after planning; no replacement was attempted",
+                        target.display()
+                    ));
+                }
+                Err(error) => {
+                    return Err(format!("cannot revalidate {}: {error}", target.display()));
+                }
+            }
+            let reservation = parent.join(".okf-workbench-staging.tmp");
+            match fs::symlink_metadata(&reservation) {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Ok(_) => Err(format!(
+                    "bounded staging reservation {} already exists; no changes were written",
+                    reservation.display()
+                )),
+                Err(error) => Err(format!(
+                    "cannot preflight bounded staging reservation {}: {error}",
+                    reservation.display()
+                )),
+            }
+        }
         Some(_) => {
             Err("conditional replacement is unavailable on Windows; no file was changed".to_owned())
         }
@@ -1202,12 +1693,25 @@ fn apply_windows_change(root: &Path, change: &PlannedChange) -> Result<(), Strin
     let parent = target
         .parent()
         .ok_or_else(|| format!("{} has no parent", target.display()))?;
-    let (parent, _locks) = windows_anchor_directory(parent, true)?;
+    let planned_parent = change
+        .planned_parent
+        .as_ref()
+        .ok_or_else(|| "write plan is missing its Windows parent anchor".to_owned())?;
+    if planned_parent.path != parent || path_object_identity(parent)? != planned_parent.identity {
+        return Err(format!(
+            "generated parent {} changed after planning; no changes were written",
+            parent.display()
+        ));
+    }
     let leaf = target
         .file_name()
         .ok_or_else(|| format!("{} has no filename", target.display()))?;
+    let parent_handle = planned_parent
+        .locks
+        .last()
+        .ok_or_else(|| "write plan is missing its Windows parent mutation handle".to_owned())?;
     match &change.expected_content {
-        None => create_windows_file(&parent, leaf, change),
+        None => create_windows_file(parent, parent_handle, leaf, change),
         Some(_) => {
             Err("conditional replacement is unavailable on Windows; no file was changed".to_owned())
         }
@@ -1215,9 +1719,15 @@ fn apply_windows_change(root: &Path, change: &PlannedChange) -> Result<(), Strin
 }
 
 #[cfg(windows)]
-fn create_windows_file(parent: &Path, leaf: &OsStr, change: &PlannedChange) -> Result<(), String> {
+fn create_windows_file(
+    parent: &Path,
+    parent_handle: &File,
+    leaf: &OsStr,
+    change: &PlannedChange,
+) -> Result<(), String> {
     create_windows_file_with_writer(
         parent,
+        parent_handle,
         leaf,
         change,
         |file| {
@@ -1231,6 +1741,7 @@ fn create_windows_file(parent: &Path, leaf: &OsStr, change: &PlannedChange) -> R
 #[cfg(windows)]
 fn create_windows_file_with_writer(
     parent: &Path,
+    parent_handle: &File,
     leaf: &OsStr,
     change: &PlannedChange,
     write_content: impl FnOnce(&mut File) -> Result<(), String>,
@@ -1251,13 +1762,12 @@ fn create_windows_file_with_writer(
             ));
         }
     }
-    let parent_handle = open_windows_directory_mutation_handle(parent)?;
     let (_temporary_path, mut temporary) = create_windows_temporary(parent)?;
     let result = (|| {
         write_content(&mut temporary)?;
         temporary.sync_all().map_err(|error| error.to_string())?;
         before_publish()?;
-        rename_windows_handle(&temporary, &parent_handle, leaf).map_err(|error| {
+        rename_windows_handle(&temporary, parent_handle, leaf).map_err(|error| {
             format!(
                 "{} appeared after planning; no file was published: {error}",
                 change.target.display()
@@ -1358,15 +1868,35 @@ fn open_windows_directory_lock(path: &Path) -> Result<File, String> {
 }
 
 #[cfg(windows)]
-fn open_windows_directory_mutation_handle(path: &Path) -> Result<File, String> {
+fn open_windows_directory_strict_mutation_lock(path: &Path) -> Result<File, String> {
     let file = OpenOptions::new()
         .access_mode(FILE_GENERIC_READ | FILE_GENERIC_WRITE | SYNCHRONIZE)
-        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+        .share_mode(FILE_SHARE_READ)
         .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
         .open(path)
         .map_err(|error| {
             format!(
-                "cannot open parent {} for publication: {error}",
+                "cannot exclusively anchor parent {} for publication: {error}",
+                path.display()
+            )
+        })?;
+    let metadata = file.metadata().map_err(|error| error.to_string())?;
+    if windows_metadata_is_reparse(&metadata) || !metadata.is_dir() {
+        return Err(format!("{} is not a real directory", path.display()));
+    }
+    Ok(file)
+}
+
+#[cfg(windows)]
+fn open_windows_directory_rename_handle(path: &Path) -> Result<File, String> {
+    let file = OpenOptions::new()
+        .access_mode(FILE_GENERIC_READ | FILE_GENERIC_WRITE | DELETE | SYNCHRONIZE)
+        .share_mode(FILE_SHARE_READ)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+        .map_err(|error| {
+            format!(
+                "cannot open staged directory {} for publication: {error}",
                 path.display()
             )
         })?;
@@ -1490,7 +2020,11 @@ fn dispose_windows_handle(file: &File) -> Result<(), String> {
 
 #[cfg(unix)]
 fn apply_plan_anchored(root: &Path, plan: &[PlannedChange]) -> Result<(), String> {
-    let root_directory = open_or_create_anchored_root(root, planned_root_for_apply(plan)?)?;
+    let planned = planned_root_for_apply(plan)?;
+    if matches!(planned, PlannedRootIdentity::Missing { .. }) {
+        return apply_missing_root_plan_anchored(planned, plan);
+    }
+    let root_directory = open_or_create_anchored_root(root, planned)?;
     for change in plan {
         ensure_contained(root, &change.target)?;
         validate_relative_path(&change.relative_path)?;
@@ -1500,6 +2034,117 @@ fn apply_plan_anchored(root: &Path, plan: &[PlannedChange]) -> Result<(), String
         apply_anchored_change(&root_directory, change)?;
     }
     Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn apply_missing_root_plan_anchored(
+    planned: &PlannedRootIdentity,
+    plan: &[PlannedChange],
+) -> Result<(), String> {
+    apply_missing_root_plan_anchored_with_hook(planned, plan, || Ok(()))
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn apply_missing_root_plan_anchored_with_hook(
+    planned: &PlannedRootIdentity,
+    plan: &[PlannedChange],
+    before_publish: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    const STAGING_NAME: &str = ".okf-workbench-root-staging";
+    let PlannedRootIdentity::Missing {
+        anchor,
+        anchor_identity,
+        components,
+        handle,
+        ..
+    } = planned
+    else {
+        return Err("missing-root staging requires a missing-root plan".to_owned());
+    };
+    let first = components
+        .first()
+        .ok_or_else(|| "missing-root plan has no missing component".to_owned())?;
+    let current = open_anchored_root(anchor)?;
+    if file_object_identity(&current)? != *anchor_identity {
+        return Err("root ancestor changed after planning; no changes were written".to_owned());
+    }
+    for leaf in [first.as_os_str(), OsStr::new(STAGING_NAME)] {
+        match openat(
+            &handle.directory,
+            leaf,
+            OFlags::RDONLY | OFlags::NONBLOCK | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        ) {
+            Err(Errno::NOENT) => {}
+            Ok(_) => {
+                return Err(format!(
+                    "root publication entry {leaf:?} appeared after planning; no changes were written"
+                ));
+            }
+            Err(error) => return Err(format!("cannot preflight root publication: {error}")),
+        }
+    }
+    mkdirat(
+        &handle.directory,
+        STAGING_NAME,
+        Mode::from_raw_mode(0o755),
+    )
+    .map_err(|error| {
+        format!(
+            "cannot reserve bounded root staging directory {STAGING_NAME}: {error}; no target was published"
+        )
+    })?;
+    let mut root_directory = File::from(
+        openat(
+            &handle.directory,
+            STAGING_NAME,
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(|error| format!("cannot open root staging directory: {error}"))?,
+    );
+    for component in components.iter().skip(1) {
+        mkdirat(&root_directory, component, Mode::from_raw_mode(0o755)).map_err(|error| {
+            format!("cannot build staged root component {component:?}: {error}")
+        })?;
+        root_directory = File::from(
+            openat(
+                &root_directory,
+                component,
+                OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+                Mode::empty(),
+            )
+            .map_err(|error| format!("cannot open staged root component: {error}"))?,
+        );
+    }
+    for change in plan {
+        validate_relative_path(&change.relative_path)?;
+        apply_anchored_change(&root_directory, change)?;
+    }
+    root_directory
+        .sync_all()
+        .map_err(|error| error.to_string())?;
+    before_publish()?;
+    renameat_with(
+        &handle.directory,
+        STAGING_NAME,
+        &handle.directory,
+        first,
+        RenameFlags::NOREPLACE,
+    )
+    .map_err(|error| {
+        format!(
+            "cannot atomically publish the complete new root; concurrent content was preserved and bounded staging remains for inspection: {error}"
+        )
+    })
+}
+
+#[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
+fn apply_missing_root_plan_anchored(
+    _planned: &PlannedRootIdentity,
+    _plan: &[PlannedChange],
+) -> Result<(), String> {
+    Err("atomic complete-root publication is unavailable on this Unix platform".to_owned())
 }
 
 #[cfg(unix)]
@@ -1520,36 +2165,46 @@ fn open_or_create_anchored_root_with_hook(
         PlannedRootIdentity::Existing {
             requested,
             identity,
+            anchor,
+            ..
         } => {
             if requested != root {
                 return Err("write plan root does not match the requested root".to_owned());
             }
-            let directory = open_anchored_root(root)?;
-            if file_object_identity(&directory)? != *identity {
+            let current = open_anchored_root(&platform_absolute_root(root)?)?;
+            if file_object_identity(&current)? != *identity {
                 return Err(format!(
                     "bundle root {} changed after planning; no changes were written",
                     root.display()
                 ));
             }
             after_anchor()?;
-            Ok(directory)
+            anchor
+                .directory
+                .try_clone()
+                .map_err(|error| error.to_string())
         }
         PlannedRootIdentity::Missing {
             requested,
             anchor,
             anchor_identity,
             components,
+            handle,
         } => {
             if requested != root {
                 return Err("write plan root does not match the requested root".to_owned());
             }
-            let mut directory = open_anchored_root(anchor)?;
-            if file_object_identity(&directory)? != *anchor_identity {
+            let current = open_anchored_root(anchor)?;
+            if file_object_identity(&current)? != *anchor_identity {
                 return Err(format!(
                     "root ancestor {} changed after planning; no changes were written",
                     anchor.display()
                 ));
             }
+            let mut directory = handle
+                .directory
+                .try_clone()
+                .map_err(|error| error.to_string())?;
             after_anchor()?;
             for component in components {
                 mkdirat(&directory, component, Mode::from_raw_mode(0o755)).map_err(|error| {
@@ -1701,7 +2356,7 @@ fn preflight_anchored_change(root: &File, change: &PlannedChange) -> Result<(), 
         None => match openat(
             &parent,
             &leaf,
-            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            OFlags::RDONLY | OFlags::NONBLOCK | OFlags::NOFOLLOW | OFlags::CLOEXEC,
             Mode::empty(),
         ) {
             Err(Errno::NOENT) => Ok(()),
@@ -1767,7 +2422,21 @@ fn create_anchored_file_with_writer(
     use std::os::fd::AsRawFd;
     use std::os::unix::ffi::OsStrExt;
 
-    let mut temporary = tempfile::tempfile().map_err(|error| error.to_string())?;
+    let temporary_directory = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let temporary_path = temporary_directory.path().join("stage");
+    let mut temporary = {
+        use std::os::unix::fs::OpenOptionsExt;
+
+        OpenOptions::new()
+            .create_new(true)
+            .read(true)
+            .write(true)
+            .mode(0o666)
+            .open(&temporary_path)
+            .map_err(|error| error.to_string())?
+    };
+    fs::remove_file(&temporary_path).map_err(|error| error.to_string())?;
+    drop(temporary_directory);
     write_content(&mut temporary)?;
     temporary.sync_all().map_err(|error| error.to_string())?;
     let leaf = std::ffi::CString::new(leaf.as_bytes())
@@ -1869,6 +2538,7 @@ fn merge_region(existing: &str, rendered: &str, start: &str, end: &str) -> Resul
     ))
 }
 
+#[cfg(not(windows))]
 fn ensure_safe_root(root: &Path) -> Result<(), String> {
     let mut current = PathBuf::new();
     for component in root.components() {
@@ -1905,7 +2575,7 @@ fn is_trusted_platform_path_alias(path: &Path) -> bool {
     fs::read_link(path).is_ok_and(|target| target == expected_target)
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(not(target_os = "macos"), not(windows)))]
 fn is_trusted_platform_path_alias(_path: &Path) -> bool {
     false
 }
@@ -2294,6 +2964,42 @@ mod tests {
         assert_eq!(fs::read_to_string(outside).unwrap(), "outside\n");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn raced_fifo_leaf_is_rejected_without_a_blocking_open() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        fs::create_dir(&root).unwrap();
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+        #[cfg(target_os = "linux")]
+        {
+            let root_directory = open_anchored_root(&root).unwrap();
+            rustix::fs::mkfifoat(&root_directory, "new.md", Mode::from_raw_mode(0o600)).unwrap();
+        }
+        #[cfg(target_os = "macos")]
+        {
+            use std::os::unix::ffi::OsStrExt;
+
+            let target =
+                std::ffi::CString::new(root.join("new.md").as_os_str().as_bytes()).unwrap();
+            // SAFETY: `target` is NUL-terminated and the mode contains permission bits only.
+            assert_eq!(unsafe { libc::mkfifo(target.as_ptr(), 0o600) }, 0);
+        }
+
+        let error = apply_plan(&root, &plan).unwrap_err();
+
+        assert!(error.contains("appeared after planning"), "{error}");
+    }
+
     #[test]
     fn update_plan_fails_before_any_create_or_metadata_change() {
         let directory = tempdir().unwrap();
@@ -2330,6 +3036,324 @@ mod tests {
         );
         assert!(!root.join("a-new.md").exists());
         assert_eq!(fs::read_dir(root).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn existing_root_multiple_creates_fail_before_any_publication() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        fs::create_dir(&root).unwrap();
+        let plan = plan_files(
+            &root,
+            vec![
+                RenderedFile {
+                    relative_path: "one.md".to_owned(),
+                    encoding: "utf8",
+                    content: "one\n".to_owned(),
+                },
+                RenderedFile {
+                    relative_path: "two.md".to_owned(),
+                    encoding: "utf8",
+                    content: "two\n".to_owned(),
+                },
+            ],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+
+        let error = apply_plan(&root, &plan).unwrap_err();
+
+        assert!(error.contains("cannot be committed atomically"), "{error}");
+        assert_eq!(fs::read_dir(root).unwrap().count(), 0);
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos", windows))]
+    #[test]
+    fn missing_root_plan_cannot_be_applied_to_a_different_root() {
+        let directory = tempdir().unwrap();
+        let planned_root = directory.path().join("planned");
+        let requested_root = directory.path().join("requested");
+        let plan = plan_files(
+            &planned_root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+
+        let error = apply_plan(&requested_root, &plan).unwrap_err();
+
+        assert!(error.contains("plan root does not match"), "{error}");
+        assert!(!planned_root.exists());
+        assert!(!requested_root.exists());
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn missing_root_multiple_creates_publish_as_one_complete_tree() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("nested/bundle");
+        let plan = plan_files(
+            &root,
+            vec![
+                RenderedFile {
+                    relative_path: "one.md".to_owned(),
+                    encoding: "utf8",
+                    content: "one\n".to_owned(),
+                },
+                RenderedFile {
+                    relative_path: "deep/two.md".to_owned(),
+                    encoding: "utf8",
+                    content: "two\n".to_owned(),
+                },
+            ],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+
+        apply_plan(&root, &plan).unwrap();
+
+        assert_eq!(fs::read_to_string(root.join("one.md")).unwrap(), "one\n");
+        assert_eq!(
+            fs::read_to_string(root.join("deep/two.md")).unwrap(),
+            "two\n"
+        );
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn missing_root_late_collision_publishes_no_generated_leaf() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+        let planned = planned_root_for_apply(&plan).unwrap();
+
+        let result = apply_missing_root_plan_anchored_with_hook(planned, &plan, || {
+            fs::create_dir(&root).map_err(|error| error.to_string())?;
+            fs::write(root.join("sentinel"), "concurrent\n").map_err(|error| error.to_string())
+        });
+
+        assert!(result.is_err());
+        assert_eq!(
+            fs::read_to_string(root.join("sentinel")).unwrap(),
+            "concurrent\n"
+        );
+        assert!(!root.join("new.md").exists());
+        assert!(
+            directory
+                .path()
+                .join(".okf-workbench-root-staging")
+                .exists()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn planned_supported_index_cannot_be_replaced_before_apply() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        fs::create_dir(&root).unwrap();
+        let index = root.join("index.md");
+        let saved = root.join("supported.md");
+        fs::write(&index, "---\nokf_version: \"0.2\"\n---\n").unwrap();
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+        fs::rename(&index, &saved).unwrap();
+        fs::write(&index, "---\nokf_version: \"9.0\"\n---\n").unwrap();
+
+        let error = apply_plan(&root, &plan).unwrap_err();
+
+        assert!(error.contains("root index changed"), "{error}");
+        assert!(!root.join("new.md").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn planned_index_same_inode_content_change_is_revalidated() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        fs::create_dir(&root).unwrap();
+        let index = root.join("index.md");
+        fs::write(&index, "---\nokf_version: \"0.2\"\n---\n").unwrap();
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+        fs::write(&index, "---\nokf_version: \"9.0\"\n---\n").unwrap();
+
+        let error = apply_plan(&root, &plan).unwrap_err();
+
+        assert!(error.contains("root index bytes changed"), "{error}");
+        assert!(!root.join("new.md").exists());
+    }
+
+    #[test]
+    fn planned_missing_index_cannot_appear_before_apply() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        fs::create_dir(&root).unwrap();
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+        fs::write(root.join("index.md"), "---\nokf_version: \"9.0\"\n---\n").unwrap();
+
+        let error = apply_plan(&root, &plan).unwrap_err();
+
+        assert!(error.contains("appeared after planning"), "{error}");
+        assert!(!root.join("new.md").exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_planned_index_and_root_guards_block_rename_until_plan_drop() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        fs::create_dir(&root).unwrap();
+        let index = root.join("index.md");
+        fs::write(&index, "---\nokf_version: \"0.2\"\n---\n").unwrap();
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+
+        assert!(fs::rename(&index, root.join("moved-index.md")).is_err());
+        assert!(fs::rename(&root, directory.path().join("moved-root")).is_err());
+        drop(plan);
+        fs::rename(&index, root.join("moved-index.md")).unwrap();
+        fs::rename(&root, directory.path().join("moved-root")).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_strict_staged_directory_lock_denies_a_second_writer() {
+        let directory = tempdir().unwrap();
+        let staged_parent = directory.path().join("staged-parent");
+        fs::create_dir(&staged_parent).unwrap();
+        let lock = open_windows_directory_strict_mutation_lock(&staged_parent).unwrap();
+
+        let writer = OpenOptions::new()
+            .access_mode(FILE_GENERIC_READ | FILE_GENERIC_WRITE | SYNCHRONIZE)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+            .open(&staged_parent);
+
+        assert!(writer.is_err());
+        drop(lock);
+        assert!(
+            OpenOptions::new()
+                .access_mode(FILE_GENERIC_READ | FILE_GENERIC_WRITE | SYNCHRONIZE)
+                .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+                .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+                .open(&staged_parent)
+                .is_ok()
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_missing_root_multiple_creates_publish_as_one_complete_tree() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("nested/bundle");
+        let plan = plan_files(
+            &root,
+            vec![
+                RenderedFile {
+                    relative_path: "one.md".to_owned(),
+                    encoding: "utf8",
+                    content: "one\n".to_owned(),
+                },
+                RenderedFile {
+                    relative_path: "deep/two.md".to_owned(),
+                    encoding: "utf8",
+                    content: "two\n".to_owned(),
+                },
+            ],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+
+        apply_plan(&root, &plan).unwrap();
+
+        assert_eq!(fs::read_to_string(root.join("one.md")).unwrap(), "one\n");
+        assert_eq!(
+            fs::read_to_string(root.join("deep/two.md")).unwrap(),
+            "two\n"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_missing_root_late_collision_publishes_no_generated_leaf() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+        let planned = planned_root_for_apply(&plan).unwrap();
+
+        let result = apply_missing_root_plan_windows_with_hook(planned, &plan, || {
+            fs::create_dir(&root).map_err(|error| error.to_string())?;
+            fs::write(root.join("sentinel"), "concurrent\n").map_err(|error| error.to_string())
+        });
+
+        assert!(result.is_err());
+        assert_eq!(
+            fs::read_to_string(root.join("sentinel")).unwrap(),
+            "concurrent\n"
+        );
+        assert!(!root.join("new.md").exists());
+        assert!(
+            directory
+                .path()
+                .join(".okf-workbench-root-staging")
+                .exists()
+        );
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -2419,7 +3443,15 @@ mod tests {
         )
         .unwrap();
 
-        let error = create_windows_file(&root, OsStr::new("new.md"), &plan[0]).unwrap_err();
+        let parent_handle = plan[0]
+            .planned_parent
+            .as_ref()
+            .unwrap()
+            .locks
+            .last()
+            .unwrap();
+        let error =
+            create_windows_file(&root, parent_handle, OsStr::new("new.md"), &plan[0]).unwrap_err();
 
         assert!(error.contains("already exists"), "{error}");
         assert_eq!(fs::read_to_string(reservation).unwrap(), "other process\n");
@@ -2445,6 +3477,13 @@ mod tests {
 
         let result = create_windows_file_with_writer(
             &root,
+            plan[0]
+                .planned_parent
+                .as_ref()
+                .unwrap()
+                .locks
+                .last()
+                .unwrap(),
             OsStr::new("new.md"),
             &plan[0],
             |file| {
@@ -2478,6 +3517,13 @@ mod tests {
 
         let result = create_windows_file_with_writer(
             &root,
+            plan[0]
+                .planned_parent
+                .as_ref()
+                .unwrap()
+                .locks
+                .last()
+                .unwrap(),
             OsStr::new("new.md"),
             &plan[0],
             |file| {

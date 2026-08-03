@@ -593,7 +593,10 @@ Any change to these defaults requires a new headed engine comparison.
 
 ## Scope of the retained evidence
 
-No retained run currently completes the strengthened headed gate. The former record reported
-719 ms QR-002 p95 and selected `d3`, but it is retained only for historical comparison. A new
-schema-v3 capture must bind the final production/runtime, diagnostics observer, runner, and harness
-identities and pass all three strict rows before any current-candidate performance claim is made.
+The tagged predecessor run completes the strengthened headed gate for its exact published `0.2.1`
+inputs: strict evaluation exits `0`, all three rows pass, and regenerated Markdown is byte-identical
+to the tracked report. It recorded `677 ms` QR-002 p95 and selected `d3`. The same raw JSON does not
+bind the current Rust/Wasm source candidate; current-candidate strict evaluation exits `2` because
+the production/runtime, build, and harness identities differ. A fresh schema-v3 capture must bind
+those current identities and pass all three strict rows before any current-candidate performance
+claim is made.

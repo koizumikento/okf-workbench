@@ -111,7 +111,6 @@ struct MarkdownReferenceDefinition {
     destination: String,
     label: String,
     span: std::ops::Range<usize>,
-    title: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -136,8 +135,13 @@ struct FrontmatterWork {
 
 #[derive(Default)]
 struct RadixDecimalCache {
-    bytes: usize,
-    entries: BTreeMap<(u32, String), String>,
+    last: Option<RadixDecimalCacheEntry>,
+}
+
+struct RadixDecimalCacheEntry {
+    radix: u32,
+    digits: String,
+    decimal: String,
 }
 
 thread_local! {
@@ -1191,11 +1195,41 @@ fn parse_frontmatter(
             resource_limit: false,
         });
     }
+    if let Some((relative_start, relative_end, misaligned)) =
+        closed_flow_sequence_followup_range(yaml_source)
+    {
+        return Err(FrontmatterError {
+            message: if misaligned {
+                "Invalid YAML frontmatter: All sequence items must start at the same column"
+                    .to_owned()
+            } else {
+                "Invalid YAML frontmatter: Sequence item without - indicator".to_owned()
+            },
+            range: Some(range_for(
+                text,
+                opening_end + relative_start,
+                opening_end + relative_end,
+            )),
+            resource_limit: false,
+        });
+    }
     if let Some((relative_start, relative_end)) = compact_nested_mapping_range(yaml_source) {
         return Err(FrontmatterError {
             message:
                 "Invalid YAML frontmatter: Nested mappings are not allowed in compact mappings"
                     .to_owned(),
+            range: Some(range_for(
+                text,
+                opening_end + relative_start,
+                opening_end + relative_end,
+            )),
+            resource_limit: false,
+        });
+    }
+    if let Some((relative_start, relative_end)) = flow_block_mapping_value_range(yaml_source) {
+        return Err(FrontmatterError {
+            message: "Invalid YAML frontmatter: Block collections are not allowed within flow collections"
+                .to_owned(),
             range: Some(range_for(
                 text,
                 opening_end + relative_start,
@@ -1223,6 +1257,21 @@ fn parse_frontmatter(
         return Err(FrontmatterError {
             message: format!(
                 "Invalid YAML frontmatter: Plain value cannot start with block scalar indicator {indicator}"
+            ),
+            range: Some(range_for(
+                text,
+                opening_end + relative_start,
+                opening_end + relative_end,
+            )),
+            resource_limit: false,
+        });
+    }
+    if let Some((relative_start, relative_end, indicator)) =
+        invalid_reserved_plain_indicator_range(yaml_source)
+    {
+        return Err(FrontmatterError {
+            message: format!(
+                "Invalid YAML frontmatter: Plain value cannot start with reserved character {indicator}"
             ),
             range: Some(range_for(
                 text,
@@ -1864,6 +1913,9 @@ fn multiple_block_node_property_range(
             candidates.push((node, line.start + leading + trimmed.len() - node.len()));
         }
         for (candidate, start) in candidates {
+            if sorted_range_contains(&excluded_ranges, start) {
+                continue;
+            }
             let duplicate = match property {
                 NodePropertyKind::Tag => duplicate_node_tag_span(candidate),
                 NodePropertyKind::Anchor => duplicate_node_anchor_span(candidate),
@@ -3758,6 +3810,32 @@ fn unresolved_tight_alias_name(source: &str) -> Option<String> {
     None
 }
 
+fn invalid_reserved_plain_indicator_range(source: &str) -> Option<(usize, usize, char)> {
+    let mut excluded_ranges = block_scalar_body_ranges(source);
+    excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
+    normalize_ranges(&mut excluded_ranges);
+    for (offset, indicator) in source
+        .char_indices()
+        .filter(|(_, character)| matches!(character, '@' | '`'))
+    {
+        if sorted_range_contains(&excluded_ranges, offset) {
+            continue;
+        }
+        let line_start = source[..offset]
+            .rfind(['\r', '\n'])
+            .map_or(0, |newline| newline + 1);
+        let prefix = &source[line_start..offset];
+        if yaml_comment_start(prefix).is_some()
+            || !yaml_prefix_ends_outside_quotes(prefix)
+            || !yaml_node_property_position(source, offset)
+        {
+            continue;
+        }
+        return Some((offset, offset + indicator.len_utf8(), indicator));
+    }
+    None
+}
+
 fn multiline_implicit_key_range(source: &str) -> Option<(usize, usize)> {
     let flow_ranges = flow_collection_ranges(source);
     for (start, end) in generic_multiline_quoted_scalar_ranges(source) {
@@ -3851,16 +3929,39 @@ fn compact_nested_mapping_range(source: &str) -> Option<(usize, usize)> {
         }
         let body = &source[span.start..span.content_end];
         let trimmed = body.trim_start_matches([' ', '\t']);
-        if trimmed == "-" || trimmed.starts_with("- ") {
+        let indent = body.len() - trimmed.len();
+        let item = trimmed.strip_prefix("- ");
+        let mapping_indent = indent + usize::from(item.is_some()) * 2;
+        let mapping_source = item.unwrap_or(trimmed);
+        if matches!(mapping_source.chars().next(), Some('{' | '[')) {
             continue;
         }
-        let indent = body.len() - trimmed.len();
-        let Some(colon) = mapping_key_colon(trimmed) else {
+        if mapping_source.strip_prefix('?').is_some_and(|rest| {
+            rest.is_empty() || rest.chars().next().is_some_and(char::is_whitespace)
+        }) {
+            continue;
+        }
+        let Some(colon) = mapping_key_colon(mapping_source) else {
             continue;
         };
-        let after_colon = &trimmed[colon + 1..];
+        let after_colon = &mapping_source[colon + 1..];
         let leading = after_colon.len() - after_colon.trim_start().len();
         let value = after_colon.trim_start();
+        let value_start =
+            span.start + indent + usize::from(item.is_some()) * 2 + colon + 1 + leading;
+        let (property_remainder, property_anchor, property_tag) = split_node_properties(value);
+        if (property_anchor.is_some() || property_tag.is_some())
+            && !matches!(
+                property_remainder.chars().next(),
+                Some('{' | '[' | '|' | '>')
+            )
+            && mapping_key_colon(property_remainder).is_some()
+        {
+            return Some((
+                value_start,
+                one_character_end(source, value_start, source.len()),
+            ));
+        }
         if value.is_empty()
             || value.starts_with(['#', '"', '\'', '[', '{', '|', '>', '&', '!', '*'])
         {
@@ -3882,11 +3983,86 @@ fn compact_nested_mapping_range(source: &str) -> Option<(usize, usize)> {
                     .strip_prefix('\u{0085}')
                     .is_some_and(|suffix| !suffix.trim().is_empty())
             });
-            Some(nested_indent > indent && nested_colon.is_some() && !literal_nel_continuation)
+            Some(
+                nested_indent > mapping_indent
+                    && nested_colon.is_some()
+                    && !literal_nel_continuation,
+            )
         });
         if nested_mapping == Some(true) {
-            let start = span.start + indent + colon + 1 + leading;
-            return Some((start, one_character_end(source, start, source.len())));
+            return Some((
+                value_start,
+                one_character_end(source, value_start, source.len()),
+            ));
+        }
+    }
+    None
+}
+
+fn closed_flow_sequence_followup_range(source: &str) -> Option<(usize, usize, bool)> {
+    let spans = line_spans(source);
+    let mut excluded_ranges = block_scalar_body_ranges(source);
+    excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
+    normalize_ranges(&mut excluded_ranges);
+    for (line_index, line) in spans.iter().enumerate() {
+        if sorted_range_contains(&excluded_ranges, line.start) {
+            continue;
+        }
+        let body = &source[line.start..line.content_end];
+        let trimmed = body.trim_start_matches([' ', '\t']);
+        let indent = body.len() - trimmed.len();
+        let Some(item) = trimmed.strip_prefix("- ") else {
+            continue;
+        };
+        let (remainder, _, _) = split_node_properties(item);
+        if !matches!(remainder.chars().next(), Some('{' | '[')) {
+            continue;
+        }
+        let flow_start = line.start + body.len() - trimmed.len() + 2 + item.len() - remainder.len();
+        if flow_value_end(source, flow_start) > line.content_end {
+            continue;
+        }
+        for candidate in spans.iter().skip(line_index + 1) {
+            let candidate_body = &source[candidate.start..candidate.content_end];
+            let candidate_trimmed = candidate_body.trim_start_matches([' ', '\t']);
+            if candidate_trimmed.is_empty() || candidate_trimmed.starts_with('#') {
+                continue;
+            }
+            let candidate_indent = candidate_body.len() - candidate_trimmed.len();
+            if candidate_indent <= indent {
+                break;
+            }
+            let misaligned = candidate_trimmed
+                .strip_prefix('-')
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with([' ', '\t']));
+            let start = candidate.start + if misaligned { candidate_indent } else { 0 };
+            return Some((
+                start,
+                one_character_end(source, start, candidate.content_end),
+                misaligned,
+            ));
+        }
+    }
+    None
+}
+
+fn flow_block_mapping_value_range(source: &str) -> Option<(usize, usize)> {
+    for (flow_start, flow_end) in flow_collection_ranges(source)
+        .into_iter()
+        .filter(|(start, _)| source[*start..].starts_with('{'))
+    {
+        for (entry_start, entry_end) in top_level_flow_entries(source, flow_start, flow_end) {
+            let Some(colon) = flow_top_level_mapping_colon(source, entry_start, entry_end) else {
+                continue;
+            };
+            let value_start = skip_flow_space_and_comments(source, colon + 1, entry_end);
+            let value_source = source[value_start..entry_end].trim_end();
+            let (remainder, anchor, tag) = split_node_properties(value_source);
+            if (anchor.is_none() && tag.is_none()) || mapping_key_colon(remainder).is_none() {
+                continue;
+            }
+            let start = value_start + value_source.len().saturating_sub(remainder.len());
+            return Some((start, start + remainder.trim_end().len()));
         }
     }
     None
@@ -3896,7 +4072,6 @@ fn invalid_explicit_timestamp_range(source: &str) -> Option<(usize, usize)> {
     let mut excluded_ranges = block_scalar_body_ranges(source);
     excluded_ranges.extend(multiline_quoted_scalar_ranges(source));
     normalize_ranges(&mut excluded_ranges);
-    let non_string_key = non_string_mapping_key_range(source);
     let spans = line_spans(source);
     for (line_index, span) in spans.iter().enumerate() {
         let line = &source[span.start..span.content_end];
@@ -3922,18 +4097,22 @@ fn invalid_explicit_timestamp_range(source: &str) -> Option<(usize, usize)> {
                 let follows_anchor_property =
                     property_remainder.is_empty() && property_anchor.is_some();
                 let follows_deferred_node = follows_deferred_block_node(source, &spans, line_index);
-                let timestamp_mapping_key = non_string_key.is_some_and(|(key_start, key_end)| {
-                    absolute < key_start
-                        && source[absolute + tag.len()..key_start].trim().is_empty()
-                        && source[key_end..].trim_start().starts_with(':')
-                });
+                let timestamp_mapping_key = timestamp_mapping_key_range_at(
+                    source,
+                    &spans,
+                    line_index,
+                    line,
+                    offset,
+                    tag.len(),
+                );
                 if sorted_range_contains(&excluded_ranges, absolute)
                     || yaml_comment_start(prefix).is_some()
-                    || timestamp_mapping_key
                     || previous.is_some_and(|character| {
                         !matches!(character, '[' | '{' | ',' | ':' | '?' | '-')
                     }) && !follows_anchor_property
-                    || (previous.is_none() && !follows_deferred_node)
+                    || (previous.is_none()
+                        && !follows_deferred_node
+                        && timestamp_mapping_key.is_none())
                 {
                     search_start = offset + tag.len();
                     continue;
@@ -3950,7 +4129,9 @@ fn invalid_explicit_timestamp_range(source: &str) -> Option<(usize, usize)> {
                 } else {
                     parent_indent
                 };
-                let lexical = if remainder.is_empty() || remainder.starts_with('#') {
+                let lexical = if let Some((key_start, key_end)) = timestamp_mapping_key {
+                    source[key_start..key_end].to_owned()
+                } else if remainder.is_empty() || remainder.starts_with('#') {
                     tagged_lexical_source(
                         source,
                         &spans,
@@ -3999,6 +4180,83 @@ fn invalid_explicit_timestamp_range(source: &str) -> Option<(usize, usize)> {
         }
     }
     None
+}
+
+fn timestamp_mapping_key_range_at(
+    source: &str,
+    spans: &[LineSpan],
+    line_index: usize,
+    line: &str,
+    tag_offset: usize,
+    tag_len: usize,
+) -> Option<(usize, usize)> {
+    let prefix = &line[..tag_offset];
+    let property_start = prefix
+        .char_indices()
+        .rev()
+        .find_map(|(index, character)| {
+            matches!(character, '[' | '{' | ',' | ':' | '?').then_some(index + 1)
+        })
+        .unwrap_or(0);
+    if property_start > 0 && prefix[..property_start].ends_with(':') {
+        return None;
+    }
+    let property_source = line[property_start..].trim_start();
+    let mut node_start = property_start + line[property_start..].len() - property_source.len();
+    let node_source = if let Some(source) = property_source.strip_prefix("- ") {
+        node_start += 2;
+        source
+    } else {
+        property_source
+    };
+    let relative_tag = tag_offset.checked_sub(node_start)?;
+    let key_source = mapping_key_colon(node_source)
+        .filter(|colon| relative_tag + tag_len <= *colon)
+        .map(|colon| node_source[..colon].trim_end());
+    if let Some(key_source) = key_source {
+        let (plain_key_source, relative_start, _, key_tag) =
+            multiline_mapping_key_parts(key_source)?;
+        if key_tag != Some("timestamp") {
+            return None;
+        }
+        let start = spans[line_index].start + node_start + relative_start;
+        return Some((start, start + scalar_lexical_source(plain_key_source).len()));
+    }
+
+    let trimmed = line.trim_start_matches([' ', '\t']);
+    let indent = line.len() - trimmed.len();
+    let explicit_indent = if trimmed.strip_prefix("? ").is_some() || trimmed == "?" {
+        Some(indent)
+    } else if trimmed.strip_prefix("- ? ").is_some() || trimmed == "- ?" {
+        Some(indent + 2)
+    } else {
+        None
+    }?;
+    let has_explicit_value = spans.iter().skip(line_index + 1).find_map(|candidate| {
+        let body = &source[candidate.start..candidate.content_end];
+        let candidate_trimmed = body.trim_start_matches([' ', '\t']);
+        if candidate_trimmed.is_empty() || candidate_trimmed.starts_with('#') {
+            return None;
+        }
+        let candidate_indent = body.len() - candidate_trimmed.len();
+        if candidate_indent < explicit_indent {
+            return Some(false);
+        }
+        (candidate_indent == explicit_indent).then(|| {
+            candidate_trimmed.strip_prefix(':').is_some_and(|rest| {
+                rest.is_empty() || rest.chars().next().is_some_and(char::is_whitespace)
+            })
+        })
+    }) == Some(true);
+    if !has_explicit_value {
+        return None;
+    }
+    let (plain_key_source, relative_start, _, key_tag) = multiline_mapping_key_parts(node_source)?;
+    if key_tag != Some("timestamp") {
+        return None;
+    }
+    let start = spans[line_index].start + node_start + relative_start;
+    Some((start, start + scalar_lexical_source(plain_key_source).len()))
 }
 
 fn rewrite_standard_sets_for_serde(source: &str) -> String {
@@ -4131,6 +4389,18 @@ fn rewrite_standard_sets_for_serde(source: &str) -> String {
             let body = &source[candidate.start..candidate.content_end];
             let trimmed = body.trim_start_matches([' ', '\t']);
             let indent = body.len() - trimmed.len();
+            if indent == member_indent
+                && trimmed
+                    .strip_prefix(':')
+                    .is_some_and(|rest| semantic_null_set_member(rest.trim_start()))
+            {
+                edits.push((
+                    candidate.start + indent,
+                    candidate.content_end,
+                    " ".repeat(trimmed.len()),
+                ));
+                continue;
+            }
             if indent == member_indent && !trimmed.is_empty() && !trimmed.starts_with(['#', ':']) {
                 if let Some(member) = trimmed.strip_prefix("? ")
                     && !member.starts_with(['{', '['])
@@ -4465,7 +4735,17 @@ fn normalize_tight_flow_plain_keys(source: &str) -> String {
             let entry_source = &source[entry_start..entry_end];
             let leading = entry_source.len() - entry_source.trim_start().len();
             let entry = entry_source.trim();
-            if entry.contains(':')
+            let tight_indicator_start = entry
+                .chars()
+                .next()
+                .filter(|first| matches!(first, '?' | ':'))
+                .is_some_and(|first| {
+                    entry[first.len_utf8()..]
+                        .chars()
+                        .next()
+                        .is_some_and(|next| !next.is_whitespace())
+                });
+            if (entry.contains(':') || tight_indicator_start)
                 && entry.chars().all(|value| {
                     !value.is_whitespace()
                         && !matches!(value, '[' | ']' | '{' | '}' | '"' | '\'' | '!' | '&' | '*')
@@ -4583,7 +4863,17 @@ fn normalize_tight_flow_plain_keys(source: &str) -> String {
                         .find_map(|(index, value)| matches!(value, '{' | ',').then_some(index + 1))
                         .unwrap_or(0);
                     let key_source = source[entry_start..cursor].trim();
-                    if key_source.ends_with(':')
+                    let tight_indicator_start = key_source
+                        .chars()
+                        .next()
+                        .filter(|first| matches!(first, '?' | ':'))
+                        .is_some_and(|first| {
+                            key_source[first.len_utf8()..]
+                                .chars()
+                                .next()
+                                .is_some_and(|next| !next.is_whitespace())
+                        });
+                    if (key_source.ends_with(':') || tight_indicator_start)
                         && !key_source.is_empty()
                         && key_source.chars().all(|value| {
                             !value.is_whitespace()
@@ -5143,8 +5433,29 @@ fn non_string_mapping_key_range(source: &str) -> Option<(usize, usize)> {
         return Some(range);
     }
     let scalar_ranges = excluded_ranges.clone();
+    let spans = line_spans(source);
     let mut standard_set_ranges = standard_set_body_ranges(source);
     normalize_ranges(&mut standard_set_ranges);
+    let standard_set_member_indents = standard_set_ranges
+        .iter()
+        .filter_map(|(set_start, set_end)| {
+            spans
+                .iter()
+                .filter(|line| *set_start <= line.start && line.start < *set_end)
+                .filter_map(|line| {
+                    let body = &source[line.start..line.content_end];
+                    let trimmed = body.trim_start_matches([' ', '\t']);
+                    trimmed
+                        .strip_prefix('?')
+                        .filter(|rest| {
+                            rest.is_empty() || rest.chars().next().is_some_and(char::is_whitespace)
+                        })
+                        .map(|_| body.len() - trimmed.len())
+                })
+                .min()
+                .map(|indent| (*set_start, *set_end, indent))
+        })
+        .collect::<Vec<_>>();
     excluded_ranges.extend(standard_set_ranges.iter().copied());
     normalize_ranges(&mut excluded_ranges);
     if let Some(range) = alias_mapping_key_range(source, &excluded_ranges) {
@@ -5152,7 +5463,6 @@ fn non_string_mapping_key_range(source: &str) -> Option<(usize, usize)> {
     }
     excluded_ranges.extend(flow_collection_ranges(source));
     normalize_ranges(&mut excluded_ranges);
-    let spans = line_spans(source);
     let standard_flow_set_ranges = standard_flow_set_ranges(source);
     let parent_collection_tags = parent_collection_tag_flags(source, &spans);
     for (line_index, line) in spans.iter().enumerate() {
@@ -5160,6 +5470,12 @@ fn non_string_mapping_key_range(source: &str) -> Option<(usize, usize)> {
         let trimmed = body.trim_start_matches([' ', '\t']);
         let indent = body.len() - trimmed.len();
         let inside_standard_set = sorted_range_contains(&standard_set_ranges, line.start);
+        let direct_standard_set_member =
+            standard_set_member_indents
+                .iter()
+                .any(|(start, end, member_indent)| {
+                    *start <= line.start && line.start < *end && indent == *member_indent
+                });
         let inside_scalar = sorted_range_contains(&scalar_ranges, line.start);
         let standard_set_item = inside_standard_set
             .then(|| {
@@ -5232,7 +5548,17 @@ fn non_string_mapping_key_range(source: &str) -> Option<(usize, usize)> {
                 return Some((empty, empty));
             }
             let key_source = source[key_start..key_end].trim_end_matches(['\r', '\n']);
-            if let Some(range) = non_string_key_source_range(key_source, key_start) {
+            let first_line = key_source.lines().next().unwrap_or(key_source).trim_start();
+            let (first_remainder, first_anchor, first_tag) = split_node_properties(first_line);
+            let direct_deferred_member = direct_standard_set_member
+                && (first_remainder.is_empty() || first_remainder.starts_with('#'))
+                && (first_anchor.is_some() || first_tag.is_some());
+            let (set_member, _, _) = split_node_properties(key_source.trim_start());
+            if !(direct_deferred_member
+                || direct_standard_set_member
+                    && matches!(set_member.chars().next(), Some('{' | '[')))
+                && let Some(range) = non_string_key_source_range(key_source, key_start)
+            {
                 return Some(range);
             }
         }
@@ -5292,12 +5618,29 @@ fn non_string_mapping_key_range(source: &str) -> Option<(usize, usize)> {
                 return Some((empty, empty));
             }
             let candidate = source[key_start..key_end].trim_end_matches(['\r', '\n']);
+            if let Some(range) = tagged_flow_collection_key_range(candidate, key_start) {
+                return Some(range);
+            }
             if let Some(range) = non_string_key_source_range(candidate, key_start) {
                 return Some(range);
             }
             continue;
         }
-        let Some(colon) = mapping_key_colon(mapping_source) else {
+        let (item_remainder, _, _) = split_node_properties(mapping_source);
+        let property_flow_colon = if matches!(item_remainder.chars().next(), Some('{' | '[')) {
+            let flow_start = mapping_source.len().saturating_sub(item_remainder.len());
+            let flow_end = flow_value_end(mapping_source, flow_start);
+            let after_flow = &mapping_source[flow_end..];
+            let leading = after_flow.len() - after_flow.trim_start().len();
+            if after_flow.trim_start().starts_with(':') {
+                Some(flow_end + leading)
+            } else {
+                continue;
+            }
+        } else {
+            None
+        };
+        let Some(colon) = property_flow_colon.or_else(|| mapping_key_colon(mapping_source)) else {
             continue;
         };
         let key_source = mapping_source[..colon].trim_end_matches([' ', '\t']);
@@ -5344,6 +5687,9 @@ fn non_string_mapping_key_range(source: &str) -> Option<(usize, usize)> {
         {
             let marker = key_start + colon;
             return Some((marker, marker));
+        }
+        if let Some(range) = tagged_flow_collection_key_range(key_source, key_start) {
+            return Some(range);
         }
         if let Some(range) = non_string_key_source_range(key_source, key_start) {
             return Some(range);
@@ -5398,8 +5744,23 @@ fn non_string_key_source_range(key_source: &str, key_start: usize) -> Option<(us
     Some((start, start + scalar_lexical_source(plain_key_source).len()))
 }
 
+fn tagged_flow_collection_key_range(key_source: &str, key_start: usize) -> Option<(usize, usize)> {
+    let (plain_key_source, relative_start, _, key_tag) = multiline_mapping_key_parts(key_source)?;
+    key_tag?;
+    let leading = plain_key_source.len() - plain_key_source.trim_start().len();
+    let plain_trimmed = plain_key_source.trim_start();
+    if !matches!(plain_trimmed.chars().next(), Some('{' | '[')) {
+        return None;
+    }
+    let start = key_start + relative_start + leading;
+    Some((start, start + flow_value_end(plain_trimmed, 0)))
+}
+
 fn standard_tagged_key_has_string_semantic(source: &str, tag_name: &str) -> bool {
     if !matches!(tag_name, "str" | "int" | "float" | "bool" | "null") {
+        return false;
+    }
+    if tag_name == "float" && plain_nonfinite_kind(scalar_lexical_source(source).trim()).is_some() {
         return false;
     }
     standard_tagged_key_semantic(source, tag_name).is_some_and(|value| value.is_string())
@@ -5461,6 +5822,7 @@ fn non_string_flow_mapping_key_range(
     source: &str,
     excluded_ranges: &[(usize, usize)],
 ) -> Option<(usize, usize)> {
+    let standard_flow_set_ranges = standard_flow_set_ranges(source);
     let mut quote = None;
     let mut escaped = false;
     let mut comment = false;
@@ -5497,6 +5859,9 @@ fn non_string_flow_mapping_key_range(
             '"' | '\'' => quote = Some(character),
             '{' => {
                 let end = flow_value_end(source, offset);
+                let direct_standard_set = standard_flow_set_ranges
+                    .iter()
+                    .any(|(set_start, _)| *set_start == offset);
                 for (entry_start, entry_end) in top_level_flow_entries(source, offset, end) {
                     let entry_source = &source[entry_start..entry_end];
                     let leading = entry_source.len() - entry_source.trim_start().len();
@@ -5533,9 +5898,19 @@ fn non_string_flow_mapping_key_range(
                         continue;
                     }
                     let leading = key_source.len() - key_source.trim_start().len();
-                    if matches!(key_source.trim_start().chars().next(), Some('[' | '{')) {
+                    if !direct_standard_set
+                        && matches!(key_source.trim_start().chars().next(), Some('[' | '{'))
+                    {
                         let start = key_start + leading;
                         return Some((start, key_start + flow_value_end(key_source, leading)));
+                    }
+                    if !direct_standard_set
+                        && let Some(range) = tagged_flow_collection_key_range(key_source, key_start)
+                    {
+                        return Some(range);
+                    }
+                    if direct_standard_set {
+                        continue;
                     }
                     if let Some(range) = non_string_key_source_range(key_source, key_start) {
                         return Some(range);
@@ -5967,28 +6342,77 @@ fn non_null_standard_set_value_range(source: &str) -> Option<(usize, usize)> {
         }
         let after_tag = line[tag_end - span.start..].trim_start();
         let (remainder, _, _) = split_node_properties(after_tag);
-        if !remainder.starts_with('{') {
+        if remainder.starts_with('{') {
+            let relative = line
+                .find(remainder)
+                .unwrap_or_else(|| line.len().saturating_sub(remainder.len()));
+            let flow_start = span.start + relative;
+            let flow_end = flow_value_end(source, flow_start);
+            for (entry_start, entry_end) in top_level_flow_entries(source, flow_start, flow_end) {
+                let entry = source[entry_start..entry_end].trim();
+                let mapping = entry
+                    .strip_prefix('?')
+                    .filter(|rest| {
+                        rest.is_empty() || rest.chars().next().is_some_and(char::is_whitespace)
+                    })
+                    .map(str::trim_start)
+                    .unwrap_or(entry);
+                let (member, _, _) = split_node_properties(mapping);
+                let collection_colon = matches!(member.chars().next(), Some('{' | '['))
+                    .then(|| mapping.len().saturating_sub(member.len()))
+                    .map(|start| flow_value_end(mapping, start))
+                    .filter(|end| mapping[*end..].trim_start().starts_with(':'))
+                    .map(|end| end + mapping[end..].len() - mapping[end..].trim_start().len());
+                let colon = if matches!(member.chars().next(), Some('{' | '[')) {
+                    collection_colon
+                } else {
+                    mapping_key_colon(mapping)
+                };
+                if let Some(colon) = colon
+                    && (mapping[colon + 1..].trim().is_empty()
+                        && source[entry_end..flow_end].trim_start().starts_with('#')
+                        || !semantic_null_set_member(mapping[colon + 1..].trim()))
+                {
+                    return Some((tag_start, tag_end));
+                }
+            }
             continue;
         }
-        let relative = line
-            .find(remainder)
-            .unwrap_or_else(|| line.len().saturating_sub(remainder.len()));
-        let flow_start = span.start + relative;
-        let flow_end = flow_value_end(source, flow_start);
-        for (entry_start, entry_end) in top_level_flow_entries(source, flow_start, flow_end) {
-            let entry = source[entry_start..entry_end].trim();
-            let mapping = entry
-                .strip_prefix('?')
-                .map(str::trim_start)
-                .unwrap_or(entry);
-            let (member, _, tag_name) = split_node_properties(mapping);
-            if member.starts_with(['{', '['])
-                || matches!(tag_name, Some("set" | "map" | "seq" | "omap" | "pairs"))
-            {
+        if !(remainder.is_empty() || remainder.starts_with('#')) {
+            continue;
+        }
+        let parent_indent = line.len() - line.trim_start_matches([' ', '\t']).len();
+        let block_end = direct_block_node_end(
+            source,
+            &spans,
+            spans
+                .iter()
+                .position(|candidate| candidate.start == span.start)?,
+            parent_indent,
+        );
+        let member_indent = spans
+            .iter()
+            .filter(|candidate| span.end <= candidate.start && candidate.start < block_end)
+            .filter_map(|candidate| {
+                let body = &source[candidate.start..candidate.content_end];
+                let trimmed = body.trim_start_matches([' ', '\t']);
+                (!trimmed.is_empty() && !trimmed.starts_with('#'))
+                    .then_some(body.len() - trimmed.len())
+            })
+            .min();
+        for candidate in spans
+            .iter()
+            .filter(|candidate| span.end <= candidate.start && candidate.start < block_end)
+        {
+            let body = &source[candidate.start..candidate.content_end];
+            let trimmed = body.trim_start_matches([' ', '\t']);
+            let indent = body.len() - trimmed.len();
+            if Some(indent) != member_indent {
                 continue;
             }
-            if let Some(colon) = mapping_key_colon(mapping)
-                && !semantic_null_set_member(mapping[colon + 1..].trim())
+            if let Some(value) = trimmed.strip_prefix(':')
+                && (value.is_empty() || value.chars().next().is_some_and(char::is_whitespace))
+                && !semantic_null_set_member(value.trim_start())
             {
                 return Some((tag_start, tag_end));
             }
@@ -5998,14 +6422,16 @@ fn non_null_standard_set_value_range(source: &str) -> Option<(usize, usize)> {
 }
 
 fn semantic_null_set_member(member: &str) -> bool {
-    let (remainder, _, tag_name) = split_node_properties(member);
-    if tag_name == Some("null") {
-        return matches!(
-            remainder.to_ascii_lowercase().as_str(),
-            "" | "~" | "null" | "\"\"" | "''"
-        );
+    let syntax = yaml_comment_start(member).map_or(member, |comment| &member[..comment]);
+    let syntax = syntax.trim();
+    if syntax.is_empty() {
+        return member.trim().is_empty();
     }
-    tag_name.is_none() && matches!(remainder.to_ascii_lowercase().as_str(), "" | "~" | "null")
+    let (remainder, _, tag_name) = split_node_properties(syntax);
+    if tag_name.is_some() {
+        return false;
+    }
+    matches!(remainder, "" | "~" | "null" | "Null" | "NULL")
 }
 
 fn plain_nonfinite_kind(source: &str) -> Option<&'static str> {
@@ -6395,12 +6821,107 @@ fn base_100_from_radix_chunks(
     Some(add_base_100(multiply_base_100(&high, &power)?, &low))
 }
 
+fn decimal_with_signed_delta(value: &str, delta: i128) -> Option<String> {
+    if delta == 0 {
+        return Some(value.to_owned());
+    }
+    let mut digits = value.bytes().collect::<Vec<_>>();
+    if delta > 0 {
+        let mut carry = delta as u128;
+        for digit in digits.iter_mut().rev() {
+            let sum = u128::from(*digit - b'0') + carry % 10;
+            *digit = b'0' + (sum % 10) as u8;
+            carry = carry / 10 + sum / 10;
+        }
+        while carry > 0 {
+            digits.insert(0, b'0' + (carry % 10) as u8);
+            carry /= 10;
+        }
+    } else {
+        let mut remaining = delta.unsigned_abs();
+        let mut borrow = 0_u8;
+        for digit in digits.iter_mut().rev() {
+            let subtraction = (remaining % 10) as u8 + borrow;
+            remaining /= 10;
+            let current = *digit - b'0';
+            if current >= subtraction {
+                *digit = b'0' + current - subtraction;
+                borrow = 0;
+            } else {
+                *digit = b'0' + current + 10 - subtraction;
+                borrow = 1;
+            }
+        }
+        if remaining > 0 || borrow > 0 {
+            return None;
+        }
+        let leading = digits
+            .iter()
+            .position(|digit| *digit != b'0')
+            .unwrap_or(digits.len().saturating_sub(1));
+        digits.drain(..leading);
+    }
+    String::from_utf8(digits).ok()
+}
+
+fn radix_suffix_value(digits: &str, radix: u32) -> Option<u64> {
+    digits.chars().try_fold(0_u64, |value, character| {
+        value
+            .checked_mul(u64::from(radix))?
+            .checked_add(u64::from(character.to_digit(radix)?))
+    })
+}
+
+fn cache_radix_decimal(radix: u32, digits: String, decimal: String) {
+    if digits.len().saturating_add(decimal.len()) > MAX_RADIX_DECIMAL_CACHE_BYTES {
+        return;
+    }
+    RADIX_DECIMAL_CACHE.with(|cache| {
+        cache.borrow_mut().last = Some(RadixDecimalCacheEntry {
+            radix,
+            digits,
+            decimal,
+        });
+    });
+}
+
 fn decimal_from_radix(digits: &str, radix: u32) -> Option<String> {
-    let cache_key = (digits.len() >= 1024).then(|| (radix, digits.to_owned()));
-    if let Some(value) = cache_key
-        .as_ref()
-        .and_then(|key| RADIX_DECIMAL_CACHE.with(|cache| cache.borrow().entries.get(key).cloned()))
-    {
+    let cache_key = (digits.len() >= 1024).then(|| digits.to_owned());
+    if let Some(value) = cache_key.as_ref().and_then(|key| {
+        RADIX_DECIMAL_CACHE.with(|cache| {
+            let cache = cache.borrow();
+            let previous = cache.last.as_ref()?;
+            if previous.radix != radix || previous.digits.len() != key.len() {
+                return None;
+            }
+            if previous.digits == *key {
+                return Some(previous.decimal.clone());
+            }
+            let changed_at = previous
+                .digits
+                .bytes()
+                .zip(key.bytes())
+                .position(|(left, right)| left != right)?;
+            let suffix_length = key.len() - changed_at;
+            let maximum_suffix = match radix {
+                16 => 15,
+                8 => 20,
+                _ => 0,
+            };
+            if suffix_length > maximum_suffix {
+                return None;
+            }
+            let old_suffix = radix_suffix_value(&previous.digits[changed_at..], radix)?;
+            let new_suffix = radix_suffix_value(&key[changed_at..], radix)?;
+            decimal_with_signed_delta(
+                &previous.decimal,
+                i128::from(new_suffix) - i128::from(old_suffix),
+            )
+        })
+    }) {
+        if let Some(key) = cache_key {
+            cache_radix_decimal(radix, key, value.clone());
+        }
         return Some(value);
     }
     let chunk_digits = match radix {
@@ -6439,16 +6960,7 @@ fn decimal_from_radix(digits: &str, radix: u32) -> Option<String> {
         write!(value, "{limb:02}").expect("writing to a string cannot fail");
     }
     if let Some(key) = cache_key {
-        let entry_bytes = key.1.len().saturating_add(value.len());
-        if entry_bytes <= MAX_RADIX_DECIMAL_CACHE_BYTES {
-            RADIX_DECIMAL_CACHE.with(|cache| {
-                let mut cache = cache.borrow_mut();
-                if cache.bytes.saturating_add(entry_bytes) <= MAX_RADIX_DECIMAL_CACHE_BYTES {
-                    cache.bytes += entry_bytes;
-                    cache.entries.insert(key, value.clone());
-                }
-            });
-        }
+        cache_radix_decimal(radix, key, value.clone());
     }
     Some(value)
 }
@@ -7515,7 +8027,7 @@ fn yaml_plain_scalar_can_start(value: &str) -> bool {
     let Some(first) = value.chars().next() else {
         return false;
     };
-    if first == '#'
+    if matches!(first, '#' | '@' | '`')
         || matches!(first, '"' | '\'' | '|' | '>' | '{' | '[' | '*' | '&' | '!')
         || mapping_key_colon(value).is_some()
     {
@@ -8651,12 +9163,22 @@ fn restored_standard_set_source(source: &str) -> String {
         let (remainder, anchor, tag) = split_node_properties(member);
         remainder.is_empty() && (anchor.is_some() || tag.is_some())
     });
+    let terminal_empty_explicit_null = last.is_some_and(|body| {
+        body.strip_prefix(':')
+            .is_some_and(|rest| rest.trim().is_empty())
+    });
     if source.trim() == "?"
         || source.trim_start().starts_with('{')
         || terminal_bare
         || terminal_property_only
     {
         source.trim_end().to_owned()
+    } else if terminal_empty_explicit_null {
+        source
+            .strip_suffix("\r\n")
+            .or_else(|| source.strip_suffix(['\r', '\n']))
+            .unwrap_or(source)
+            .to_owned()
     } else {
         source.to_owned()
     }
@@ -9687,10 +10209,17 @@ fn direct_standard_set_member_sources(source: &str, expected_members: usize) -> 
         return top_level_flow_entries(source, flow_start, flow_end)
             .into_iter()
             .filter_map(|(start, end)| {
-                source[start..end]
-                    .trim()
+                let entry = source[start..end].trim();
+                let member = entry
                     .strip_prefix('?')
-                    .map(|member| member.trim_start().to_owned())
+                    .filter(|rest| {
+                        rest.is_empty() || rest.chars().next().is_some_and(char::is_whitespace)
+                    })
+                    .map(str::trim_start)
+                    .unwrap_or(entry);
+                let colon = flow_top_level_mapping_colon(member, 0, member.len());
+                let member = colon.map_or(member, |colon| &member[..colon]);
+                (!member.trim().is_empty()).then(|| member.trim_end().to_owned())
             })
             .take(expected_members)
             .collect();
@@ -9739,6 +10268,23 @@ fn direct_standard_set_member_sources(source: &str, expected_members: usize) -> 
         .map(|(member_index, (line_index, start, member_indent))| {
             let next = members.get(member_index + 1);
             let mut end = next.map_or(source.len(), |(next_index, _, _)| spans[*next_index].start);
+            if let Some(explicit_value_start) = spans
+                .iter()
+                .skip(*line_index + 1)
+                .take_while(|line| line.start < end)
+                .find_map(|line| {
+                    let body = &source[line.start..line.content_end];
+                    let trimmed = body.trim_start_matches([' ', '\t']);
+                    let indent = body.len() - trimmed.len();
+                    (indent == *member_indent
+                        && trimmed.strip_prefix(':').is_some_and(|rest| {
+                            rest.is_empty() || rest.chars().next().is_some_and(char::is_whitespace)
+                        }))
+                    .then_some(line.start)
+                })
+            {
+                end = explicit_value_start;
+            }
             let separator_indent = next.map_or(*member_indent, |(_, _, indent)| *indent);
             let first_source = &source[*start..spans[*line_index].content_end];
             let (first_remainder, _, _) = split_node_properties(first_source.trim());
@@ -9851,6 +10397,25 @@ fn collection_lexical_source(source: &str) -> String {
         .to_owned()
 }
 
+fn set_member_collection_lexical_source(source: &str) -> String {
+    let end = line_spans(source)
+        .into_iter()
+        .skip(1)
+        .find_map(|line| {
+            let body = &source[line.start..line.content_end];
+            let trimmed = body.trim_start_matches([' ', '\t']);
+            trimmed
+                .strip_prefix(':')
+                .filter(|rest| {
+                    rest.is_empty() || rest.chars().next().is_some_and(char::is_whitespace)
+                })
+                .filter(|rest| semantic_null_set_member(rest.trim_start()))
+                .map(|_| line.start)
+        })
+        .unwrap_or(source.len());
+    collection_lexical_source(&source[..end])
+}
+
 fn restore_deferred_map_member_source(member_source: &str, member: &mut Value) {
     let deferred_map_property = line_spans(member_source).into_iter().any(|line| {
         let body = &member_source[line.start..line.content_end];
@@ -9907,7 +10472,9 @@ fn restore_deferred_map_member_source(member_source: &str, member: &mut Value) {
     {
         tagged.insert(
             "source".to_owned(),
-            Value::String(collection_lexical_source(&member_source[source_start..])),
+            Value::String(set_member_collection_lexical_source(
+                &member_source[source_start..],
+            )),
         );
     }
 }
@@ -9969,7 +10536,9 @@ fn restore_tagged_collection_member_source(member_source: &str, member: &mut Val
         if let Some(Value::Object(tagged)) = member.get_mut(TAGGED_KEY) {
             tagged.insert(
                 "source".to_owned(),
-                Value::String(collection_lexical_source(&member_source[nested_start..])),
+                Value::String(set_member_collection_lexical_source(
+                    &member_source[nested_start..],
+                )),
             );
         }
         restore_deferred_map_member_source(member_source, member);
@@ -9997,7 +10566,7 @@ fn restore_collection_set_member_provenance(
             })
     {
         let (nested_start, nested_indent) = tagged_collection_node_location(member_source);
-        let lexical = collection_lexical_source(&member_source[nested_start..]);
+        let lexical = set_member_collection_lexical_source(&member_source[nested_start..]);
         let mut restored = if let Some(semantic) = tagged.get_mut("value")
             && matches!(semantic, Value::Array(_) | Value::Object(_))
         {
@@ -11771,7 +12340,10 @@ fn block_field_value_end(
         })
         .collect::<Vec<_>>();
     let first_continuation_is_collection = continued_lines.first().is_some_and(|(_, trimmed)| {
-        trimmed.starts_with('?') || *trimmed == "-" || trimmed.starts_with("- ")
+        trimmed.strip_prefix('?').is_some_and(|remainder| {
+            remainder.is_empty() || remainder.chars().next().is_some_and(char::is_whitespace)
+        }) || *trimmed == "-"
+            || trimmed.starts_with("- ")
     });
     let first_continuation_indent = continued_lines.first().map(|(indent, _)| *indent);
     let deferred_literal_nel_scalar = (value_source.is_empty() || deferred_properties)
@@ -11940,7 +12512,12 @@ fn block_field_value_end(
                     let (remainder, anchor, tag) = split_node_properties(member);
                     remainder.is_empty() && (anchor.is_some() || tag.is_some())
                 });
-        if !terminal_in_block_scalar && (terminal == "?" || terminal_member_property) {
+        let terminal_empty_explicit_null = terminal
+            .strip_prefix(':')
+            .is_some_and(|rest| rest.trim().is_empty());
+        if !terminal_in_block_scalar
+            && (terminal == "?" || terminal_member_property || terminal_empty_explicit_null)
+        {
             return content_end;
         }
     }
@@ -13006,39 +13583,17 @@ fn markdown_links(
     }
     markdown_definition_inspection(body)?;
     let (all_reference_definitions, reference_definitions) = markdown_reference_definitions(body);
-    let reference_expansion_bytes = markdown_reference_expansion_bytes(
-        body,
-        &all_reference_definitions,
-        &reference_definitions,
-    );
-    let parser_padding = if reference_expansion_bytes > body.len().max(100_000) {
-        reference_expansion_bytes.saturating_sub(body.len() + 2)
-    } else {
-        0
-    };
-    let padded_body = (parser_padding > 0).then(|| {
-        let mut padded = String::with_capacity(body.len() + parser_padding + 2);
-        padded.push_str(body);
-        padded.push_str("\n\n");
-        padded.extend(std::iter::repeat_n(' ', parser_padding));
-        padded
-    });
-    let parser_body = padded_body.as_deref().unwrap_or(body);
+    let parser_body = markdown_reference_parser_body(body, &all_reference_definitions)?;
     let callback_reference_definitions = reference_definitions.clone();
     let reference_callback = move |broken: pulldown_cmark::BrokenLink<'_>| {
         let identifier = normalize_reference_identifier(&broken.reference);
         callback_reference_definitions
             .iter()
             .find(|definition| definition.label == identifier)
-            .map(|definition| {
-                (
-                    definition.destination.clone().into(),
-                    definition.title.clone().into(),
-                )
-            })
+            .map(|_| ("x".into(), "".into()))
     };
     let parser = Parser::new_with_broken_link_callback(
-        parser_body,
+        &parser_body,
         Options::ENABLE_STRIKETHROUGH,
         Some(reference_callback),
     )
@@ -13238,10 +13793,6 @@ fn markdown_reference_definitions(
             destination: definition.dest.to_string(),
             label: normalize_reference_identifier(label),
             span: definition.span.clone(),
-            title: definition
-                .title
-                .as_ref()
-                .map_or_else(String::new, ToString::to_string),
         })
         .collect::<Vec<_>>();
     all.sort_by_key(|definition| definition.span.start);
@@ -13254,14 +13805,10 @@ fn markdown_reference_definitions(
     (all, first)
 }
 
-fn markdown_reference_expansion_bytes(
+fn markdown_reference_parser_body(
     body: &str,
     all_definitions: &[MarkdownReferenceDefinition],
-    first_definitions: &[MarkdownReferenceDefinition],
-) -> usize {
-    if first_definitions.is_empty() {
-        return 0;
-    }
+) -> Result<String, String> {
     let mut inspection_body = body.as_bytes().to_vec();
     for definition in all_definitions {
         let end = definition.span.end.min(inspection_body.len());
@@ -13286,7 +13833,7 @@ fn markdown_reference_expansion_bytes(
             .and_then(|label_end| inspection_body.get(label_end + 1).map(|_| label_end + 1))
             .filter(|colon| inspection_body.get(*colon) == Some(&b':'))
         else {
-            continue;
+            return Err(markdown_reference_bounding_failure());
         };
         let mut replacement = None;
         for (index, byte) in inspection_body
@@ -13300,45 +13847,17 @@ fn markdown_reference_expansion_bytes(
                 replacement.get_or_insert(index);
             }
         }
-        if let Some(replacement) = replacement {
-            inspection_body[replacement] = b'x';
-        }
+        let Some(replacement) = replacement else {
+            return Err(markdown_reference_bounding_failure());
+        };
+        inspection_body[replacement] = b'x';
     }
-    let Ok(inspection_body) = String::from_utf8(inspection_body) else {
-        return 0;
-    };
-    let callback_definitions = first_definitions
-        .iter()
-        .map(|definition| definition.label.clone())
-        .collect::<BTreeSet<_>>();
-    let callback = move |broken: pulldown_cmark::BrokenLink<'_>| {
-        callback_definitions
-            .contains(&normalize_reference_identifier(&broken.reference))
-            .then(|| ("x".into(), "".into()))
-    };
-    Parser::new_with_broken_link_callback(
-        &inspection_body,
-        Options::ENABLE_STRIKETHROUGH,
-        Some(callback),
-    )
-    .filter_map(|event| match event {
-        Event::Start(Tag::Link { link_type, id, .. } | Tag::Image { link_type, id, .. })
-            if markdown_reference_link_type(link_type) =>
-        {
-            let identifier = normalize_reference_identifier(&id);
-            first_definitions
-                .iter()
-                .find(|definition| definition.label == identifier)
-                .map(|definition| {
-                    definition
-                        .destination
-                        .len()
-                        .saturating_add(definition.title.len())
-                })
-        }
-        _ => None,
-    })
-    .fold(0usize, usize::saturating_add)
+    String::from_utf8(inspection_body).map_err(|_| markdown_reference_bounding_failure())
+}
+
+fn markdown_reference_bounding_failure() -> String {
+    "Markdown reference definitions could not be bounded safely before parsing. Reduce or split the document, then retry."
+        .to_owned()
 }
 
 fn markdown_reference_link_type(link_type: LinkType) -> bool {
@@ -13498,6 +14017,8 @@ fn markdown_definition_inspection(body: &str) -> Result<(), String> {
             line_index,
             trimmed,
             &normalized_label,
+            markdown_container_signature(source_line),
+            markdown_innermost_list_content_indent(source_line),
         ) else {
             line_index += 1;
             continue;
@@ -13535,33 +14056,140 @@ fn markdown_duplicate_definition_candidate(
     line_index: usize,
     first_line: &str,
     expected_label: &str,
+    container_signature: Vec<u8>,
+    list_content_indent: Option<usize>,
 ) -> Option<(String, usize)> {
     let mut fragment = String::new();
     fragment.push_str(first_line);
     fragment.push('\n');
-    for offset in 1..=2 {
-        let Some(span) = spans.get(line_index + offset) else {
+    let first_definition = markdown_definition_from_fragment(&fragment, expected_label);
+    let first_line_terminator = first_definition
+        .is_none()
+        .then(|| markdown_definition_title_terminator(first_line))
+        .flatten();
+    let next_line_terminator = spans.get(line_index + 1).and_then(|span| {
+        let source = &body[span.start..span.content_end];
+        markdown_duplicate_continuation_matches(source, &container_signature, list_content_indent)
+            .then(|| {
+                markdown_container_content(source)
+                    .trim_start()
+                    .as_bytes()
+                    .first()
+                    .copied()
+            })
+            .flatten()
+            .and_then(markdown_title_terminator)
+    });
+    let (terminator, title_starts_on_next_line) = if let Some(terminator) = first_line_terminator {
+        (terminator, false)
+    } else if let Some(terminator) = next_line_terminator {
+        (terminator, true)
+    } else {
+        return first_definition;
+    };
+    for (continuation_index, span) in spans.iter().enumerate().skip(line_index + 1) {
+        let source = &body[span.start..span.content_end];
+        if !markdown_duplicate_continuation_matches(
+            source,
+            &container_signature,
+            list_content_indent,
+        ) {
             break;
-        };
-        fragment.push_str(markdown_container_content(
-            &body[span.start..span.content_end],
-        ));
+        }
+        let continuation = markdown_container_content(source);
+        if continuation.trim().is_empty() {
+            break;
+        }
+        fragment.push_str(continuation);
         fragment.push('\n');
+        let title_content = if title_starts_on_next_line && continuation_index == line_index + 1 {
+            continuation.trim_start().get(1..).unwrap_or_default()
+        } else {
+            continuation
+        };
+        if markdown_contains_unescaped_byte(title_content, terminator) {
+            return markdown_definition_from_fragment(&fragment, expected_label)
+                .or(first_definition);
+        }
     }
-    let parser = Parser::new_ext(&fragment, Options::ENABLE_STRIKETHROUGH);
+    first_definition
+}
+
+fn markdown_definition_title_terminator(line: &str) -> Option<u8> {
+    let tail = line.split_once(':')?.1.trim_start();
+    let after_destination = if let Some(enclosed) = tail.strip_prefix('<') {
+        let end = markdown_unescaped_byte_index(enclosed, b'>')?;
+        &enclosed[end + 1..]
+    } else {
+        let end = tail.find(char::is_whitespace).unwrap_or(tail.len());
+        &tail[end..]
+    };
+    markdown_title_terminator(*after_destination.trim_start().as_bytes().first()?)
+}
+
+fn markdown_title_terminator(opener: u8) -> Option<u8> {
+    match opener {
+        b'"' | b'\'' => Some(opener),
+        b'(' => Some(b')'),
+        _ => None,
+    }
+}
+
+fn markdown_contains_unescaped_byte(value: &str, expected: u8) -> bool {
+    markdown_unescaped_byte_index(value, expected).is_some()
+}
+
+fn markdown_unescaped_byte_index(value: &str, expected: u8) -> Option<usize> {
+    let mut escaped = false;
+    for (index, byte) in value.bytes().enumerate() {
+        if byte == expected && !escaped {
+            return Some(index);
+        }
+        escaped = byte == b'\\' && !escaped;
+        if byte != b'\\' {
+            escaped = false;
+        }
+    }
+    None
+}
+
+fn markdown_definition_candidate_label(line: &str) -> Option<String> {
+    let after_open = line.strip_prefix('[')?;
+    let mut escaped = false;
+    for (offset, character) in after_open.char_indices() {
+        if character == ']' && !escaped {
+            let remainder = &after_open[offset + character.len_utf8()..];
+            return remainder
+                .starts_with(':')
+                .then(|| normalize_reference_identifier(&after_open[..offset]));
+        }
+        escaped = character == '\\' && !escaped;
+        if character != '\\' {
+            escaped = false;
+        }
+    }
+    None
+}
+
+fn markdown_definition_from_fragment(
+    fragment: &str,
+    expected_label: &str,
+) -> Option<(String, usize)> {
+    let parser = Parser::new_ext(fragment, Options::ENABLE_STRIKETHROUGH);
     parser
         .reference_definitions()
         .iter()
-        .filter(|(label, _)| normalize_reference_identifier(label) == expected_label)
-        .min_by_key(|(_, definition)| definition.span.start)
-        .map(|(_, definition)| {
-            (
-                definition.dest.to_string(),
-                fragment[..definition.span.end.min(fragment.len())]
-                    .bytes()
-                    .filter(|byte| *byte == b'\n')
-                    .count(),
-            )
+        .find_map(|(label, definition)| {
+            (definition.span.start == 0 && normalize_reference_identifier(label) == expected_label)
+                .then(|| {
+                    (
+                        definition.dest.to_string(),
+                        fragment[..definition.span.end.min(fragment.len())]
+                            .bytes()
+                            .filter(|byte| *byte == b'\n')
+                            .count(),
+                    )
+                })
         })
 }
 
@@ -13583,6 +14211,7 @@ fn markdown_work_inspection(body: &str) -> MarkdownWorkInspection {
     let mut fence: Option<(char, usize, usize)> = None;
     let mut html_block: Option<(MarkdownHtmlBlock, usize)> = None;
     let mut inline_code_end_offset: Option<usize> = None;
+    let mut inline_html_terminator: Option<(&'static str, Vec<u8>)> = None;
     let mut paragraph_depth = None;
     let spans = line_spans(body);
     let definition_parser = Parser::new_ext(body, Options::ENABLE_STRIKETHROUGH);
@@ -13591,7 +14220,13 @@ fn markdown_work_inspection(body: &str) -> MarkdownWorkInspection {
         .iter()
         .map(|(_, definition)| definition.span.clone())
         .collect::<Vec<_>>();
-    for span in &spans {
+    let definition_labels = definition_parser
+        .reference_definitions()
+        .iter()
+        .map(|(label, _)| normalize_reference_identifier(label))
+        .collect::<BTreeSet<_>>();
+    let mut duplicate_definition_through_line = None;
+    for (line_index, span) in spans.iter().enumerate() {
         let source_line = &body[span.start..span.content_end];
         let (line, container_depth) = markdown_container_content_and_depth(source_line);
         let indentation_columns = markdown_indentation_columns(source_line);
@@ -13698,10 +14333,41 @@ fn markdown_work_inspection(body: &str) -> MarkdownWorkInspection {
             paragraph_depth = None;
             continue;
         }
+        if duplicate_definition_through_line.is_some_and(|end| line_index <= end) {
+            paragraph_depth = None;
+            continue;
+        }
+        if let Some(label) = markdown_definition_candidate_label(trimmed)
+            && definition_labels.contains(&label)
+            && let Some((_, consumed_lines)) = markdown_duplicate_definition_candidate(
+                body,
+                &spans,
+                line_index,
+                trimmed,
+                &label,
+                markdown_container_signature(source_line),
+                markdown_innermost_list_content_indent(source_line),
+            )
+        {
+            duplicate_definition_through_line = Some(line_index + consumed_lines);
+            paragraph_depth = None;
+            continue;
+        }
 
         let bytes = trimmed.as_bytes();
         let trimmed_start = span.start + source_line.len() - line.len() + leading_spaces;
         let mut index = 0usize;
+        if let Some((terminator, signature)) = inline_html_terminator.take()
+            && markdown_inline_html_continuation_matches(source_line, &signature)
+        {
+            if let Some(end) = trimmed.find(terminator) {
+                index = end + terminator.len();
+            } else {
+                inline_html_terminator = Some((terminator, signature));
+                paragraph_depth = Some(container_depth);
+                continue;
+            }
+        }
         if let Some(end) = inline_code_end_offset {
             if end > span.content_end {
                 paragraph_depth = Some(container_depth);
@@ -13738,11 +14404,31 @@ fn markdown_work_inspection(body: &str) -> MarkdownWorkInspection {
                 index += marker_count;
                 continue;
             }
-            if bytes[index] == b'<'
-                && let Some(end) = markdown_inline_angle_end(trimmed, index)
-            {
-                index = end;
-                continue;
+            if bytes[index] == b'<' {
+                if let Some(terminator) =
+                    markdown_multiline_inline_html_terminator(&trimmed[index..])
+                    && markdown_inline_html_terminator_ahead(
+                        body,
+                        &spans,
+                        line_index,
+                        &trimmed[index..],
+                        terminator,
+                        &markdown_container_signature(source_line),
+                    )
+                {
+                    if let Some(end) = trimmed[index..].find(terminator) {
+                        index += end + terminator.len();
+                    } else {
+                        inline_html_terminator =
+                            Some((terminator, markdown_container_signature(source_line)));
+                        break;
+                    }
+                    continue;
+                }
+                if let Some(end) = markdown_inline_angle_end(trimmed, index) {
+                    index = end;
+                    continue;
+                }
             }
             if matches!(bytes[index], b'*' | b'_') {
                 let marker = bytes[index];
@@ -13890,6 +14576,46 @@ fn markdown_inline_code_end(bytes: &[u8], mut index: usize, marker_count: usize)
     None
 }
 
+fn markdown_multiline_inline_html_terminator(value: &str) -> Option<&'static str> {
+    if value.starts_with("<!--") {
+        Some("-->")
+    } else if value.starts_with("<?") {
+        Some("?>")
+    } else if value.starts_with("<![CDATA[") {
+        Some("]]>")
+    } else if value
+        .strip_prefix("<!")
+        .and_then(|remainder| remainder.as_bytes().first())
+        .is_some_and(u8::is_ascii_alphabetic)
+    {
+        Some(">")
+    } else {
+        None
+    }
+}
+
+fn markdown_inline_html_terminator_ahead(
+    body: &str,
+    spans: &[LineSpan],
+    line_index: usize,
+    current_line: &str,
+    terminator: &str,
+    container_signature: &[u8],
+) -> bool {
+    current_line.contains(terminator)
+        || spans
+            .iter()
+            .skip(line_index + 1)
+            .take_while(|span| {
+                let line = &body[span.start..span.content_end];
+                !markdown_container_content(line).trim().is_empty()
+                    && markdown_inline_html_continuation_matches(line, container_signature)
+            })
+            .any(|span| {
+                markdown_container_content(&body[span.start..span.content_end]).contains(terminator)
+            })
+}
+
 fn markdown_inline_angle_end(line: &str, index: usize) -> Option<usize> {
     let bytes = line.as_bytes();
     let mut cursor = index + 1;
@@ -13907,6 +14633,7 @@ fn markdown_inline_angle_end(line: &str, index: usize) -> Option<usize> {
         return None;
     }
     let content = &line[index + 1..cursor];
+    let candidate = &line[index..cursor + 1];
     let autolink = !content.chars().any(char::is_whitespace)
         && (content.split_once(':').is_some_and(|(scheme, _)| {
             scheme
@@ -13919,13 +14646,16 @@ fn markdown_inline_angle_end(line: &str, index: usize) -> Option<usize> {
         }) || content
             .split_once('@')
             .is_some_and(|(local, domain)| !local.is_empty() && domain.contains('.')));
-    let tag = content
-        .strip_prefix('/')
-        .unwrap_or(content)
-        .chars()
-        .next()
-        .is_some_and(|character| character.is_ascii_alphabetic());
-    let special_html = content.starts_with('!') || content.starts_with('?');
+    let tag = markdown_complete_html_tag(candidate);
+    let cdata = candidate.starts_with("<![CDATA[") && candidate.ends_with("]]>");
+    let declaration = candidate
+        .strip_prefix("<!")
+        .and_then(|remainder| remainder.as_bytes().first())
+        .is_some_and(u8::is_ascii_alphabetic);
+    let special_html = (candidate.starts_with("<!--") && candidate.ends_with("-->"))
+        || (candidate.starts_with("<?") && candidate.ends_with("?>"))
+        || cdata
+        || declaration;
     (autolink || tag || special_html).then_some(cursor + 1)
 }
 
@@ -14004,6 +14734,91 @@ fn markdown_fence_opener(line: &str) -> Option<(char, usize)> {
 
 fn markdown_container_content(line: &str) -> &str {
     markdown_container_content_and_depth(line).0
+}
+
+fn markdown_container_signature(mut line: &str) -> Vec<u8> {
+    let mut signature = Vec::new();
+    loop {
+        let leading = line
+            .chars()
+            .take_while(|character| *character == ' ')
+            .count();
+        if leading > 3 {
+            return signature;
+        }
+        let candidate = &line[leading..];
+        if let Some(after_quote) = candidate.strip_prefix('>') {
+            signature.push(b'>');
+            line = after_quote.strip_prefix([' ', '\t']).unwrap_or(after_quote);
+            continue;
+        }
+        if markdown_thematic_break(candidate) {
+            return signature;
+        }
+        if let Some(after_marker) = markdown_list_item_content(candidate) {
+            signature.push(b'-');
+            line = after_marker;
+            continue;
+        }
+        return signature;
+    }
+}
+
+fn markdown_duplicate_continuation_matches(
+    line: &str,
+    expected: &[u8],
+    list_content_indent: Option<usize>,
+) -> bool {
+    let actual = markdown_container_signature(line);
+    if expected.last() != Some(&b'-') {
+        return actual == expected;
+    }
+    if actual == expected {
+        return false;
+    }
+    actual == expected[..expected.len() - 1]
+        && markdown_indentation_columns(markdown_container_content(line))
+            >= list_content_indent.unwrap_or(usize::MAX)
+}
+
+fn markdown_inline_html_continuation_matches(line: &str, expected: &[u8]) -> bool {
+    let actual = markdown_container_signature(line);
+    if actual == expected {
+        return expected.last() != Some(&b'-');
+    }
+    actual.len() < expected.len() && expected.starts_with(&actual)
+}
+
+fn markdown_innermost_list_content_indent(mut line: &str) -> Option<usize> {
+    let mut result = None;
+    loop {
+        let leading = line
+            .chars()
+            .take_while(|character| *character == ' ')
+            .count();
+        if leading > 3 {
+            return result;
+        }
+        let candidate = &line[leading..];
+        if let Some(after_quote) = candidate.strip_prefix('>') {
+            line = after_quote.strip_prefix([' ', '\t']).unwrap_or(after_quote);
+            continue;
+        }
+        if markdown_thematic_break(candidate) {
+            return result;
+        }
+        if let Some(after_marker) = markdown_list_item_content(candidate) {
+            let consumed = &candidate[..candidate.len() - after_marker.len()];
+            result = if let Some(marker) = consumed.strip_suffix('\t') {
+                (matches!(marker, "-" | "+" | "*" | "1." | "1)")).then_some(0)
+            } else {
+                Some(leading + consumed.len())
+            };
+            line = after_marker;
+            continue;
+        }
+        return result;
+    }
 }
 
 fn markdown_container_content_and_depth(mut line: &str) -> (&str, usize) {
@@ -15082,6 +15897,28 @@ mod tests {
         assert_eq!(
             multiply_base_100(&left, &right).as_deref(),
             Some(schoolbook_base_100_multiply(&left, &right).as_slice())
+        );
+    }
+
+    #[test]
+    fn adjusts_cached_radix_decimals_across_carry_boundaries() {
+        assert_eq!(decimal_with_signed_delta("999", 2).as_deref(), Some("1001"));
+        assert_eq!(
+            decimal_with_signed_delta("1000", -1).as_deref(),
+            Some("999")
+        );
+        assert_eq!(
+            decimal_with_signed_delta("100000", -999).as_deref(),
+            Some("99001")
+        );
+    }
+
+    #[test]
+    fn direct_set_member_source_stops_before_explicit_null_value() {
+        let source = "? !!map\n  k: v\n:\n? next\n";
+        assert_eq!(
+            direct_standard_set_member_sources(source, 2),
+            vec!["!!map\n  k: v\n", "next\n"]
         );
     }
 

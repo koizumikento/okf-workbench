@@ -355,4 +355,28 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn graph_operation_accepts_lexically_float_integral_revisions() {
+        for (revision, expected) in [
+            ("0.0", 0_u64),
+            ("1.0", 1),
+            ("1e0", 1),
+            ("9007199254740991.0", 9_007_199_254_740_991),
+        ] {
+            let graph: Value = serde_json::from_str(&dispatch_json(&format!(
+                r#"{{"operation":"graph","input":{{"rootUri":"","revision":{revision},"documents":[]}}}}"#
+            )))
+            .unwrap();
+            assert_eq!(graph["error"], Value::Null, "graph revision {revision}");
+            assert_eq!(graph["result"]["revision"], expected);
+
+            let inspect: Value = serde_json::from_str(&dispatch_json(&format!(
+                r#"{{"operation":"inspect","input":{{"bundle":{{"rootUri":"","revision":{revision},"documents":[]}},"now":"2026-08-03T00:00:00Z","failures":[]}}}}"#
+            )))
+            .unwrap();
+            assert_eq!(inspect["error"], Value::Null, "inspect revision {revision}");
+            assert_eq!(inspect["result"]["graph"]["revision"], expected);
+        }
+    }
 }

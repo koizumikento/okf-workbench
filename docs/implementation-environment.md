@@ -276,12 +276,15 @@ use `vscode.workspace.fs`; local `file:` resources use Node's file-handle API be
 only for identity-bound reads. Core modules receive text, byte arrays, normalized concept IDs, and
 operation inputs rather than VS Code objects.
 
-The native CLI binds every write plan to the filesystem identity of its bundle root (or the deepest
-existing ancestor of a missing root) and to the identity of every existing target. Apply reopens
-that anchored identity with no-follow semantics, so replacing the root while an interactive plan is
-awaiting confirmation cannot redirect the approved write. A missing-root plan retains the
-canonical existing ancestor captured during planning and rejects any component that appears before
-apply instead of canonicalizing through newly introduced path state.
+The native CLI binds every write plan to an open, identity-checked handle for its bundle root (or
+the deepest existing ancestor of a missing root) and to the identity of every existing target. The
+handle remains open from planning through apply, so replacing the root while an interactive plan is
+awaiting confirmation cannot redirect the approved write. A missing-root plan retains the opened
+existing ancestor and its lexical remaining components; apply does not canonicalize through newly
+introduced path state. The root `index.md` version decision is similarly bound to one retained file
+handle, its identity, and the exact planned bytes, or to explicit absence. Apply validates that same
+handle and rejects path replacement, in-place byte changes, or a newly appeared index before any
+mutation.
 
 Existing-file updates fail closed before root creation or any other proposal write on every native
 CLI platform. None of the supported filesystem APIs provides the complete generation-CAS primitive
@@ -292,17 +295,23 @@ still reports the proposed update, but `--apply` returns an actionable condition
 and leaves the entire plan untouched. This also means macOS never copies an old content modification
 time onto changed bytes and Windows never publishes a metadata-incomplete replacement.
 
-Create-only publication remains supported without an overwrite path. Linux stages bytes in an
-anonymous same-directory `O_TMPFILE` and publishes them with `linkat(AT_EMPTY_PATH)` no-replace;
-macOS stages in an already unlinked file and uses
-`fclonefileat(..., flags=0)` relative to the anchored parent; a cross-volume or unsupported clone
-fails closed. Windows stages through an open delete-capable handle and publishes relative to the
-retained parent handle with no replacement flag. After handled failure it attempts handle-bound
-cleanup; if cleanup also fails, both errors are reported. A single fixed reservation name keeps
-abrupt-interruption or cleanup-failure residue bounded to at most one pathname per target directory;
-a later invocation never deletes that name by pathname and fails closed if it remains.
-Interrupted or failed Unix creates therefore leave neither a partial target nor an accumulating
-hidden recovery file. The locked filesystem crates were already present in the reviewed Rust
+Create-only publication remains supported without an overwrite path. In an existing root, only a
+single-create plan is eligible: Linux stages bytes in an anonymous same-directory `O_TMPFILE` and
+publishes them with `linkat(AT_EMPTY_PATH)` no-replace; macOS stages in an already unlinked file
+created with mode `0666 & !umask` and uses `fclonefileat(..., flags=0)` relative to the anchored
+parent; a cross-volume or unsupported clone fails closed. Windows reserves one fixed staging name
+before mutation, requires the direct parent to exist and be retained from planning, then publishes
+through an open delete-capable handle relative to that parent with no replacement flag. After a
+handled failure it attempts handle-bound cleanup; if cleanup also fails, both errors are reported.
+An existing-root plan with multiple creates fails before any directory or file is added because
+these primitives do not provide a complete-plan transaction.
+
+For a missing root, the CLI reserves one fixed sibling `.okf-workbench-root-staging` directory
+below the retained deepest existing ancestor, constructs the entire planned subtree there, and
+publishes the first missing component with one atomic no-replace rename. A collision or failure
+therefore exposes no partial public bundle. Abrupt interruption may leave only that fixed staging
+name; a later invocation never deletes it blindly and fails closed with an actionable error. The
+locked filesystem crates were already present in the reviewed Rust
 dependency graph; making them direct CLI dependencies does not add a network, editor, or core
 capability.
 

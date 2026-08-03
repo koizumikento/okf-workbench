@@ -33,9 +33,9 @@ export const typescriptOkfCore: OkfCore = {
       ...parsed,
       failures: [...parsed.failures, ...failures].sort(
         (left, right) =>
-          left.bundlePath.localeCompare(right.bundlePath) ||
-          left.uri.localeCompare(right.uri) ||
-          left.reason.localeCompare(right.reason),
+          compareText(left.bundlePath, right.bundlePath) ||
+          compareText(left.uri, right.uri) ||
+          compareText(left.reason, right.reason),
       ),
     };
     const findings = validateBundle(bundleWithFailures, { now });
@@ -88,3 +88,7 @@ export const typescriptOkfCore: OkfCore = {
     return files;
   },
 };
+
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}

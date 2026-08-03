@@ -194,14 +194,7 @@ fn run(cli: Cli) -> Result<u8, String> {
         Command::Init(args) => {
             let timestamp = timestamp();
             let files = bundle_preset_files(args.preset.into(), &timestamp);
-            run_write(
-                "init",
-                args.path,
-                files,
-                args.write,
-                PlanMode::CreateOnly,
-                false,
-            )
+            run_write("init", args.path, files, args.write, PlanMode::CreateOnly)
         }
         Command::New(args) => {
             ensure_supported_root_version(&args.root)?;
@@ -239,14 +232,7 @@ fn run(cli: Cli) -> Result<u8, String> {
                 tags: args.tags,
                 timestamp: Some(timestamp()),
             })?];
-            run_write(
-                "new",
-                args.root,
-                files,
-                args.write,
-                PlanMode::CreateOnly,
-                true,
-            )
+            run_write("new", args.root, files, args.write, PlanMode::CreateOnly)
         }
         Command::Validate(args) => {
             let input = load_bundle(&args.root)?;
@@ -322,7 +308,6 @@ fn run(cli: Cli) -> Result<u8, String> {
                     ensure_root_version,
                     update_existing_regions: matches!(mode, IndexMode::All),
                 },
-                true,
             )
         }
         Command::Graph(args) => {
@@ -351,7 +336,6 @@ fn run(cli: Cli) -> Result<u8, String> {
                 agent_files(target, "."),
                 args.write,
                 PlanMode::MergeAgent,
-                true,
             )
         }
         Command::Version => {
@@ -422,7 +406,6 @@ fn run_write(
     files: Vec<RenderedFile>,
     flags: WriteFlags,
     mode: PlanMode,
-    revalidate_version_before_apply: bool,
 ) -> Result<u8, String> {
     let root = absolute(root)?;
     let plan = plan_files(&root, files, mode)?;
@@ -446,9 +429,6 @@ fn run_write(
         return Err("a non-interactive write requires explicit `--apply`; use `--check` to inspect without writing".to_owned());
     };
     if should_apply {
-        if revalidate_version_before_apply {
-            ensure_supported_root_version(&root)?;
-        }
         apply_plan(&root, &plan)?;
     }
     write_json(&JsonEnvelope {

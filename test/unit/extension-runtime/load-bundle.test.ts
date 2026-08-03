@@ -156,6 +156,24 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 }
 
 describe('loadBundle', () => {
+  it('sorts provider failures by deterministic UTF-16 code-unit order', async () => {
+    const port = new FakeWorkspacePort();
+    port.putDirectory(root);
+    port.traversalFailures.set(`${root}/a.md`, new Error('lowercase failure'));
+    port.traversalFailures.set(`${root}/A.md`, new Error('uppercase failure'));
+    port.traversalFailures.set(`${root}/\uE000.md`, new Error('BMP failure'));
+    port.traversalFailures.set(`${root}/😀.md`, new Error('astral failure'));
+
+    const loaded = await loadBundle(port, stringUriCodec, root, root);
+
+    expect(loaded.failures.map(({ bundlePath }) => bundlePath)).toEqual([
+      'A.md',
+      'a.md',
+      '😀.md',
+      '\uE000.md',
+    ]);
+  });
+
   it('excludes project-local agent integration files from a root-level bundle', async () => {
     const port = new FakeWorkspacePort();
     port.putDirectory(root);

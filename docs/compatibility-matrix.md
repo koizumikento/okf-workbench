@@ -1,7 +1,7 @@
 # Compatibility matrix
 
-- Status: `0.2.1` universal and target-platform candidates qualified
-- Last matrix qualified: 2026-07-28
+- Status: current OKF-v0.2 source candidate pending fresh hosted and package-smoke qualification
+- Last predecessor matrix qualified: 2026-07-28
 - Extension identifier expected by the gate: `straydog.okf-workbench`
 
 ## What this matrix proves
@@ -19,7 +19,7 @@ fixture with a fixed `SOURCE_DATE_EPOCH`, records its digest, and upgrades from
 that package. A same-version reinstall is recorded separately and is never
 counted as upgrade evidence.
 
-## Current 0.2.1 qualification
+## Retained predecessor `0.2.1` qualification
 
 The workflow requires VS Code `1.121.0` on Ubuntu, VS Code `1.129.1` on Ubuntu, macOS,
 and Windows, and VSCodium `1.121.03429` on Ubuntu, macOS, and Windows.
@@ -40,6 +40,11 @@ passed the browser security boundary, macOS arm64, macOS x64, Linux x64, Windows
 aggregate platform-set consistency job for the same revision. The aggregate gate required exactly
 one package for every supported target and one canonical Wasm core; each target lane also verified
 its native CLI/VSIX byte parity, package identity, license, notices, and reproducibility.
+
+These receipts are bound to revision `80ae7d560337cbe8d97af864c77aee410d5e5988` and its exact
+package digests. The current OKF-v0.2 source candidate includes the Rust/Wasm migration and
+packaged-resource changes, so it does not inherit this qualification. Fresh Compatibility and
+package-smoke runs are required before a current-candidate claim can be made.
 
 ## Preserved 0.2.0 qualification
 
@@ -148,13 +153,16 @@ sanitation. They do not describe the current candidate and must not
 be used as cross-platform evidence. The `0.0.0` package is a test fixture, not
 a published migration source.
 
-## Current configured lanes
+## Current required lanes
 
 | Editor | Exact version | Ubuntu 24.04 | macOS 15 | Windows 2025 | Acquisition |
 | --- | --- | --- | --- | --- | --- |
-| VS Code | `1.121.0` | Passed | N/A | N/A | Pinned editor test download |
-| VS Code | `1.129.1` | Passed | Passed | Passed | Pinned editor test download |
-| VSCodium | `1.121.03429` | Passed | Passed | Passed | Official archive with pinned SHA-256 |
+| VS Code | `1.121.0` | Required | N/A | N/A | Pinned editor test download |
+| VS Code | `1.129.1` | Required | Required | Required | Pinned editor test download |
+| VSCodium | `1.121.03429` | Required | Required | Required | Official archive with pinned SHA-256 |
+
+These are the lanes the next qualification run must pass. The `Passed` results above belong to the
+explicitly named predecessor revisions and do not transfer to the current source candidate.
 
 The API-floor lane runs on the primary Ubuntu CI environment. Cross-platform
 release smoke uses the current VS Code build and the compatible VSCodium build,

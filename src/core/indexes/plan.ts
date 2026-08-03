@@ -145,7 +145,7 @@ function insertVersionIntoExistingFrontmatter(
   if (token.type === 'block-map') {
     offset = token.offset;
     const newline = preferredTextNewline(source);
-    insertion = `okf_version: "0.1"${newline}${' '.repeat(token.indent)}`;
+    insertion = `okf_version: "0.2"${newline}${' '.repeat(token.indent)}`;
   } else if (token.type === 'flow-collection' && token.start.type === 'flow-map-start') {
     const flowEnd = token.end.find((item) => item.type === 'flow-map-end');
     if (flowEnd === undefined) {
@@ -155,7 +155,7 @@ function insertVersionIntoExistingFrontmatter(
     const retainedContent = source.slice(offset, flowEnd.offset);
     const separator =
       retainedContent.trim().length === 0 ? '' : retainedContent.startsWith('#') ? ', ' : ',';
-    insertion = `okf_version: "0.1"${separator}`;
+    insertion = `okf_version: "0.2"${separator}`;
   } else {
     return synthesisFailure('The root frontmatter mapping style is not safely editable.');
   }
@@ -169,7 +169,7 @@ function insertVersionIntoExistingFrontmatter(
   const verifiedRoot = verified.reservedDocuments.find(
     (document) => document.source.bundlePath === 'index.md',
   );
-  if (verified.failures.length > 0 || verifiedRoot?.frontmatter?.raw.okf_version !== '0.1') {
+  if (verified.failures.length > 0 || verifiedRoot?.frontmatter?.raw.okf_version !== '0.2') {
     return synthesisFailure('The proposed root declaration did not pass validation.');
   }
   return { ok: true, value: proposedText, warnings: [] };
@@ -200,13 +200,13 @@ function synthesizeRootOkfVersion(existingText: string): OperationResult<string>
   const bom = existingText.startsWith('\uFEFF') ? '\uFEFF' : '';
   const body = bom.length === 0 ? existingText : existingText.slice(1);
   const newline = preferredTextNewline(body);
-  const frontmatter = `---${newline}okf_version: "0.1"${newline}---${newline}`;
+  const frontmatter = `---${newline}okf_version: "0.2"${newline}---${newline}`;
   const proposedText = `${bom}${frontmatter}${body}`;
   const verified = parseRootIndex(proposedText);
   const verifiedRoot = verified.reservedDocuments.find(
     (document) => document.source.bundlePath === 'index.md',
   );
-  if (verified.failures.length > 0 || verifiedRoot?.frontmatter?.raw.okf_version !== '0.1') {
+  if (verified.failures.length > 0 || verifiedRoot?.frontmatter?.raw.okf_version !== '0.2') {
     return synthesisFailure('The proposed root declaration did not pass validation.');
   }
   return { ok: true, value: proposedText, warnings: [] };

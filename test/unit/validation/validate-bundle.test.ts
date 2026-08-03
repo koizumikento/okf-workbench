@@ -219,7 +219,7 @@ describe('validateBundle', () => {
 
     const findings = validateBundle(
       bundle([orphan, beta, alpha], {
-        reservedDocuments: [rootIndex('0.2')],
+        reservedDocuments: [rootIndex('0.3')],
         failures: [decodeFailure],
       }),
       { now: '2026-07-22T00:00:00Z' },
@@ -273,7 +273,7 @@ describe('validateBundle', () => {
 
     const reordered = validateBundle(
       bundle([alpha, beta, orphan], {
-        reservedDocuments: [rootIndex('0.2')],
+        reservedDocuments: [rootIndex('0.3')],
         failures: [decodeFailure],
       }),
       { now: '2026-07-22T00:00:00Z' },
@@ -399,20 +399,352 @@ describe('validateBundle', () => {
     expect(() => validateBundle(bundle([]), { now: 'not-a-date' })).toThrow(TypeError);
   });
 
-  it('reports a missing root index without hiding other readable bundle content', () => {
+  it('allows an indexless bundle because the v0.2 root index is optional', () => {
     const findings = validateBundle(bundle([], { reservedDocuments: [] }), {
       now: '2026-07-22T00:00:00Z',
     });
 
-    expect(findings).toContainEqual({
-      code: VALIDATION_CODES.rootIndex,
-      category: 'conformance',
-      severity: 'error',
-      uri: rootUri,
-      message: 'OKF conformance: the selected bundle root is missing index.md.',
-      correctiveAction:
-        'Run OKF: Regenerate Indexes to synthesize the missing root index, or create index.md with an OKF version declaration.',
+    expect(findings).toEqual([]);
+  });
+
+  it('rejects extra root-index frontmatter at its exact field while retaining the parsed value', () => {
+    const parsed = parseBundle({
+      rootUri,
+      revision: 10,
+      documents: [document('index.md', '---\nokf_version: "0.2"\ntitle: extra\n---\n# Root\n')],
     });
+
+    expect(parsed.reservedDocuments[0]?.frontmatter?.raw.title).toBe('extra');
+    expect(validateBundle(parsed, { now: '2026-07-22T00:00:00Z' })).toEqual([
+      {
+        code: VALIDATION_CODES.reservedFrontmatter,
+        category: 'conformance',
+        severity: 'error',
+        uri: `${rootUri}/index.md`,
+        range: {
+          start: { offset: 23, line: 2, character: 0 },
+          end: { offset: 35, line: 2, character: 12 },
+        },
+        message:
+          'OKF conformance: bundle-root index.md frontmatter may contain only `okf_version`; unexpected field "title" is not allowed.',
+        correctiveAction:
+          'Remove the extra root-index frontmatter field. Workbench retains it until you explicitly repair the document.',
+      },
+    ]);
+  });
+
+  it('validates actor conventions, computation exclusivity, and safe usage counts', () => {
+    const parsed = parseBundle({
+      rootUri,
+      revision: 9,
+      documents: [
+        document(
+          'invalid-actors.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Invalid actors',
+            'description: Invalid actor forms must not elevate trust.',
+            'generated: { by: bogus }',
+            'verified: { by: "human:", at: 2026-07-30T02:00:00Z }',
+            'sources:',
+            '  - resource: https://example.com/source',
+            '    author: "team:"',
+            '---',
+            '# Invalid actors',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'canonical-source-author.md',
+          [
+            '---',
+            'type: Reference',
+            'sources:',
+            '  - resource: https://developers.google.com/analytics/bigquery/export-schema',
+            '    author: team:ga4-docs',
+            '---',
+            '# Canonical source author',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'both-computations.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Ambiguous computation',
+            'description: Both sanctioned forms are present.',
+            'runtime: local',
+            'computation: scripts/run.sh',
+            '---',
+            '# Computation',
+            '',
+            '```sh',
+            'true',
+            '```',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'safe-count.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Safe count',
+            'description: Integral YAML floats remain portable.',
+            'usage_window: { from: 2026-07-01, to: 2026-07-31 }',
+            'sources: [{ resource: https://example.com/safe, usage_count: 42.0 }]',
+            '---',
+            '# Safe count',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'unsafe-count.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Unsafe count',
+            'description: Integers beyond the JSON safe range are rejected.',
+            'sources: [{ resource: https://example.com/unsafe, usage_count: 9007199254740993 }]',
+            '---',
+            '# Unsafe count',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'tagged-fields.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Tagged fields',
+            'description: Explicit standard tags preserve their semantic values.',
+            'status: !!str stable',
+            'stale_after: !!str 2026-09-23',
+            'usage_window:',
+            '  from: !!str 2026-07-01',
+            '  to: !!str 2026-07-31',
+            'sources:',
+            '  - resource: !!str https://example.com/tagged',
+            '    usage_count: !!int 42',
+            'runtime: !!str local',
+            'parameters:',
+            '  - name: !!str input',
+            '    type: !!str string',
+            '    required: !!bool true',
+            'computation: !!str scripts/run.sh',
+            'executor:',
+            '  resource: !!str references/run.md',
+            '  receipt: [!!str job_id, !!str result]',
+            'attester:',
+            '  resource: !!str references/attest.md',
+            '---',
+            '# Tagged fields',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'invalid-generated-at.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Invalid generated time',
+            'description: A present non-string at is malformed.',
+            'generated: { by: process:test, at: null }',
+            '---',
+            '# Invalid generated time',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'malformed-file-with-inline.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Malformed computation file',
+            'description: A malformed present file cannot fall back to inline.',
+            'runtime: local',
+            'computation: 5',
+            '---',
+            '# Computation',
+            '',
+            '```sh',
+            'true',
+            '```',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'multiple-inline.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Multiple inline computations',
+            'description: Exactly one inline fence is sanctioned.',
+            'runtime: local',
+            '---',
+            '# Computation',
+            '',
+            '```sh',
+            'true',
+            '```',
+            '',
+            '```sh',
+            'false',
+            '```',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'fake-inline-heading.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Fake inline heading',
+            'description: A heading inside a sample is not a computation section.',
+            'runtime: local',
+            '---',
+            '```md',
+            '# Computation',
+            '```',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'attached-closing-hashes.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Attached hashes',
+            'description: Closing hashes require preceding whitespace.',
+            'runtime: local',
+            '---',
+            '# Computation###',
+            '',
+            '```sh',
+            'true',
+            '```',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'cr-only-inline.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: CR only',
+            'description: CommonMark recognizes CR line endings.',
+            'runtime: local',
+            '---',
+            '# Computation',
+            '',
+            '```sh',
+            'true',
+            '```',
+            '',
+          ].join('\r'),
+        ),
+        document(
+          'quoted-inline-heading.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Quoted computation',
+            'description: A quoted sample is not a root computation section.',
+            'runtime: local',
+            '---',
+            '> # Computation',
+            '>',
+            '> ```sh',
+            '> true',
+            '> ```',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'listed-inline-heading.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Listed computation',
+            'description: A listed sample is not a root computation section.',
+            'runtime: local',
+            '---',
+            '- # Computation',
+            '',
+            '  ```sh',
+            '  true',
+            '  ```',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'unpadded-stale-after.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Unpadded stale date',
+            'description: Lifecycle dates use exact YYYY-MM-DD.',
+            'stale_after: 2026-7-1',
+            '---',
+            '# Unpadded stale date',
+            '',
+          ].join('\n'),
+        ),
+      ],
+    });
+
+    expect(parsed.failures).toEqual([]);
+    expect(parsed.concepts.find(({ id }) => id === 'invalid-actors')?.trustTier).toBe('unverified');
+    expect(parsed.concepts.find(({ id }) => id === 'safe-count')?.sources?.[0]?.usageCount).toBe(
+      42,
+    );
+    const findings = validateBundle(parsed, { now: '2026-07-31T00:00:00Z' });
+    const findingsFor = (id: string): readonly string[] =>
+      findings.filter(({ uri }) => uri === `${rootUri}/${id}.md`).map(({ code }) => code);
+
+    expect(findingsFor('invalid-actors')).toEqual(
+      expect.arrayContaining([
+        VALIDATION_CODES.invalidGenerated,
+        VALIDATION_CODES.invalidVerified,
+        VALIDATION_CODES.invalidSources,
+      ]),
+    );
+    expect(findingsFor('both-computations')).toContain(VALIDATION_CODES.invalidAttestedComputation);
+    expect(findingsFor('canonical-source-author')).not.toContain(VALIDATION_CODES.invalidSources);
+    expect(findingsFor('safe-count')).not.toContain(VALIDATION_CODES.invalidSources);
+    expect(findingsFor('unsafe-count')).toContain(VALIDATION_CODES.invalidSources);
+    for (const code of [
+      VALIDATION_CODES.invalidStatus,
+      VALIDATION_CODES.invalidStaleAfter,
+      VALIDATION_CODES.invalidUsageWindow,
+      VALIDATION_CODES.invalidSources,
+      VALIDATION_CODES.invalidAttestedComputation,
+    ]) {
+      expect(findingsFor('tagged-fields')).not.toContain(code);
+    }
+    expect(findingsFor('invalid-generated-at')).toContain(VALIDATION_CODES.invalidGenerated);
+    expect(findingsFor('malformed-file-with-inline')).toContain(
+      VALIDATION_CODES.invalidAttestedComputation,
+    );
+    expect(findingsFor('multiple-inline')).toContain(VALIDATION_CODES.invalidAttestedComputation);
+    expect(findingsFor('fake-inline-heading')).toContain(
+      VALIDATION_CODES.invalidAttestedComputation,
+    );
+    expect(findingsFor('attached-closing-hashes')).toContain(
+      VALIDATION_CODES.invalidAttestedComputation,
+    );
+    expect(findingsFor('cr-only-inline')).not.toContain(
+      VALIDATION_CODES.invalidAttestedComputation,
+    );
+    expect(findingsFor('quoted-inline-heading')).toContain(
+      VALIDATION_CODES.invalidAttestedComputation,
+    );
+    expect(findingsFor('listed-inline-heading')).toContain(
+      VALIDATION_CODES.invalidAttestedComputation,
+    );
+    expect(findingsFor('unpadded-stale-after')).toContain(VALIDATION_CODES.invalidStaleAfter);
   });
 
   it('reports present non-string timestamp and okf_version values deterministically', () => {
@@ -542,6 +874,114 @@ describe('validateBundle', () => {
     expect(invalidTimestampUris).not.toContain(`${rootUri}/explicit-timestamp.md`);
     expect(JSON.parse(JSON.stringify(parsed))).toEqual(parsed);
     expect(JSON.parse(JSON.stringify(findings))).toEqual(findings);
+  });
+
+  it('keeps malformed optional v0.2 families in curation and prefers generated over legacy timestamp', () => {
+    const parsed = parseBundle({
+      rootUri,
+      revision: 2,
+      documents: [
+        document('index.md', '---\nokf_version: "0.2"\n---\n# Root\n'),
+        document(
+          'malformed.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Malformed optional metadata',
+            'description: Remains conformant while curation reports repairs.',
+            'timestamp: not-a-date',
+            'generated: { at: not-a-date }',
+            'verified: [{ by: "", at: not-a-date }]',
+            'status: archived',
+            'stale_after: 2026-02-30',
+            'sources: [{ title: Missing resource }]',
+            'parameters: [{ name: year, type: integer, required: yes }]',
+            '---',
+            '# Computation',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'stale.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Stale concept',
+            'description: Explicitly stale.',
+            'stale_after: 2026-07-30',
+            'generated: { by: process:future, at: 2026-08-01T00:10:00Z }',
+            'verified: { by: process:future, at: 2026-08-01T00:10:00Z }',
+            '---',
+            '# Details',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'invalid-provenance.md',
+          [
+            '---',
+            'type: Reference',
+            'title: Invalid provenance signals',
+            'description: Optional credibility signals need repair.',
+            'usage_window: { from: 2026-08-01, to: 2026-07-01 }',
+            'sources:',
+            '  - resource: https://example.com/source',
+            '    usage_count: -1',
+            '    last_modified: 2026-02-30',
+            '    usage_window: { from: 2026-07-31, to: 2026-07-01 }',
+            '---',
+            '# Reference',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'incomplete-computation.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Incomplete computation',
+            'description: Has no sanctioned computation.',
+            'runtime: bigquery',
+            'executor: invalid',
+            'attester: { resource: "" }',
+            '---',
+            '# Notes',
+            '',
+          ].join('\n'),
+        ),
+      ],
+    });
+    const findings = validateBundle(parsed, { now: '2026-07-31T00:00:00Z' });
+
+    expect(findings.filter(({ category }) => category === 'conformance')).toEqual([]);
+    expect(codes(findings)).toEqual(
+      expect.arrayContaining([
+        VALIDATION_CODES.invalidGenerated,
+        VALIDATION_CODES.invalidVerified,
+        VALIDATION_CODES.invalidStatus,
+        VALIDATION_CODES.invalidStaleAfter,
+        VALIDATION_CODES.invalidSources,
+        VALIDATION_CODES.invalidUsageWindow,
+        VALIDATION_CODES.invalidAttestedComputation,
+        VALIDATION_CODES.staleConcept,
+        VALIDATION_CODES.futureGeneratedAt,
+        VALIDATION_CODES.futureVerifiedAt,
+      ]),
+    );
+    expect(codes(findings)).not.toContain(VALIDATION_CODES.invalidTimestamp);
+    expect(
+      findings.find(
+        ({ code, uri }) =>
+          code === VALIDATION_CODES.invalidSources && uri === `${rootUri}/invalid-provenance.md`,
+      ),
+    ).toBeDefined();
+    expect(
+      findings.find(
+        ({ code, uri }) =>
+          code === VALIDATION_CODES.invalidAttestedComputation &&
+          uri === `${rootUri}/incomplete-computation.md`,
+      ),
+    ).toBeDefined();
   });
 
   it('recognizes CommonMark Setext headings in reserved index and log documents', () => {

@@ -1,30 +1,33 @@
 # Performance evidence
 
-- Status: **current local headed evidence passes**; hosted compatibility and release gates remain
-  separate
+- Status: **retained predecessor-bound local headed observation**; the current strict evaluator
+  exits `2` for that record, and fresh evidence for the current Rust/Wasm source candidate is pending
 - Date: 2026-07-28
 - Governing decision:
   [ADR 0005, OQ-008](decisions/0005-resolve-mvp-implementation-questions.md#oq-008--performance-fixtures-and-thresholds)
 
-## Current schema-v3 measurement and binding status
+## Retained schema-v3 measurement and binding status
 
-The tracked [current schema-v3 report](evidence/performance/vscode-1.129.1.md) and
-[current raw samples](evidence/performance/vscode-1.129.1.json) were captured in a genuine headed
-VS Code `1.129.1` session on 2026-07-28 and pass the strict current-input evaluator. The record is
-bound to the production runtime, build inputs, diagnostics observer, QR-003 harness inputs and
-definition, injected harness bytes, and editor/runtime metadata recorded in those files. Samples
-were captured in one run; none were copied or synthesized.
+The tracked [schema-v3 report](evidence/performance/vscode-1.129.1.md) and
+[raw samples](evidence/performance/vscode-1.129.1.json), SHA-256
+`a8917c18c12c3ee8d00efa27254e6f5114779dc8a5f4589c62d015c128436eb6`, were captured in a genuine
+headed VS Code `1.129.1` session on 2026-07-28. They recorded passing results for their exact
+predecessor `0.2.1` production runtime, build inputs, diagnostics observer, QR-003 harness inputs
+and definition, injected harness bytes, and editor/runtime metadata. Samples were captured in one
+run; none were copied or synthesized. The current `--require-passing` evaluator exits `2`, marks
+QR-002 and QR-003 unmeasured, and does not accept the record as bound to the current production
+inputs. The record does not qualify the current OKF-v0.2 Rust/Wasm source candidate.
 
-| Target | Current status | Evidence |
+| Target | Recorded predecessor status | Evidence |
 | --- | --- | --- |
-| QR-002 — update p95 at or below 1,000 ms | **Pass** | `677.00 ms` nearest-rank p95 across 20 create/change/rename/delete samples, with runtime-originated same-revision Problems and graph correlation. |
-| QR-003 — representative graph remains interactive | **Pass** | `d3` first-frame maximum `297.10 ms`, cooldown mean `2,744.80 ms`, interaction p95 values `9.10/16.60/2.10/0.80 ms`, and zero idle frames. |
-| Headed Webview network | **Pass** | Strict pre-navigation CDP observation recorded zero remote HTTP(S)/WS requests, two packaged-resource loads, two internal Webview navigations, and zero other-scheme requests. |
-| Release force-engine default | **`d3` selected** | Same-Electron comparison passed `d3`; `ngraph` recorded a structured WebGL draw timeout after 5,000 ms and was not selected. |
+| QR-002 — update p95 at or below 1,000 ms | **Recorded pass** | `677.00 ms` nearest-rank p95 across 20 create/change/rename/delete samples, with runtime-originated same-revision Problems and graph correlation. |
+| QR-003 — representative graph remains interactive | **Recorded pass** | `d3` first-frame maximum `297.10 ms`, cooldown mean `2,744.80 ms`, interaction p95 values `9.10/16.60/2.10/0.80 ms`, and zero idle frames. |
+| Headed Webview network | **Recorded pass** | Strict pre-navigation CDP observation recorded zero remote HTTP(S)/WS requests, two packaged-resource loads, two internal Webview navigations, and zero other-scheme requests. |
+| Release force-engine default | **`d3` recorded for predecessor inputs** | Same-Electron comparison passed `d3`; `ngraph` recorded a structured WebGL draw timeout after 5,000 ms and was not selected. |
 
 This local record applies only to the recorded Mac16,7 / Apple M4 Pro environment, VS Code
 `1.129.1` commit `8a7abeba6e03ea3af87bfbce9a1b7e48fed567b8`, and the exact bound inputs. It is
-not a guarantee for other machines, editors, or future candidate bytes, and it does not replace
+not a guarantee for other machines, editors, current source, or future candidate bytes, and it does not replace
 the separate hosted compatibility, packaged lifecycle, manual UI, license, or publication gates.
 A unit test, Node benchmark, or headless Chromium run must not be relabeled as headed-editor
 evidence.
@@ -122,8 +125,9 @@ mise x node@24.18.0 -- npm run benchmark:report -- --measurements /absolute/path
 mise x node@24.18.0 -- node test/benchmarks/headed-editor-evidence.mjs --vscode-executable /absolute/path/to/VS-Code-executable --output artifacts/performance/headed-editor.json
 ```
 
-The current qualification was captured with the full comparison against the pinned VS Code
-1.129.1 executable. Re-run the same commands whenever a bound input changes:
+The retained predecessor qualification was captured with the full comparison against the pinned VS
+Code 1.129.1 executable. It is not current-candidate qualification. Re-run the same commands and
+retain a new strict-passing pair whenever a bound input changes:
 
 ```sh
 mise x node@24.18.0 -- node test/benchmarks/headed-editor-evidence.mjs \
@@ -482,26 +486,53 @@ and candidate bytes produce byte-identical output.
 Every headed run records `qr003.capturedAt` and
 `qr003.provenance: { "kind": "captured" }`. The runner always measures both engines in the current
 headed editor process; it has no QR-003 reuse mode. Review the generated JSON and Markdown in
-`artifacts/performance/`; replace the tracked evidence only after strict evaluation passes and the
-evidence is approved. Do not overwrite the retained tracked files during an exploratory run. For
-the approved VS Code 1.129.1 pair, promote the exact published bytes and re-evaluate the tracked
-JSON:
+`artifacts/performance/`; replace tracked current-candidate evidence only after strict evaluation
+passes and the evidence is approved. Do not overwrite retained evidence during an exploratory run.
+
+The tracked VS Code 1.129.1 pair is the immutable capture-time report for the published `v0.2.1`
+candidate, not a report for the current Rust/Wasm source candidate. Its generated Markdown
+therefore retains the capture-time `pass` statuses. Interpret those statuses only through the
+predecessor scope stated above; do not hand-edit the generated report with current-candidate
+commentary. To prove that the tracked Markdown is still the deterministic rendering of its raw JSON,
+reconstruct the exact tagged candidate in a private temporary directory and compare the generated
+bytes:
 
 ```sh
-cp artifacts/performance/vscode-1.129.1-final.json docs/evidence/performance/vscode-1.129.1.json
-cp artifacts/performance/vscode-1.129.1-final.md docs/evidence/performance/vscode-1.129.1.md
-cmp artifacts/performance/vscode-1.129.1-final.json docs/evidence/performance/vscode-1.129.1.json
-cmp artifacts/performance/vscode-1.129.1-final.md docs/evidence/performance/vscode-1.129.1.md
+proof_root=$(mktemp -d "${TMPDIR:-/tmp}/okf-v021-proof.XXXXXX")
+git archive v0.2.1 | tar -x -C "$proof_root"
+cmp docs/evidence/performance/vscode-1.129.1.json \
+  "$proof_root/docs/evidence/performance/vscode-1.129.1.json"
+(
+  cd "$proof_root"
+  mise x node@24.18.0 -- npm ci --ignore-scripts
+  mise x node@24.18.0 -- npm run build
+)
+mise x node@24.18.0 -- node "$proof_root/scripts/benchmark-report.mjs" \
+  --candidate-root "$proof_root" \
+  --measurements docs/evidence/performance/vscode-1.129.1.json \
+  --require-passing \
+  > "$proof_root/vscode-1.129.1-regenerated.md"
+cmp docs/evidence/performance/vscode-1.129.1.md \
+  "$proof_root/vscode-1.129.1-regenerated.md"
+```
+
+Both `cmp` commands and the tagged strict evaluator must succeed. The first comparison binds the
+tracked raw JSON to the tagged evidence record; the second proves the tracked Markdown is generated,
+not editorialized. The temporary directory contains a dependency install and build and may be
+discarded after the comparison.
+
+Evaluate that same raw JSON against the current checked-out candidate separately:
+
+```sh
 mise x node@24.18.0 -- node scripts/benchmark-report.mjs \
   --measurements docs/evidence/performance/vscode-1.129.1.json \
   --require-passing \
-  > artifacts/performance/vscode-1.129.1-release-check.md
-cmp docs/evidence/performance/vscode-1.129.1.md artifacts/performance/vscode-1.129.1-release-check.md
+  > artifacts/performance/vscode-1.129.1-current-candidate-check.md
 ```
 
-All six commands must succeed. The two `cmp` checks before evaluation prove promotion did not
-transform either file; the final `cmp` proves the tracked Markdown is the deterministic rendering
-of the tracked JSON and current frozen candidate.
+For the current Rust/Wasm source candidate this command exits `2`, reports QR-002 and QR-003 as
+unmeasured, and must not be compared with or copied over the predecessor report. Fresh headed
+evidence must instead produce a new strict-passing JSON/Markdown pair bound to the exact candidate.
 
 ## Force-engine selection
 
@@ -562,7 +593,10 @@ Any change to these defaults requires a new headed engine comparison.
 
 ## Scope of the retained evidence
 
-No retained run currently completes the strengthened headed gate. The former record reported
-719 ms QR-002 p95 and selected `d3`, but it is retained only for historical comparison. A new
-schema-v3 capture must bind the final production/runtime, diagnostics observer, runner, and harness
-identities and pass all three strict rows before any current-candidate performance claim is made.
+The tagged predecessor run completes the strengthened headed gate for its exact published `0.2.1`
+inputs: strict evaluation exits `0`, all three rows pass, and regenerated Markdown is byte-identical
+to the tracked report. It recorded `677 ms` QR-002 p95 and selected `d3`. The same raw JSON does not
+bind the current Rust/Wasm source candidate; current-candidate strict evaluation exits `2` because
+the production/runtime, build, and harness identities differ. A fresh schema-v3 capture must bind
+those current identities and pass all three strict rows before any current-candidate performance
+claim is made.

@@ -4,7 +4,8 @@ Create, validate, index, and explore Open Knowledge Format bundles locally in VS
 desktop editors.
 
 OKF Workbench implements a local authoring loop for the
-[Open Knowledge Format (OKF) v0.1 specification](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/ee67a5ca27044ebe7c38385f5b6cffc2305a9c1a/okf/SPEC.md):
+[Open Knowledge Format (OKF) v0.2 specification](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/3fcbb9f828c2f23d109c855ee403c3a4c81f3a96/okf/SPEC.md),
+while retaining guarded read and authoring compatibility for v0.1 bundles:
 
 ```text
 initialize -> create -> edit -> validate -> explore -> repair
@@ -16,8 +17,10 @@ initialize -> create -> edit -> validate -> explore -> repair
   and direct access to the authoring loop and 3D Graph.
 - Initializes Minimal, Software Project, or Data & Analytics bundles with collision-safe
   create-only writes.
-- Creates concepts from seven built-in templates while allowing arbitrary non-empty concept
+- Creates concepts from eight built-in templates, including Attested Computation, while allowing arbitrary non-empty concept
   types.
+- Normalizes v0.2 provenance, verification, trust, lifecycle, and computation metadata without
+  executing producer-supplied resources.
 - Reports OKF conformance errors separately from actionable curation warnings in the Problems
   panel, while keeping valid orphan concepts free of editor warning decorations.
 - Regenerates managed `index.md` regions without replacing unrelated content.
@@ -76,6 +79,11 @@ cargo build --locked --release --bin okf
 The CLI provides `init`, `new`, `validate`, `index`, `graph`, `agent`, and `version`. Read commands
 never write. Write commands first report a complete plan; non-interactive writes require
 `--apply`, and `--check` reports whether changes are needed without modifying the workspace.
+A single-create plan for an existing bundle can be applied. An all-create plan for a missing bundle
+root is built privately and published as one no-replace directory operation. Existing-root plans
+with multiple creates, and every plan containing an existing-file update, fail closed before any
+write because the supported filesystems do not expose the required complete-plan transaction or
+generation-CAS and metadata-preserving replacement primitives.
 `validate --format json` and `graph --format json` emit a versioned JSON envelope for automation.
 
 Open VSX selects a target package for macOS arm64/x64, Linux x64, or Windows x64 when supported.

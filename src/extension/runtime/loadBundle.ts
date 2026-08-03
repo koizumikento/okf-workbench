@@ -702,10 +702,14 @@ function isParseFailure(value: BundleDocumentInput | ParseFailure): value is Par
 
 function compareFailures(left: ParseFailure, right: ParseFailure): number {
   return (
-    left.bundlePath.localeCompare(right.bundlePath) ||
-    left.uri.localeCompare(right.uri) ||
-    left.reason.localeCompare(right.reason)
+    compareText(left.bundlePath, right.bundlePath) ||
+    compareText(left.uri, right.uri) ||
+    compareText(left.reason, right.reason)
   );
+}
+
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 async function runInDeterministicBatches<TInput, TOutput>(

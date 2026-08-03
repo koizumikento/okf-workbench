@@ -183,6 +183,51 @@ describe('buildGraphPayload', () => {
     expect(JSON.parse(JSON.stringify(graph))).toEqual(graph);
   });
 
+  it('uses v0.2 defaults only when their fields are absent and suppresses legacy timestamps when generated is present', () => {
+    const base = concept('v02-boundaries', {
+      timestamp: '2026-07-22T09:30:00Z',
+    });
+    const v02: Concept = {
+      ...base,
+      frontmatter: {
+        ...base.frontmatter,
+        raw: {
+          ...base.frontmatter.raw,
+          generated: { by: 'process:test' },
+          status: true,
+        },
+        normalized: {
+          ...base.frontmatter.normalized,
+          generated: { by: 'process:test' },
+          trustTier: 'machine-confirmed',
+          sources: [{ resource: 'https://example.com/source' }],
+          runtime: 'bigquery',
+          computation: 'references/query.sql',
+        },
+      },
+      generated: { by: 'process:test' },
+      trustTier: 'machine-confirmed',
+      sources: [{ resource: 'https://example.com/source' }],
+      runtime: 'bigquery',
+      computation: 'references/query.sql',
+    };
+
+    const graph = buildGraphPayload(bundle([v02]));
+
+    expect(graph.nodes[0]).toMatchObject({
+      generatedBy: 'process:test',
+      trustTier: 'machine-confirmed',
+      sourceCount: 1,
+      runtime: 'bigquery',
+      computation: 'references/query.sql',
+    });
+    expect(graph.nodes[0]).not.toHaveProperty('timestamp');
+    expect(graph.nodes[0]).not.toHaveProperty('status');
+    expect(graphPayloadJsonByteLength(graph)).toBe(
+      new TextEncoder().encode(JSON.stringify(graph)).byteLength,
+    );
+  });
+
   it('is independent of parser inventory ordering and never creates a phantom concept node', () => {
     const source = concept('source', {
       links: [
@@ -438,7 +483,7 @@ describe('buildGraphPayload', () => {
   it('counts escaped JSON bytes exactly without materializing a serialized payload', () => {
     const special = concept('special', {
       type: 'quote"slash\\line\n',
-      tags: ['雪', '\u0001', '\ud800'],
+      tags: ['雪', '\u0001', '😀'],
     });
     const graph = buildGraphPayload(bundle([special]));
 
@@ -453,6 +498,9 @@ describe('buildGraphPayload', () => {
   });
 
   it('fails closed on one-over graph string and cardinality limits', () => {
+    expect(() =>
+      buildGraphPayload(bundle([concept('invalid-unicode', { tags: ['\uD800'] })])),
+    ).toThrow('Concept tag contains an unpaired UTF-16 surrogate.');
     expect(
       buildGraphPayload(
         bundle([

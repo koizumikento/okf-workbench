@@ -4,18 +4,19 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use okf_core::{
     AgentTarget, BundlePreset, CORE_VERSION, ConceptTemplateInput, IndexMode, RenderedFile,
-    agent_files, build_graph_payload, bundle_preset_files, concept_template_file, index_files,
-    parse_bundle, validate_bundle,
+    agent_files, build_graph_payload_checked, bundle_preset_files, concept_template_file_checked,
+    index_files, is_future_minor_version, parse_bundle, validate_bundle,
 };
 use serde::Serialize;
 use std::{
     io::{self, IsTerminal, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::ExitCode,
     time::SystemTime,
 };
 use workspace::{
-    PlanMode, PlannedChange, apply_plan, load_bundle, plan_files, validate_relative_path,
+    PlanMode, PlannedChange, apply_plan, load_bundle, load_root_index, plan_files,
+    validate_relative_path,
 };
 
 const CONCEPT_TEMPLATES: &[&str] = &[
@@ -26,6 +27,7 @@ const CONCEPT_TEMPLATES: &[&str] = &[
     "data-table",
     "playbook",
     "reference",
+    "attested-computation",
 ];
 
 #[derive(Debug, Parser)]
@@ -114,8 +116,8 @@ struct NewArgs {
     title: String,
     #[arg(long)]
     path: Option<String>,
-    #[arg(long, default_value = "concept")]
-    r#type: String,
+    #[arg(long)]
+    r#type: Option<String>,
     #[arg(long)]
     description: Option<String>,
     #[arg(long, value_delimiter = ',')]
@@ -195,8 +197,12 @@ fn run(cli: Cli) -> Result<u8, String> {
             run_write("init", args.path, files, args.write, PlanMode::CreateOnly)
         }
         Command::New(args) => {
-            let path = args.path.unwrap_or_else(|| slug(&args.title));
+            ensure_supported_root_version(&args.root)?;
+            let mut path = args.path.unwrap_or_else(|| slug(&args.title));
             validate_relative_path(&path)?;
+            if !path.ends_with(".md") {
+                path.push_str(".md");
+            }
             if !CONCEPT_TEMPLATES.contains(&args.template.as_str()) {
                 return Err(format!(
                     "unknown concept template {:?}; choose one of {}",
@@ -207,18 +213,25 @@ fn run(cli: Cli) -> Result<u8, String> {
             if args.title.trim().is_empty() {
                 return Err("concept title must not be empty".to_owned());
             }
-            if args.r#type.trim().is_empty() {
+            let concept_type = args.r#type.unwrap_or_else(|| {
+                if args.template == "attested-computation" {
+                    "Attested Computation".to_owned()
+                } else {
+                    "concept".to_owned()
+                }
+            });
+            if concept_type.trim().is_empty() {
                 return Err("concept type must not be empty".to_owned());
             }
-            let files = vec![concept_template_file(&ConceptTemplateInput {
+            let files = vec![concept_template_file_checked(&ConceptTemplateInput {
                 template: args.template,
                 relative_path: path,
-                r#type: args.r#type,
+                r#type: concept_type,
                 title: args.title,
                 description: args.description,
                 tags: args.tags,
                 timestamp: Some(timestamp()),
-            })];
+            })?];
             run_write("new", args.root, files, args.write, PlanMode::CreateOnly)
         }
         Command::Validate(args) => {
@@ -254,8 +267,7 @@ fn run(cli: Cli) -> Result<u8, String> {
             ))
         }
         Command::Index(args) => {
-            let input = load_bundle(&args.root)?;
-            let bundle = parse_bundle(input);
+            let bundle = ensure_supported_write_version(&args.root)?;
             if let Some(parse_failure) = bundle.failures.first() {
                 return Err(format!(
                     "index generation refused an incomplete bundle: {}: {}",
@@ -266,12 +278,36 @@ fn run(cli: Cli) -> Result<u8, String> {
                 IndexModeArg::Missing => IndexMode::Missing,
                 IndexModeArg::All => IndexMode::All,
             };
+            let ensure_root_version = bundle
+                .reserved_documents
+                .iter()
+                .find(|document| document.source.bundle_path.replace('\\', "/") == "index.md")
+                .is_none_or(|document| {
+                    document
+                        .frontmatter
+                        .as_ref()
+                        .is_none_or(|frontmatter| !frontmatter.raw.contains_key("okf_version"))
+                });
+            let mut files = index_files(&bundle, mode);
+            if ensure_root_version
+                && !files
+                    .iter()
+                    .any(|file| file.relative_path.replace('\\', "/") == "index.md")
+                && let Some(root_index) = index_files(&bundle, IndexMode::All)
+                    .into_iter()
+                    .find(|file| file.relative_path.replace('\\', "/") == "index.md")
+            {
+                files.push(root_index);
+            }
             run_write(
                 "index",
                 args.root,
-                index_files(&bundle, mode),
+                files,
                 args.write,
-                PlanMode::MergeIndexes,
+                PlanMode::MergeIndexes {
+                    ensure_root_version,
+                    update_existing_regions: matches!(mode, IndexMode::All),
+                },
             )
         }
         Command::Graph(args) => {
@@ -279,7 +315,7 @@ fn run(cli: Cli) -> Result<u8, String> {
                 return Err("`okf graph` supports only `--format json`; 3D rendering belongs to the editor Webview.".to_owned());
             }
             let bundle = parse_bundle(load_bundle(&args.root)?);
-            let graph = build_graph_payload(&bundle);
+            let graph = build_graph_payload_checked(&bundle)?;
             write_json(&JsonEnvelope {
                 schema_version: 1,
                 command: "graph",
@@ -288,6 +324,7 @@ fn run(cli: Cli) -> Result<u8, String> {
             Ok(0)
         }
         Command::Agent(args) => {
+            ensure_supported_root_version(&args.root)?;
             let target = match args.target {
                 AgentTargetArg::Agents => AgentTarget::Agents,
                 AgentTargetArg::Skill => AgentTarget::Skill,
@@ -314,6 +351,53 @@ fn run(cli: Cli) -> Result<u8, String> {
             Ok(0)
         }
     }
+}
+
+fn ensure_supported_write_version(root: &Path) -> Result<okf_core::ParsedBundle, String> {
+    let bundle = parse_bundle(load_bundle(root)?);
+    ensure_supported_version(&bundle)?;
+    Ok(bundle)
+}
+
+fn ensure_supported_root_version(root: &Path) -> Result<(), String> {
+    ensure_supported_version(&parse_bundle(load_root_index(root)?))
+}
+
+fn ensure_supported_version(bundle: &okf_core::ParsedBundle) -> Result<(), String> {
+    if let Some(failure) = bundle
+        .failures
+        .iter()
+        .find(|failure| failure.bundle_path.replace('\\', "/") == "index.md")
+    {
+        return Err(format!(
+            "write refused because the root index cannot be inspected: {}",
+            failure.message
+        ));
+    }
+    let Some(index) = bundle
+        .reserved_documents
+        .iter()
+        .find(|document| document.source.bundle_path.replace('\\', "/") == "index.md")
+    else {
+        return Ok(());
+    };
+    let Some(frontmatter) = &index.frontmatter else {
+        return Ok(());
+    };
+    let Some(raw_version) = frontmatter.raw.get("okf_version") else {
+        return Ok(());
+    };
+    let Some(version) = &index.okf_version else {
+        return Err(format!(
+            "write refused because `okf_version` is not a supported string: {raw_version}"
+        ));
+    };
+    if matches!(version.as_str(), "0.1" | "0.2") || is_future_minor_version(version) {
+        return Ok(());
+    }
+    Err(format!(
+        "write refused because the bundle declares unsupported OKF version {version:?}"
+    ))
 }
 
 fn run_write(

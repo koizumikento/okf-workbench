@@ -19,16 +19,17 @@ initialize -> create -> edit -> validate -> explore -> repair
 The deterministic Rust core, capability-free Wasm Extension Host adapter, native CLI, platform
 VSIX CLI integration, six MVP
 extension command workflows, diagnostics, URI-first workspace runtime, 3D Webview, agent-template
-generation, and release-candidate harnesses are implemented. A genuine schema-v3 headed VS Code
-1.129.1 capture passes QR-002 at 832 ms p95 across 20 samples, passes QR-003 with `d3` selected,
-and records zero remote HTTP(S)/WS or other-scheme Webview requests under the strict current-input
-contract. The retained VS Code 1.127.0 capture predates that contract and is historical-only. An
-earlier candidate passed the required hosted VS Code and VSCodium lifecycle matrix on Ubuntu,
-macOS, and Windows; the Rust/Wasm migration and current packaged-resource changes require a fresh
-hosted qualification before they can inherit that claim. The repository, issue tracker,
-security-advisory route, and GitHub Pages trust pages are public, and the hosted branch/scanning
-baseline is configured. The maintainer selected MIT for the project and approved the third-party
-notice inventory for the initial release. Signed tag `v0.1.0` on reviewed `main` commit
+generation, and release-candidate harnesses are implemented. A retained schema-v3 headed VS Code
+1.129.1 capture for the predecessor `0.2.1` inputs recorded QR-002 at 677 ms p95 across 20 samples,
+`d3` as the QR-003 selection, and zero remote HTTP(S)/WS or other-scheme Webview requests. Strict
+re-evaluation rejects its input identities for the current Rust/Wasm source candidate, so fresh
+headed evidence is pending. The retained VS Code 1.127.0 capture predates the strict contract and
+is historical-only. An earlier candidate passed the required hosted VS Code and VSCodium lifecycle
+matrix on Ubuntu, macOS, and Windows; the Rust/Wasm migration and current packaged-resource changes
+require a fresh hosted qualification before they can inherit that claim. The repository, issue
+tracker, security-advisory route, and GitHub Pages trust pages are public, and the hosted
+branch/scanning baseline is configured. The maintainer selected MIT for the project and approved
+the third-party notice inventory for the initial release. Signed tag `v0.1.0` on reviewed `main` commit
 `438f1ed2233fdf86d289bd7dfdb934757c6a35f3` completed release workflow `30233342837`, publishing
 the GitHub Release, the universal and four target Open VSX packages, and the Homebrew/Scoop
 manifests in `koizumikento/stray-tools`. Clean post-publication editor and package-manager install
@@ -44,9 +45,10 @@ new integrated terminals and must not modify external shell configuration.
 
 Use this order when requirements conflict:
 
-1. The pinned canonical [OKF v0.1 specification](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/ee67a5ca27044ebe7c38385f5b6cffc2305a9c1a/okf/SPEC.md) for format behavior.
+1. The pinned canonical [OKF v0.2 specification](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/3fcbb9f828c2f23d109c855ee403c3a4c81f3a96/okf/SPEC.md) for format behavior.
 2. Accepted records under `docs/decisions/` for repository decisions.
-3. `docs/okf-v0.1-contract.md` for the Workbench compatibility interpretation.
+3. `docs/okf-v0.2-contract.md` for the current Workbench compatibility interpretation, with
+   `docs/okf-v0.1-contract.md` retained as the legacy compatibility record.
 4. `docs/functional-requirements.md` for testable MVP behavior.
 5. `docs/implementation-environment.md` for accepted runtime, tooling, dependency, test, and packaging choices.
 6. `docs/mvp-scope.md` and `docs/architecture.md` for planned product and engineering scope.
@@ -61,7 +63,7 @@ When the upstream OKF specification changes, document the observed version or co
 - Preserve unknown frontmatter fields during supported write operations.
 - Permit arbitrary non-empty concept `type` values.
 - Treat internal Markdown links as directed, untyped relationships.
-- Treat broken links as curation warnings, not OKF v0.1 conformance errors.
+- Treat broken links as curation warnings, not OKF v0.2 conformance errors.
 - Never silently overwrite an existing user file.
 - Preview generated or merged content when an operation may change an existing file.
 
@@ -107,7 +109,7 @@ Do not put canonical parsing or validation logic inside Webview components.
 
 Maintain a visible distinction between:
 
-- **Conformance errors:** the bundle violates the hard OKF v0.1 interoperability rules.
+- **Conformance errors:** the bundle violates the hard OKF v0.2 interoperability rules.
 - **Curation warnings:** the bundle is consumable but may be incomplete, stale, duplicated, orphaned, or difficult to navigate.
 
 Diagnostics should include the most precise useful URI and source range. Do not promote a recommendation to an error merely because the template generator prefers it.
@@ -167,7 +169,8 @@ Use small checked-in fixtures. Never make unit tests depend on network access or
 - Update `docs/mvp-scope.md` when adding or removing an MVP feature.
 - Update `docs/functional-requirements.md` when user-visible behavior or acceptance criteria change.
 - Update `docs/implementation-environment.md` when runtime, tooling, dependencies, test layers, CI, or packaging assumptions change.
-- Update `docs/okf-v0.1-contract.md` when compatibility behavior changes.
+- Update `docs/okf-v0.2-contract.md` when current compatibility behavior changes; update
+  `docs/okf-v0.1-contract.md` only when clarifying the historical fallback contract.
 - Update `docs/architecture.md` when module boundaries or security assumptions change.
 - Add a record under `docs/decisions/` for choices that constrain future implementation.
 - Mark provisional performance numbers as targets until benchmarked.

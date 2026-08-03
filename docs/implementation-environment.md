@@ -72,15 +72,18 @@ References:
 - [VS Code 1.121 source manifest](https://github.com/microsoft/vscode/blob/1.121.0/package.json)
 - [VSCodium releases](https://github.com/VSCodium/vscodium/releases)
 
-The current-stable test pin is refreshed for each release candidate. The current matrix is pinned
-to VS Code `1.129.1`. Revision `80ae7d560337cbe8d97af864c77aee410d5e5988` passed
+The current-stable test pin is refreshed for each release candidate and is pinned to VS Code
+`1.129.1`. Predecessor revision `80ae7d560337cbe8d97af864c77aee410d5e5988` passed
 [Compatibility run 30335399539](https://github.com/koizumikento/okf-workbench/actions/runs/30335399539)
 across all seven VS Code/VSCodium lifecycle lanes and
 [Package smoke run 30335400890](https://github.com/koizumikento/okf-workbench/actions/runs/30335400890)
-across all four target packages plus aggregate consistency. The retained VS Code `1.127.0` headed
-capture is historical after strengthening the schema-v3 evidence contract. The fresh `0.2.1`
-VS Code `1.129.1` headed capture passes QR-002 at `677 ms` p95 across 20 samples, QR-003 with `d3`
-selected, and the strict zero-remote-request Webview network gate on its recorded hardware.
+across all four target packages plus aggregate consistency. Those receipts do not qualify the
+current Rust/Wasm source candidate; fresh hosted and package-smoke qualification is pending. The
+retained VS Code `1.127.0` headed capture is historical after strengthening the schema-v3 evidence
+contract. The retained `0.2.1` VS Code `1.129.1` headed capture recorded QR-002 at `677 ms` p95
+across 20 samples, `d3` as its QR-003 selection, and zero remote HTTP(S)/WS or other-scheme Webview
+requests on its recorded hardware. The current strict evaluator exits `2` because the record does
+not satisfy current-source binding checks; fresh current-candidate headed evidence is pending.
 
 ## Repository and package management
 
@@ -272,6 +275,91 @@ All workspace reads and writes go through an extension-side, URI-first port. Non
 use `vscode.workspace.fs`; local `file:` resources use Node's file-handle API behind that same port
 only for identity-bound reads. Core modules receive text, byte arrays, normalized concept IDs, and
 operation inputs rather than VS Code objects.
+
+The native CLI binds every write plan to an open, identity-checked handle for its bundle root (or
+the deepest existing ancestor of a missing root) and to the identity of every existing target. The
+handle remains open from planning through apply, so replacing the root while an interactive plan is
+awaiting confirmation cannot redirect the approved write. A missing-root plan retains the opened
+existing ancestor and its lexical remaining components; apply does not canonicalize through newly
+introduced path state. The root `index.md` version decision is similarly bound to one retained file
+handle, its identity, and the exact planned bytes, or to explicit absence. Apply validates that same
+handle and rejects path replacement, in-place byte changes, or a newly appeared index before any
+mutation.
+
+Existing-file updates fail closed before root creation or any other proposal write on every native
+CLI platform. None of the supported filesystem APIs provides the complete generation-CAS primitive
+needed to replace exactly the approved file while also preserving all required metadata: POSIX name
+exchange does not compare the destination generation, and Windows replacement does not by itself
+preserve the complete security descriptor, encryption state, and alternate data streams. `--check`
+still reports the proposed update, but `--apply` returns an actionable conditional-replacement error
+and leaves the entire plan untouched. This also means macOS never copies an old content modification
+time onto changed bytes and Windows never publishes a metadata-incomplete replacement.
+
+Create-only publication remains supported without an overwrite path. In an existing root, only a
+single-create plan is eligible: Linux stages bytes in an anonymous same-directory `O_TMPFILE` and
+publishes them with `linkat(AT_EMPTY_PATH)` no-replace; macOS stages in an already unlinked file
+created with mode `0666 & !umask` and uses `fclonefileat(..., flags=0)` relative to the anchored
+parent; a cross-volume or unsupported clone fails closed. Windows reserves one fixed staging name
+before mutation, requires the direct parent to exist and be retained from planning, then publishes
+through an open delete-capable handle relative to that parent with no replacement flag. After a
+handled failure it attempts handle-bound cleanup; if cleanup also fails, both errors are reported.
+An existing-root plan with multiple creates fails before any directory or file is added because
+these primitives do not provide a complete-plan transaction.
+
+For a missing root, every process below one retained existing ancestor first contends for the same
+platform reservation. On Unix it is a fixed-length coordination entry: a dot followed by the
+zero-padded 39-digit decimal rendering of a deterministic 128-bit digest of that ancestor identity.
+Unix reserves this regular file and obtains its handle atomically with ancestor-relative
+`openat(O_CREAT | O_EXCL | O_NOFOLLOW)`. Only its winner generates a 128-bit
+operating-system-random staging-directory name and constructs the tree.
+Success, or a failure before staging exists (including operating-system randomness failure),
+best-effort removes the coordination entry only after its retained identity matches. Cleanup is
+armed immediately after reservation; cleanup failure is reported and retains owned residue rather
+than retrying against a possibly changed pathname. A failure after staging or an interruption
+leaves at most that one coordination file and one random staging tree, so a retry fails closed
+instead of accumulating residue. Windows uses the fixed `00000000.000` staging component and an
+ancestor-relative `NtCreateFile(FILE_CREATE | FILE_DIRECTORY_FILE)` call to create it and receive
+its strict delete-capable handle atomically. The digits-and-dot component is itself an 8.3 name, so
+8.3-enabled filesystems do not generate a distinct short-name alias for it; its exact filesystem
+name, including Win32-equivalent spellings with trailing ASCII dots or spaces, is rejected as a
+requested root before reservation. Thus case- or Unicode-alias spellings and unrelated missing
+roots below one anchor all share one reservation. This intentional serialization may make a
+concurrent operation fail closed and require a retry, but requires neither destination-name
+normalization nor an ancestor-wide scan. Exact source/destination name equality is rejected before
+reservation.
+
+The CLI publishes the first missing component with one atomic same-parent no-replace rename.
+Immediately before that rename, it reopens the staging name below the retained ancestor and rejects
+an observed identity change. Every generated leaf is bound to its created identity and exact bytes.
+Windows retains deny-write-and-delete-sharing handles for every staged leaf and descendant
+directory through post-hook identity and exact-byte validation. Because Windows forbids renaming
+an ancestor directory while a descendant handle remains open, it releases those descendant handles
+immediately before renaming the root through the retained root handle. Unix reopens every leaf
+relative to the retained staged-root handle, compares identity and exact bytes after the hook, revalidates the
+complete anchor pathname identity, and verifies the published root identity afterward. Unix also
+checks staging existence and performs coordination cleanup relative to the retained ancestor
+handle, so renaming that ancestor cannot redirect publication or cleanup to a recreated pathname.
+An entry already present when reservation is attempted, or a coordination pathname whose identity
+is observed to have changed, is never deleted. A destination collision publishes no generated
+leaf, and a successful operation leaves no staging or coordination entry.
+
+POSIX has no directory equivalent of `linkat(AT_EMPTY_PATH)` and no rename primitive that compares
+the source generation or an atomic create-directory-and-return-handle operation. Consequently, the
+Unix random staging name bounds the `mkdirat`-to-`openat` exposure, and the identity check and atomic
+`renameat2` / `renameatx_np` call are adjacent but not a source-generation CAS. POSIX likewise has
+no handle-bound unlink or unlink-generation CAS, so coordination cleanup compares the retained and
+reopened identities immediately before `unlinkat`, but cannot bind that comparison to the unlink.
+The guarantee does not claim to defeat a non-cooperating same-UID process that discovers and
+mutates an entry inside the random-stage `mkdirat`-to-`openat`, staged-leaf or staging-identity
+revalidation-to-rename, anchor-path-identity-revalidation-to-rename, or coordination
+identity-check-to-`unlinkat` syscall window. Observable substitution outside those windows is
+rejected; an observed cleanup mismatch leaves the entry in place. Windows likewise has no
+source-generation CAS: because staged descendant handles must be released for their ancestor to be
+renamed, a non-cooperating process with mutation rights can race that release and the root rename.
+Direct writes and replacements are denied through the final validation, and an observed earlier
+substitution is rejected. The locked filesystem and operating-system randomness crates were already
+present in the reviewed Rust dependency graph; making them direct CLI dependencies does not add a
+network, editor, or core capability.
 
 For a local file, `stat` uses `lstat({ bigint: true })` and returns an opaque generation containing
 device, inode, mode, nanosecond ctime, and birthtime. `read` requires that generation, opens with

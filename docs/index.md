@@ -64,7 +64,8 @@ are the source of truth for the initial product and engineering direction.
 | [Functional requirements](functional-requirements.md) | Testable MVP behaviors, acceptance scenarios, constraints, and open questions |
 | [Architecture](architecture.md) | Module boundaries, data flow, security, performance, and testing |
 | [Implementation environment](implementation-environment.md) | Accepted runtimes, toolchain, dependencies, test layers, CI, and packaging baseline |
-| [OKF v0.1 compatibility contract](okf-v0.1-contract.md) | The subset and interpretation of the OKF specification the extension must honor |
+| [OKF v0.2 compatibility contract](okf-v0.2-contract.md) | The current specification interpretation, including v0.1 fallback behavior |
+| [OKF v0.1 compatibility contract](okf-v0.1-contract.md) | Historical compatibility contract for legacy bundles |
 | [Agent integration](agent-integration.md) | Safe generation of `AGENTS.md` and Agent Skill templates |
 
 ## Release and operations
@@ -95,6 +96,7 @@ Accepted decisions are recorded under [decisions/](decisions/):
 - [0007 — Adopt a Rust/Wasm shared OKF core and native CLI](decisions/0007-adopt-rust-wasm-shared-core-and-cli.md)
 - [0008 — Bundle the native CLI in platform VSIX packages and distribute it separately](decisions/0008-bundle-native-cli-in-platform-vsix.md)
 - [0009 — Preview only proposals that may change existing files](decisions/0009-preview-only-existing-file-changes.md)
+- [0010 — Support OKF v0.2 with a v0.1 compatibility fallback](decisions/0010-adopt-okf-v0.2-with-v0.1-fallback.md)
 
 ## Documentation rules
 

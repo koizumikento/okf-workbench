@@ -65,7 +65,7 @@ describe('index planning', () => {
       previousText: '# Hand-written root\n',
     });
     expect(plan.changes[0]?.proposedText).toBe(
-      '---\nokf_version: "0.1"\n---\n# Hand-written root\n',
+      '---\nokf_version: "0.2"\n---\n# Hand-written root\n',
     );
     expect(plan.changes[1]?.operation).toBe('create');
     expect(plan.changes[1]?.proposedText).toContain(
@@ -91,7 +91,7 @@ describe('index planning', () => {
     expect(first.changes).toHaveLength(1);
     const proposed = first.changes[0]?.proposedText;
     expect(proposed).toBeDefined();
-    expect(proposed?.startsWith('---\r\nokf_version: "0.1"\r\n---\r\n')).toBe(true);
+    expect(proposed?.startsWith('---\r\nokf_version: "0.2"\r\n---\r\n')).toBe(true);
     expect(proposed).toContain('# Hand-written\r\n\r\n');
     expect(proposed?.endsWith('\r\nTail stays [exact].\r\n')).toBe(true);
     expect(proposed).toContain('- [Alpha](./alpha.md) - Description\r\n');
@@ -118,7 +118,7 @@ describe('index planning', () => {
     );
 
     expect(plan.changes[0]?.proposedText).toBe(
-      `---\nokf_version: "0.1"\n---\n${existing}\n${INDEX_START_MARKER}\n## Contents\n\n- [Alpha](./alpha.md)\n${INDEX_END_MARKER}\n`,
+      `---\nokf_version: "0.2"\n---\n${existing}\n${INDEX_START_MARKER}\n## Contents\n\n- [Alpha](./alpha.md)\n${INDEX_END_MARKER}\n`,
     );
   });
 
@@ -150,9 +150,9 @@ describe('index planning', () => {
     });
     const proposed = first.changes[0]?.proposedText ?? '';
     expect(proposed).toBe(
-      existing.replace('title: "Team knowledge"', 'okf_version: "0.1"\ntitle: "Team knowledge"'),
+      existing.replace('title: "Team knowledge"', 'okf_version: "0.2"\ntitle: "Team knowledge"'),
     );
-    expect(proposed.replace('okf_version: "0.1"\n', '')).toBe(existing);
+    expect(proposed.replace('okf_version: "0.2"\n', '')).toBe(existing);
     expect(proposed.endsWith('No final newline')).toBe(true);
     expect(proposed.endsWith('\n')).toBe(false);
 
@@ -170,22 +170,22 @@ describe('index planning', () => {
     {
       name: 'flow mapping',
       existing: '---\n{ title: Knowledge }\n---\n# Body',
-      expected: '---\n{okf_version: "0.1", title: Knowledge }\n---\n# Body',
+      expected: '---\n{okf_version: "0.2", title: Knowledge }\n---\n# Body',
     },
     {
       name: 'anchored block mapping',
       existing: '---\n&root\ntitle: Knowledge\n---\n# Body',
-      expected: '---\n&root\nokf_version: "0.1"\ntitle: Knowledge\n---\n# Body',
+      expected: '---\n&root\nokf_version: "0.2"\ntitle: Knowledge\n---\n# Body',
     },
     {
       name: 'indented block mapping',
       existing: '---\n  title: Knowledge\n---\n# Body',
-      expected: '---\n  okf_version: "0.1"\n  title: Knowledge\n---\n# Body',
+      expected: '---\n  okf_version: "0.2"\n  title: Knowledge\n---\n# Body',
     },
     {
       name: 'flow mapping with a retained comment',
       existing: '---\n{ # retained\n title: Knowledge}\n---\n# Body',
-      expected: '---\n{okf_version: "0.1", # retained\n title: Knowledge}\n---\n# Body',
+      expected: '---\n{okf_version: "0.2", # retained\n title: Knowledge}\n---\n# Body',
     },
   ])('safely inserts into a $name', ({ existing, expected }) => {
     const plan = valueOf(
@@ -227,7 +227,7 @@ describe('index planning', () => {
 
     const proposed = plan.changes[0]?.proposedText ?? '';
     expect(proposed).toBe(
-      existing.replace('title: "Knowledge"', 'okf_version: "0.1"\r\ntitle: "Knowledge"'),
+      existing.replace('title: "Knowledge"', 'okf_version: "0.2"\r\ntitle: "Knowledge"'),
     );
     expect(proposed.startsWith('\uFEFF')).toBe(true);
     expect(proposed.endsWith('# Body without final newline')).toBe(true);
@@ -251,7 +251,7 @@ describe('index planning', () => {
 
     const proposed = first.changes[0]?.proposedText ?? '';
     expect(proposed).toBe(
-      '---\r\nokf_version: "0.1"\r\n---\r\n' +
+      '---\r\nokf_version: "0.2"\r\n---\r\n' +
         '# Human introduction\r\n\r\n' +
         `${INDEX_START_MARKER}\r\n` +
         '## Contents\r\n\r\n' +
@@ -273,7 +273,7 @@ describe('index planning', () => {
 
   it('recognizes CR-only managed markers and preserves that newline style', () => {
     const existing =
-      '---\rokf_version: "0.1"\r---\r' +
+      '---\rokf_version: "0.2"\r---\r' +
       '# Human\r\r' +
       `${INDEX_START_MARKER}\r` +
       'old\r' +

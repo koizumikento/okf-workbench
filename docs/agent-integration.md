@@ -17,7 +17,7 @@ OKF Workbench does not embed an AI model or call an AI provider. It helps existi
 - The OKF bundle is located at `knowledge/`.
 - Read `knowledge/index.md` before tasks that require project-wide context.
 - Update the relevant concept when a change affects durable project knowledge.
-- When an `okf` executable is available for a local bundle, prefer it for validation, new-concept planning, and managed-index updates; review `--check` output before `--apply`.
+- When an `okf` executable is available for a local bundle, prefer it for validation and planning; after reviewing `--check`, use `--apply` only for one new file in an existing bundle or a complete new bundle, and use the editor or manual editing otherwise.
 - Preserve unknown YAML frontmatter fields.
 - Use bundle-relative Markdown links between concepts.
 - Do not add speculative or temporary information to the bundle.
@@ -67,7 +67,7 @@ The body covers:
 - Timestamp discipline.
 - Index regeneration.
 - Conformance and curation checks.
-- Optional CLI-assisted validation, concept planning, and managed-index updates.
+- Optional CLI-assisted validation, concept and managed-index planning, single-file creation, and complete new-bundle publication.
 
 The generated Skill treats the CLI as an optional local-filesystem accelerator rather than a
 prerequisite. It instructs agents to use editor commands and the documented Markdown rules when
@@ -82,8 +82,11 @@ okf index <bundle-root> --mode missing --check
 ```
 
 Write examples start with `--check`; the Skill permits replacing it with `--apply` only after the
-reported paths and changes have been reviewed. Existing concept Markdown remains directly editable
-so unknown frontmatter can be preserved.
+reported paths and changes have been reviewed and only for one new file in an existing bundle or a
+complete all-create plan whose bundle root is still absent. Multiple creates in an existing root
+and every plan that updates an existing file fail closed before writing and must be split into
+single-create commands or completed through the editor workflow or careful manual editing. Existing
+concept Markdown remains directly editable so unknown frontmatter can be preserved.
 
 ## Safe merge behavior
 

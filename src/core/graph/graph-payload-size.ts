@@ -116,6 +116,38 @@ function countNode(counter: JsonByteCounter, node: GraphNode): void {
     counter.property('timestamp');
     counter.string(node.timestamp);
   }
+  if (node.generatedBy !== undefined) {
+    counter.property('generatedBy');
+    counter.string(node.generatedBy);
+  }
+  if (node.generatedAt !== undefined) {
+    counter.property('generatedAt');
+    counter.string(node.generatedAt);
+  }
+  if (node.trustTier !== undefined) {
+    counter.property('trustTier');
+    counter.string(node.trustTier);
+  }
+  if (node.status !== undefined) {
+    counter.property('status');
+    counter.string(node.status);
+  }
+  if (node.staleAfter !== undefined) {
+    counter.property('staleAfter');
+    counter.string(node.staleAfter);
+  }
+  if (node.sourceCount !== undefined) {
+    counter.property('sourceCount');
+    counter.nonNegativeInteger(node.sourceCount);
+  }
+  if (node.runtime !== undefined) {
+    counter.property('runtime');
+    counter.string(node.runtime);
+  }
+  if (node.computation !== undefined) {
+    counter.property('computation');
+    counter.string(node.computation);
+  }
   counter.property('orphan');
   counter.boolean(node.orphan);
   counter.property('brokenLinkCount');

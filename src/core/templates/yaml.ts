@@ -8,6 +8,7 @@ export interface TemplateFrontmatter {
   readonly description?: string;
   readonly tags: readonly string[];
   readonly timestamp?: string;
+  readonly runtime?: string;
 }
 
 /** Renders the intentionally small, deterministic subset used by built-in templates. */
@@ -30,7 +31,13 @@ export function renderTemplateFrontmatter(frontmatter: TemplateFrontmatter): str
   }
 
   if (frontmatter.timestamp !== undefined) {
-    lines.push(`timestamp: ${yamlString(frontmatter.timestamp)}`);
+    lines.push('generated:');
+    lines.push('  by: "process:okf-workbench"');
+    lines.push(`  at: ${yamlString(frontmatter.timestamp)}`);
+  }
+
+  if (frontmatter.runtime !== undefined) {
+    lines.push(`runtime: ${yamlString(frontmatter.runtime)}`);
   }
 
   lines.push('---');

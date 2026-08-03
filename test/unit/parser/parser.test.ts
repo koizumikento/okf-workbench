@@ -105,6 +105,248 @@ describe('OKF bundle parser', () => {
     expect(nestedIndex?.body).toBe('# Metadata\n');
   });
 
+  it('normalizes OKF v0.2 trust, lifecycle, provenance, and computation metadata', () => {
+    const bundle = parseBundle({
+      rootUri,
+      revision: 2,
+      documents: [
+        document('index.md', '---\nokf_version: "0.2"\n---\n# Root\n'),
+        document(
+          'revenue.md',
+          [
+            '---',
+            'type: Attested Computation',
+            'title: Revenue',
+            'description: Sanctioned revenue computation.',
+            'generated: { by: process:okf-workbench, at: 2026-07-30T01:00:00Z }',
+            'verified: { by: human:reviewer, at: 2026-07-30T02:00:00Z }',
+            'status: stable',
+            'stale_after: 2026-09-23',
+            'usage_window: { from: 2026-07-01, to: 2026-07-31 }',
+            'sources:',
+            '  - id: policy',
+            '    resource: https://example.com/policy',
+            '    title: Revenue policy',
+            '    author: team:finance',
+            '    usage_count: 42',
+            '    last_modified: 2026-07-29',
+            'runtime: bigquery',
+            'parameters:',
+            '  - { name: year, type: integer, required: true }',
+            'computation: references/revenue.sql',
+            'executor:',
+            '  resource: references/run.md',
+            '  receipt: [job_id, executed_sql, result]',
+            'attester:',
+            '  resource: references/attest.py',
+            '---',
+            '# Computation',
+            '',
+          ].join('\n'),
+        ),
+      ],
+    });
+
+    expect(bundle.failures).toEqual([]);
+    expect(bundle.reservedDocuments[0]?.okfVersion).toBe('0.2');
+    expect(bundle.concepts[0]).toMatchObject({
+      generated: { by: 'process:okf-workbench', at: '2026-07-30T01:00:00Z' },
+      verified: [{ by: 'human:reviewer', at: '2026-07-30T02:00:00Z' }],
+      trustTier: 'human-reviewed',
+      status: 'stable',
+      staleAfter: '2026-09-23',
+      usageWindow: { from: '2026-07-01', to: '2026-07-31' },
+      sources: [
+        {
+          id: 'policy',
+          resource: 'https://example.com/policy',
+          title: 'Revenue policy',
+          author: 'team:finance',
+          usageCount: 42,
+          lastModified: '2026-07-29',
+        },
+      ],
+      runtime: 'bigquery',
+      parameters: [{ name: 'year', type: 'integer', required: true }],
+      computation: 'references/revenue.sql',
+      executor: {
+        resource: 'references/run.md',
+        receipt: ['job_id', 'executed_sql', 'result'],
+      },
+      attester: { resource: 'references/attest.py', receipt: [] },
+    });
+    expect(
+      validateBundle(bundle, { now: '2026-07-31T00:00:00Z' }).filter(
+        ({ category }) => category === 'conformance',
+      ),
+    ).toEqual([]);
+    expect(buildGraphPayload(bundle).nodes[0]).toMatchObject({
+      generatedBy: 'process:okf-workbench',
+      generatedAt: '2026-07-30T01:00:00Z',
+      trustTier: 'human-reviewed',
+      status: 'stable',
+      staleAfter: '2026-09-23',
+      sourceCount: 1,
+      runtime: 'bigquery',
+      computation: 'references/revenue.sql',
+    });
+  });
+
+  it('does not derive trust from malformed verification events', () => {
+    const bundle = parseBundle({
+      rootUri,
+      revision: 3,
+      documents: [
+        document(
+          'invalid-trust.md',
+          [
+            '---',
+            'type: Reference',
+            'verified:',
+            '  - { by: human:spoofed, at: 2026-02-30T00:00:00Z }',
+            '  - { by: process:valid, at: 2026-07-30T00:00:00Z }',
+            '---',
+            '# Invalid trust',
+            '',
+          ].join('\n'),
+        ),
+      ],
+    });
+
+    expect(bundle.failures).toEqual([]);
+    expect(bundle.concepts[0]).toMatchObject({
+      verified: [
+        { by: 'human:spoofed', at: '2026-02-30T00:00:00Z' },
+        { by: 'process:valid', at: '2026-07-30T00:00:00Z' },
+      ],
+      trustTier: 'machine-confirmed',
+    });
+  });
+
+  it('normalizes parser-proven nested string tags without allowing lookalike wrappers', () => {
+    const tagged = (value: string, source = value) => ({
+      [YAML_TAGGED_VALUE_KEY]: {
+        tag: 'tag:yaml.org,2002:str',
+        value,
+        source,
+      },
+    });
+    const bundle = parseBundle({
+      rootUri,
+      revision: 5,
+      documents: [
+        document(
+          'nested-tags.md',
+          [
+            '---',
+            'type: Reference',
+            'generated:',
+            '  by: !!str process:builder',
+            '  at: !!str 2026-07-30T01:00:00Z',
+            'verified:',
+            '  - by: !!str human:reviewer',
+            '    at: !!str 2026-07-30T02:00:00Z',
+            'sources:',
+            '  - resource: !!str https://example.com/policy',
+            '    author: !!str process:catalog',
+            '    usage_count: 42.0',
+            '---',
+            '# Nested tags',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'lookalike.md',
+          [
+            '---',
+            'type: Reference',
+            'verified:',
+            `  by: { ${YAML_TAGGED_VALUE_KEY}: { tag: "tag:yaml.org,2002:str", value: "human:spoofed", source: "human:spoofed" } }`,
+            '  at: 2026-07-30T02:00:00Z',
+            '---',
+            '# Lookalike',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'shifted-tags.md',
+          [
+            '---',
+            'type: Reference',
+            'verified:',
+            '  - invalid',
+            '  - by: !!str human:reviewer',
+            '    at: !!str 2026-07-30T02:00:00Z',
+            'sources:',
+            '  - invalid',
+            '  - resource: !!str https://example.com/shifted',
+            'parameters:',
+            '  - invalid',
+            '  - name: !!str year',
+            '    type: !!str integer',
+            '    required: !!bool true',
+            '---',
+            '# Shifted tags',
+            '',
+          ].join('\n'),
+        ),
+      ],
+    });
+
+    expect(bundle.failures).toEqual([]);
+    const nested = bundle.concepts.find(({ id }) => id === 'nested-tags');
+    const lookalike = bundle.concepts.find(({ id }) => id === 'lookalike');
+    expect(nested).toMatchObject({
+      generated: { by: 'process:builder', at: '2026-07-30T01:00:00Z' },
+      verified: [{ by: 'human:reviewer', at: '2026-07-30T02:00:00Z' }],
+      trustTier: 'human-reviewed',
+      sources: [
+        {
+          resource: 'https://example.com/policy',
+          author: 'process:catalog',
+          usageCount: 42,
+        },
+      ],
+    });
+    expect(nested?.frontmatter.raw).toMatchObject({
+      generated: {
+        by: tagged('process:builder'),
+        at: tagged('2026-07-30T01:00:00Z'),
+      },
+      verified: [
+        {
+          by: tagged('human:reviewer'),
+          at: tagged('2026-07-30T02:00:00Z'),
+        },
+      ],
+      sources: [
+        {
+          resource: tagged('https://example.com/policy'),
+          author: tagged('process:catalog'),
+          usage_count: 42,
+        },
+      ],
+    });
+    expect(nested?.frontmatter.explicitTags).toMatchObject({
+      '/generated/by': 'tag:yaml.org,2002:str',
+      '/generated/at': 'tag:yaml.org,2002:str',
+      '/verified/0/by': 'tag:yaml.org,2002:str',
+      '/verified/0/at': 'tag:yaml.org,2002:str',
+      '/sources/0/resource': 'tag:yaml.org,2002:str',
+      '/sources/0/author': 'tag:yaml.org,2002:str',
+    });
+    expect(lookalike).toMatchObject({
+      verified: [{ at: '2026-07-30T02:00:00Z' }],
+      trustTier: 'unverified',
+    });
+    expect(bundle.concepts.find(({ id }) => id === 'shifted-tags')).toMatchObject({
+      verified: [{ by: 'human:reviewer', at: '2026-07-30T02:00:00Z' }],
+      trustTier: 'human-reviewed',
+      sources: [{ resource: 'https://example.com/shifted' }],
+      parameters: [{ name: 'year', type: 'integer', required: true }],
+    });
+  });
+
   it('strictly decodes UTF-8 and continues after decode and YAML failures', () => {
     const invalidYaml = '---\ntype: [unterminated\n---\n# Broken\n';
     const bundle = parseBundle({
@@ -418,6 +660,7 @@ describe('OKF bundle parser', () => {
             'title: Tagged values',
             'description: Unknown tagged metadata remains consumable.',
             'timestamp: "2026-07-22T09:30:00Z"',
+            "tags: [!!str alpha, !!str 'it''s']",
             'producer:',
             '  captured_at: !!timestamp 2001-12-15T02:59:43.1Z',
             '  payload: !!binary SGVsbG8=',
@@ -428,6 +671,48 @@ describe('OKF bundle parser', () => {
             '  text: !!str 001',
             '  infinite: !!float .inf',
             '  safe_mapping: !!map {__proto__: retained, constructor: retained}',
+            'executor:',
+            '  receipt:',
+            '    - !!str "job_id"',
+            'producer_map: !!map',
+            '  key: value',
+            'tag_first_map: !!map &tagged-map',
+            '  tagged_key: value',
+            'tagged_parent: !!map',
+            '  child: !!str "x"',
+            '',
+            'anchored_flow: [!!str &flow-id "x"]',
+            'tagged_flow_parent: !!seq [!!str &tagged-flow-id "x", *tagged-flow-id]',
+            'shared_seed: &shared-seed !!str "x"',
+            'shared_aliases: [*shared-seed]',
+            'verbatim_standard: !<tag:yaml.org,2002:str> "Reference"',
+            'shadow_old: &shadow !!str "0.2"',
+            'shadow_new: &shadow "1.0"',
+            'shadow_alias: *shadow',
+            'sequence_values:',
+            '  - &sequence-one !!str "x"',
+            '  - *sequence-one',
+            '  - !!str &sequence-two "y"',
+            '  - *sequence-two',
+            'object_seed: &object-seed',
+            '  child: !!str "x"',
+            'object_copy: *object-seed',
+            '"tagged:a:b": !!str "x"',
+            'empty_tagged: !!str |-',
+            '',
+            'notes: !!str |-',
+            '  first',
+            '  second',
+            '# detached field comment',
+            '',
+            '"colon:key": value # inline field comment',
+            'commented: value # inline field comment',
+            'items: !!seq',
+            '  - one',
+            '  - two',
+            'flow_metadata: [',
+            "  { label: !!str 'it''s', count: !!int 2 }",
+            ']',
             '---',
             '# Tagged values',
             '',
@@ -440,11 +725,14 @@ describe('OKF bundle parser', () => {
     const concept = bundle.concepts[0];
     expect(concept).toMatchObject({ id: 'tagged-values', type: 'producer-extension' });
     expect(concept?.timestamp).toBe('2026-07-22T09:30:00Z');
+    expect(concept?.tags).toEqual(['alpha', "it's"]);
     expect(concept?.frontmatter.raw.type).toEqual(
       tagged('tag:yaml.org,2002:str', 'producer-extension', 'producer-extension'),
     );
-    expect(concept?.frontmatter.explicitTags).toEqual({
+    expect(concept?.frontmatter.explicitTags).toMatchObject({
       type: 'tag:yaml.org,2002:str',
+      '/producer/text': 'tag:yaml.org,2002:str',
+      '/producer/captured_at': 'tag:yaml.org,2002:timestamp',
     });
     expect(concept?.frontmatter.raw.producer).toEqual({
       captured_at: tagged(
@@ -478,6 +766,81 @@ describe('OKF bundle parser', () => {
       ),
     });
     expect(Object.getPrototypeOf(concept?.frontmatter.raw)).toBeNull();
+    expect(concept?.frontmatter.raw).toMatchObject({
+      executor: {
+        receipt: [tagged('tag:yaml.org,2002:str', 'job_id', '"job_id"')],
+      },
+      producer_map: tagged('tag:yaml.org,2002:map', { key: 'value' }, 'key: value\n'),
+      tag_first_map: tagged(
+        'tag:yaml.org,2002:map',
+        { tagged_key: 'value' },
+        'tagged_key: value\n',
+      ),
+      tagged_parent: tagged(
+        'tag:yaml.org,2002:map',
+        { child: tagged('tag:yaml.org,2002:str', 'x', '"x"') },
+        'child: !!str "x"\n',
+      ),
+      anchored_flow: [tagged('tag:yaml.org,2002:str', 'x', '"x"')],
+      tagged_flow_parent: tagged(
+        'tag:yaml.org,2002:seq',
+        [tagged('tag:yaml.org,2002:str', 'x', '"x"'), tagged('tag:yaml.org,2002:str', 'x', '"x"')],
+        '[!!str &tagged-flow-id "x", *tagged-flow-id]',
+      ),
+      shared_seed: tagged('tag:yaml.org,2002:str', 'x', '"x"'),
+      shared_aliases: [tagged('tag:yaml.org,2002:str', 'x', '"x"')],
+      verbatim_standard: tagged('tag:yaml.org,2002:str', 'Reference', '"Reference"'),
+      shadow_old: tagged('tag:yaml.org,2002:str', '0.2', '"0.2"'),
+      shadow_new: '1.0',
+      shadow_alias: '1.0',
+      sequence_values: [
+        tagged('tag:yaml.org,2002:str', 'x', '"x"'),
+        tagged('tag:yaml.org,2002:str', 'x', '"x"'),
+        tagged('tag:yaml.org,2002:str', 'y', '"y"'),
+        tagged('tag:yaml.org,2002:str', 'y', '"y"'),
+      ],
+      object_seed: { child: tagged('tag:yaml.org,2002:str', 'x', '"x"') },
+      object_copy: { child: tagged('tag:yaml.org,2002:str', 'x', '"x"') },
+      'tagged:a:b': tagged('tag:yaml.org,2002:str', 'x', '"x"'),
+      empty_tagged: tagged('tag:yaml.org,2002:str', '', '|-\n\n'),
+      notes: tagged('tag:yaml.org,2002:str', 'first\nsecond', '|-\n  first\n  second\n'),
+      items: tagged('tag:yaml.org,2002:seq', ['one', 'two'], '- one\n  - two\n'),
+      flow_metadata: [
+        {
+          label: tagged('tag:yaml.org,2002:str', "it's", "'it''s'"),
+          count: tagged('tag:yaml.org,2002:int', 2, '2'),
+        },
+      ],
+    });
+    expect(concept?.frontmatter.explicitTags).toMatchObject({
+      '/executor/receipt/0': 'tag:yaml.org,2002:str',
+      producer_map: 'tag:yaml.org,2002:map',
+      tag_first_map: 'tag:yaml.org,2002:map',
+      tagged_parent: 'tag:yaml.org,2002:map',
+      '/tagged_parent/child': 'tag:yaml.org,2002:str',
+      '/anchored_flow/0': 'tag:yaml.org,2002:str',
+      tagged_flow_parent: 'tag:yaml.org,2002:seq',
+      '/tagged_flow_parent/0': 'tag:yaml.org,2002:str',
+      '/tagged_flow_parent/1': 'tag:yaml.org,2002:str',
+      shared_seed: 'tag:yaml.org,2002:str',
+      '/shared_aliases/0': 'tag:yaml.org,2002:str',
+      verbatim_standard: 'tag:yaml.org,2002:str',
+      shadow_old: 'tag:yaml.org,2002:str',
+      '/sequence_values/0': 'tag:yaml.org,2002:str',
+      '/sequence_values/1': 'tag:yaml.org,2002:str',
+      '/sequence_values/2': 'tag:yaml.org,2002:str',
+      '/sequence_values/3': 'tag:yaml.org,2002:str',
+      '/object_seed/child': 'tag:yaml.org,2002:str',
+      '/object_copy/child': 'tag:yaml.org,2002:str',
+      'tagged:a:b': 'tag:yaml.org,2002:str',
+      empty_tagged: 'tag:yaml.org,2002:str',
+      notes: 'tag:yaml.org,2002:str',
+      items: 'tag:yaml.org,2002:seq',
+      '/tags/0': 'tag:yaml.org,2002:str',
+      '/tags/1': 'tag:yaml.org,2002:str',
+      '/flow_metadata/0/label': 'tag:yaml.org,2002:str',
+      '/flow_metadata/0/count': 'tag:yaml.org,2002:int',
+    });
     expect(({} as { readonly polluted?: unknown }).polluted).toBeUndefined();
     expect(JSON.parse(JSON.stringify(bundle))).toEqual(bundle);
 
@@ -485,6 +848,50 @@ describe('OKF bundle parser', () => {
     expect(findings.map(({ code }) => code)).not.toContain(VALIDATION_CODES.frontmatter);
     expect(findings.map(({ code }) => code)).not.toContain(VALIDATION_CODES.conceptType);
     expect(buildGraphPayload({ ...bundle, findings }).statistics.conceptCount).toBe(1);
+  });
+
+  it('rejects the full tags projection when any semantic item is not a string', () => {
+    const bundle = parseBundle({
+      rootUri,
+      revision: 41,
+      documents: [
+        document('index.md', '---\nokf_version: "0.2"\n---\n# Root\n'),
+        document(
+          'mixed-tags.md',
+          ['---', 'type: Reference', 'tags: [!!str alpha, 42, beta]', '---', '# Mixed'].join('\n'),
+        ),
+      ],
+    });
+
+    expect(bundle.failures).toEqual([]);
+    expect(bundle.concepts[0]?.tags).toEqual([]);
+  });
+
+  it('keeps equal nested keys and quoted colon keys in separate mapping scopes', () => {
+    const bundle = parseBundle({
+      rootUri,
+      revision: 42,
+      documents: [
+        document('index.md', '---\nokf_version: "0.2"\n---\n# Root\n'),
+        document(
+          'scoped-keys.md',
+          [
+            '---',
+            'type: Reference',
+            'left:',
+            '  x: 1',
+            'right:',
+            '  x: 2',
+            '"a:b": 1',
+            '"a:c": 2',
+            '---',
+            '# Scoped',
+          ].join('\n'),
+        ),
+      ],
+    });
+
+    expect(bundle.failures).toEqual([]);
   });
 
   it('tracks explicit tag aliases without trusting structurally similar producer mappings', () => {

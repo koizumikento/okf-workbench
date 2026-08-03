@@ -3,7 +3,7 @@
 - Candidate: OKF Workbench `0.2.1`
 - Target identifier: `straydog.okf-workbench`
 - Registry: Open VSX
-- Current disposition: **Released on 2026-07-28; the signed tag, GitHub Release, Open VSX package
+- Published `0.2.1` disposition: **Released on 2026-07-28; the signed tag, GitHub Release, Open VSX package
   set, package-manager manifests, and available post-publication lifecycle checks passed**
 - Publication authority: a matching signed `v*` tag pushed for a reviewed commit contained in
   `main`
@@ -11,6 +11,8 @@
 This checklist prepares and records the `0.2.1` patch release. It does not make `0.2.0` evidence
 apply to new bytes. The candidate fixes orphan-only sidebar warning counts and hidden-Webview graph
 refresh delivery without changing the OKF compatibility contract, dependencies, or renderer.
+All checked pass results below bind the named `0.2.1` revisions and artifacts. They establish the
+published release facts but do not qualify the current Rust/Wasm source candidate.
 
 The completed `0.2.0` release record is archived at
 [`docs/releases/0.2.0.md`](releases/0.2.0.md).

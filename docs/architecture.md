@@ -92,8 +92,9 @@ mismatch, trap, or malformed response.
 
 The Extension Host continues to own URI-first reads, Workspace Trust, previews, guarded writes,
 diagnostics, watchers, and the Webview lifecycle. The native CLI owns local path resolution,
-interactive confirmation, atomic local writes, and stdout/stderr. The Webview receives only the
-bounded presentation payload and never instantiates Wasm.
+interactive confirmation, identity-anchored no-overwrite creates, fail-closed existing-file update
+handling, and stdout/stderr. The Webview receives only the bounded presentation payload and never
+instantiates Wasm.
 
 Supported target-platform VSIX packages add one native CLI at the distribution boundary, while the
 universal fallback remains CLI-free. The exact same executable is also shipped in a standalone
@@ -113,6 +114,18 @@ interface Concept {
   description?: string;
   resource?: string;
   tags: readonly string[];
+  generated?: GeneratedMetadata;
+  verified: readonly VerificationEvent[];
+  trustTier: 'unverified' | 'machine-confirmed' | 'human-reviewed';
+  status?: string;
+  staleAfter?: string;
+  sources: readonly KnowledgeSource[];
+  runtime?: string;
+  parameters: readonly ComputationParameter[];
+  computation?: string;
+  executor?: ComputationEndpoint;
+  attester?: ComputationEndpoint;
+  // Legacy v0.1 fallback only when generated is absent.
   timestamp?: string;
   body: string;
   bodyRange: SourceRange;
@@ -143,7 +156,11 @@ checks accept a plain string or an AST-proven `!!str` scalar, including its alia
 lookalike mappings, sequences, and values tagged with anything other than `!!str`. The exact
 frontmatter source remains separately available for source-preserving writes. Null-prototype
 mappings and a closed standard-tag converter prevent prototype pollution and fail closed on custom
-runtime objects. The normalized fields are conveniences, not a closed schema.
+runtime objects. The normalized fields are conveniences, not a closed schema. OKF v0.2 provenance,
+production, verification, lifecycle, and computation families remain inert JSON-safe data. Trust
+tier is derived from valid verifier actors. `generated.at` supersedes the legacy `timestamp`, which
+is consulted only when `generated` is absent. The deterministic core and Webview never execute or
+fetch producer-supplied computation, executor, or attester resources.
 Link state is represented by the explicit `LinkClassification` union rather than overlapping
 boolean flags.
 
@@ -363,6 +380,8 @@ guards, and URI-first application. The 3D renderer remains the single editor Web
 - Broken links may be represented as warnings or optional placeholder targets.
 - Directory hierarchy is optional presentation metadata and must not be confused with an OKF semantic relationship.
 - External citations are excluded from the main graph by default.
+- Node details may expose bounded v0.2 generator, trust, lifecycle, source-count, runtime, and
+  computation metadata without changing graph topology.
 
 Graph construction admits at most 2,000 nodes, 10,000 retained internal/broken relationships, 128
 tags per concept, 20,000 tag assignments, 512 unique types, and 4,096 unique tags. Edge identities
@@ -399,9 +418,11 @@ Accepted MVP thresholds:
 - Opening the graph does not block normal text editing.
 - File changes are reflected within one second after debounce for representative bundles.
 
-A genuine current-input schema-v3 headed VS Code `1.129.1` run passes QR-002 at `832 ms` p95 across
-20 samples and QR-003 with `d3` selected; its strict CDP envelope records zero remote HTTP(S)/WS or
-other-scheme requests. The retained VS Code `1.127.0` run predates the current
+The tracked predecessor-bound schema-v3 headed VS Code `1.129.1` report records QR-002 at `677 ms`
+p95 across 20 samples, `d3` as its QR-003 selection, and zero remote HTTP(S)/WS or other-scheme
+requests. The current strict evaluator exits `2` because it does not accept the record as bound to
+the current Rust/Wasm source candidate, whose fresh capture is pending. The retained VS Code
+`1.127.0` run predates the current
 diagnostics-correlation, WebGL/UI-outcome, causal-timing, and network-envelope requirements and
 remains historical-only. See [performance evidence](performance-evidence.md) for the exact
 environment, authority rules, and candidate-binding limits.

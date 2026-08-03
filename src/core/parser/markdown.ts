@@ -45,6 +45,41 @@ export type MarkdownHeadingResult =
   | { readonly ok: true; readonly headings: readonly MarkdownHeadingCandidate[] }
   | { readonly ok: false; readonly message: string; readonly range: SourceRange };
 
+/**
+ * Counts actual CommonMark fenced code blocks under an actual top-level heading.
+ *
+ * Parsing the block structure first prevents headings written inside code samples from opening a
+ * section and excludes indented code blocks from the v0.2 inline-computation form.
+ */
+export function countFencedCodeBlocksInTopLevelSection(
+  markdown: string,
+  headingText: string,
+): number {
+  const inspection = inspectMarkdownComplexity(markdown);
+  if (inspection.failure !== undefined) return 0;
+  const root = parseMarkdownAst(markdown, inspection.lines);
+  const children = root.children ?? [];
+  let inSection = false;
+  let count = 0;
+  for (const child of children) {
+    if (child.type === 'heading' && child.depth === 1) {
+      inSection = readableText(child).trim() === headingText;
+      continue;
+    }
+    if (!inSection) continue;
+    visit(child, (node) => {
+      if (node.type !== 'code') return;
+      const start = node.position?.start.offset;
+      if (start === undefined) return;
+      const openingLine = markdown.slice(start).split(/\r\n?|\n/u, 1)[0] ?? '';
+      if (/^ {0,3}(?:`{3,}|~{3,})/u.test(openingLine)) {
+        count += 1;
+      }
+    });
+  }
+  return count;
+}
+
 interface AstPoint {
   readonly offset?: number;
 }

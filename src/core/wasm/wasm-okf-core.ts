@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { JsonValue, ParseFailure } from '../model/index.js';
+import { GraphResourceLimitError } from '../graph/index.js';
+import { hasUnpairedUtf16Surrogate, type JsonValue, type ParseFailure } from '../model/index.js';
 import type { ParseBundleInput } from '../parser/index.js';
 import type {
   BundleDirectoryInput,
@@ -96,12 +97,18 @@ export function createWasmOkfCore(bytes: Uint8Array): OkfCore {
       now: Date | string,
       failures: readonly ParseFailure[] = [],
     ): OkfCoreInspection => {
+      if (
+        now instanceof Date &&
+        (!Number.isFinite(now.getTime()) || now.getUTCFullYear() < 0 || now.getUTCFullYear() > 9999)
+      ) {
+        throw new TypeError('ValidationOptions.now must be a valid Date or ISO date-time string.');
+      }
       const result = callCore(exports, {
         operation: 'inspect',
         input: {
           bundle: jsonBundleInput(input),
           now: now instanceof Date ? now.toISOString() : now,
-          failures: failures as unknown as JsonValue,
+          failures: jsonFailures(failures),
         },
       });
       if (
@@ -152,7 +159,7 @@ export function createWasmOkfCore(bytes: Uint8Array): OkfCore {
           operation: 'renderAgent',
           input: {
             target,
-            bundlePath: typeof bundlePath === 'string' ? bundlePath : bundlePath.relativePath,
+            bundlePath: bundlePath as unknown as JsonValue,
           },
         }),
       ),
@@ -160,26 +167,91 @@ export function createWasmOkfCore(bytes: Uint8Array): OkfCore {
 }
 
 function jsonBundleInput(input: ParseBundleInput): JsonValue {
+  const invalidRootUriUtf16 = hasUnpairedUtf16Surrogate(input.rootUri);
   return {
-    rootUri: input.rootUri,
+    rootUri: invalidRootUriUtf16 ? '<bundle-root-uri-invalid-unicode>' : input.rootUri,
     revision: input.revision,
+    ...(invalidRootUriUtf16 ? { invalidRootUriUtf16: true } : {}),
     documents: input.documents.map((document) => {
+      const invalidUri = hasUnpairedUtf16Surrogate(document.uri);
+      const invalidBundlePath = hasUnpairedUtf16Surrogate(document.bundlePath);
+      const invalidContentHash =
+        document.identityOnlyFailure === undefined &&
+        document.contentHash !== undefined &&
+        hasUnpairedUtf16Surrogate(document.contentHash);
+      const invalidUtf16Fields = {
+        uri: invalidUri,
+        bundlePath: invalidBundlePath,
+        contentHash: invalidContentHash,
+      };
+      const identity = {
+        uri: invalidUri ? '<provider-uri-invalid-unicode>' : document.uri,
+        bundlePath: invalidBundlePath ? '<provider-path-invalid-unicode>.md' : document.bundlePath,
+        ...(invalidUri || invalidBundlePath || invalidContentHash ? { invalidUtf16Fields } : {}),
+      };
       if (document.identityOnlyFailure !== undefined) {
         return {
-          uri: document.uri,
-          bundlePath: document.bundlePath,
-          identityOnlyFailure: document.identityOnlyFailure,
+          ...identity,
+          identityOnlyFailure: {
+            reason: document.identityOnlyFailure.reason,
+            message: hasUnpairedUtf16Surrogate(document.identityOnlyFailure.message)
+              ? 'Provider failure detail contains an unpaired UTF-16 surrogate.'
+              : document.identityOnlyFailure.message,
+          },
+        };
+      }
+      if (typeof document.content === 'string' && hasUnpairedUtf16Surrogate(document.content)) {
+        return {
+          ...identity,
+          content: { invalidUtf16: true },
+          ...(!invalidContentHash
+            ? {
+                contentHash: document.contentHash ?? fallbackUtf16ContentHash(document.content),
+              }
+            : {}),
         };
       }
       return {
-        uri: document.uri,
-        bundlePath: document.bundlePath,
+        ...identity,
         content:
           typeof document.content === 'string' ? document.content : Array.from(document.content),
-        ...(document.contentHash === undefined ? {} : { contentHash: document.contentHash }),
+        ...(document.contentHash === undefined || invalidContentHash
+          ? {}
+          : { contentHash: document.contentHash }),
       };
     }),
   };
+}
+
+function jsonFailures(failures: readonly ParseFailure[]): JsonValue {
+  return failures.map((failure) => {
+    if (hasUnpairedUtf16Surrogate(failure.uri)) {
+      throw new GraphResourceLimitError('Parse failure URI contains an unpaired UTF-16 surrogate.');
+    }
+    if (failure.bundlePath.length > 0 && hasUnpairedUtf16Surrogate(failure.bundlePath)) {
+      throw new GraphResourceLimitError(
+        'Parse failure path contains an unpaired UTF-16 surrogate.',
+      );
+    }
+    return {
+      ...failure,
+      message: hasUnpairedUtf16Surrogate(failure.message)
+        ? 'Parse failure detail contains an unpaired UTF-16 surrogate.'
+        : failure.message,
+    } as unknown as JsonValue;
+  });
+}
+
+function fallbackUtf16ContentHash(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let offset = 0; offset < text.length; offset += 1) {
+    const codeUnit = text.charCodeAt(offset);
+    hash ^= codeUnit & 0xff;
+    hash = Math.imul(hash, 0x01000193);
+    hash ^= codeUnit >>> 8;
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `fnv1a32-utf16:${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
 function callCore(exports: OkfWasmExports, request: JsonValue): JsonValue {
@@ -237,6 +309,15 @@ function callCore(exports: OkfWasmExports, request: JsonValue): JsonValue {
     throw new OkfCoreUnavailableError('The OKF core returned an incompatible response envelope.');
   }
   if (response.error !== undefined) {
+    if (response.error.code === 'invalid-request') {
+      throw new TypeError(response.error.message);
+    }
+    if (response.error.code === 'unsafe-relative-path') {
+      throw new Error(response.error.message);
+    }
+    if (response.error.code === 'graph-resource-limit') {
+      throw new GraphResourceLimitError(response.error.message);
+    }
     throw new OkfCoreUnavailableError(
       `The OKF core refused the request (${response.error.code}): ${response.error.message}`,
     );

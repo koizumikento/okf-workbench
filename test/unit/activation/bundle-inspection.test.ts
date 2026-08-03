@@ -107,7 +107,7 @@ describe('bundle root inspection', () => {
     });
     expect(inspect('---\nokf_version: "0.2"\n---\n# Index\n')).toEqual({
       isBundleRoot: true,
-      version: { declared: '"0.2"', compatibility: 'future-minor' },
+      version: { declared: '"0.2"', compatibility: 'supported' },
     });
     expect(inspect('---\nokf_version: "1.0"\n---\n# Index\n')).toEqual({
       isBundleRoot: true,
@@ -234,7 +234,7 @@ describe('bundle root inspection', () => {
     port.putText(`${root}/index.md`, '---\nokf_version: "1.0"\n---\n# Future bundle\n');
     port.putText(
       `${futureMinorRoot}/index.md`,
-      '---\nokf_version: "0.2"\n---\n# Future minor bundle\n',
+      '---\nokf_version: "0.3"\n---\n# Future minor bundle\n',
     );
 
     expect(inspect(port.text(`${root}/index.md`) ?? '')).toEqual({
@@ -246,7 +246,7 @@ describe('bundle root inspection', () => {
       problem: {
         code: 'unsupported-okf-version-write',
         message:
-          'The selected bundle declares unsupported OKF version "1.0"; OKF Workbench writes only OKF 0.1-compatible bundles.',
+          'The selected bundle declares unsupported OKF version "1.0"; OKF Workbench writes only OKF 0.1- and 0.2-compatible bundles.',
         correctiveAction:
           'No files were written. Validate or graph the bundle read-only, then migrate it or review support before editing.',
       },

@@ -1,6 +1,7 @@
 # Canonical OKF fixtures
 
-These fixtures are small, checked-in inputs for the OKF v0.1 compatibility contract. They are
+These fixtures are small, checked-in inputs for the current OKF v0.2 compatibility contract and
+its v0.1 fallback behavior. They are
 consumed as bytes and never require VS Code, a network connection, or an AI provider.
 
 Every fixture directory contains `expected.json` with:

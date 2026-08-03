@@ -10,6 +10,7 @@ export const CONCEPT_TEMPLATES = [
   'data-table',
   'playbook',
   'reference',
+  'attested-computation',
 ] as const;
 
 export type ConceptTemplate = (typeof CONCEPT_TEMPLATES)[number];
@@ -35,7 +36,7 @@ export interface ConceptTemplateInput {
   readonly title: string;
   readonly description?: string;
   readonly tags?: readonly string[];
-  /** Optional injected timestamp; rendering never reads the clock. */
+  /** Optional injected generation time; rendering never reads the clock. */
   readonly timestamp?: string;
 }
 

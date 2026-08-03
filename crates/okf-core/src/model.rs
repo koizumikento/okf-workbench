@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error, ser::SerializeMap};
+use serde_json::{Map, Value, value::RawValue};
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,6 +26,76 @@ pub struct SourceDocument {
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GeneratedMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub at: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerificationEvent {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub at: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageWindow {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnowledgeSource {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_modified: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage_window: Option<UsageWindow>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComputationParameter {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub r#type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required: Option<bool>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComputationEndpoint {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource: Option<String>,
+    #[serde(default)]
+    pub receipt: Vec<String>,
+}
+
+fn default_trust_tier() -> String {
+    "unverified".to_owned()
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NormalizedFrontmatter {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub r#type: Option<String>,
@@ -38,6 +108,30 @@ pub struct NormalizedFrontmatter {
     pub tags: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generated: Option<GeneratedMetadata>,
+    #[serde(default)]
+    pub verified: Vec<VerificationEvent>,
+    #[serde(default = "default_trust_tier")]
+    pub trust_tier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stale_after: Option<String>,
+    #[serde(default)]
+    pub sources: Vec<KnowledgeSource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage_window: Option<UsageWindow>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<String>,
+    #[serde(default)]
+    pub parameters: Vec<ComputationParameter>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub computation: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub executor: Option<ComputationEndpoint>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attester: Option<ComputationEndpoint>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -96,6 +190,30 @@ pub struct Concept {
     pub tags: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generated: Option<GeneratedMetadata>,
+    #[serde(default)]
+    pub verified: Vec<VerificationEvent>,
+    #[serde(default = "default_trust_tier")]
+    pub trust_tier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stale_after: Option<String>,
+    #[serde(default)]
+    pub sources: Vec<KnowledgeSource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage_window: Option<UsageWindow>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<String>,
+    #[serde(default)]
+    pub parameters: Vec<ComputationParameter>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub computation: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub executor: Option<ComputationEndpoint>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attester: Option<ComputationEndpoint>,
     pub body: String,
     pub body_range: SourceRange,
     pub links: Vec<ConceptLink>,
@@ -115,7 +233,7 @@ pub struct ReservedDocument {
     pub okf_version: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ParseFailureReason {
     Decode,
@@ -169,6 +287,10 @@ pub struct ParsedBundle {
 pub enum DocumentContent {
     Text(String),
     Bytes(Vec<u8>),
+    InvalidUtf16 {
+        #[serde(rename = "invalidUtf16")]
+        _invalid_utf16: bool,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -176,6 +298,17 @@ pub enum DocumentContent {
 pub struct IdentityOnlyFailure {
     pub reason: ParseFailureReason,
     pub message: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvalidUtf16DocumentFields {
+    #[serde(default)]
+    pub uri: bool,
+    #[serde(default)]
+    pub bundle_path: bool,
+    #[serde(default)]
+    pub content_hash: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -189,14 +322,95 @@ pub struct BundleDocumentInput {
     pub content_hash: Option<String>,
     #[serde(default)]
     pub identity_only_failure: Option<IdentityOnlyFailure>,
+    #[serde(default)]
+    pub invalid_utf16_fields: Option<InvalidUtf16DocumentFields>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ParseBundleInput {
     pub root_uri: String,
+    #[serde(deserialize_with = "deserialize_revision")]
     pub revision: u64,
     pub documents: Vec<BundleDocumentInput>,
+    #[serde(default)]
+    pub invalid_root_uri_utf16: Option<bool>,
+}
+
+fn deserialize_revision<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw = Box::<RawValue>::deserialize(deserializer)?;
+    parse_revision_json_number(raw.get())
+        .ok_or_else(|| D::Error::custom("revision must be a non-negative integral JSON number"))
+}
+
+pub(crate) fn parse_revision_json_number(source: &str) -> Option<u64> {
+    if let Some(revision) = exact_integral_json_number(source) {
+        return Some(revision);
+    }
+    if let Ok(revision) = source.parse::<f64>()
+        && revision.is_finite()
+        && revision >= 0.0
+        && revision.fract() == 0.0
+        && revision <= u64::MAX as f64
+    {
+        return Some(revision as u64);
+    }
+    None
+}
+
+fn exact_integral_json_number(source: &str) -> Option<u64> {
+    let (negative, unsigned) = source
+        .strip_prefix('-')
+        .map_or((false, source), |value| (true, value));
+    let (coefficient, exponent_source) = unsigned
+        .split_once(['e', 'E'])
+        .map_or((unsigned, None), |(coefficient, exponent)| {
+            (coefficient, Some(exponent))
+        });
+    let (whole, fraction) = coefficient.split_once('.').unwrap_or((coefficient, ""));
+    if whole.is_empty()
+        || !whole.bytes().all(|byte| byte.is_ascii_digit())
+        || !fraction.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+
+    let mut digits = String::with_capacity(whole.len().saturating_add(fraction.len()));
+    digits.push_str(whole);
+    digits.push_str(fraction);
+    if digits.bytes().all(|byte| byte == b'0') {
+        return Some(0);
+    }
+    let exponent = exponent_source.map_or(Some(0), |value| value.parse::<i64>().ok())?;
+    let decimal_position = i64::try_from(whole.len()).ok()?.checked_add(exponent)?;
+    if decimal_position <= 0 {
+        return None;
+    }
+    let decimal_position = usize::try_from(decimal_position).ok()?;
+    if decimal_position < digits.len() {
+        if !digits.as_bytes()[decimal_position..]
+            .iter()
+            .all(|byte| *byte == b'0')
+        {
+            return None;
+        }
+        digits.truncate(decimal_position);
+    } else if decimal_position > digits.len() {
+        if decimal_position > 20 && digits.bytes().any(|byte| byte != b'0') {
+            return None;
+        }
+        digits.extend(std::iter::repeat_n('0', decimal_position - digits.len()));
+    }
+    let digits = digits.trim_start_matches('0');
+    let revision = if digits.is_empty() {
+        0
+    } else {
+        digits.parse::<u64>().ok()?
+    };
+    (!negative || revision == 0).then_some(revision)
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -215,6 +429,22 @@ pub struct GraphNode {
     pub tags: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generated_by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generated_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trust_tier: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stale_after: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub computation: Option<String>,
     pub orphan: bool,
     pub broken_link_count: usize,
 }
@@ -244,8 +474,26 @@ pub struct GraphStatistics {
     pub edge_count: usize,
     pub orphan_count: usize,
     pub broken_link_count: usize,
+    #[serde(serialize_with = "serialize_utf16_count_map")]
     pub type_counts: std::collections::BTreeMap<String, usize>,
+    #[serde(serialize_with = "serialize_utf16_count_map")]
     pub tag_counts: std::collections::BTreeMap<String, usize>,
+}
+
+fn serialize_utf16_count_map<S>(
+    counts: &std::collections::BTreeMap<String, usize>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let mut entries = counts.iter().collect::<Vec<_>>();
+    entries.sort_by(|(left, _), (right, _)| left.encode_utf16().cmp(right.encode_utf16()));
+    let mut map = serializer.serialize_map(Some(entries.len()))?;
+    for (key, value) in entries {
+        map.serialize_entry(key, value)?;
+    }
+    map.end()
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -255,7 +503,24 @@ pub struct GraphPayload {
     pub revision: u64,
     pub nodes: Vec<GraphNode>,
     pub edges: Vec<GraphEdge>,
+    #[serde(serialize_with = "serialize_utf16_backlinks")]
     pub backlinks: std::collections::BTreeMap<String, Vec<String>>,
     pub broken_links: Vec<BrokenLinkPresentation>,
     pub statistics: GraphStatistics,
+}
+
+fn serialize_utf16_backlinks<S>(
+    backlinks: &std::collections::BTreeMap<String, Vec<String>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let mut entries = backlinks.iter().collect::<Vec<_>>();
+    entries.sort_by(|(left, _), (right, _)| left.encode_utf16().cmp(right.encode_utf16()));
+    let mut map = serializer.serialize_map(Some(entries.len()))?;
+    for (key, value) in entries {
+        map.serialize_entry(key, value)?;
+    }
+    map.end()
 }

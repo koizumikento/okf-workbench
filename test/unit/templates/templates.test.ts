@@ -163,17 +163,17 @@ describe('built-in bundle presets', () => {
 
       expectConformant(bundle);
       expect(
-        bundle.concepts.map(({ id, type, title, tags, timestamp }) => ({
+        bundle.concepts.map(({ id, type, title, tags, generated }) => ({
           id,
           type,
           title,
           tags,
-          timestamp,
+          generated,
         })),
       ).toEqual(
         expected.concepts.map((concept) => ({
           ...concept,
-          timestamp: TEMPLATE_TIMESTAMP,
+          generated: { by: 'process:okf-workbench', at: TEMPLATE_TIMESTAMP },
         })),
       );
       expect(
@@ -186,13 +186,13 @@ describe('built-in bundle presets', () => {
         expected.indexes.map((path) => ({
           path,
           reservedKind: 'index',
-          ...(path === 'index.md' ? { okfVersion: '0.1' } : {}),
+          ...(path === 'index.md' ? { okfVersion: '0.2' } : {}),
         })),
       );
     },
   );
 
-  it('keeps directory indexes to the generated region and declares v0.1 at the root', () => {
+  it('keeps directory indexes to the generated region and declares v0.2 at the root', () => {
     const files = valueOf(
       renderBundlePreset({
         preset: 'software-project',
@@ -201,7 +201,7 @@ describe('built-in bundle presets', () => {
     );
     const byPath = new Map(files.map((file) => [file.relativePath, file]));
 
-    expect(byPath.get('index.md')?.content).toMatch(/^---\nokf_version: "0\.1"\n---\n/u);
+    expect(byPath.get('index.md')?.content).toMatch(/^---\nokf_version: "0\.2"\n---\n/u);
     expect(byPath.get('architecture/index.md')?.content).toBe(
       '<!-- okf-workbench:index:start -->\n' +
         '## Contents\n\n' +
@@ -227,7 +227,7 @@ describe('built-in bundle presets', () => {
 });
 
 describe('built-in concept templates', () => {
-  it('offers all seven documented templates without closing the type vocabulary', () => {
+  it('offers all eight documented templates without closing the type vocabulary', () => {
     expect(CONCEPT_TEMPLATE_DEFINITIONS.map(({ id }) => id)).toEqual(CONCEPT_TEMPLATES);
 
     for (const template of CONCEPT_TEMPLATES) {
@@ -245,7 +245,7 @@ describe('built-in concept templates', () => {
     }
   });
 
-  it('round-trips all seven variants with their documented semantic shape', () => {
+  it('round-trips all eight variants with their documented semantic shape', () => {
     const rootIndex = valueOf(
       renderBundlePreset({
         preset: 'minimal',
@@ -269,13 +269,14 @@ describe('built-in concept templates', () => {
 
     expectConformant(bundle);
     expect(
-      bundle.concepts.map(({ id, type, title, description, tags, timestamp }) => ({
+      bundle.concepts.map(({ id, type, title, description, tags, generated, runtime }) => ({
         id,
         type,
         title,
         description,
         tags,
-        timestamp,
+        generated,
+        runtime,
       })),
     ).toEqual(
       [...CONCEPT_TEMPLATE_DEFINITIONS]
@@ -294,7 +295,10 @@ describe('built-in concept templates', () => {
           title: definition.title,
           description: `Canonical ${definition.title} template.`,
           tags: ['template', definition.id],
-          timestamp: TEMPLATE_TIMESTAMP,
+          generated: { by: 'process:okf-workbench', at: TEMPLATE_TIMESTAMP },
+          ...(definition.id === 'attested-computation'
+            ? { runtime: 'replace-with-runtime' }
+            : { runtime: undefined }),
         })),
     );
   });
@@ -339,7 +343,9 @@ describe('built-in concept templates', () => {
         '  - "日本語"',
         '  - "space tag"',
         '  - "quote\\"tag"',
-        'timestamp: "2026-07-22T10:00:00+09:00"',
+        'generated:',
+        '  by: "process:okf-workbench"',
+        '  at: "2026-07-22T10:00:00+09:00"',
         '---',
         '',
         '## Summary',

@@ -47,7 +47,8 @@ versions when available. Do not infer support from a package-only build or a con
 
 ## Troubleshooting
 
-1. Confirm the workspace contains a root `index.md` with `okf_version: "0.1"`.
+1. Confirm the workspace contains a root `index.md` with `okf_version: "0.2"` or the supported
+   legacy declaration `okf_version: "0.1"`.
 2. Run `OKF: Validate Bundle` and review the OKF diagnostic collections in Problems.
 3. Open **View: Output**, select **OKF Workbench**, and inspect the non-content operational events.
 4. Retry after confirming workspace availability, permissions, and trust state.

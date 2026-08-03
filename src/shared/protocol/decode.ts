@@ -128,7 +128,21 @@ function isGraphNode(value: unknown): value is GraphNode {
     !hasOnlyKeys(
       value,
       ['id', 'type', 'tags', 'orphan', 'brokenLinkCount'],
-      ['sourceFailed', 'title', 'description', 'resource', 'timestamp'],
+      [
+        'sourceFailed',
+        'title',
+        'description',
+        'resource',
+        'timestamp',
+        'generatedBy',
+        'generatedAt',
+        'trustTier',
+        'status',
+        'staleAfter',
+        'sourceCount',
+        'runtime',
+        'computation',
+      ],
     ) ||
     !isGraphIdentity(value.id) ||
     !isBoundedString(
@@ -143,7 +157,18 @@ function isGraphNode(value: unknown): value is GraphNode {
     !isOptionalBoundedString(value, 'title', OKF_SEMANTIC_LIMITS.maxTitleCodeUnits) ||
     !isOptionalBoundedString(value, 'description', OKF_SEMANTIC_LIMITS.maxDescriptionCodeUnits) ||
     !isOptionalBoundedString(value, 'resource', OKF_SEMANTIC_LIMITS.maxResourceCodeUnits) ||
-    !isOptionalBoundedString(value, 'timestamp', OKF_SEMANTIC_LIMITS.maxTimestampCodeUnits)
+    !isOptionalBoundedString(value, 'timestamp', OKF_SEMANTIC_LIMITS.maxTimestampCodeUnits) ||
+    !isOptionalBoundedString(value, 'generatedBy', OKF_SEMANTIC_LIMITS.maxResourceCodeUnits) ||
+    !isOptionalBoundedString(value, 'generatedAt', OKF_SEMANTIC_LIMITS.maxTimestampCodeUnits) ||
+    !isOptionalBoundedString(value, 'status', OKF_SEMANTIC_LIMITS.maxTypeCodeUnits) ||
+    !isOptionalBoundedString(value, 'staleAfter', OKF_SEMANTIC_LIMITS.maxTimestampCodeUnits) ||
+    !isOptionalBoundedString(value, 'runtime', OKF_SEMANTIC_LIMITS.maxTypeCodeUnits) ||
+    !isOptionalBoundedString(value, 'computation', OKF_SEMANTIC_LIMITS.maxResourceCodeUnits) ||
+    (Object.hasOwn(value, 'sourceCount') && !isNonNegativeSafeInteger(value.sourceCount)) ||
+    (Object.hasOwn(value, 'trustTier') &&
+      value.trustTier !== 'unverified' &&
+      value.trustTier !== 'machine-confirmed' &&
+      value.trustTier !== 'human-reviewed')
   ) {
     return false;
   }
@@ -164,7 +189,15 @@ function isGraphNode(value: unknown): value is GraphNode {
       !Object.hasOwn(value, 'title') &&
       !Object.hasOwn(value, 'description') &&
       !Object.hasOwn(value, 'resource') &&
-      !Object.hasOwn(value, 'timestamp')
+      !Object.hasOwn(value, 'timestamp') &&
+      !Object.hasOwn(value, 'generatedBy') &&
+      !Object.hasOwn(value, 'generatedAt') &&
+      !Object.hasOwn(value, 'trustTier') &&
+      !Object.hasOwn(value, 'status') &&
+      !Object.hasOwn(value, 'staleAfter') &&
+      !Object.hasOwn(value, 'sourceCount') &&
+      !Object.hasOwn(value, 'runtime') &&
+      !Object.hasOwn(value, 'computation')
     );
   }
   return true;

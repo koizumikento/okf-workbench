@@ -336,7 +336,7 @@ suite('OKF Workbench provider URI boundary', () => {
         },
         {
           root: missingIndexRoot,
-          expectedCode: 'okf.conformance.root-index',
+          expectedCode: undefined,
         },
         {
           root: malformedRoot,

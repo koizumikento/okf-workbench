@@ -16,7 +16,7 @@ Exit gate: the repository can build, test, and package an empty extension reprod
 
 - Parse bundles and concept frontmatter.
 - Resolve bundle-relative and relative Markdown links.
-- Validate OKF v0.1 conformance.
+- Validate OKF v0.2 conformance with guarded v0.1 fallback compatibility.
 - Produce curation findings separately.
 - Generate and safely merge index content.
 - Render built-in bundle and concept templates.

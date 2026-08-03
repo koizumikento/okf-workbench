@@ -45,14 +45,23 @@ const utf8Encoder = new TextEncoder();
 
 /** Parse an enumerated logical bundle without accessing a filesystem or editor API. */
 export function parseBundle(input: ParseBundleInput): ParsedBundle {
-  const rootUriFailure = boundedIdentityFailure(
-    input.rootUri,
-    OKF_SEMANTIC_LIMITS.maxSourceUriCodeUnits,
-    OKF_SEMANTIC_LIMITS.maxSourceUriBytes,
-    'Bundle root URI',
-  );
+  const invalidRootUriUnicode = hasUnpairedUtf16Surrogate(input.rootUri);
+  const rootUriFailure = invalidRootUriUnicode
+    ? 'Bundle root URI contains an unpaired UTF-16 surrogate.'
+    : boundedIdentityFailure(
+        input.rootUri,
+        OKF_SEMANTIC_LIMITS.maxSourceUriCodeUnits,
+        OKF_SEMANTIC_LIMITS.maxSourceUriBytes,
+        'Bundle root URI',
+      );
   if (rootUriFailure !== undefined) {
-    return resourceLimitBundle(input, '<bundle-root-uri-exceeds-limit>', rootUriFailure);
+    return resourceLimitBundle(
+      input,
+      invalidRootUriUnicode
+        ? '<bundle-root-uri-invalid-unicode>'
+        : '<bundle-root-uri-exceeds-limit>',
+      rootUriFailure,
+    );
   }
   if (input.documents.length > OKF_SEMANTIC_LIMITS.maxRuntimeDocuments) {
     return resourceLimitBundle(
@@ -85,24 +94,39 @@ export function parseBundle(input: ParseBundleInput): ParsedBundle {
   let bundleLimitReached = false;
 
   for (const document of input.documents) {
-    const providerPathFailure = boundedIdentityFailure(
-      document.bundlePath,
-      OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits,
-      OKF_SEMANTIC_LIMITS.maxProviderPathBytes,
-      'Provider-relative path',
-    );
-    const uriFailure = boundedIdentityFailure(
-      document.uri,
-      OKF_SEMANTIC_LIMITS.maxSourceUriCodeUnits,
-      OKF_SEMANTIC_LIMITS.maxSourceUriBytes,
-      'Source URI',
-    );
+    const invalidProviderPathUnicode = hasUnpairedUtf16Surrogate(document.bundlePath);
+    const invalidUriUnicode = hasUnpairedUtf16Surrogate(document.uri);
+    const providerPathFailure = invalidProviderPathUnicode
+      ? 'Provider-relative path contains an unpaired UTF-16 surrogate.'
+      : boundedIdentityFailure(
+          document.bundlePath,
+          OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits,
+          OKF_SEMANTIC_LIMITS.maxProviderPathBytes,
+          'Provider-relative path',
+        );
+    const uriFailure = invalidUriUnicode
+      ? 'Source URI contains an unpaired UTF-16 surrogate.'
+      : boundedIdentityFailure(
+          document.uri,
+          OKF_SEMANTIC_LIMITS.maxSourceUriCodeUnits,
+          OKF_SEMANTIC_LIMITS.maxSourceUriBytes,
+          'Source URI',
+        );
     if (providerPathFailure !== undefined || uriFailure !== undefined) {
       failures.push({
         kind: 'parse-failure',
-        uri: uriFailure === undefined ? document.uri : '<provider-uri-exceeds-limit>',
+        uri:
+          uriFailure === undefined
+            ? document.uri
+            : invalidUriUnicode
+              ? '<provider-uri-invalid-unicode>'
+              : '<provider-uri-exceeds-limit>',
         bundlePath:
-          providerPathFailure === undefined ? document.bundlePath : '<provider-path-exceeds-limit>',
+          providerPathFailure === undefined
+            ? document.bundlePath
+            : invalidProviderPathUnicode
+              ? '<provider-path-invalid-unicode>'
+              : '<provider-path-exceeds-limit>',
         reason: 'resource-limit',
         scope: 'document',
         message: providerPathFailure ?? uriFailure ?? 'Provider identity exceeds a safety limit.',
@@ -125,11 +149,14 @@ export function parseBundle(input: ParseBundleInput): ParsedBundle {
       });
       continue;
     }
+    const invalidContentHashUnicode =
+      document.contentHash !== undefined && hasUnpairedUtf16Surrogate(document.contentHash);
     const contentHashSafe =
       document.identityOnlyFailure !== undefined ||
       !(
         document.contentHash !== undefined &&
-        document.contentHash.length > OKF_SEMANTIC_LIMITS.maxContentHashCodeUnits
+        (invalidContentHashUnicode ||
+          document.contentHash.length > OKF_SEMANTIC_LIMITS.maxContentHashCodeUnits)
       );
     if (!contentHashSafe) {
       failures.push({
@@ -138,7 +165,9 @@ export function parseBundle(input: ParseBundleInput): ParsedBundle {
         bundlePath: canonical.path,
         reason: 'resource-limit',
         scope: 'document',
-        message: `Content identity exceeds the ${String(OKF_SEMANTIC_LIMITS.maxContentHashCodeUnits)}-code-unit safety limit. Refresh the bundle from a conforming provider, then retry.`,
+        message: invalidContentHashUnicode
+          ? 'Content identity contains an unpaired UTF-16 surrogate. Refresh the bundle from a conforming provider, then retry.'
+          : `Content identity exceeds the ${String(OKF_SEMANTIC_LIMITS.maxContentHashCodeUnits)}-code-unit safety limit. Refresh the bundle from a conforming provider, then retry.`,
       });
     }
     canonicalInputs.push({ input: document, bundlePath: canonical.path, contentHashSafe });
@@ -648,6 +677,18 @@ export function parseBundle(input: ParseBundleInput): ParsedBundle {
         ...(normalized.resource === undefined ? {} : { resource: normalized.resource }),
         tags: normalized.tags,
         ...(normalized.timestamp === undefined ? {} : { timestamp: normalized.timestamp }),
+        ...(normalized.generated === undefined ? {} : { generated: normalized.generated }),
+        verified: normalized.verified ?? [],
+        trustTier: normalized.trustTier ?? 'unverified',
+        ...(normalized.status === undefined ? {} : { status: normalized.status }),
+        ...(normalized.staleAfter === undefined ? {} : { staleAfter: normalized.staleAfter }),
+        sources: normalized.sources ?? [],
+        ...(normalized.usageWindow === undefined ? {} : { usageWindow: normalized.usageWindow }),
+        ...(normalized.runtime === undefined ? {} : { runtime: normalized.runtime }),
+        parameters: normalized.parameters ?? [],
+        ...(normalized.computation === undefined ? {} : { computation: normalized.computation }),
+        ...(normalized.executor === undefined ? {} : { executor: normalized.executor }),
+        ...(normalized.attester === undefined ? {} : { attester: normalized.attester }),
         body: parsed.body,
         bodyRange: ranges.range(parsed.bodyStart, text.length),
       },
@@ -832,10 +873,20 @@ function partialPendingConcept(
         source: '',
         range: emptyRange,
         fields: {},
-        normalized: { tags: [] },
+        normalized: {
+          tags: [],
+          verified: [],
+          trustTier: 'unverified',
+          sources: [],
+          parameters: [],
+        },
       },
       type: '',
       tags: [],
+      verified: [],
+      trustTier: 'unverified',
+      sources: [],
+      parameters: [],
       body: '',
       bodyRange: emptyRange,
     },
@@ -883,6 +934,9 @@ function boundedIdentityFailure(
 }
 
 function boundedFailureMessage(message: string): string {
+  if (hasUnpairedUtf16Surrogate(message)) {
+    return 'Provider failure detail contains an unpaired UTF-16 surrogate.';
+  }
   const limit = OKF_SEMANTIC_LIMITS.maxFailureDetailCodeUnits;
   if (message.length <= limit) {
     return message;
@@ -902,6 +956,12 @@ function conceptMetadataFailure(metadata: NormalizedFrontmatter): string | undef
     metadata.description,
     metadata.resource,
     metadata.timestamp,
+    metadata.generated?.by,
+    metadata.generated?.at,
+    metadata.status,
+    metadata.staleAfter,
+    metadata.runtime,
+    metadata.computation,
     ...metadata.tags,
   ];
   if (unicodeValues.some((value) => value !== undefined && hasUnpairedUtf16Surrogate(value))) {
@@ -942,6 +1002,12 @@ function conceptMetadataFailure(metadata: NormalizedFrontmatter): string | undef
     ['Concept description', metadata.description, OKF_SEMANTIC_LIMITS.maxDescriptionCodeUnits],
     ['Concept resource', metadata.resource, OKF_SEMANTIC_LIMITS.maxResourceCodeUnits],
     ['Concept timestamp', metadata.timestamp, OKF_SEMANTIC_LIMITS.maxTimestampCodeUnits],
+    ['Concept generator actor', metadata.generated?.by, OKF_SEMANTIC_LIMITS.maxResourceCodeUnits],
+    ['Concept generation time', metadata.generated?.at, OKF_SEMANTIC_LIMITS.maxTimestampCodeUnits],
+    ['Concept lifecycle status', metadata.status, OKF_SEMANTIC_LIMITS.maxTypeCodeUnits],
+    ['Concept stale-after date', metadata.staleAfter, OKF_SEMANTIC_LIMITS.maxTimestampCodeUnits],
+    ['Concept computation runtime', metadata.runtime, OKF_SEMANTIC_LIMITS.maxTypeCodeUnits],
+    ['Concept computation path', metadata.computation, OKF_SEMANTIC_LIMITS.maxResourceCodeUnits],
   ];
   for (const [subject, value, limit] of boundedFields) {
     if (value !== undefined && value.length > limit) {
@@ -950,9 +1016,15 @@ function conceptMetadataFailure(metadata: NormalizedFrontmatter): string | undef
   }
   if (
     (metadata.resource !== undefined && hasGraphIdentityControl(metadata.resource)) ||
-    (metadata.timestamp !== undefined && hasGraphIdentityControl(metadata.timestamp))
+    (metadata.timestamp !== undefined && hasGraphIdentityControl(metadata.timestamp)) ||
+    (metadata.generated?.by !== undefined && hasGraphIdentityControl(metadata.generated.by)) ||
+    (metadata.generated?.at !== undefined && hasGraphIdentityControl(metadata.generated.at)) ||
+    (metadata.status !== undefined && hasGraphIdentityControl(metadata.status)) ||
+    (metadata.staleAfter !== undefined && hasGraphIdentityControl(metadata.staleAfter)) ||
+    (metadata.runtime !== undefined && hasGraphIdentityControl(metadata.runtime)) ||
+    (metadata.computation !== undefined && hasGraphIdentityControl(metadata.computation))
   ) {
-    return 'Concept resource or timestamp contains a control character that is unsafe for graph metadata.';
+    return 'Concept scalar metadata contains a control character that is unsafe for graph metadata.';
   }
   return undefined;
 }

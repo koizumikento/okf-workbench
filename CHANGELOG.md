@@ -5,6 +5,22 @@ All notable changes to OKF Workbench are documented in this file.
 The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and intends to use
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) after the first public release.
 
+## Unreleased
+
+### Added
+
+- OKF v0.2 provenance, verification, trust-tier, lifecycle, freshness, source, and Attested
+  Computation metadata are normalized by the shared Rust/Wasm core and surfaced in graph details.
+- Attested Computation is available as an eighth built-in concept template.
+
+### Changed
+
+- New bundles and synthesized root indexes now declare `okf_version: "0.2"`. Existing v0.1 bundles
+  remain readable and eligible for guarded authoring without an implicit version rewrite.
+- Injected concept generation times now render as `generated.by` and `generated.at`; legacy
+  `timestamp` is consulted only when `generated` is absent.
+- Malformed optional v0.2 metadata remains a curation concern rather than a conformance error.
+
 ## 0.2.1 - 2026-07-28
 
 ### Fixed

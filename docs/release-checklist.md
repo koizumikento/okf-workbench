@@ -3,11 +3,13 @@
 - Candidate: OKF Workbench `0.3.0`
 - Target identifier: `straydog.okf-workbench`
 - Registry: Open VSX
-- Candidate disposition: **Not yet published**
+- Published `0.3.0` disposition: **Released on 2026-08-03; the signed tag, GitHub Release, Open
+  VSX package set, package-manager manifests, and available post-publication lifecycle checks
+  passed**
 - Publication authority: a matching signed `v*` tag pushed for a reviewed commit contained in
   `main`
 
-This checklist prepares the `0.3.0` feature release. The candidate adds OKF v0.2 semantics,
+This checklist prepares and records the `0.3.0` feature release. The release adds OKF v0.2 semantics,
 retains a guarded v0.1 compatibility fallback, adds Attested Computation, and provides explicit
 previewed v0.1-to-v0.2 migration. Evidence retained for `0.2.1` is predecessor evidence only and
 does not qualify these bytes. The completed `0.2.1` record is archived at
@@ -129,16 +131,19 @@ fallback. Open VSX versions are immutable; recover from a defective release with
 
 ## Post-publication verification
 
-- [ ] Confirm the signed `v0.3.0` tag and GitHub Release identify the qualified revision.
-- [ ] Confirm the release contains the universal and four target VSIX packages, four CLI archives,
+- [x] Confirm the signed `v0.3.0` tag and GitHub Release identify the qualified revision.
+- [x] Confirm the release contains the universal and four target VSIX packages, four CLI archives,
       and all checksum files.
-- [ ] Confirm Open VSX reports `straydog.okf-workbench` version `0.3.0` and all target packages.
-- [ ] Download the published universal VSIX and compare it with the release checksum.
-- [ ] Install `0.3.0` from Open VSX in a clean supported VSCodium profile and run the minimal
-      offline workflow.
-- [ ] Verify upgrade from `0.2.1`, uninstall behavior, and workspace-content preservation.
-- [ ] Confirm `koizumikento/stray-tools` contains matching `0.3.0` Homebrew and Scoop manifests.
-- [ ] Run clean Homebrew and Scoop installs, verify `okf version`, and uninstall afterward.
+- [x] Confirm Open VSX reports `straydog.okf-workbench` version `0.3.0` and all target packages.
+- [x] Download the published universal VSIX and compare it with the release checksum.
+- [x] Install the published macOS arm64 `0.3.0` VSIX from Open VSX in a clean supported VSCodium
+      profile and run the minimal offline workflow.
+- [x] Verify upgrade from `0.2.1`, uninstall behavior, settings preservation, and workspace-content
+      preservation.
+- [x] Confirm `koizumikento/stray-tools` contains matching `0.3.0` Homebrew and Scoop manifests.
+- [x] Run a clean Homebrew install, verify CLI/core `0.3.0`, run the formula test, and uninstall it.
+- [ ] Run a clean Scoop install and verify `okf version`; this requires a Windows environment and
+      was not available for the macOS post-publication check.
 - [ ] Revoke the one-time token, or record the owner, scope, storage, and rotation date for a
       retained release credential.
 
@@ -156,12 +161,12 @@ fallback. Open VSX versions are immutable; recover from a defective release with
 | Qualified universal VSIX candidate | `1,309,227` bytes; SHA-256 `d96aa19cc3ada5d4e34618d41bedc4195efa368e2b51b8ff8977984e815caf57` |
 | Canonical Wasm | SHA-256 `a5df92505393436fb3a7676d0f7c9c03756ffd225f65ba889efdf0ce81f935fe` |
 | Node / npm / Rust | `24.18.0` / `11.16.0` / `1.92.0` |
-| Signed tag | Pending |
-| Release workflow | Pending |
-| GitHub Release | Pending |
-| Open VSX listing | Pending |
-| Post-publication lifecycle | Pending |
-| Homebrew / Scoop repository | Pending |
+| Signed tag | `v0.3.0` on `3ca746d75538d656d894d8e768b143a078e420a6`; local SSH signature verification passed |
+| Release workflow | [Pass — run 30806349131](https://github.com/koizumikento/okf-workbench/actions/runs/30806349131); all eight validation, packaging, GitHub Release, manifest, and Open VSX jobs passed |
+| GitHub Release | [Published](https://github.com/koizumikento/okf-workbench/releases/tag/v0.3.0) with 18 assets: universal and four target VSIX packages, four CLI archives, and nine checksum files |
+| Open VSX listing | [Published and verified](https://open-vsx.org/extension/straydog/okf-workbench) as `0.3.0` with the universal and four target packages; each downloaded package matched its GitHub Release size and SHA-256 |
+| Post-publication lifecycle | Pass — published Open VSX macOS arm64 VSIX, VSCodium `1.121.03429` on macOS arm64, clean install, offline activation, untrusted-workspace behavior, `0.2.1` upgrade, uninstall, settings preservation, and workspace preservation |
+| Homebrew / Scoop repository | [`koizumikento/stray-tools`](https://github.com/koizumikento/stray-tools) commit `e7bf5b9d20001e0f104326bbaa3c4d4b7d8c5c3e`; Homebrew clean install returned CLI/core `0.3.0`, its formula test passed, and it was removed; Scoop manifest verified but clean Windows install remains pending |
 
 ## Rollback
 

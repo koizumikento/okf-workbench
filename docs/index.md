@@ -73,6 +73,7 @@ are the source of truth for the initial product and engineering direction.
 | Document | Purpose |
 | --- | --- |
 | [Release checklist](release-checklist.md) | Immutable candidate, approval, publication, verification, and rollback gates |
+| [0.3.0 release record](releases/0.3.0.md) | Completed signed-tag, publication, artifact, and lifecycle evidence for 0.3.0 |
 | [0.2.1 release record](releases/0.2.1.md) | Completed signed-tag, publication, artifact, and lifecycle evidence for 0.2.1 |
 | [Open VSX listing draft](open-vsx-listing.md) | Candidate metadata and listing copy for `straydog.okf-workbench` |
 | [Compatibility matrix](compatibility-matrix.md) | Exact editor/OS lanes and required retained lifecycle evidence |

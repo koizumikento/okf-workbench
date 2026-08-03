@@ -13,7 +13,11 @@ import {
   countFencedCodeBlocksInTopLevelSection,
   extractMarkdownHeadings,
 } from '../parser/markdown.js';
-import { isValidActor, semanticFrontmatterStringAt } from '../parser/frontmatter.js';
+import {
+  isValidActor,
+  isValidSourceAuthor,
+  semanticFrontmatterStringAt,
+} from '../parser/frontmatter.js';
 import { SourceRangeIndex } from '../parser/source-range.js';
 
 export interface ValidationOptions {
@@ -433,7 +437,7 @@ function validateV02Metadata(concept: Concept, nowMs: number, findings: Finding[
           normalized.resource.trim().length > 0 &&
           (!Object.hasOwn(object, 'id') || normalized.id !== undefined) &&
           (!Object.hasOwn(object, 'title') || normalized.title !== undefined) &&
-          (author === undefined || isValidActor(author)) &&
+          (author === undefined || isValidSourceAuthor(author)) &&
           (!Object.hasOwn(object ?? {}, 'author') || author !== undefined) &&
           (!Object.hasOwn(object, 'usage_count') || normalized.usageCount !== undefined) &&
           (!Object.hasOwn(object, 'usage_count') ||

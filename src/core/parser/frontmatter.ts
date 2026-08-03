@@ -648,6 +648,14 @@ export function isValidActor(value: string): boolean {
   );
 }
 
+/** Source-author compatibility for the canonical v0.2 `team:<id>` example. */
+export function isValidSourceAuthor(value: string): boolean {
+  if (isValidActor(value)) return true;
+  if (value.length === 0 || value.length > 256 || value.trim() !== value) return false;
+  const team = value.startsWith('team:') ? value.slice('team:'.length) : '';
+  return team.length > 0 && /^[A-Za-z0-9._/@:-]+$/u.test(team);
+}
+
 function isRfc3339DateTime(value: string): boolean {
   const match =
     /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/u.exec(value);

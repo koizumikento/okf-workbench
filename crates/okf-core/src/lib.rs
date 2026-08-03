@@ -183,6 +183,15 @@ pub fn dispatch_json(request_json: &str) -> String {
             });
             let findings = validate_bundle(&bundle, &input.now);
             bundle.findings.clone_from(&findings);
+            if bundle.failures.iter().any(|failure| {
+                failure.reason == ParseFailureReason::ResourceLimit
+                    && failure.scope.as_deref() == Some("bundle")
+            }) {
+                return serialize_response(CoreResponse::failure(
+                    "graph-resource-limit",
+                    "A bundle-scoped resource failure prevents graph publication.",
+                ));
+            }
             let graph = build_graph_payload(&bundle);
             CoreResponse::success(Inspection {
                 bundle,
@@ -203,7 +212,17 @@ pub fn dispatch_json(request_json: &str) -> String {
         }
         CoreRequest::Graph(input) => {
             let bundle = parse_bundle(input);
-            CoreResponse::success(build_graph_payload(&bundle))
+            if bundle.failures.iter().any(|failure| {
+                failure.reason == ParseFailureReason::ResourceLimit
+                    && failure.scope.as_deref() == Some("bundle")
+            }) {
+                CoreResponse::failure(
+                    "graph-resource-limit",
+                    "A bundle-scoped resource failure prevents graph publication.",
+                )
+            } else {
+                CoreResponse::success(build_graph_payload(&bundle))
+            }
         }
         CoreRequest::RenderBundle(input) => {
             match bundle_preset_files_checked(input.preset, &input.timestamp) {

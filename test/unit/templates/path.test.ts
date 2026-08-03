@@ -52,10 +52,38 @@ describe('template output path safety', () => {
     '%252e%252e%252fescape.md',
     '%252fabsolute.md',
     'C%253A%255Coutside.md',
+    'safe/file.md:payload',
+    'safe/file%3Astream.md',
     '%2568%2574%2574%2570%2573%253A%252F%252Fexample.test%252Fconcept.md',
   ])('rejects encoded or repeatedly encoded containment escape %s', (input) => {
     expect(normalizeConceptPath(input)).toMatchObject({ ok: false });
   });
+
+  it.each([
+    'CON.md',
+    'aux.md',
+    'COM1.md',
+    'folder/Lpt9.md',
+    'folder/name?.md',
+    'folder/a|b.md',
+    'folder/a<b>.md',
+    'folder/quote"name.md',
+    'folder/name%3F.md',
+    'folder/trailing .md ',
+    'folder/trailing.',
+  ])('rejects a generated path with a non-portable Windows component: %s', (input) => {
+    expect(normalizeConceptPath(input)).toMatchObject({
+      ok: false,
+      problems: [{ code: 'unsafe-relative-path' }],
+    });
+  });
+
+  it.each(['COM0.md', 'COM10.md', 'console.md', '.CON.md'])(
+    'keeps a non-device Windows-compatible filename valid: %s',
+    (input) => {
+      expect(normalizeConceptPath(input)).toMatchObject({ ok: true, value: input });
+    },
+  );
 
   it('refuses an unsafe target in the pure renderer before a workspace proposal exists', () => {
     expect(
@@ -164,6 +192,16 @@ describe('template output path safety', () => {
     },
   );
 
+  it('keeps provider identities outside generated-filesystem component policy', () => {
+    for (const input of ['docs:knowledge', 'folder/CON', 'folder/name?', 'folder/trailing.']) {
+      expect(preserveProviderBundleDirectory(input)).toEqual({
+        ok: true,
+        value: { pathIdentity: 'provider', relativePath: input },
+        warnings: [],
+      });
+    }
+  });
+
   it('does not weaken URI-like or percent-encoded user bundle path validation', () => {
     expect(normalizeBundleDirectory('docs:knowledge')).toMatchObject({ ok: false });
     expect(normalizeBundleDirectory('literal%2Fsegment/知識')).toEqual({
@@ -206,7 +244,7 @@ describe('template output path safety', () => {
   });
 
   it('accepts exact relative-path code-unit and UTF-8 boundaries and rejects +1', () => {
-    const exactAscii = `${'a'.repeat(OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits - 3)}.md`;
+    const exactAscii = `${`${'a'.repeat(255)}/`.repeat(15)}a/${'a'.repeat(251)}.md`;
     expect(exactAscii).toHaveLength(OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits);
     expect(normalizeConceptPath(exactAscii)).toMatchObject({ ok: true, value: exactAscii });
     expect(normalizeConceptPath(`a${exactAscii}`)).toMatchObject({
@@ -214,7 +252,7 @@ describe('template output path safety', () => {
       problems: [{ message: expect.stringContaining('UTF-16 code units') }],
     });
 
-    const exactUtf8 = `${'雪'.repeat((OKF_SEMANTIC_LIMITS.maxProviderPathBytes - 4) / 3)}a.md`;
+    const exactUtf8 = `${`${'雪'.repeat(85)}/`.repeat(15)}雪/${'雪'.repeat(83)}.md`;
     expect(new TextEncoder().encode(exactUtf8)).toHaveLength(
       OKF_SEMANTIC_LIMITS.maxProviderPathBytes,
     );
@@ -230,6 +268,14 @@ describe('template output path safety', () => {
     expect(preserveProviderConceptPath(`雪${exactUtf8}`)).toMatchObject({
       ok: false,
       problems: [{ message: expect.stringContaining('UTF-8 bytes') }],
+    });
+  });
+
+  it('accepts a 255-byte generated component and rejects 256 bytes', () => {
+    expect(normalizeConceptPath(`${'a'.repeat(252)}.md`)).toMatchObject({ ok: true });
+    expect(normalizeConceptPath(`${'a'.repeat(253)}.md`)).toMatchObject({
+      ok: false,
+      problems: [{ code: 'unsafe-relative-path' }],
     });
   });
 

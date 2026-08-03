@@ -287,6 +287,10 @@ pub struct ParsedBundle {
 pub enum DocumentContent {
     Text(String),
     Bytes(Vec<u8>),
+    InvalidUtf16 {
+        #[serde(rename = "invalidUtf16")]
+        _invalid_utf16: bool,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize)]

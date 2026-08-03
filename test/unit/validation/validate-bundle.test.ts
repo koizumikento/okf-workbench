@@ -423,9 +423,22 @@ describe('validateBundle', () => {
             'verified: { by: "human:", at: 2026-07-30T02:00:00Z }',
             'sources:',
             '  - resource: https://example.com/source',
-            '    author: team:finance',
+            '    author: "team:"',
             '---',
             '# Invalid actors',
+            '',
+          ].join('\n'),
+        ),
+        document(
+          'canonical-source-author.md',
+          [
+            '---',
+            'type: Reference',
+            'sources:',
+            '  - resource: https://developers.google.com/analytics/bigquery/export-schema',
+            '    author: team:ga4-docs',
+            '---',
+            '# Canonical source author',
             '',
           ].join('\n'),
         ),
@@ -673,6 +686,7 @@ describe('validateBundle', () => {
       ]),
     );
     expect(findingsFor('both-computations')).toContain(VALIDATION_CODES.invalidAttestedComputation);
+    expect(findingsFor('canonical-source-author')).not.toContain(VALIDATION_CODES.invalidSources);
     expect(findingsFor('safe-count')).not.toContain(VALIDATION_CODES.invalidSources);
     expect(findingsFor('unsafe-count')).toContain(VALIDATION_CODES.invalidSources);
     for (const code of [

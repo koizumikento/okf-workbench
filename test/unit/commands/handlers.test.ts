@@ -31,6 +31,21 @@ const writableBundleSelection = {
   workspaceSafetyRootUri: workspaceRoot,
 } as const;
 
+function exactPortableAsciiPrefix(suffix: string): string {
+  let remaining = OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits - suffix.length;
+  const segments: string[] = [];
+  while (remaining > 255) {
+    segments.push('a'.repeat(255));
+    remaining -= 256;
+  }
+  segments.push('a'.repeat(remaining));
+  return segments.join('/');
+}
+
+function exactPortableUtf8Component(): string {
+  return '雪'.repeat(85);
+}
+
 function exactUtf8Prefix(suffix: string): string {
   const remaining = OKF_SEMANTIC_LIMITS.maxProviderPathBytes - encoder.encode(suffix).byteLength;
   const multibyteCount = Math.floor(remaining / 3);
@@ -429,9 +444,7 @@ describe('authoring command handlers', () => {
   });
 
   it('creates at the exact initialization path boundary and refuses +1 before workspace I/O', async () => {
-    const exactDirectory = 'a'.repeat(
-      OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits - '/index.md'.length,
-    );
+    const exactDirectory = exactPortableAsciiPrefix('/index.md');
     const exactHarness = harness();
     exactHarness.ui.inputs.push(exactDirectory);
     exactHarness.ui.selections.push('minimal');
@@ -475,8 +488,8 @@ describe('authoring command handlers', () => {
     expect(exceededHarness.port.writes).toEqual([]);
   });
 
-  it('enforces the exact UTF-8 initialization output path and its first byte overage', async () => {
-    const exactDirectory = exactUtf8Prefix('/index.md');
+  it('enforces the exact portable UTF-8 initialization component and its first byte overage', async () => {
+    const exactDirectory = exactPortableUtf8Component();
     const exactHarness = harness();
     exactHarness.ui.inputs.push(exactDirectory);
     exactHarness.ui.selections.push('minimal');
@@ -493,9 +506,7 @@ describe('authoring command handlers', () => {
     });
 
     await expect(exactCommand()).resolves.toMatchObject({ kind: 'applied' });
-    expect(encoder.encode(`${exactDirectory}/index.md`)).toHaveLength(
-      OKF_SEMANTIC_LIMITS.maxProviderPathBytes,
-    );
+    expect(encoder.encode(exactDirectory)).toHaveLength(255);
     expect(exactHarness.previewer.shown).toEqual([]);
 
     const exceededHarness = harness();
@@ -694,9 +705,7 @@ describe('authoring command handlers', () => {
   });
 
   it('creates at the exact concept path boundary and refuses a combined +1 path', async () => {
-    const exactDestination = 'd'.repeat(
-      OKF_SEMANTIC_LIMITS.maxProviderPathCodeUnits - '/a.md'.length,
-    );
+    const exactDestination = exactPortableAsciiPrefix('/a.md');
     const exactHarness = harness();
     exactHarness.ui.selections.push('generic-concept');
     exactHarness.ui.inputs.push(exactDestination, 'concept', 'Exact path', '', '', 'a.md');
@@ -733,8 +742,8 @@ describe('authoring command handlers', () => {
     expect(exceededHarness.port.writes).toEqual([]);
   });
 
-  it('enforces the exact UTF-8 concept output path and its first byte overage', async () => {
-    const exactDestination = exactUtf8Prefix('/a.md');
+  it('enforces the exact portable UTF-8 concept component and its first byte overage', async () => {
+    const exactDestination = exactPortableUtf8Component();
     const exactHarness = harness();
     exactHarness.ui.selections.push('generic-concept');
     exactHarness.ui.inputs.push(exactDestination, 'concept', 'Exact UTF-8 path', '', '', 'a.md');
@@ -744,9 +753,7 @@ describe('authoring command handlers', () => {
     });
 
     await expect(exactCommand()).resolves.toMatchObject({ kind: 'applied' });
-    expect(encoder.encode(`${exactDestination}/a.md`)).toHaveLength(
-      OKF_SEMANTIC_LIMITS.maxProviderPathBytes,
-    );
+    expect(encoder.encode(exactDestination)).toHaveLength(255);
     expect(exactHarness.previewer.shown).toEqual([]);
 
     const exceededHarness = harness();

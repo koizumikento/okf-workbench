@@ -532,6 +532,29 @@ fn validate_template_timestamp(timestamp: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn is_windows_device_name(segment: &str) -> bool {
+    let basename = segment
+        .split_once('.')
+        .map_or(segment, |(basename, _)| basename)
+        .to_ascii_uppercase();
+    matches!(basename.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ["COM", "LPT"].iter().any(|prefix| {
+            basename.strip_prefix(prefix).is_some_and(|suffix| {
+                matches!(suffix, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9")
+            })
+        })
+}
+
+fn is_portable_generated_segment(segment: &str) -> bool {
+    segment.len() <= 255
+        && !segment
+            .bytes()
+            .any(|byte| matches!(byte, b'<' | b'>' | b':' | b'"' | b'|' | b'?' | b'*'))
+        && !segment.ends_with('.')
+        && !segment.ends_with(' ')
+        && !is_windows_device_name(segment)
+}
+
 fn validate_bundle_directory(path: &str) -> Result<String, String> {
     if !bounded_relative_path(path, true) {
         return Err("The path exceeds the supported relative-path limit.".to_owned());
@@ -591,6 +614,14 @@ fn validate_bundle_directory(path: &str) -> Result<String, String> {
             "The path {path:?} contains an empty, current, or parent segment."
         ));
     }
+    if decoded
+        .split('/')
+        .any(|segment| !is_portable_generated_segment(segment))
+    {
+        return Err(format!(
+            "The path {path:?} contains a component that is not portable across supported filesystems."
+        ));
+    }
     Ok(decoded)
 }
 
@@ -616,11 +647,6 @@ fn validate_provider_bundle_directory(path: &str) -> Result<String, String> {
         && (path.len() == 2 || path.as_bytes().get(2) == Some(&b'/'));
     if path.starts_with('/') || windows_absolute {
         return Err(format!("The provider path {path:?} is absolute."));
-    }
-    if path.contains(':') {
-        return Err(format!(
-            "The provider path {path:?} contains a colon that is not portable."
-        ));
     }
     if path == "." {
         return Ok(path.to_owned());
@@ -927,6 +953,14 @@ fn validate_concept_path(path: &str) -> Result<String, String> {
             "The path {path:?} contains an empty, current, or parent segment."
         ));
     }
+    if candidate
+        .split('/')
+        .any(|segment| !is_portable_generated_segment(segment))
+    {
+        return Err(format!(
+            "The path {path:?} contains a component that is not portable across supported filesystems."
+        ));
+    }
     let file_name = candidate.rsplit('/').next().unwrap_or_default();
     if matches!(
         file_name.to_ascii_lowercase().as_str(),
@@ -1062,7 +1096,59 @@ mod tests {
         assert!(concept_template_file_checked(&encoded).is_err());
 
         assert!(agent_files_checked(AgentTarget::Both, "folder:stream").is_err());
-        assert!(agent_files_provider_checked(AgentTarget::Both, "folder:stream").is_err());
+        let provider_files =
+            agent_files_provider_checked(AgentTarget::Both, "folder:stream").unwrap();
+        assert_eq!(provider_files.len(), 2);
+        assert!(
+            provider_files
+                .iter()
+                .all(|file| file.content.contains("folder:stream"))
+        );
+    }
+
+    #[test]
+    fn checked_generated_paths_reject_non_portable_windows_components() {
+        for relative_path in [
+            "CON.md",
+            "aux.md",
+            "COM1.md",
+            "folder/name?.md",
+            "folder/a|b.md",
+            "folder/name%3F.md",
+            "folder/trailing .md ",
+            "folder/trailing.",
+        ] {
+            let input = ConceptTemplateInput {
+                template: "generic-concept".to_owned(),
+                relative_path: relative_path.to_owned(),
+                r#type: "custom".to_owned(),
+                title: "A title".to_owned(),
+                description: None,
+                tags: vec![],
+                timestamp: None,
+            };
+            assert!(
+                concept_template_file_checked(&input).is_err(),
+                "{relative_path:?}"
+            );
+        }
+
+        let mut oversized = ConceptTemplateInput {
+            template: "generic-concept".to_owned(),
+            relative_path: format!("{}.md", "a".repeat(253)),
+            r#type: "custom".to_owned(),
+            title: "A title".to_owned(),
+            description: None,
+            tags: vec![],
+            timestamp: None,
+        };
+        assert!(concept_template_file_checked(&oversized).is_err());
+        oversized.relative_path = format!("{}.md", "a".repeat(252));
+        assert!(concept_template_file_checked(&oversized).is_ok());
+
+        assert!(agent_files_checked(AgentTarget::Both, "folder/PRN").is_err());
+        assert!(agent_files_checked(AgentTarget::Both, "folder/name*").is_err());
+        assert!(agent_files_provider_checked(AgentTarget::Both, "folder/PRN").is_ok());
     }
 
     #[test]

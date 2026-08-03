@@ -26,6 +26,13 @@ concept IDs, required concept frontmatter, arbitrary non-empty `type`, and direc
 Markdown links. Broken links, unknown types, unknown fields, and missing optional metadata do not
 make a bundle non-conformant.
 
+The pinned specification says every other `.md` file is a concept. Workbench deliberately excludes
+the root `AGENTS.md` and every `.agents/` subtree from automatic bundle discovery because its agent
+integration writes project-control metadata there; a nested `AGENTS.md` outside `.agents/` remains
+a concept. This is a Workbench inventory deviation, not an additional OKF reserved-filename rule:
+other consumers may treat those files as concepts, and Workbench does not claim conformance
+coverage for content hidden by the exclusion.
+
 Workbench preserves the complete JSON-safe frontmatter map and normalizes these v0.2 families:
 
 - provenance: `sources` and `usage_window`;
@@ -33,11 +40,15 @@ Workbench preserves the complete JSON-safe frontmatter map and normalizes these 
 - lifecycle: `status` and `stale_after`;
 - computation contracts: `runtime`, `parameters`, `computation`, `executor`, and `attester`.
 
-A bare `verified` mapping is normalized as one event. Actors use `human:<id>`, `process:<id>`, or
-`<producer>/<version>` with non-empty ASCII token segments and a maximum length of 256 characters.
-This convention applies to `generated.by`, `verified.by`, and `sources.author`. Trust tier is
-derived only from valid verifier actors: no valid actor is `unverified`, a valid non-`human:`
-actor is `machine-confirmed`, and any valid `human:` actor is `human-reviewed`.
+A bare `verified` mapping is normalized as one event. Actors in `generated.by` and `verified.by`
+use `human:<id>`, `process:<id>`, or `<producer>/<version>` with non-empty ASCII token segments and
+a maximum length of 256 characters. The pinned specification also describes `sources.author` as an
+actor but demonstrates `team:ga4-docs`, which is outside that three-form grammar. Workbench accepts
+that `team:<id>` source-author form under the same bounded token envelope so the canonical example
+remains consumable; this compatibility interpretation applies only to source credibility metadata
+and never elevates a verification trust tier. Trust tier is derived only from valid verifier actors:
+no valid actor is `unverified`, a valid non-`human:` actor is `machine-confirmed`, and any valid
+`human:` actor is `human-reviewed`.
 
 `generated.at` is the current content-change time. A legacy `timestamp` remains normalized for v0.1
 interoperability and is used as a fallback only when `generated` is absent. Templates that receive

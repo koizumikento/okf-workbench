@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 
 import { beforeAll, describe, expect, test } from 'vitest';
 
+import { GraphResourceLimitError } from '../../../src/core/graph/index.js';
 import {
   createWasmOkfCore,
   typescriptOkfCore,
@@ -281,6 +282,15 @@ describe('Rust/Wasm core boundary', () => {
       'bad%ZZ.md',
       'empty//segment.md',
       'control\u0085.md',
+      'CON.md',
+      'aux.md',
+      'COM1.md',
+      'folder/name?.md',
+      'folder/a|b.md',
+      'folder/name%3F.md',
+      'folder/trailing.',
+      'folder/trailing ',
+      `${'a'.repeat(253)}.md`,
     ]) {
       const unsafe = { ...input, relativePath };
       expect(() => core.renderConcept(unsafe), relativePath).toThrow();
@@ -337,7 +347,7 @@ describe('Rust/Wasm core boundary', () => {
       'knowledge\\',
       './knowledge',
       'knowledge///',
-      'x'.repeat(4096),
+      `${`${'x'.repeat(255)}/`.repeat(15)}a/${'x'.repeat(254)}`,
       '%2e',
       '%252e',
     ]) {
@@ -349,7 +359,15 @@ describe('Rust/Wasm core boundary', () => {
         typescriptOkfCore.renderAgent('both', providerPath),
       );
     }
-    for (const path of ['', '../escape', '/absolute', 'bad\npath']) {
+    for (const path of [
+      '',
+      '../escape',
+      '/absolute',
+      'bad\npath',
+      'CON',
+      'folder/name?',
+      'x'.repeat(256),
+    ]) {
       expect(() => core.renderAgent('both', path), path).toThrow();
       expect(() => typescriptOkfCore.renderAgent('both', path), path).toThrow();
     }
@@ -521,6 +539,79 @@ describe('Rust/Wasm core boundary', () => {
       expect(() => core.inspect(input, invalid)).toThrow(TypeError);
       expect(() => typescriptOkfCore.inspect(input, invalid)).toThrow(TypeError);
     }
+  });
+
+  test('rejects non-canonical document paths before inspection and index rendering', () => {
+    const rootUri = 'fixture:/canonical-input-paths';
+    for (const [bundlePath, content] of [
+      ['C:/absolute.md', concept('# Drive absolute\n')],
+      ['bad\u0001.md', concept('# Control\n')],
+    ] as const) {
+      const input = inputFor(
+        [
+          [bundlePath, content],
+          ['sibling.md', concept('# Sibling\n')],
+        ],
+        rootUri,
+      );
+
+      expect(core.inspect(input, '2026-07-22T12:00:00Z'), bundlePath).toEqual(
+        typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'),
+      );
+      expect(core.renderIndexes(input, 'all'), bundlePath).toEqual(
+        typescriptOkfCore.renderIndexes(input, 'all'),
+      );
+    }
+  });
+
+  test('isolates an unpaired-surrogate document without losing valid siblings', () => {
+    const rootUri = 'fixture:/invalid-unicode-document';
+    const input = inputFor(
+      [
+        ['invalid.md', concept('', 'title: "\uD800"\n')],
+        ['sibling.md', concept('# Sibling\n')],
+      ],
+      rootUri,
+    );
+
+    const actual = core.inspect(input, '2026-07-22T12:00:00Z');
+    expect(actual).toEqual(typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'));
+    expect(actual.bundle.concepts.map(({ id }) => id)).toEqual(['invalid', 'sibling']);
+    expect(actual.bundle.failures).toMatchObject([
+      {
+        bundlePath: 'invalid.md',
+        reason: 'decode',
+        message: 'Already-decoded document text contains an unpaired UTF-16 surrogate.',
+      },
+    ]);
+  });
+
+  test('classifies encoded trailing separators after URL-path normalization', () => {
+    const rootUri = 'fixture:/encoded-trailing-separators';
+    const input = inputFor(
+      [
+        [
+          'source.md',
+          concept(
+            [
+              '[Upper slash](missing%2F)',
+              '[Lower slash](missing%2f)',
+              '[Encoded backslash](missing%5C)',
+              '',
+            ].join('\n'),
+          ),
+        ],
+      ],
+      rootUri,
+    );
+
+    const actual = core.inspect(input, '2026-07-22T12:00:00Z');
+    expect(actual).toEqual(typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'));
+    expect(actual.bundle.concepts[0]?.links.map(({ classification }) => classification)).toEqual([
+      'broken',
+      'broken',
+      'broken',
+    ]);
   });
 
   test('usage counts require a valid local or shared usage window', () => {
@@ -1016,6 +1107,37 @@ describe('Rust/Wasm core boundary', () => {
         'custom: !!str # tag\n  &collection {child: value}\ncopy: *collection\n',
       ],
       ['empty-nested-mapping-field-range.md', 'outer:\n  empty:\nafter: value\n'],
+      ['empty-explicit-timestamp.md', 'custom: !!timestamp\n'],
+      ['empty-explicit-binary.md', 'custom: !!binary\n'],
+      ['string-tagged-hex.md', 'custom: !!str 0xF\n'],
+      ['string-tagged-octal.md', 'custom: !!str 0o7\n'],
+      ['string-tagged-positive.md', 'custom: !!str +1\n'],
+      ['string-tagged-negative-zero.md', 'custom: !!str -0\n'],
+      ['string-tagged-uppercase-boolean.md', 'custom: !!str TRUE\n'],
+      ['string-tagged-titlecase-null.md', 'custom: !!str Null\n'],
+      ['string-tagged-nan.md', 'custom: !!str .NaN\n'],
+      ['literal-line-separator.md', 'custom: \u2028\n'],
+      ['embedded-line-separator.md', 'custom: before\u2028after\n'],
+      ['literal-paragraph-separator.md', 'custom: \u2029\n'],
+      ['embedded-paragraph-separator.md', 'custom: before\u2029after\n'],
+      ['dotted-anchor.md', 'custom: &a.b value\ncopy: *a.b\n'],
+      ['slashed-anchor.md', 'custom: &a/b value\ncopy: *a/b\n'],
+      ['colon-anchor.md', 'custom: &a:b value\ncopy: *a:b\n'],
+      ['question-anchor.md', 'custom: &a?b value\ncopy: *a?b\n'],
+      ['unicode-anchor.md', 'custom: &日本語 value\ncopy: *日本語\n'],
+      ['multiline-double-quoted-flow-key.md', 'custom: { "a\n b": c }\n'],
+      ['multiline-single-quoted-flow-key.md', "custom: { 'a\n b': c }\n"],
+      ['nested-multiline-quoted-flow-key.md', 'custom: { nested: { "a\n b": c } }\n'],
+      ['internal-sentinel-plain-text.md', 'custom: prefix !ostr suffix\n'],
+      ['internal-sentinel-comma-plain-text.md', 'custom: prefix, !ostr suffix\n'],
+      ['frontmatter-leading-bom.md', '\uFEFFtype: reference\ncustom: ok\n'],
+      ['integer-leading-zeroes.md', 'custom: !!int 00123\n'],
+      ['integer-quoted-leading-zeroes.md', 'custom: !!int "00123"\n'],
+      ['integer-double-zero.md', 'custom: !!int 00\n'],
+      ['integer-leading-zero-one.md', 'custom: !!int 01\n'],
+      ['integer-positive-leading-zeroes.md', 'custom: !!int +0123\n'],
+      ['integer-negative-leading-zeroes.md', 'custom: !!int -0123\n'],
+      ['null-semantic-flow-key-duplicate.md', 'custom: { ? !!null "" : one, ? null : two }\n'],
       ['duplicate-tag-empty-implicit-key.md', 'custom: !!map\n  !!str !!int : one\n'],
       ['block-scalar-flow-like-empty-key.md', 'custom: |-\n  - !!str : one\n'],
       ['block-scalar-implicit-empty-duplicates.md', 'custom: |-\n  : one\n  : two\n'],
@@ -1310,7 +1432,9 @@ describe('Rust/Wasm core boundary', () => {
     ] as const;
     for (const [path, fields] of cases) {
       const rootUri = `fixture:/yaml-parity/${path}`;
-      const input = inputFor([[path, concept('', fields)]], rootUri);
+      const content =
+        path === 'frontmatter-leading-bom.md' ? `---\n${fields}---\n` : concept('', fields);
+      const input = inputFor([[path, content]], rootUri);
       let actual;
       try {
         actual = core.inspect(input, '2026-07-22T12:00:00Z');
@@ -1394,8 +1518,41 @@ describe('Rust/Wasm core boundary', () => {
         'blockquote-definition-limit.md',
         Array.from({ length: 5_001 }, (_, index) => `> [d${String(index)}]: x`).join('\n'),
       ],
+      [
+        'unordered-list-definition-syntax-limit.md',
+        Array.from({ length: 5_001 }, (_, index) => `- [d${String(index)}]: x`).join('\n'),
+      ],
+      [
+        'ordered-list-definition-syntax-limit.md',
+        Array.from({ length: 5_001 }, (_, index) => `1. [d${String(index)}]: x`).join('\n'),
+      ],
+      [
+        'quoted-list-definition-syntax-limit.md',
+        Array.from({ length: 5_001 }, (_, index) => `> - [d${String(index)}]: x`).join('\n'),
+      ],
       ['unclosed-definition-target-lookalike.md', `[d]: <${'x'.repeat(2_049)}\n`],
       ['html-definition-lookalike.md', `<div>\n[${'x'.repeat(513)}]: t.md\n</div>\n`],
+      ['pre-html-definition-lookalike.md', `<pre>\n[${'x'.repeat(513)}]: t.md\n</pre>\n`],
+      ['script-html-definition-lookalike.md', `<script>\n[${'x'.repeat(513)}]: t.md\n</script>\n`],
+      ['comment-html-definition-lookalike.md', `<!--\n[${'x'.repeat(513)}]: t.md\n-->\n`],
+      ['processing-html-definition-lookalike.md', `<?target\n[${'x'.repeat(513)}]: t.md\n?>\n`],
+      ['declaration-html-definition-lookalike.md', `<!DOCTYPE\n[${'x'.repeat(513)}]: t.md\n>\n`],
+      ['cdata-html-definition-lookalike.md', `<![CDATA[\n[${'x'.repeat(513)}]: t.md\n]]>\n`],
+      [
+        'custom-html-definition-lookalike.md',
+        `<x-custom>\n[${'x'.repeat(513)}]: t.md\n</x-custom>\n`,
+      ],
+      ['invalid-definition-unclosed-title.md', `[${'x'.repeat(513)}]: x "unterminated\n`],
+      ['invalid-definition-trailing-title.md', `[${'x'.repeat(513)}]: x "ok" trailing\n`],
+      ['invalid-definition-unbalanced-destination.md', `[${'x'.repeat(513)}]: (unterminated\n`],
+      ['valid-definition-title.md', `[${'x'.repeat(513)}]: x "ok"\n`],
+      ['attention-run-limit.md', Array.from({ length: 1_025 }, () => '*a*').join(' ')],
+      ['container-nesting-limit.md', `${'> '.repeat(65)}text\n`],
+      ['media-nesting-limit.md', `${'!['.repeat(65)}x${'](a.md)'.repeat(65)}\n`],
+      ['syntax-candidate-limit.md', '!'.repeat(20_001)],
+      ['empty-definition-label.md', `[]: ${'a'.repeat(2_049)}\n`],
+      ['list-definition-target-limit.md', `- [d]: ${'a'.repeat(2_049)}\n`],
+      ['reference-expansion-boundary.md', `${'[x]\n'.repeat(50)}\n[x]: ${'a'.repeat(2_048)}\n`],
     ] as const;
     for (const [path, body] of cases) {
       const input = inputFor([[path, concept(body)]], `fixture:/markdown-parity/${path}`);
@@ -1414,6 +1571,18 @@ describe('Rust/Wasm core boundary', () => {
         message: expect.stringContaining('link definitions'),
       }),
     ]);
+    const referenceExpansionInput = inputFor(
+      [
+        [
+          'reference-expansion-boundary.md',
+          concept(`${'[x]\n'.repeat(50)}\n[x]: ${'a'.repeat(2_048)}\n`),
+        ],
+      ],
+      'fixture:/markdown-parity/reference-expansion-boundary.md',
+    );
+    expect(
+      core.inspect(referenceExpansionInput, '2026-07-22T12:00:00Z').bundle.concepts[0]?.links,
+    ).toHaveLength(50);
   });
 
   test('matches YAML resource and YAML 1.2 shape boundaries', () => {
@@ -1430,10 +1599,38 @@ describe('Rust/Wasm core boundary', () => {
         }),
         '',
       ].join('\n');
+    const recursiveAliases = (factor: number, depth: number): string => {
+      const lines = ['a0: &a0 scalar'];
+      for (let level = 1; level <= depth; level += 1) {
+        lines.push(
+          `a${String(level)}: &a${String(level)} [${Array.from(
+            { length: factor },
+            () => `*a${String(level - 1)}`,
+          ).join(',')}]`,
+        );
+      }
+      lines.push(`custom: *a${String(depth)}`, '');
+      return lines.join('\n');
+    };
+    const deeplyNestedFlow = `${'['.repeat(65)}x${']'.repeat(65)}`;
     const cases = [
       ['alias-limit-exact.md', concept('', aliases(100))],
       ['alias-limit-exceeded.md', concept('', aliases(101))],
       ['alias-output-exceeded.md', concept('', aliases(100, 'x'.repeat(2_048)))],
+      ['alias-output-before-count.md', concept('', aliases(101, 'x'.repeat(2_048)))],
+      [
+        'radix-set-output-exceeded.md',
+        concept('', `custom: !!set { ? 0x${'F'.repeat(60_000)} }\n`),
+      ],
+      ['recursive-alias-expansion.md', concept('', recursiveAliases(10, 2))],
+      ['recursive-alias-repetition-limit.md', concept('', recursiveAliases(5, 5))],
+      [
+        'alias-lookalikes.md',
+        concept(
+          '',
+          'quoted: "*missing"\nplain: prefix *missing\nblock: |-\n  *missing\n# *missing\n',
+        ),
+      ],
       [
         'leading-zero-values.md',
         concept('', 'zero: 00\none: 01\npositive: +0123\nnegative: -0123\n'),
@@ -1454,8 +1651,22 @@ describe('Rust/Wasm core boundary', () => {
         'implicit-flow-map-nesting-exceeded.md',
         concept('', `custom: ${'['.repeat(64)}key: value${']'.repeat(64)}\n`),
       ],
+      ['tight-hash-flow-nesting.md', concept('', `custom: [foo#bar, ${deeplyNestedFlow}]\n`)],
+      ['url-hash-flow-nesting.md', concept('', `custom: [http://x#frag, ${deeplyNestedFlow}]\n`)],
+      ['tight-hash-flow-map-nesting.md', concept('', `custom: {foo#bar: ${deeplyNestedFlow}}\n`)],
+      ['plain-bracket-lookalike.md', concept('', `custom: prefix ${'['.repeat(65)}\n`)],
+      ['plain-brace-lookalike.md', concept('', `custom: prefix ${'{'.repeat(65)}\n`)],
+      [
+        'plain-url-flow-lookalike.md',
+        concept('', `custom: http://example.test/x#frag/${'['.repeat(65)}\n`),
+      ],
       ['yaml-bom.md', '---\n\uFEFFtype: reference\n---\n'],
       ['multiple-yaml-documents.md', '---\ntype: reference\n...\nafter: x\n---\n'],
+      ['indented-document-marker-lookalike.md', concept('', 'custom: first\n  ...\nafter: ok\n')],
+      [
+        'deferred-document-marker-lookalike.md',
+        concept('', 'custom:\n  first\n  ...\nafter: ok\n'),
+      ],
       [
         'deferred-plain-comment-gap.md',
         concept('', 'custom:\n  first\n  # gap\n  !!str text\nafter: ok\n'),
@@ -1468,6 +1679,40 @@ describe('Rust/Wasm core boundary', () => {
       );
     }
   });
+
+  test('matches aggregate Markdown and YAML bundle work limits', () => {
+    const markdownInput = inputFor(
+      Array.from({ length: 81 }, (_, index) => [
+        `syntax-${String(index).padStart(3, '0')}.md`,
+        concept('!'.repeat(1_000)),
+      ]),
+      'fixture:/aggregate-markdown-work',
+    );
+    const frontmatterInput = inputFor(
+      Array.from({ length: 129 }, (_, index) => [
+        `frontmatter-${String(index).padStart(3, '0')}.md`,
+        concept('', `custom: "${'a'.repeat(65_500)}"\n`),
+      ]),
+      'fixture:/aggregate-frontmatter-work',
+    );
+    for (const input of [markdownInput, frontmatterInput]) {
+      let expected: unknown;
+      let actual: unknown;
+      try {
+        typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z');
+      } catch (error: unknown) {
+        expected = error;
+      }
+      try {
+        core.inspect(input, '2026-07-22T12:00:00Z');
+      } catch (error: unknown) {
+        actual = error;
+      }
+      expect(actual).toBeInstanceOf(GraphResourceLimitError);
+      expect(expected).toBeInstanceOf(GraphResourceLimitError);
+      expect((actual as Error).message).toBe((expected as Error).message);
+    }
+  }, 60_000);
 
   test.each([
     {
@@ -2586,7 +2831,20 @@ describe('Rust/Wasm core boundary', () => {
             [
               'generated: { by: bogus }',
               'verified: { by: "human:", at: 2026-07-22T11:30:00Z }',
-              'sources: [{ resource: https://example.com/source, author: team:finance }]',
+              'sources: [{ resource: https://example.com/source, author: "team:" }]',
+              '',
+            ].join('\n'),
+            'Reference',
+          ),
+        ],
+        [
+          'canonical-source-author.md',
+          concept(
+            '',
+            [
+              'sources:',
+              '  - resource: https://developers.google.com/analytics/bigquery/export-schema',
+              '    author: team:ga4-docs',
               '',
             ].join('\n'),
             'Reference',

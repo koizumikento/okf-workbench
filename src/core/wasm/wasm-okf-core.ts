@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { GraphResourceLimitError } from '../graph/index.js';
 import type { JsonValue, ParseFailure } from '../model/index.js';
 import type { ParseBundleInput } from '../parser/index.js';
 import type {
@@ -177,6 +178,14 @@ function jsonBundleInput(input: ParseBundleInput): JsonValue {
           identityOnlyFailure: document.identityOnlyFailure,
         };
       }
+      if (typeof document.content === 'string' && hasUnpairedUtf16Surrogate(document.content)) {
+        return {
+          uri: document.uri,
+          bundlePath: document.bundlePath,
+          content: { invalidUtf16: true },
+          contentHash: document.contentHash ?? fallbackUtf16ContentHash(document.content),
+        };
+      }
       return {
         uri: document.uri,
         bundlePath: document.bundlePath,
@@ -186,6 +195,36 @@ function jsonBundleInput(input: ParseBundleInput): JsonValue {
       };
     }),
   };
+}
+
+function hasUnpairedUtf16Surrogate(text: string): boolean {
+  for (let offset = 0; offset < text.length; offset += 1) {
+    const codeUnit = text.charCodeAt(offset);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const next = text.charCodeAt(offset + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        offset += 1;
+        continue;
+      }
+      return true;
+    }
+    if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function fallbackUtf16ContentHash(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let offset = 0; offset < text.length; offset += 1) {
+    const codeUnit = text.charCodeAt(offset);
+    hash ^= codeUnit & 0xff;
+    hash = Math.imul(hash, 0x01000193);
+    hash ^= codeUnit >>> 8;
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `fnv1a32-utf16:${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
 function callCore(exports: OkfWasmExports, request: JsonValue): JsonValue {
@@ -248,6 +287,9 @@ function callCore(exports: OkfWasmExports, request: JsonValue): JsonValue {
     }
     if (response.error.code === 'unsafe-relative-path') {
       throw new Error(response.error.message);
+    }
+    if (response.error.code === 'graph-resource-limit') {
+      throw new GraphResourceLimitError(response.error.message);
     }
     throw new OkfCoreUnavailableError(
       `The OKF core refused the request (${response.error.code}): ${response.error.message}`,

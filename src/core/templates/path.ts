@@ -40,6 +40,8 @@ function pathFailure(message: string): OperationResult<never> {
 }
 
 const MAX_PERCENT_DECODE_ROUNDS = 16;
+const MAX_PORTABLE_COMPONENT_BYTES = 255;
+const UTF8_ENCODER = new TextEncoder();
 
 function pathResourceFailure(
   failure: RelativePathBoundFailure,
@@ -61,6 +63,28 @@ function containsControlCharacter(value: string): boolean {
     const codePoint = character.codePointAt(0) ?? 0;
     return codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f);
   });
+}
+
+function isWindowsDeviceName(segment: string): boolean {
+  const dot = segment.indexOf('.');
+  const basename = (dot === -1 ? segment : segment.slice(0, dot)).toUpperCase();
+  return (
+    basename === 'CON' ||
+    basename === 'PRN' ||
+    basename === 'AUX' ||
+    basename === 'NUL' ||
+    /^(?:COM|LPT)[1-9]$/u.test(basename)
+  );
+}
+
+function isPortableGeneratedSegment(segment: string): boolean {
+  return (
+    UTF8_ENCODER.encode(segment).byteLength <= MAX_PORTABLE_COMPONENT_BYTES &&
+    !/[<>:"|?*]/u.test(segment) &&
+    !segment.endsWith('.') &&
+    !segment.endsWith(' ') &&
+    !isWindowsDeviceName(segment)
+  );
 }
 
 /**
@@ -128,12 +152,7 @@ function normalizeRelativePath(input: string, options: PathOptions): OperationRe
     return { ok: true, value: '.', warnings: [] };
   }
 
-  if (
-    candidate.startsWith('/') ||
-    candidate.startsWith('//') ||
-    /^[A-Za-z]:($|\/)/u.test(candidate) ||
-    /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(candidate)
-  ) {
+  if (candidate.startsWith('/') || candidate.startsWith('//') || candidate.includes(':')) {
     return pathFailure(`The path ${JSON.stringify(input)} is absolute or URI-like.`);
   }
 
@@ -141,6 +160,11 @@ function normalizeRelativePath(input: string, options: PathOptions): OperationRe
   if (segments.some((segment) => segment.length === 0 || segment === '.' || segment === '..')) {
     return pathFailure(
       `The path ${JSON.stringify(input)} contains an empty, current, or parent segment.`,
+    );
+  }
+  if (segments.some((segment) => !isPortableGeneratedSegment(segment))) {
+    return pathFailure(
+      `The path ${JSON.stringify(input)} contains a component that is not portable across supported filesystems.`,
     );
   }
 

@@ -277,6 +277,14 @@ use `vscode.workspace.fs`; local `file:` resources use Node's file-handle API be
 only for identity-bound reads. Core modules receive text, byte arrays, normalized concept IDs, and
 operation inputs rather than VS Code objects.
 
+The native CLI uses the locked `rustix` filesystem API on Unix to anchor mutations to opened bundle
+and parent-directory descriptors, traverse with no-follow semantics, and create or replace files
+relative to those descriptors. On macOS it uses the locked `libc` binding for
+`fcopyfile(COPYFILE_METADATA)` so an atomic replacement retains the existing mode, owner/group,
+ACLs, and extended attributes. Other platforms keep the guarded ambient-path adapter. Both crates
+were already present in the reviewed Rust dependency graph; making them direct CLI dependencies
+does not add a network, editor, or core capability.
+
 For a local file, `stat` uses `lstat({ bigint: true })` and returns an opaque generation containing
 device, inode, mode, nanosecond ctime, and birthtime. `read` requires that generation, opens with
 `O_RDONLY | O_NOFOLLOW` where `O_NOFOLLOW` exists, checks the opened regular file with `fstat`

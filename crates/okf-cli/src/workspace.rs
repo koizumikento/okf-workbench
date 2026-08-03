@@ -2,13 +2,30 @@ use okf_core::{
     BundleDocumentInput, DocumentContent, ParseBundleInput, RenderedFile, parse_bundle,
 };
 use serde::Serialize;
+#[cfg(not(unix))]
+use std::fs::OpenOptions;
+#[cfg(unix)]
 use std::{
-    fs::{self, OpenOptions},
+    ffi::{OsStr, OsString},
+    fs::File,
+    io::Read,
+    os::unix::fs::MetadataExt,
+    sync::atomic::{AtomicU64, Ordering},
+};
+use std::{
+    fs,
     io::Write,
     path::{Component, Path, PathBuf},
 };
+#[cfg(not(unix))]
 use tempfile::NamedTempFile;
 use walkdir::WalkDir;
+
+#[cfg(unix)]
+use rustix::{
+    fs::{AtFlags, Mode, OFlags, mkdirat, open, openat, renameat, unlinkat},
+    io::Errno,
+};
 
 const MAX_DOCUMENTS: usize = 2_000;
 const MAX_DOCUMENT_BYTES: u64 = 320 * 1024 + 16;
@@ -157,14 +174,15 @@ pub fn plan_files(
         let target = root.join(&file.relative_path);
         ensure_contained(root, &target)?;
         ensure_safe_parent_chain(root, &target)?;
-        let existing = if target.exists() {
-            let metadata = fs::symlink_metadata(&target).map_err(|error| error.to_string())?;
-            if metadata.file_type().is_symlink() || !metadata.is_file() {
-                return Err(format!("unsafe existing target {}", target.display()));
+        let existing = match fs::symlink_metadata(&target) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() || !metadata.is_file() {
+                    return Err(format!("unsafe existing target {}", target.display()));
+                }
+                Some(fs::read_to_string(&target).map_err(|error| error.to_string())?)
             }
-            Some(fs::read_to_string(&target).map_err(|error| error.to_string())?)
-        } else {
-            None
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error.to_string()),
         };
         let content = match (&existing, mode, file.relative_path.as_str()) {
             (Some(existing), PlanMode::CreateOnly, _) if existing != &file.content => {
@@ -248,19 +266,34 @@ fn insert_root_version(existing: &str) -> Result<String, String> {
         return Ok(candidate);
     };
 
-    let (offset, insertion) =
-        if let Some(flow_start) = root_flow_mapping_start(&existing[opening_end..source_end]) {
-            let offset = opening_end + flow_start + 1;
-            let separator = if existing[offset..source_end].trim_start().starts_with('}') {
-                ""
-            } else {
-                ","
-            };
-            (offset, format!("okf_version: \"0.2\"{separator}"))
+    let frontmatter = &existing[opening_end..source_end];
+    let candidate = if let Some(flow_start) = root_flow_mapping_start(frontmatter) {
+        let flow_offset = opening_end + flow_start;
+        let content_offset = flow_offset + 1;
+        let separator = if existing[content_offset..source_end]
+            .trim_start()
+            .starts_with('}')
+        {
+            ""
         } else {
-            root_block_mapping_insertion(existing, opening_end, source_end, eol)
+            ","
         };
-    let candidate = format!("{}{insertion}{}", &existing[..offset], &existing[offset..]);
+        let property_separator = if root_flow_mapping_has_inline_properties(frontmatter, flow_start)
+        {
+            eol
+        } else {
+            ""
+        };
+        format!(
+            "{}{property_separator}{{okf_version: \"0.2\"{separator}{}",
+            &existing[..flow_offset],
+            &existing[content_offset..]
+        )
+    } else {
+        let (offset, insertion) =
+            root_block_mapping_insertion(existing, opening_end, source_end, eol);
+        format!("{}{insertion}{}", &existing[..offset], &existing[offset..])
+    };
     validate_root_version_insertion(existing, &candidate).map_err(|error| {
         format!("cannot add `okf_version` safely to index.md using {eol:?} line endings: {error}")
     })?;
@@ -333,6 +366,13 @@ fn root_flow_mapping_start(source: &str) -> Option<usize> {
         }
         return None;
     }
+}
+
+fn root_flow_mapping_has_inline_properties(source: &str, flow_start: usize) -> bool {
+    let line_start = source[..flow_start]
+        .rfind(['\r', '\n'])
+        .map_or(0, |offset| offset + 1);
+    !source[line_start..flow_start].trim().is_empty()
 }
 
 fn frontmatter_source_bounds(content: &str, start: usize) -> Option<(usize, usize, &'static str)> {
@@ -436,6 +476,20 @@ pub fn apply_plan(root: &Path, plan: &[PlannedChange]) -> Result<(), String> {
         create_safe_root(root)?;
     }
     ensure_safe_root(root)?;
+
+    #[cfg(unix)]
+    {
+        apply_plan_anchored(root, plan)
+    }
+
+    #[cfg(not(unix))]
+    {
+        apply_plan_ambient(root, plan)
+    }
+}
+
+#[cfg(not(unix))]
+fn apply_plan_ambient(root: &Path, plan: &[PlannedChange]) -> Result<(), String> {
     for change in plan {
         ensure_contained(root, &change.target)?;
         ensure_safe_parent_chain(root, &change.target)?;
@@ -486,6 +540,330 @@ pub fn apply_plan(root: &Path, plan: &[PlannedChange]) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(unix)]
+fn apply_plan_anchored(root: &Path, plan: &[PlannedChange]) -> Result<(), String> {
+    let root_directory = open_anchored_root(root)?;
+    for change in plan {
+        ensure_contained(root, &change.target)?;
+        validate_relative_path(&change.relative_path)?;
+        preflight_anchored_change(&root_directory, change)?;
+    }
+    for change in plan {
+        apply_anchored_change(&root_directory, change)?;
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn open_anchored_root(root: &Path) -> Result<File, String> {
+    let before = fs::metadata(root)
+        .map_err(|error| format!("cannot inspect {}: {error}", root.display()))?;
+    let directory = File::from(
+        open(
+            root,
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(|error| format!("cannot anchor bundle root {}: {error}", root.display()))?,
+    );
+    ensure_safe_root(root)?;
+    let after = fs::metadata(root)
+        .map_err(|error| format!("cannot revalidate {}: {error}", root.display()))?;
+    let anchored = directory
+        .metadata()
+        .map_err(|error| format!("cannot inspect anchored root {}: {error}", root.display()))?;
+    if (before.dev(), before.ino()) != (after.dev(), after.ino())
+        || (after.dev(), after.ino()) != (anchored.dev(), anchored.ino())
+    {
+        return Err(format!(
+            "bundle root {} changed while preparing the write",
+            root.display()
+        ));
+    }
+    Ok(directory)
+}
+
+#[cfg(unix)]
+fn open_anchored_parent(
+    root: &File,
+    relative_path: &str,
+    create_missing: bool,
+) -> Result<Option<(File, OsString)>, String> {
+    let mut components = Path::new(relative_path)
+        .components()
+        .map(|component| match component {
+            Component::Normal(value) => Ok(value.to_os_string()),
+            _ => Err(format!("generated path {relative_path:?} is not relative")),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let leaf = components
+        .pop()
+        .ok_or_else(|| format!("generated path {relative_path:?} has no filename"))?;
+    let mut directory = File::from(
+        openat(
+            root,
+            ".",
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(|error| format!("cannot duplicate the anchored bundle root: {error}"))?,
+    );
+    for component in components {
+        let opened = openat(
+            &directory,
+            &component,
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        );
+        let next = match opened {
+            Ok(next) => next,
+            Err(Errno::NOENT) if !create_missing => return Ok(None),
+            Err(Errno::NOENT) => {
+                match mkdirat(&directory, &component, Mode::from_raw_mode(0o755)) {
+                    Ok(()) | Err(Errno::EXIST) => {}
+                    Err(error) => {
+                        return Err(format!(
+                            "cannot create parent component {component:?}: {error}"
+                        ));
+                    }
+                }
+                openat(
+                    &directory,
+                    &component,
+                    OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+                    Mode::empty(),
+                )
+                .map_err(|error| {
+                    format!("cannot open parent component {component:?} safely: {error}")
+                })?
+            }
+            Err(error) => {
+                return Err(format!(
+                    "cannot open parent component {component:?} safely: {error}"
+                ));
+            }
+        };
+        directory = File::from(next);
+    }
+    Ok(Some((directory, leaf)))
+}
+
+#[cfg(unix)]
+fn apply_anchored_change(root: &File, change: &PlannedChange) -> Result<(), String> {
+    let (parent, leaf) = open_anchored_parent(root, &change.relative_path, true)?
+        .ok_or_else(|| "cannot create the generated parent chain".to_owned())?;
+    match &change.expected_content {
+        None => create_anchored_file(&parent, &leaf, change),
+        Some(expected) => replace_anchored_file(&parent, &leaf, expected, change),
+    }
+}
+
+#[cfg(unix)]
+fn preflight_anchored_change(root: &File, change: &PlannedChange) -> Result<(), String> {
+    let Some((parent, leaf)) = open_anchored_parent(root, &change.relative_path, false)? else {
+        return if change.expected_content.is_none() {
+            Ok(())
+        } else {
+            Err(format!(
+                "{} disappeared after planning; no write was attempted",
+                change.target.display()
+            ))
+        };
+    };
+    match &change.expected_content {
+        None => match openat(
+            &parent,
+            &leaf,
+            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        ) {
+            Err(Errno::NOENT) => Ok(()),
+            Ok(_) => Err(format!(
+                "{} appeared after planning; no replacement was attempted",
+                change.target.display()
+            )),
+            Err(error) => Err(format!(
+                "cannot revalidate {}: {error}",
+                change.target.display()
+            )),
+        },
+        Some(expected) => {
+            let mut existing = File::from(
+                openat(
+                    &parent,
+                    &leaf,
+                    OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+                    Mode::empty(),
+                )
+                .map_err(|error| {
+                    format!("cannot revalidate {}: {error}", change.target.display())
+                })?,
+            );
+            if !existing
+                .metadata()
+                .map_err(|error| error.to_string())?
+                .is_file()
+            {
+                return Err(format!(
+                    "{} changed to an unsafe target after planning",
+                    change.target.display()
+                ));
+            }
+            let mut current = String::new();
+            existing
+                .read_to_string(&mut current)
+                .map_err(|error| error.to_string())?;
+            if current == *expected {
+                Ok(())
+            } else {
+                Err(format!(
+                    "{} changed after planning; no replacement was attempted",
+                    change.target.display()
+                ))
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
+fn create_anchored_file(parent: &File, leaf: &OsStr, change: &PlannedChange) -> Result<(), String> {
+    let mut file = File::from(
+        openat(
+            parent,
+            leaf,
+            OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::from_raw_mode(0o666),
+        )
+        .map_err(|error| {
+            format!(
+                "{} appeared after planning; no replacement was attempted: {error}",
+                change.target.display()
+            )
+        })?,
+    );
+    file.write_all(change.content.as_bytes())
+        .and_then(|_| file.sync_all())
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(unix)]
+fn replace_anchored_file(
+    parent: &File,
+    leaf: &OsStr,
+    expected: &str,
+    change: &PlannedChange,
+) -> Result<(), String> {
+    let mut existing = File::from(
+        openat(
+            parent,
+            leaf,
+            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(|error| {
+            format!(
+                "cannot revalidate {} through its anchored parent: {error}",
+                change.target.display()
+            )
+        })?,
+    );
+    if !existing
+        .metadata()
+        .map_err(|error| error.to_string())?
+        .is_file()
+    {
+        return Err(format!(
+            "{} changed to an unsafe target after planning",
+            change.target.display()
+        ));
+    }
+    let mut current = String::new();
+    existing
+        .read_to_string(&mut current)
+        .map_err(|error| error.to_string())?;
+    if current != expected {
+        return Err(format!(
+            "{} changed after planning; no replacement was attempted",
+            change.target.display()
+        ));
+    }
+
+    let (temporary_name, mut temporary) = create_anchored_temporary(parent)?;
+    let result = (|| {
+        temporary
+            .write_all(change.content.as_bytes())
+            .map_err(|error| error.to_string())?;
+        preserve_replacement_metadata(&existing, &temporary)?;
+        temporary.sync_all().map_err(|error| error.to_string())?;
+        renameat(parent, &temporary_name, parent, leaf)
+            .map_err(|error| format!("cannot replace {}: {error}", change.target.display()))
+    })();
+    if result.is_err() {
+        let _ = unlinkat(parent, &temporary_name, AtFlags::empty());
+    }
+    result
+}
+
+#[cfg(unix)]
+fn create_anchored_temporary(parent: &File) -> Result<(OsString, File), String> {
+    static NEXT_TEMPORARY: AtomicU64 = AtomicU64::new(0);
+    for _ in 0..128 {
+        let sequence = NEXT_TEMPORARY.fetch_add(1, Ordering::Relaxed);
+        let name = OsString::from(format!(
+            ".okf-workbench-{}-{sequence}.tmp",
+            std::process::id()
+        ));
+        match openat(
+            parent,
+            &name,
+            OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::from_raw_mode(0o600),
+        ) {
+            Ok(file) => return Ok((name, File::from(file))),
+            Err(Errno::EXIST) => {}
+            Err(error) => return Err(format!("cannot reserve temporary file name: {error}")),
+        }
+    }
+    Err("cannot reserve a unique anchored temporary file name".to_owned())
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn preserve_replacement_metadata(existing: &File, temporary: &File) -> Result<(), String> {
+    temporary
+        .set_permissions(
+            existing
+                .metadata()
+                .map_err(|error| error.to_string())?
+                .permissions(),
+        )
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "macos")]
+fn preserve_replacement_metadata(existing: &File, temporary: &File) -> Result<(), String> {
+    use std::os::fd::AsRawFd;
+
+    // SAFETY: both descriptors remain open regular files for the duration of this call, and a
+    // null copyfile state asks macOS to allocate and release its internal state for this copy.
+    let result = unsafe {
+        libc::fcopyfile(
+            existing.as_raw_fd(),
+            temporary.as_raw_fd(),
+            std::ptr::null_mut(),
+            libc::COPYFILE_METADATA,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(format!(
+            "cannot preserve replacement metadata: {}",
+            std::io::Error::last_os_error()
+        ))
+    }
+}
+
+#[cfg(not(unix))]
 fn verify_unchanged(change: &PlannedChange) -> Result<(), String> {
     match &change.expected_content {
         None => match fs::symlink_metadata(&change.target) {
@@ -656,6 +1034,29 @@ fn ensure_safe_parent_chain(root: &Path, target: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn is_windows_device_name(segment: &str) -> bool {
+    let basename = segment
+        .split_once('.')
+        .map_or(segment, |(basename, _)| basename)
+        .to_ascii_uppercase();
+    matches!(basename.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ["COM", "LPT"].iter().any(|prefix| {
+            basename.strip_prefix(prefix).is_some_and(|suffix| {
+                matches!(suffix, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9")
+            })
+        })
+}
+
+fn is_portable_generated_segment(segment: &str) -> bool {
+    segment.len() <= 255
+        && !segment
+            .bytes()
+            .any(|byte| matches!(byte, b'<' | b'>' | b':' | b'"' | b'|' | b'?' | b'*'))
+        && !segment.ends_with('.')
+        && !segment.ends_with(' ')
+        && !is_windows_device_name(segment)
+}
+
 pub fn validate_relative_path(path: &str) -> Result<(), String> {
     const MAX_PATH_UNITS: usize = 4_096;
     const MAX_SEGMENTS: usize = 64;
@@ -674,6 +1075,9 @@ pub fn validate_relative_path(path: &str) -> Result<(), String> {
         || segments
             .iter()
             .any(|segment| segment.is_empty() || matches!(*segment, "." | ".."))
+        || segments
+            .iter()
+            .any(|segment| !is_portable_generated_segment(segment))
         || normalized.contains(':')
         || normalized.chars().any(char::is_control)
         || Path::new(path).components().any(|component| {
@@ -747,6 +1151,28 @@ mod tests {
     }
 
     #[test]
+    fn non_portable_windows_components_are_rejected() {
+        for path in [
+            "CON.md",
+            "aux.md",
+            "COM1.md",
+            "folder/Lpt9.txt",
+            "folder/name?.md",
+            "folder/a|b.md",
+            "folder/trailing.",
+            "folder/trailing ",
+        ] {
+            assert!(validate_relative_path(path).is_err(), "{path:?}");
+        }
+        assert!(validate_relative_path(&format!("{}.md", "a".repeat(253))).is_err());
+
+        for path in ["COM0.md", "COM10.md", "console.md", ".CON.md"] {
+            assert!(validate_relative_path(path).is_ok(), "{path:?}");
+        }
+        assert!(validate_relative_path(&format!("{}.md", "a".repeat(252))).is_ok());
+    }
+
+    #[test]
     fn changed_target_is_rejected_after_planning() {
         let directory = tempdir().unwrap();
         let root = directory.path();
@@ -773,6 +1199,66 @@ mod tests {
             fs::read_to_string(target).unwrap(),
             "user changed this after planning\n"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn parent_symlink_swap_after_planning_cannot_redirect_the_write() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        let nested = root.join("nested");
+        let moved = directory.path().join("moved-original-parent");
+        let outside = directory.path().join("outside");
+        fs::create_dir_all(&nested).unwrap();
+        fs::create_dir(&outside).unwrap();
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "nested/new.md".to_owned(),
+                encoding: "utf8",
+                content: "safe content\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+
+        fs::rename(&nested, &moved).unwrap();
+        symlink(&outside, &nested).unwrap();
+
+        assert!(apply_plan(&root, &plan).is_err());
+        assert!(!outside.join("new.md").exists());
+        assert!(!moved.join("new.md").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn anchored_final_symlink_swap_never_opens_the_outside_target() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        fs::create_dir(&root).unwrap();
+        let target = root.join("target.md");
+        let outside = directory.path().join("outside.md");
+        fs::write(&target, "before\n").unwrap();
+        fs::write(&outside, "outside\n").unwrap();
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "target.md".to_owned(),
+                encoding: "utf8",
+                content: "after\n".to_owned(),
+            }],
+            PlanMode::MergeAgent,
+        )
+        .unwrap();
+        fs::remove_file(&target).unwrap();
+        symlink(&outside, &target).unwrap();
+
+        assert!(apply_plan(&root, &plan).is_err());
+        assert_eq!(fs::read_to_string(outside).unwrap(), "outside\n");
     }
 
     #[test]
@@ -820,6 +1306,26 @@ mod tests {
                 "{source:?}"
             );
             assert_eq!(updated.replacen(insertion, "", 1), source, "{source:?}");
+        }
+    }
+
+    #[test]
+    fn root_version_insertion_separates_inline_properties_from_empty_flow_maps() {
+        for source in [
+            "---\n!!map {}\n---\n# Knowledge\n",
+            "---\n&root !!map {}\n---\n# Knowledge\n",
+            "---\n&root !<tag:yaml.org,2002:map> {}\n---\n# Knowledge\n",
+        ] {
+            let before = root_frontmatter(source).unwrap();
+            let updated = insert_root_version(source).unwrap();
+            let mut after = root_frontmatter(&updated).unwrap();
+            assert_eq!(
+                after.remove("okf_version"),
+                Some(serde_json::Value::String("0.2".to_owned())),
+                "{updated:?}"
+            );
+            assert_eq!(after, before, "{updated:?}");
+            assert!(updated.contains("\n{okf_version: \"0.2\"}"), "{updated:?}");
         }
     }
 

@@ -19,16 +19,17 @@ initialize -> create -> edit -> validate -> explore -> repair
 The deterministic Rust core, capability-free Wasm Extension Host adapter, native CLI, platform
 VSIX CLI integration, six MVP
 extension command workflows, diagnostics, URI-first workspace runtime, 3D Webview, agent-template
-generation, and release-candidate harnesses are implemented. A genuine schema-v3 headed VS Code
-1.129.1 capture passes QR-002 at 832 ms p95 across 20 samples, passes QR-003 with `d3` selected,
-and records zero remote HTTP(S)/WS or other-scheme Webview requests under the strict current-input
-contract. The retained VS Code 1.127.0 capture predates that contract and is historical-only. An
-earlier candidate passed the required hosted VS Code and VSCodium lifecycle matrix on Ubuntu,
-macOS, and Windows; the Rust/Wasm migration and current packaged-resource changes require a fresh
-hosted qualification before they can inherit that claim. The repository, issue tracker,
-security-advisory route, and GitHub Pages trust pages are public, and the hosted branch/scanning
-baseline is configured. The maintainer selected MIT for the project and approved the third-party
-notice inventory for the initial release. Signed tag `v0.1.0` on reviewed `main` commit
+generation, and release-candidate harnesses are implemented. A retained schema-v3 headed VS Code
+1.129.1 capture for the predecessor `0.2.1` inputs recorded QR-002 at 677 ms p95 across 20 samples,
+`d3` as the QR-003 selection, and zero remote HTTP(S)/WS or other-scheme Webview requests. Strict
+re-evaluation rejects its input identities for the current Rust/Wasm source candidate, so fresh
+headed evidence is pending. The retained VS Code 1.127.0 capture predates the strict contract and
+is historical-only. An earlier candidate passed the required hosted VS Code and VSCodium lifecycle
+matrix on Ubuntu, macOS, and Windows; the Rust/Wasm migration and current packaged-resource changes
+require a fresh hosted qualification before they can inherit that claim. The repository, issue
+tracker, security-advisory route, and GitHub Pages trust pages are public, and the hosted
+branch/scanning baseline is configured. The maintainer selected MIT for the project and approved
+the third-party notice inventory for the initial release. Signed tag `v0.1.0` on reviewed `main` commit
 `438f1ed2233fdf86d289bd7dfdb934757c6a35f3` completed release workflow `30233342837`, publishing
 the GitHub Release, the universal and four target Open VSX packages, and the Homebrew/Scoop
 manifests in `koizumikento/stray-tools`. Clean post-publication editor and package-manager install

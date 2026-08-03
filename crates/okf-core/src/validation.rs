@@ -1,4 +1,4 @@
-use crate::parser::{is_valid_actor, parse_explicit_zone_timestamp};
+use crate::parser::{is_valid_actor, is_valid_source_author, parse_explicit_zone_timestamp};
 use crate::{Finding, LinkClassification, ParseFailureReason, ParsedBundle};
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, TimeZone, Utc};
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
@@ -629,7 +629,7 @@ fn validate_v02_metadata(
                         && (!object.contains_key("id") || source.id.is_some())
                         && (!object.contains_key("title") || source.title.is_some())
                         && (!object.contains_key("author")
-                            || source.author.as_deref().is_some_and(is_valid_actor))
+                            || source.author.as_deref().is_some_and(is_valid_source_author))
                         && object
                             .get("usage_count")
                             .is_none_or(|_| source.usage_count.is_some())

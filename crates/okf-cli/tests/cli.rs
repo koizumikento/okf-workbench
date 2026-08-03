@@ -324,6 +324,7 @@ fn version_and_new_use_the_stable_json_envelope() {
 
     let directory = tempdir().unwrap();
     initialize(directory.path());
+    #[cfg(windows)]
     fs::create_dir(directory.path().join("nested")).unwrap();
     let created = okf()
         .args([
@@ -866,6 +867,7 @@ fn agent_outputs_stay_outside_bundle_validation() {
         .output()
         .unwrap();
     assert!(agents_apply.status.success(), "{agents_apply:?}");
+    #[cfg(windows)]
     fs::create_dir_all(
         directory
             .path()
@@ -1146,6 +1148,7 @@ fn new_refuses_non_portable_windows_paths_during_check() {
 fn new_appends_markdown_extension_to_default_and_explicit_paths() {
     let directory = tempdir().unwrap();
     initialize(directory.path());
+    #[cfg(windows)]
     fs::create_dir(directory.path().join("nested")).unwrap();
     for arguments in [
         vec![
@@ -1170,6 +1173,33 @@ fn new_appends_markdown_extension_to_default_and_explicit_paths() {
     }
     assert!(directory.path().join("default-path.md").is_file());
     assert!(directory.path().join("nested/explicit.md").is_file());
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_existing_root_create_requires_an_existing_direct_parent() {
+    let directory = tempdir().unwrap();
+    initialize(directory.path());
+
+    let output = okf()
+        .args([
+            "new",
+            directory.path().to_str().unwrap(),
+            "--title",
+            "Missing Parent",
+            "--path",
+            "nested/concept.md",
+            "--apply",
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("must already exist"),
+        "{output:?}"
+    );
+    assert!(!directory.path().join("nested").exists());
 }
 
 #[cfg(unix)]

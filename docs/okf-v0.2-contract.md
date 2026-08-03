@@ -24,7 +24,7 @@ for legacy bundles.
 ## Explicit migration
 
 Migration is optional and user-invoked through `OKF: Migrate Bundle to v0.2` or
-`okf migrate <bundle-root> --to 0.2 --actor <actor> --check|--apply`. It is never triggered by
+`okf migrate <bundle-root> --to 0.2 --actor <actor> --check`. It is never triggered by
 opening, validating, editing, or indexing a v0.1 bundle.
 
 - The caller supplies `generated.by` as `human:<id>`, `process:<id>`, or
@@ -39,10 +39,11 @@ opening, validating, editing, or indexing a v0.1 bundle.
   remains unchanged. Named links, prose, empty sections, and other ambiguous forms are reported for
   manual follow-up; indented code is never treated as a citation bullet.
 - Unknown frontmatter and Markdown body content remain source-preserved.
-- In a multi-file apply, `index.md` is written last so a later target failure cannot advertise v0.2
-  before the preceding concept changes have completed.
-- The complete existing-file proposal is previewed in the extension. CLI `--check` writes nothing,
-  and `--apply` uses guarded atomic local replacements.
+- In an extension multi-file apply, `index.md` is written last so a later target failure cannot
+  advertise v0.2 before the preceding concept changes have completed.
+- The complete existing-file proposal is previewed and explicitly approved in the extension. CLI
+  migration is preview-only: required `--check` writes nothing, and `--apply` is not a supported
+  migrate argument while FR-104 requires native existing-file updates to fail closed.
 - The root `okf_version` update is part of the same complete plan, and a second run is idempotent.
 - Migration does not invent verification, computation, execution, receipt, or attestation claims.
 

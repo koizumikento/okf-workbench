@@ -1,5 +1,8 @@
 use crate::parser::is_valid_actor;
-use crate::{DocumentContent, ParseBundleInput, ParsedFrontmatter, RenderedFile, parse_bundle};
+use crate::{
+    BundleDocumentInput, DocumentContent, ParseBundleInput, ParsedFrontmatter, RenderedFile,
+    parse_bundle,
+};
 use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -45,6 +48,29 @@ struct CitationAnalysis {
 }
 
 pub fn migrate_bundle(input: MigrationInput) -> Result<MigrationPlan, String> {
+    let source = input.clone();
+    let plan = migrate_bundle_with_citations(input, true)?;
+    if rendered_plan_is_parseable(&source.bundle, &plan) {
+        return Ok(plan);
+    }
+    if plan.documents.iter().any(|document| {
+        document
+            .actions
+            .iter()
+            .any(|action| action == "citations-to-sources")
+    }) {
+        let fallback = migrate_bundle_with_citations(source.clone(), false)?;
+        if rendered_plan_is_parseable(&source.bundle, &fallback) {
+            return Ok(fallback);
+        }
+    }
+    Err("Migration rendered output is outside the canonical parser safety envelope.".to_owned())
+}
+
+fn migrate_bundle_with_citations(
+    input: MigrationInput,
+    allow_citation_insertions: bool,
+) -> Result<MigrationPlan, String> {
     validate_actor(&input.actor)?;
     let texts = decoded_documents(&input.bundle)?;
     let bundle = parse_bundle(input.bundle);
@@ -151,14 +177,13 @@ pub fn migrate_bundle(input: MigrationInput) -> Result<MigrationPlan, String> {
             }
         }
 
-        if !concept.frontmatter.raw.contains_key("sources")
-            && let Some(analysis) = analyze_citations(&concept.body)
-        {
+        if let Some(analysis) = analyze_citations(&concept.body) {
             citation_candidates.clone_from(&analysis.resources);
             if analysis.ambiguous || analysis.resources.is_empty() {
                 manual_follow_up = true;
                 manual_reasons.push("citations-require-manual-review".to_owned());
-            } else {
+            } else if !concept.frontmatter.raw.contains_key("sources") && allow_citation_insertions
+            {
                 let closing = frontmatter_closing_start(text)?;
                 let mut block = format!("sources:{line_ending}");
                 for resource in &analysis.resources {
@@ -167,12 +192,24 @@ pub fn migrate_bundle(input: MigrationInput) -> Result<MigrationPlan, String> {
                         yaml_quote(resource)
                     ));
                 }
-                edits.push(Edit {
+                let citation_edit = Edit {
                     start: utf16_len(&text[..closing]),
                     end: utf16_len(&text[..closing]),
                     replacement: block,
-                });
-                actions.push("citations-to-sources".to_owned());
+                };
+                let mut proposed_edits = edits.clone();
+                proposed_edits.push(citation_edit.clone());
+                let proposal = apply_edits(text, proposed_edits)?;
+                if rendered_concept_is_parseable(path, &concept.source.uri, &proposal) {
+                    edits.push(citation_edit);
+                    actions.push("citations-to-sources".to_owned());
+                } else {
+                    manual_follow_up = true;
+                    manual_reasons.push("citations-require-manual-review".to_owned());
+                }
+            } else if !concept.frontmatter.raw.contains_key("sources") {
+                manual_follow_up = true;
+                manual_reasons.push("citations-require-manual-review".to_owned());
             }
         }
 
@@ -267,6 +304,7 @@ fn simple_field_range(
     frontmatter: &ParsedFrontmatter,
     field: &str,
 ) -> Result<Option<FieldRange>, String> {
+    let source_offset = usize::from(text.starts_with('\u{feff}'));
     let source = frontmatter.source.as_str();
     let mut byte_start = 0usize;
     while byte_start <= source.len() {
@@ -280,8 +318,8 @@ fn simple_field_range(
             if !is_single_line_unanchored_scalar(value) {
                 return Ok(None);
             }
-            let start = frontmatter.range.start.offset + utf16_len(&source[..byte_start]);
-            let end = frontmatter.range.start.offset + utf16_len(&source[..content_end]);
+            let canonical_start = frontmatter.range.start.offset + utf16_len(&source[..byte_start]);
+            let canonical_end = frontmatter.range.start.offset + utf16_len(&source[..content_end]);
             if has_following_indented_value_line(source, content_end) {
                 return Ok(None);
             }
@@ -293,9 +331,11 @@ fn simple_field_range(
             else {
                 return Ok(None);
             };
-            if field_range.end.offset > end {
+            if field_range.end.offset > canonical_end {
                 return Ok(None);
             }
+            let start = canonical_start + source_offset;
+            let end = canonical_end + source_offset;
             if slice_utf16(text, start, end)? != line {
                 return Err(format!(
                     "The {field} source range does not match the document."
@@ -467,6 +507,7 @@ fn analyze_citations(body: &str) -> Option<CitationAnalysis> {
     let mut resources = Vec::new();
     let mut seen = BTreeSet::new();
     let mut fence: Option<(char, usize)> = None;
+    let mut html_block: Option<HtmlBlock> = None;
     for raw_line in normalized.lines() {
         let (indent, line) = markdown_indent(raw_line);
         if let Some((marker, length)) = fence {
@@ -476,6 +517,16 @@ fn analyze_citations(body: &str) -> Option<CitationAnalysis> {
                 })
             {
                 fence = None;
+            }
+            continue;
+        }
+        if let Some(kind) = html_block {
+            if line.contains("Citations") {
+                found = true;
+                ambiguous = true;
+            }
+            if kind.ends(line) {
+                html_block = None;
             }
             continue;
         }
@@ -489,19 +540,28 @@ fn analyze_citations(body: &str) -> Option<CitationAnalysis> {
             continue;
         }
         if indent <= 3
+            && let Some(kind) = html_block_opening(line)
+        {
+            if in_citations || line.contains("Citations") {
+                found = true;
+                ambiguous = true;
+            }
+            if !kind.ends(line) {
+                html_block = Some(kind);
+            }
+            continue;
+        }
+        if indent <= 3
             && let Some(rest) = line.strip_prefix('#')
             && rest
                 .chars()
                 .next()
                 .is_none_or(|character| character == ' ' || character == '\t')
         {
-            if in_citations {
-                break;
-            }
             let title = atx_heading_title(rest);
-            if title == "Citations" {
+            in_citations = title == "Citations";
+            if in_citations {
                 found = true;
-                in_citations = true;
             }
             continue;
         }
@@ -585,9 +645,185 @@ fn fence_run(line: &str, marker: char) -> Option<usize> {
 
 fn is_simple_url(value: &str) -> bool {
     (value.starts_with("https://") || value.starts_with("http://"))
-        && !value
-            .chars()
-            .any(|character| character.is_whitespace() || character.is_control())
+        && !value.chars().any(|character| {
+            character.is_whitespace() || character.is_control() || character == '\u{feff}'
+        })
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HtmlBlock {
+    Comment,
+    ProcessingInstruction,
+    Declaration,
+    Cdata,
+    Script,
+    Pre,
+    Style,
+    Textarea,
+    UntilBlank,
+}
+
+impl HtmlBlock {
+    fn ends(self, line: &str) -> bool {
+        match self {
+            Self::Comment => line.contains("-->"),
+            Self::ProcessingInstruction => line.contains("?>"),
+            Self::Declaration => line.contains('>'),
+            Self::Cdata => line.contains("]]>"),
+            Self::Script => line.to_ascii_lowercase().contains("</script>"),
+            Self::Pre => line.to_ascii_lowercase().contains("</pre>"),
+            Self::Style => line.to_ascii_lowercase().contains("</style>"),
+            Self::Textarea => line.to_ascii_lowercase().contains("</textarea>"),
+            Self::UntilBlank => line.trim().is_empty(),
+        }
+    }
+}
+
+fn html_block_opening(line: &str) -> Option<HtmlBlock> {
+    let lower = line.to_ascii_lowercase();
+    if line.starts_with("<!--") {
+        Some(HtmlBlock::Comment)
+    } else if line.starts_with("<?") {
+        Some(HtmlBlock::ProcessingInstruction)
+    } else if line.starts_with("<![CDATA[") {
+        Some(HtmlBlock::Cdata)
+    } else if line
+        .strip_prefix("<!")
+        .and_then(|rest| rest.chars().next())
+        .is_some_and(|character| character.is_ascii_uppercase())
+    {
+        Some(HtmlBlock::Declaration)
+    } else if html_tag_starts(&lower, "script") {
+        Some(HtmlBlock::Script)
+    } else if html_tag_starts(&lower, "pre") {
+        Some(HtmlBlock::Pre)
+    } else if html_tag_starts(&lower, "style") {
+        Some(HtmlBlock::Style)
+    } else if html_tag_starts(&lower, "textarea") {
+        Some(HtmlBlock::Textarea)
+    } else if [
+        "address",
+        "article",
+        "aside",
+        "base",
+        "basefont",
+        "blockquote",
+        "body",
+        "caption",
+        "center",
+        "col",
+        "colgroup",
+        "dd",
+        "details",
+        "dialog",
+        "dir",
+        "div",
+        "dl",
+        "dt",
+        "fieldset",
+        "figcaption",
+        "figure",
+        "footer",
+        "form",
+        "frame",
+        "frameset",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "head",
+        "header",
+        "hr",
+        "html",
+        "iframe",
+        "legend",
+        "li",
+        "link",
+        "main",
+        "menu",
+        "menuitem",
+        "nav",
+        "noframes",
+        "ol",
+        "optgroup",
+        "option",
+        "p",
+        "section",
+        "source",
+        "summary",
+        "table",
+        "tbody",
+        "td",
+        "tfoot",
+        "th",
+        "thead",
+        "title",
+        "tr",
+        "track",
+        "ul",
+    ]
+    .iter()
+    .any(|tag| html_tag_starts(&lower, tag))
+        || complete_html_tag_line(line)
+    {
+        Some(HtmlBlock::UntilBlank)
+    } else {
+        None
+    }
+}
+
+fn html_tag_starts(line: &str, tag: &str) -> bool {
+    line.strip_prefix("</")
+        .or_else(|| line.strip_prefix('<'))
+        .and_then(|rest| rest.strip_prefix(tag))
+        .and_then(|rest| rest.chars().next())
+        .is_some_and(|character| character.is_whitespace() || matches!(character, '/' | '>'))
+}
+
+fn complete_html_tag_line(line: &str) -> bool {
+    let trimmed = line.trim_end();
+    trimmed.len() > 2
+        && trimmed.starts_with('<')
+        && trimmed.ends_with('>')
+        && !trimmed.starts_with("<http://")
+        && !trimmed.starts_with("<https://")
+        && !trimmed[1..trimmed.len() - 1].contains(['<', '>'])
+}
+
+fn rendered_concept_is_parseable(path: &str, uri: &str, content: &str) -> bool {
+    parse_bundle(ParseBundleInput {
+        root_uri: "fixture:/migration-proposal".to_owned(),
+        invalid_root_uri_utf16: None,
+        revision: 1,
+        documents: vec![BundleDocumentInput {
+            uri: uri.to_owned(),
+            bundle_path: path.to_owned(),
+            content: Some(DocumentContent::Text(content.to_owned())),
+            content_hash: None,
+            identity_only_failure: None,
+            invalid_utf16_fields: None,
+        }],
+    })
+    .failures
+    .is_empty()
+}
+
+fn rendered_plan_is_parseable(input: &ParseBundleInput, plan: &MigrationPlan) -> bool {
+    let outputs = plan
+        .files
+        .iter()
+        .map(|file| (file.relative_path.as_str(), file.content.as_str()))
+        .collect::<BTreeMap<_, _>>();
+    let mut proposal = input.clone();
+    for document in &mut proposal.documents {
+        if let Some(content) = outputs.get(document.bundle_path.as_str()) {
+            document.content = Some(DocumentContent::Text((*content).to_owned()));
+            document.content_hash = None;
+        }
+    }
+    parse_bundle(proposal).failures.is_empty()
 }
 
 fn is_rfc3339(value: &str) -> bool {
@@ -956,5 +1192,176 @@ mod tests {
             .unwrap();
         assert!(!fenced.manual_follow_up);
         assert!(fenced.citation_candidates.is_empty());
+    }
+
+    #[test]
+    fn leading_bom_offsets_work_for_text_bytes_and_all_line_endings() {
+        for line_ending in ["\n", "\r\n", "\r"] {
+            let root = format!(
+                "\u{feff}---{line_ending}okf_version: \"0.1\"{line_ending}---{line_ending}# Root{line_ending}"
+            );
+            let concept = format!(
+                "\u{feff}---{line_ending}type: Reference{line_ending}timestamp: \"2026-07-22T10:00:00Z\"{line_ending}---{line_ending}# Citations{line_ending}{line_ending}- https://example.com/source{line_ending}"
+            );
+            for bytes in [false, true] {
+                let content = |value: &str| {
+                    if bytes {
+                        DocumentContent::Bytes(value.as_bytes().to_vec())
+                    } else {
+                        DocumentContent::Text(value.to_owned())
+                    }
+                };
+                let plan = migrate_bundle(MigrationInput {
+                    bundle: ParseBundleInput {
+                        root_uri: "fixture:/migration-bom".to_owned(),
+                        invalid_root_uri_utf16: None,
+                        revision: 1,
+                        documents: vec![
+                            BundleDocumentInput {
+                                uri: "fixture:/migration-bom/index.md".to_owned(),
+                                bundle_path: "index.md".to_owned(),
+                                content: Some(content(&root)),
+                                content_hash: None,
+                                identity_only_failure: None,
+                                invalid_utf16_fields: None,
+                            },
+                            BundleDocumentInput {
+                                uri: "fixture:/migration-bom/concept.md".to_owned(),
+                                bundle_path: "concept.md".to_owned(),
+                                content: Some(content(&concept)),
+                                content_hash: None,
+                                identity_only_failure: None,
+                                invalid_utf16_fields: None,
+                            },
+                        ],
+                    },
+                    actor: "human:reviewer".to_owned(),
+                })
+                .unwrap();
+                let root_output = &plan
+                    .files
+                    .iter()
+                    .find(|file| file.relative_path == "index.md")
+                    .unwrap()
+                    .content;
+                assert_eq!(
+                    root_output,
+                    &format!(
+                        "\u{feff}---{line_ending}okf_version: \"0.2\"{line_ending}---{line_ending}# Root{line_ending}"
+                    )
+                );
+                let concept_output = &plan
+                    .files
+                    .iter()
+                    .find(|file| file.relative_path == "concept.md")
+                    .unwrap()
+                    .content;
+                assert!(concept_output.starts_with("\u{feff}---"));
+                assert!(
+                    concept_output
+                        .contains(&format!("generated:{line_ending}  by: \"human:reviewer\""))
+                );
+                assert!(concept_output.contains(&format!(
+                    "sources:{line_ending}  - resource: \"https://example.com/source\"{line_ending}---"
+                )));
+            }
+        }
+    }
+
+    #[test]
+    fn scans_all_citation_sections_and_marks_html_pseudo_sections_manual() {
+        let plan = migration(&[
+            ("index.md", "---\nokf_version: \"0.1\"\n---\n# Root\n"),
+            (
+                "multiple.md",
+                "---\ntype: Reference\n---\n# Citations\n- https://example.com/one\n# Notes\ntext\n# Citations\n- https://example.com/two\n",
+            ),
+            (
+                "html.md",
+                "---\ntype: Reference\n---\n<!--\n# Citations\n- https://example.com/not-a-source\n-->\n",
+            ),
+            (
+                "script.md",
+                "---\ntype: Reference\n---\n<script>\n\n# Citations\n- https://example.com/not-a-source\n</script>\n",
+            ),
+        ]);
+        let multiple = plan
+            .documents
+            .iter()
+            .find(|document| document.relative_path == "multiple.md")
+            .unwrap();
+        assert!(multiple.changed);
+        assert!(!multiple.manual_follow_up);
+        assert_eq!(
+            multiple.citation_candidates,
+            ["https://example.com/one", "https://example.com/two"]
+        );
+        let html = plan
+            .documents
+            .iter()
+            .find(|document| document.relative_path == "html.md")
+            .unwrap();
+        assert!(!html.changed);
+        assert!(html.manual_follow_up);
+        assert!(html.citation_candidates.is_empty());
+        let script = plan
+            .documents
+            .iter()
+            .find(|document| document.relative_path == "script.md")
+            .unwrap();
+        assert!(!script.changed);
+        assert!(script.manual_follow_up);
+        assert!(script.citation_candidates.is_empty());
+    }
+
+    #[test]
+    fn analyzes_existing_sources_and_rejects_bom_inside_urls() {
+        let plan = migration(&[
+            ("index.md", "---\nokf_version: \"0.2\"\n---\n# Root\n"),
+            (
+                "existing.md",
+                "---\ntype: Reference\nsources:\n  - resource: \"https://example.com/existing\"\n---\n# Citations\n- [Named](https://example.com/named)\n",
+            ),
+            (
+                "bom-url.md",
+                "---\ntype: Reference\n---\n# Citations\n- https://example.com/a\u{feff}b\n",
+            ),
+        ]);
+        for path in ["existing.md", "bom-url.md"] {
+            let document = plan
+                .documents
+                .iter()
+                .find(|document| document.relative_path == path)
+                .unwrap();
+            assert!(!document.changed);
+            assert!(document.manual_follow_up);
+            assert_eq!(document.manual_reasons, ["citations-require-manual-review"]);
+        }
+    }
+
+    #[test]
+    fn refuses_citation_insertion_that_exceeds_parser_limits() {
+        let long_url = format!("https://example.com/{}", "a".repeat(65_500));
+        let concept =
+            format!("---\ntype: Reference\n---\n# Citations\n- {long_url}\n- {long_url}\n");
+        let plan = migration(&[
+            ("index.md", "---\nokf_version: \"0.1\"\n---\n# Root\n"),
+            ("long.md", &concept),
+        ]);
+        let document = plan
+            .documents
+            .iter()
+            .find(|document| document.relative_path == "long.md")
+            .unwrap();
+        assert!(!document.changed);
+        assert!(document.manual_follow_up);
+        assert_eq!(document.citation_candidates, [long_url]);
+        assert_eq!(
+            plan.files
+                .iter()
+                .map(|file| file.relative_path.as_str())
+                .collect::<Vec<_>>(),
+            ["index.md"]
+        );
     }
 }

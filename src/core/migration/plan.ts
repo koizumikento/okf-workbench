@@ -42,6 +42,19 @@ function compareMigrationPath(
 const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 export function planMigration(input: MigrationInput): MigrationPlan {
+  const plan = planMigrationWithCitations(input, true);
+  if (renderedPlanIsParseable(input.bundle, plan)) return plan;
+  if (plan.documents.some(({ actions }) => actions.includes('citations-to-sources'))) {
+    const fallback = planMigrationWithCitations(input, false);
+    if (renderedPlanIsParseable(input.bundle, fallback)) return fallback;
+  }
+  throw new Error('Migration rendered output is outside the canonical parser safety envelope.');
+}
+
+function planMigrationWithCitations(
+  input: MigrationInput,
+  allowCitationInsertions: boolean,
+): MigrationPlan {
   validateActor(input.actor);
   const texts = decodedDocuments(input);
   const bundle = parseBundle(input.bundle);
@@ -129,21 +142,29 @@ export function planMigration(input: MigrationInput): MigrationPlan {
       }
     }
 
-    if (!Object.hasOwn(concept.frontmatter.raw, 'sources')) {
-      const analysis = analyzeCitations(concept.body);
-      if (analysis !== undefined) {
-        citationCandidates = analysis.resources;
-        if (analysis.ambiguous || analysis.resources.length === 0) {
+    const analysis = analyzeCitations(concept.body);
+    if (analysis !== undefined) {
+      citationCandidates = analysis.resources;
+      if (analysis.ambiguous || analysis.resources.length === 0) {
+        manualFollowUp = true;
+        manualReasons.push('citations-require-manual-review');
+      } else if (!Object.hasOwn(concept.frontmatter.raw, 'sources') && allowCitationInsertions) {
+        const closing = frontmatterClosingStart(text);
+        const block = `sources:${eol}${analysis.resources
+          .map((resource) => `  - resource: ${yamlQuote(resource)}${eol}`)
+          .join('')}`;
+        const citationEdit = { start: closing, end: closing, replacement: block };
+        const proposal = applyEdits(text, [...edits, citationEdit]);
+        if (renderedConceptIsParseable(path, concept.source.uri, proposal)) {
+          edits.push(citationEdit);
+          actions.push('citations-to-sources');
+        } else {
           manualFollowUp = true;
           manualReasons.push('citations-require-manual-review');
-        } else {
-          const closing = frontmatterClosingStart(text);
-          const block = `sources:${eol}${analysis.resources
-            .map((resource) => `  - resource: ${yamlQuote(resource)}${eol}`)
-            .join('')}`;
-          edits.push({ start: closing, end: closing, replacement: block });
-          actions.push('citations-to-sources');
         }
+      } else if (!Object.hasOwn(concept.frontmatter.raw, 'sources')) {
+        manualFollowUp = true;
+        manualReasons.push('citations-require-manual-review');
       }
     }
 
@@ -202,6 +223,7 @@ function simpleFieldRange(
   frontmatter: ParsedFrontmatter,
   field: string,
 ): { readonly start: number; readonly end: number } | undefined {
+  const sourceOffset = text.startsWith('\uFEFF') ? 1 : 0;
   let offset = 0;
   for (const line of frontmatter.source.split(/\r\n?|\n/gu)) {
     const prefixes = [field, `'${field}'`, `"${field}"`];
@@ -214,12 +236,14 @@ function simpleFieldRange(
       if (!isSingleLineUnanchoredScalar(value)) {
         return undefined;
       }
-      const start = frontmatter.range.start.offset + offset;
-      const end = start + line.length;
+      const canonicalStart = frontmatter.range.start.offset + offset;
+      const canonicalEnd = canonicalStart + line.length;
       const fieldRange = frontmatter.fields[field];
-      if (fieldRange === undefined || fieldRange.end.offset > end) {
+      if (fieldRange === undefined || fieldRange.end.offset > canonicalEnd) {
         return undefined;
       }
+      const start = canonicalStart + sourceOffset;
+      const end = canonicalEnd + sourceOffset;
       if (text.slice(start, end) !== line) {
         throw new Error(`The ${field} source range does not match the document.`);
       }
@@ -289,6 +313,7 @@ function analyzeCitations(body: string): CitationAnalysis | undefined {
   const resources: string[] = [];
   const seen = new Set<string>();
   let fence: { readonly marker: '`' | '~'; readonly length: number } | undefined;
+  let htmlBlock: HtmlBlock | undefined;
   for (const rawLine of normalized.split('\n')) {
     const { columns: indent, content: line } = markdownIndent(rawLine);
     if (fence !== undefined) {
@@ -296,6 +321,14 @@ function analyzeCitations(body: string): CitationAnalysis | undefined {
       if (indent <= 3 && run.length >= fence.length && line.slice(run.length).trim().length === 0) {
         fence = undefined;
       }
+      continue;
+    }
+    if (htmlBlock !== undefined) {
+      if (line.includes('Citations')) {
+        found = true;
+        ambiguous = true;
+      }
+      if (htmlBlockEnds(htmlBlock, line)) htmlBlock = undefined;
       continue;
     }
     if (indent > 3) {
@@ -311,13 +344,21 @@ function analyzeCitations(body: string): CitationAnalysis | undefined {
       fence = { marker: run[0] as '`' | '~', length: run.length };
       continue;
     }
+    const htmlOpening = htmlBlockOpening(line);
+    if (htmlOpening !== undefined) {
+      if (inCitations || line.includes('Citations')) {
+        found = true;
+        ambiguous = true;
+      }
+      if (!htmlBlockEnds(htmlOpening, line)) htmlBlock = htmlOpening;
+      continue;
+    }
     const heading = /^#(?:[ \t]+|$)(.*)$/u.exec(line);
     if (heading !== null) {
-      if (inCitations) break;
       const title = (heading[1] ?? '').replace(/[ \t]+#+[ \t]*$/u, '').trim();
-      if (title === 'Citations') {
+      inCitations = title === 'Citations';
+      if (inCitations) {
         found = true;
-        inCitations = true;
       }
       continue;
     }
@@ -354,6 +395,89 @@ function markdownIndent(line: string): { readonly columns: number; readonly cont
 
 function isSimpleUrl(value: string): boolean {
   return /^(?:https?):\/\/[^\s\p{Cc}]+$/u.test(value);
+}
+
+type HtmlBlock =
+  | 'comment'
+  | 'processing'
+  | 'declaration'
+  | 'cdata'
+  | 'script'
+  | 'pre'
+  | 'style'
+  | 'textarea'
+  | 'until-blank';
+
+function htmlBlockOpening(line: string): HtmlBlock | undefined {
+  if (line.startsWith('<!--')) return 'comment';
+  if (line.startsWith('<?')) return 'processing';
+  if (line.startsWith('<![CDATA[')) return 'cdata';
+  if (/^<![A-Z]/u.test(line)) return 'declaration';
+  const raw = /^<\/?(script|pre|style|textarea)(?:[\s/>]|$)/iu.exec(line)?.[1]?.toLowerCase();
+  if (raw === 'script' || raw === 'pre' || raw === 'style' || raw === 'textarea') return raw;
+  if (
+    /^<\/?(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|section|source|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:[\s/>]|$)/iu.test(
+      line,
+    ) ||
+    (/^<[^<>]+>[ \t]*$/u.test(line) && !/^<https?:\/\//u.test(line))
+  ) {
+    return 'until-blank';
+  }
+  return undefined;
+}
+
+function htmlBlockEnds(block: HtmlBlock, line: string): boolean {
+  switch (block) {
+    case 'comment':
+      return line.includes('-->');
+    case 'processing':
+      return line.includes('?>');
+    case 'declaration':
+      return line.includes('>');
+    case 'cdata':
+      return line.includes(']]>');
+    case 'script':
+      return /<\/script>/iu.test(line);
+    case 'pre':
+      return /<\/pre>/iu.test(line);
+    case 'style':
+      return /<\/style>/iu.test(line);
+    case 'textarea':
+      return /<\/textarea>/iu.test(line);
+    case 'until-blank':
+      return line.trim().length === 0;
+  }
+}
+
+function renderedConceptIsParseable(path: string, uri: string, content: string): boolean {
+  return (
+    parseBundle({
+      rootUri: 'fixture:/migration-proposal',
+      revision: 1,
+      documents: [
+        {
+          uri,
+          bundlePath: path,
+          content,
+        },
+      ],
+    }).failures.length === 0
+  );
+}
+
+function renderedPlanIsParseable(input: MigrationInput['bundle'], plan: MigrationPlan): boolean {
+  const outputs = new Map(plan.files.map((file) => [file.relativePath, file.content]));
+  return (
+    parseBundle({
+      ...input,
+      documents: input.documents.map((document) => {
+        const content = outputs.get(document.bundlePath);
+        return content === undefined
+          ? document
+          : { uri: document.uri, bundlePath: document.bundlePath, content };
+      }),
+    }).failures.length === 0
+  );
 }
 
 function isRfc3339(value: string): boolean {

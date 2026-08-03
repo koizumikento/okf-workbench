@@ -80,7 +80,7 @@ cargo build --locked --release --bin okf
 ```
 
 The CLI provides `init`, `new`, `validate`, `index`, `graph`, `agent`, `migrate`, and `version`. Read commands
-never write. Write commands first report a complete plan; non-interactive writes require
+never write. Supported write commands first report a complete plan; non-interactive writes require
 `--apply`, and `--check` reports whether changes are needed without modifying the workspace.
 A single-create plan for an existing bundle can be applied. An all-create plan for a missing bundle
 root is built privately and published as one no-replace directory operation. Existing-root plans
@@ -92,8 +92,10 @@ Migration is always explicit:
 
 ```sh
 okf migrate <bundle-root> --to 0.2 --actor human:<id> --check
-okf migrate <bundle-root> --to 0.2 --actor human:<id> --apply
 ```
+
+Native migration is preview-only and does not accept `--apply`; use the extension command to review
+and approve the guarded existing-file proposal.
 
 Open VSX selects a target package for macOS arm64/x64, Linux x64, or Windows x64 when supported.
 The bundled CLI is appended to `PATH` for new integrated terminals, without changing shell profile

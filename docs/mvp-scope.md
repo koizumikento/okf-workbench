@@ -191,7 +191,9 @@ Requirements:
 - Use the same parser, validator, graph, index, template, migration, and agent generation crate as the
   extension.
 - Keep validation and graph commands read-only.
-- Require `--apply` for non-interactive writes; keep `--check` strictly non-mutating.
+- Require `--apply` for supported non-interactive writes; keep `--check` strictly non-mutating and
+  make `migrate` an explicit preview-only `--check` command while native existing-file replacement
+  remains outside FR-104.
 - Refuse path escapes, symbolic-link traversal, collisions, and malformed managed regions.
 - Emit versioned JSON for machine-readable validation and graph output.
 - Ship identical native bytes both in supported target-platform VSIX packages and standalone

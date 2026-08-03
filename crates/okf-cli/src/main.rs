@@ -173,8 +173,9 @@ struct MigrateArgs {
     to: String,
     #[arg(long)]
     actor: String,
-    #[command(flatten)]
-    write: WriteFlags,
+    /// Preview the complete migration plan without writing.
+    #[arg(long, required = true)]
+    check: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -202,6 +203,7 @@ struct MigrationOutput<'a> {
     to_version: &'a str,
     change_count: usize,
     applied: bool,
+    preview_only: bool,
     changes: &'a [PlannedChange],
     documents: &'a [MigrationDocumentResult],
 }
@@ -473,10 +475,6 @@ fn run_migration(args: MigrateArgs) -> Result<u8, String> {
         actor: args.actor,
     })?;
     let plan = plan_replacement_files(&root, migration.files.clone(), &expected_contents)?;
-    let should_apply = should_apply(&args.write, &plan)?;
-    if should_apply {
-        apply_plan(&root, &plan)?;
-    }
     write_json(&JsonEnvelope {
         schema_version: 1,
         command: "migrate",
@@ -485,7 +483,8 @@ fn run_migration(args: MigrateArgs) -> Result<u8, String> {
             from_version: &migration.from_version,
             to_version: migration.to_version,
             change_count: plan.len(),
-            applied: should_apply,
+            applied: false,
+            preview_only: true,
             changes: &plan,
             documents: &migration.documents,
         },
@@ -495,11 +494,7 @@ fn run_migration(args: MigrateArgs) -> Result<u8, String> {
             .documents
             .iter()
             .any(|document| document.manual_follow_up);
-    Ok(if args.write.check && needs_attention {
-        1
-    } else {
-        0
-    })
+    Ok(if args.check && needs_attention { 1 } else { 0 })
 }
 
 fn migration_source_snapshots(

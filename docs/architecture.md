@@ -99,9 +99,11 @@ instantiates Wasm.
 
 Migration is a pure shared-core planner. It receives one complete bundle snapshot plus an explicit
 actor and returns replacement bytes and per-document status. The Extension Host binds those bytes
-to provider-path SHA-256 snapshots and previews the complete proposal; the CLI binds them to local
-file snapshots and applies guarded same-directory replacements. Neither adapter infers actors or
-executes computation metadata.
+to provider-path SHA-256 snapshots, previews the complete proposal, and applies it only after the
+existing-file guards and explicit approval. The CLI binds the plan to local source snapshots but
+exposes migration only as a required non-mutating `--check`; FR-104 does not authorize native
+existing-file replacement without a complete generation-CAS and metadata-preserving primitive.
+Neither adapter infers actors or executes computation metadata.
 
 Supported target-platform VSIX packages add one native CLI at the distribution boundary, while the
 universal fallback remains CLI-free. The exact same executable is also shipped in a standalone

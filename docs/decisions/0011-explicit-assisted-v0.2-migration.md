@@ -22,15 +22,18 @@ Provide an optional migration planner in the shared deterministic core, exposed 
 - Report ambiguous fields and citation forms for manual follow-up without deleting or rewriting
   them.
 - Preserve unknown frontmatter and Markdown content.
-- Update the root version inside the same complete guarded plan, write that root change last, and
-  make subsequent runs empty.
-- Preview every extension migration because it updates existing files; keep CLI `--check`
-  non-mutating and require explicit `--apply` for non-interactive mutation.
+- Update the root version inside the same complete guarded plan, write that root change last when
+  the extension applies an approved proposal, and make subsequent planning runs empty.
+- Preview every extension migration because it updates existing files. Keep native CLI migration
+  explicitly preview-only through a required `--check`; do not expose `--apply` while FR-104
+  requires existing-file updates to fail closed without a complete generation-CAS and
+  metadata-preserving replacement primitive.
 - Never infer verification, computation, execution, receipt, or attestation claims.
 
 ## Consequences
 
 Migration remains local, reviewable, and safe for v0.1 bundles with custom metadata. Some documents
 will intentionally require manual follow-up rather than a lossy best guess. Native Rust, Wasm, CLI,
-and Extension Host tests must retain byte-plan parity, idempotence, and collision/revalidation
-coverage.
+and Extension Host tests must retain byte-plan parity and idempotence. Guarded application and
+collision/revalidation coverage remain Extension Host responsibilities; CLI automation can inspect
+the same plan but cannot mistake a zero-change manual-follow-up result for a successful apply.

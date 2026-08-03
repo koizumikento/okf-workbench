@@ -426,6 +426,61 @@ describe('Rust/Wasm core boundary', () => {
     );
   });
 
+  test('keeps migration parity for BOM offsets and conservative Citations analysis', () => {
+    const encoder = new TextEncoder();
+    const longUrl = `https://example.com/${'a'.repeat(65_500)}`;
+    const cases: readonly ParseBundleInput[] = [
+      inputFor(
+        [
+          ['index.md', '\uFEFF---\r\nokf_version: "0.1"\r\n---\r\n# Root\r\n'],
+          [
+            'bom-text.md',
+            '\uFEFF---\r\ntype: Reference\r\ntimestamp: "2026-07-22T10:00:00Z"\r\n---\r\n# Citations\r\n- https://example.com/text\r\n',
+          ],
+          [
+            'bom-bytes.md',
+            encoder.encode(
+              '\uFEFF---\rtype: Reference\rtimestamp: "2026-07-22T10:00:00Z"\r---\r# Citations\r- https://example.com/bytes\r',
+            ),
+          ],
+        ],
+        'fixture:/migration-bom-parity',
+      ),
+      inputFor(
+        [
+          ['index.md', '---\nokf_version: "0.1"\n---\n# Root\n'],
+          [
+            'multiple.md',
+            '---\ntype: Reference\n---\n# Citations\n- https://example.com/one\n# Notes\ntext\n# Citations\n- https://example.com/two\n',
+          ],
+          [
+            'html.md',
+            '---\ntype: Reference\n---\n<!--\n# Citations\n- https://example.com/not-a-source\n-->\n',
+          ],
+          [
+            'script.md',
+            '---\ntype: Reference\n---\n<script>\n\n# Citations\n- https://example.com/not-a-source\n</script>\n',
+          ],
+          [
+            'existing.md',
+            '---\ntype: Reference\nsources:\n  - resource: "https://example.com/existing"\n---\n# Citations\n- [Named](https://example.com/named)\n',
+          ],
+          [
+            'bom-url.md',
+            '---\ntype: Reference\n---\n# Citations\n- https://example.com/a\uFEFFb\n',
+          ],
+          ['long.md', `---\ntype: Reference\n---\n# Citations\n- ${longUrl}\n- ${longUrl}\n`],
+        ],
+        'fixture:/migration-citations-parity',
+      ),
+    ];
+    for (const migrationInput of cases) {
+      expect(core.migrate(migrationInput, 'human:reviewer')).toEqual(
+        typescriptOkfCore.migrate(migrationInput, 'human:reviewer'),
+      );
+    }
+  });
+
   test.each(fixtureNames)('%s preserves the canonical semantic projection', async (name) => {
     const fixture = await loadFixture(name);
     const files = await readFixtureFiles(fixture);

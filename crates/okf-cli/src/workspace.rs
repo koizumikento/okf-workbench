@@ -712,7 +712,11 @@ fn plan_files_with_expected(
     let planned_root = capture_planned_root_identity(root)?;
     let mut plan = Vec::new();
     for file in files {
-        validate_relative_path(&file.relative_path)?;
+        if matches!(mode, PlanMode::ReplaceExisting) {
+            validate_existing_relative_path(&file.relative_path)?;
+        } else {
+            validate_relative_path(&file.relative_path)?;
+        }
         let target = root.join(&file.relative_path);
         ensure_contained(root, &target)?;
         ensure_safe_parent_chain(root, &target)?;
@@ -3293,6 +3297,52 @@ pub fn validate_relative_path(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Validates a bounded path that was obtained by enumerating an existing bundle.
+///
+/// Unlike generated paths, an existing provider identity follows the host filesystem's naming
+/// rules. In particular, POSIX filenames may contain `:`, end in a dot or space, or match a
+/// Windows device basename. Windows keeps rejecting those spellings because Win32 may interpret
+/// them as invalid or as aliases rather than the enumerated leaf.
+fn validate_existing_relative_path(path: &str) -> Result<(), String> {
+    const MAX_PATH_UNITS: usize = 4_096;
+    const MAX_SEGMENTS: usize = 64;
+    #[cfg(windows)]
+    let normalized = path.replace('\\', "/");
+    #[cfg(not(windows))]
+    let normalized = path;
+    let segments = normalized.split('/').collect::<Vec<_>>();
+    let invalid_common = normalized.is_empty()
+        || normalized.len() > MAX_PATH_UNITS
+        || normalized.encode_utf16().count() > MAX_PATH_UNITS
+        || segments.len() > MAX_SEGMENTS
+        || normalized.starts_with('/')
+        || segments
+            .iter()
+            .any(|segment| segment.is_empty() || matches!(*segment, "." | ".."))
+        || normalized.chars().any(char::is_control)
+        || Path::new(path).components().any(|component| {
+            matches!(
+                component,
+                Component::CurDir
+                    | Component::ParentDir
+                    | Component::RootDir
+                    | Component::Prefix(_)
+            )
+        });
+    #[cfg(windows)]
+    let invalid_platform = segments
+        .iter()
+        .any(|segment| !is_portable_generated_segment(segment));
+    #[cfg(not(windows))]
+    let invalid_platform = false;
+    if invalid_common || invalid_platform {
+        return Err(format!(
+            "existing bundle path {path:?} is unsafe or ambiguous on this platform"
+        ));
+    }
+    Ok(())
+}
+
 fn ensure_contained(root: &Path, target: &Path) -> Result<(), String> {
     if target.starts_with(root) {
         Ok(())
@@ -3379,6 +3429,37 @@ mod tests {
             assert!(validate_relative_path(path).is_ok(), "{path:?}");
         }
         assert!(validate_relative_path(&format!("{}.md", "a".repeat(252))).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn existing_posix_paths_keep_host_filesystem_identity() {
+        for path in [
+            "notes:2026.md",
+            "CON.md",
+            "folder/trailing.",
+            "folder/trailing ",
+        ] {
+            assert!(validate_existing_relative_path(path).is_ok(), "{path:?}");
+        }
+        for path in ["", "/outside.md", "../outside.md", "folder//file.md"] {
+            assert!(validate_existing_relative_path(path).is_err(), "{path:?}");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn existing_windows_paths_reject_device_and_normalization_aliases() {
+        for path in [
+            "CON.md",
+            "folder/AUX.txt",
+            "folder/trailing.",
+            "folder/trailing ",
+            "folder/name:stream.md",
+        ] {
+            assert!(validate_existing_relative_path(path).is_err(), "{path:?}");
+        }
+        assert!(validate_existing_relative_path("folder/ordinary.md").is_ok());
     }
 
     #[test]

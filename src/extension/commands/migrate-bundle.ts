@@ -64,6 +64,15 @@ function manualFollowUpDetails(
   return omitted > 0 ? [...retained, `…and ${String(omitted)} more document(s)`] : retained;
 }
 
+function showWarningWithoutBlocking<TUri>(
+  dependencies: ProposalWorkflowDependencies<TUri>,
+  message: string,
+): void {
+  // Host notifications may stay pending until dismissed. Manual guidance is informative and must
+  // neither delay the proposal preview nor retain the extension-wide write-command lease.
+  void dependencies.ui.showWarning(message).catch(() => undefined);
+}
+
 export function createMigrateBundleCommand<TUri>(
   dependencies: MigrateBundleCommandDependencies<TUri>,
   admittedLease?: ProposalWorkflowLease,
@@ -186,17 +195,23 @@ export function createMigrateBundleCommand<TUri>(
         const manualDetails = manualFollowUpDetails(manualDocuments);
         const manualDetailsText = manualDetails.map((detail) => `\n- ${detail}`).join('');
         if (plan.files.length === 0) {
-          await (manualCount > 0
-            ? dependencies.ui.showWarning(
-                `No automatic migration changes are available. ${String(manualCount)} document(s) need manual follow-up:${manualDetailsText}`,
-              )
-            : dependencies.ui.showInformation(
+          if (manualCount > 0) {
+            showWarningWithoutBlocking(
+              dependencies,
+              `No automatic migration changes are available. ${String(manualCount)} document(s) need manual follow-up:${manualDetailsText}`,
+            );
+          } else {
+            void dependencies.ui
+              .showInformation(
                 'This bundle is already at OKF v0.2 and needs no deterministic migration changes.',
-              ));
+              )
+              .catch(() => undefined);
+          }
           return { kind: 'unchanged' };
         }
         if (manualCount > 0) {
-          await dependencies.ui.showWarning(
+          showWarningWithoutBlocking(
+            dependencies,
             `${String(manualCount)} document(s) need manual follow-up; their content will not be removed:${manualDetailsText}`,
           );
         }

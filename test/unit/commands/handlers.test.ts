@@ -177,6 +177,74 @@ describe('authoring command handlers', () => {
     expect(ui.warnings[0]).toContain('timestamp needs manual migration');
   });
 
+  it('opens migration preview without waiting for a manual-follow-up warning to settle', async () => {
+    const { port, ui, previewer, shared } = harness();
+    port.putText(
+      `${bundleRoot}/index.md`,
+      ['---', 'okf_version: "0.1"', '---', '# Root', ''].join('\n'),
+    );
+    port.putText(
+      `${bundleRoot}/manual.md`,
+      [
+        '---',
+        'type: Reference',
+        'timestamp: &when "2026-07-22T10:00:00Z"',
+        '---',
+        '# Manual',
+        '',
+      ].join('\n'),
+    );
+    const warning = deferred<undefined>();
+    let warningsStarted = 0;
+    ui.showWarning = () => {
+      warningsStarted += 1;
+      return warning.promise;
+    };
+    ui.inputs.push('human:reviewer');
+    const command = createMigrateBundleCommand({
+      ...shared,
+      selectBundle: async () => writableBundleSelection,
+    });
+
+    await expect(command()).resolves.toEqual({ kind: 'cancelled' });
+
+    expect(warningsStarted).toBe(1);
+    expect(previewer.shown).toHaveLength(1);
+    expect(previewer.releasedSessions).toBe(1);
+  });
+
+  it('contains a rejected manual-only migration warning and releases the workflow', async () => {
+    const { port, ui, previewer, shared } = harness();
+    port.putText(
+      `${bundleRoot}/index.md`,
+      ['---', 'okf_version: "0.2"', '---', '# Root', ''].join('\n'),
+    );
+    port.putText(
+      `${bundleRoot}/manual.md`,
+      [
+        '---',
+        'type: Reference',
+        'timestamp: &when "2026-07-22T10:00:00Z"',
+        '---',
+        '# Manual',
+        '',
+      ].join('\n'),
+    );
+    ui.showWarning = async () => {
+      throw new Error('host notification failure');
+    };
+    ui.inputs.push('human:reviewer', 'human:reviewer');
+    const command = createMigrateBundleCommand({
+      ...shared,
+      selectBundle: async () => writableBundleSelection,
+    });
+
+    await expect(command()).resolves.toEqual({ kind: 'unchanged' });
+    await expect(command()).resolves.toEqual({ kind: 'unchanged' });
+
+    expect(previewer.shown).toEqual([]);
+  });
+
   it('invalidates an active migration preview when its workspace folder is removed', async () => {
     const { port, ui, previewer, shared } = harness();
     const legacyPath = `${bundleRoot}/legacy.md`;

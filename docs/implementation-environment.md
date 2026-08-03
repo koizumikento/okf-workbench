@@ -220,10 +220,11 @@ and is not accepted by package validation.
 - Package: `okf-cli`; binary name: `okf`.
 - Local build: `cargo build --locked --release --bin okf`.
 - Commands: `init`, `new`, `validate`, `index`, `graph`, `agent`, `migrate`, and `version`.
-- Read-only commands never mutate storage. `--check` is non-mutating; non-interactive writes
-  require `--apply`.
-- `migrate` requires `--to 0.2` and an explicit `--actor`; its JSON result includes per-document
-  automatic-change and manual-follow-up status.
+- Read-only commands never mutate storage. `--check` is non-mutating; supported non-interactive
+  write commands require `--apply`.
+- `migrate` requires `--to 0.2`, an explicit `--actor`, and `--check`. It is preview-only and does
+  not accept `--apply`; its schema-v1 JSON result keeps `applied: false`, adds
+  `previewOnly: true`, and includes per-document automatic-change and manual-follow-up status.
 - Native binaries are OS/architecture-specific release artifacts and are not included in the
   universal VSIX.
 - The initial `darwin-arm64`, `darwin-x64`, `linux-x64`, and `win32-x64` VSIX packages each include

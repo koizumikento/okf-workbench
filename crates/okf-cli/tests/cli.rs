@@ -902,7 +902,7 @@ fn agent_outputs_stay_outside_bundle_validation() {
 }
 
 #[test]
-fn migrate_check_reports_plan_and_apply_fails_closed_without_replacement_cas() {
+fn migrate_is_an_explicit_preview_only_check() {
     let directory = tempdir().unwrap();
     let root = directory.path();
     fs::write(
@@ -942,6 +942,8 @@ fn migrate_check_reports_plan_and_apply_fails_closed_without_replacement_cas() {
     assert_eq!(check_body["command"], "migrate");
     assert_eq!(check_body["result"]["fromVersion"], "0.1");
     assert_eq!(check_body["result"]["changeCount"], 2);
+    assert_eq!(check_body["result"]["applied"], false);
+    assert_eq!(check_body["result"]["previewOnly"], true);
 
     let root_index = fs::read_to_string(root.join("index.md")).unwrap();
     let apply = okf()
@@ -955,12 +957,94 @@ fn migrate_check_reports_plan_and_apply_fails_closed_without_replacement_cas() {
         .output()
         .unwrap();
     assert_eq!(apply.status.code(), Some(2), "{apply:?}");
-    assert!(String::from_utf8_lossy(&apply.stderr).contains("generation-CAS"));
+    assert!(String::from_utf8_lossy(&apply.stderr).contains("--apply"));
     assert_eq!(
         fs::read_to_string(root.join("index.md")).unwrap(),
         root_index
     );
     assert_eq!(fs::read_to_string(root.join("legacy.md")).unwrap(), legacy);
+}
+
+#[test]
+fn migrate_requires_check_even_when_only_manual_follow_up_remains() {
+    let directory = tempdir().unwrap();
+    let root = directory.path();
+    fs::write(
+        root.join("index.md"),
+        "---\nokf_version: \"0.2\"\n---\n# Root\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("manual.md"),
+        "---\ntype: Reference\ntimestamp: &when \"2026-07-22T10:00:00Z\"\n---\n# Manual\n",
+    )
+    .unwrap();
+
+    let omitted = okf()
+        .args([
+            "migrate",
+            root.to_str().unwrap(),
+            "--actor",
+            "human:reviewer",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(omitted.status.code(), Some(2), "{omitted:?}");
+    assert!(String::from_utf8_lossy(&omitted.stderr).contains("--check"));
+
+    let apply = okf()
+        .args([
+            "migrate",
+            root.to_str().unwrap(),
+            "--actor",
+            "human:reviewer",
+            "--apply",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(apply.status.code(), Some(2), "{apply:?}");
+    assert!(String::from_utf8_lossy(&apply.stderr).contains("--apply"));
+}
+
+#[cfg(unix)]
+#[test]
+fn migrate_check_accepts_existing_posix_filename_identities() {
+    let directory = tempdir().unwrap();
+    let root = directory.path();
+    fs::write(
+        root.join("index.md"),
+        "---\nokf_version: \"0.1\"\n---\n# Root\n",
+    )
+    .unwrap();
+    let legacy = "---\ntype: Reference\ntimestamp: \"2026-07-22T10:00:00Z\"\n---\n# Legacy\n";
+    for name in ["notes:2026.md", "CON.md"] {
+        fs::write(root.join(name), legacy).unwrap();
+    }
+    for directory_name in ["trailing.", "trailing "] {
+        fs::create_dir(root.join(directory_name)).unwrap();
+        fs::write(root.join(directory_name).join("note.md"), legacy).unwrap();
+    }
+
+    let check = okf()
+        .args([
+            "migrate",
+            root.to_str().unwrap(),
+            "--actor",
+            "human:reviewer",
+            "--check",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(check.status.code(), Some(1), "{check:?}");
+    assert_eq!(json_stdout(&check)["result"]["changeCount"], 5);
+    for name in [
+        "notes:2026.md",
+        "CON.md",
+        "trailing./note.md",
+        "trailing /note.md",
+    ] {
+        assert_eq!(fs::read_to_string(root.join(name)).unwrap(), legacy);
+    }
 }
 
 #[test]

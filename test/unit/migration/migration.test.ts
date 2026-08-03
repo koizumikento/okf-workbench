@@ -428,4 +428,182 @@ describe('OKF v0.2 migration', () => {
       plan.documents.find(({ relativePath }) => relativePath === 'indented-fence-close.md'),
     ).toMatchObject({ manualFollowUp: false, citationCandidates: [] });
   });
+
+  it.each(['\n', '\r\n', '\r'] as const)(
+    'preserves a leading BOM and applies source offsets with %j line endings',
+    (eol) => {
+      const root = `\uFEFF---${eol}okf_version: "0.1"${eol}---${eol}# Root${eol}`;
+      const concept = `\uFEFF---${eol}type: Reference${eol}timestamp: "2026-07-22T10:00:00Z"${eol}---${eol}# Citations${eol}${eol}- https://example.com/source${eol}`;
+      for (const asBytes of [false, true]) {
+        const encode = (value: string): string | Uint8Array =>
+          asBytes ? new TextEncoder().encode(value) : value;
+        const plan = planMigration({
+          bundle: {
+            rootUri: 'fixture:/migration-bom',
+            revision: 1,
+            documents: [
+              {
+                uri: 'fixture:/migration-bom/index.md',
+                bundlePath: 'index.md',
+                content: encode(root),
+              },
+              {
+                uri: 'fixture:/migration-bom/concept.md',
+                bundlePath: 'concept.md',
+                content: encode(concept),
+              },
+            ],
+          },
+          actor: 'human:reviewer',
+        });
+        const rootOutput = plan.files.find(
+          ({ relativePath }) => relativePath === 'index.md',
+        )?.content;
+        const conceptOutput = plan.files.find(
+          ({ relativePath }) => relativePath === 'concept.md',
+        )?.content;
+        expect(rootOutput).toBe(`\uFEFF---${eol}okf_version: "0.2"${eol}---${eol}# Root${eol}`);
+        expect(conceptOutput?.startsWith('\uFEFF---')).toBe(true);
+        expect(conceptOutput).toContain(`generated:${eol}  by: "human:reviewer"`);
+        expect(conceptOutput).toContain(
+          `sources:${eol}  - resource: "https://example.com/source"${eol}---`,
+        );
+      }
+    },
+  );
+
+  it('scans every Citations section and leaves HTML pseudo-sections for manual review', () => {
+    const plan = planMigration({
+      bundle: input([
+        ['index.md', ['---', 'okf_version: "0.1"', '---', '# Root', ''].join('\n')],
+        [
+          'multiple.md',
+          [
+            '---',
+            'type: Reference',
+            '---',
+            '# Citations',
+            '- https://example.com/one',
+            '# Notes',
+            'text',
+            '# Citations',
+            '- https://example.com/two',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'html.md',
+          [
+            '---',
+            'type: Reference',
+            '---',
+            '<!--',
+            '# Citations',
+            '- https://example.com/not-a-source',
+            '-->',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'script.md',
+          [
+            '---',
+            'type: Reference',
+            '---',
+            '<script>',
+            '',
+            '# Citations',
+            '- https://example.com/not-a-source',
+            '</script>',
+            '',
+          ].join('\n'),
+        ],
+      ]),
+      actor: 'human:reviewer',
+    });
+    expect(plan.documents.find(({ relativePath }) => relativePath === 'multiple.md')).toMatchObject(
+      {
+        changed: true,
+        manualFollowUp: false,
+        citationCandidates: ['https://example.com/one', 'https://example.com/two'],
+      },
+    );
+    expect(plan.documents.find(({ relativePath }) => relativePath === 'html.md')).toMatchObject({
+      changed: false,
+      manualFollowUp: true,
+      manualReasons: ['citations-require-manual-review'],
+      citationCandidates: [],
+    });
+    expect(plan.documents.find(({ relativePath }) => relativePath === 'script.md')).toMatchObject({
+      changed: false,
+      manualFollowUp: true,
+      manualReasons: ['citations-require-manual-review'],
+      citationCandidates: [],
+    });
+  });
+
+  it('analyzes Citations when sources already exist and rejects U+FEFF in URLs', () => {
+    const plan = planMigration({
+      bundle: input([
+        ['index.md', ['---', 'okf_version: "0.2"', '---', '# Root', ''].join('\n')],
+        [
+          'existing.md',
+          [
+            '---',
+            'type: Reference',
+            'sources:',
+            '  - resource: "https://example.com/existing"',
+            '---',
+            '# Citations',
+            '- [Named](https://example.com/named)',
+            '',
+          ].join('\n'),
+        ],
+        [
+          'bom-url.md',
+          [
+            '---',
+            'type: Reference',
+            '---',
+            '# Citations',
+            '- https://example.com/a\uFEFFb',
+            '',
+          ].join('\n'),
+        ],
+      ]),
+      actor: 'human:reviewer',
+    });
+    for (const relativePath of ['existing.md', 'bom-url.md']) {
+      expect(
+        plan.documents.find((document) => document.relativePath === relativePath),
+      ).toMatchObject({
+        changed: false,
+        manualFollowUp: true,
+        manualReasons: ['citations-require-manual-review'],
+      });
+    }
+  });
+
+  it('stops automatic Citations insertion when the rendered YAML exceeds parser limits', () => {
+    const longUrl = `https://example.com/${'a'.repeat(65_500)}`;
+    const plan = planMigration({
+      bundle: input([
+        ['index.md', ['---', 'okf_version: "0.1"', '---', '# Root', ''].join('\n')],
+        [
+          'long.md',
+          ['---', 'type: Reference', '---', '# Citations', `- ${longUrl}`, `- ${longUrl}`, ''].join(
+            '\n',
+          ),
+        ],
+      ]),
+      actor: 'human:reviewer',
+    });
+    expect(plan.documents.find(({ relativePath }) => relativePath === 'long.md')).toMatchObject({
+      changed: false,
+      manualFollowUp: true,
+      manualReasons: ['citations-require-manual-review'],
+      citationCandidates: [longUrl],
+    });
+    expect(plan.files.map(({ relativePath }) => relativePath)).toEqual(['index.md']);
+  });
 });

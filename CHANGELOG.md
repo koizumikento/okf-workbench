@@ -12,9 +12,9 @@ The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 - OKF v0.2 provenance, verification, trust-tier, lifecycle, freshness, source, and Attested
   Computation metadata are normalized by the shared Rust/Wasm core and surfaced in graph details.
 - Attested Computation is available as an eighth built-in concept template.
-- An explicit `OKF: Migrate Bundle to v0.2` workflow and `okf migrate` CLI command preview or check
-  deterministic v0.1 upgrades, require an explicit producer actor, and retain ambiguous Citations
-  for manual follow-up.
+- An explicit `OKF: Migrate Bundle to v0.2` workflow and preview-only `okf migrate --check` CLI
+  command plan deterministic v0.1 upgrades, require an explicit producer actor, and retain
+  ambiguous Citations for manual follow-up. Guarded application remains in the extension.
 
 ### Changed
 

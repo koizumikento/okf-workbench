@@ -73,19 +73,17 @@ References:
 - [VSCodium releases](https://github.com/VSCodium/vscodium/releases)
 
 The current-stable test pin is refreshed for each release candidate and is pinned to VS Code
-`1.129.1`. Predecessor revision `80ae7d560337cbe8d97af864c77aee410d5e5988` passed
-[Compatibility run 30335399539](https://github.com/koizumikento/okf-workbench/actions/runs/30335399539)
-across all seven VS Code/VSCodium lifecycle lanes and
-[Package smoke run 30335400890](https://github.com/koizumikento/okf-workbench/actions/runs/30335400890)
-across all four target packages plus aggregate consistency. Those receipts do not qualify the
-current Rust/Wasm source candidate; fresh hosted and package-smoke qualification is pending. The
-retained VS Code `1.127.0` headed capture is historical after strengthening the schema-v3 evidence
-contract. The retained `0.2.1` VS Code `1.129.1` headed capture recorded QR-002 at `677 ms` p95
-across 20 samples, but remains predecessor-only evidence. The fresh `0.3.0` capture on the same
-editor version passes the current strict evaluator at `862 ms` p95 across 20 samples, selects `d3`,
-and records zero remote HTTP(S)/WS or other-scheme Webview requests. Its versioned raw JSON and
-generated Markdown are retained under `docs/evidence/performance/`; fresh hosted and package-smoke
-qualification is still pending.
+`1.129.1`. Packaged-input revision `802e400c5bfec9174131b44e42fab6db3ee2fec0` passed
+[Compatibility run 30804352708](https://github.com/koizumikento/okf-workbench/actions/runs/30804352708)
+across all seven VS Code/VSCodium lifecycle lanes, using the published `v0.2.1` universal VSIX as
+the verified upgrade predecessor, and
+[Package smoke run 30804007918](https://github.com/koizumikento/okf-workbench/actions/runs/30804007918)
+across the browser boundary, all four target packages, and aggregate consistency. The retained VS
+Code `1.127.0` headed capture is historical after strengthening the schema-v3 evidence contract.
+The `0.3.0` capture on VS Code `1.129.1` passes the current strict evaluator at `873 ms` p95 across
+20 samples, selects `d3`, and records zero remote HTTP(S)/WS or other-scheme Webview requests. Its
+versioned raw JSON and generated Markdown are retained under `docs/evidence/performance/`. All
+claims remain bound to the named revision, package identities, editor versions, and hosted lanes.
 
 ## Repository and package management
 

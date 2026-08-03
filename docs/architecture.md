@@ -57,10 +57,10 @@ native CLI.
 - Desktop-only VS Code-compatible extension for the MVP; no Web extension entry point.
 - VS Code API floor `^1.121.0`, covering the current VSCodium stable line at the decision date.
 - Release qualification pins the API-floor lane to VS Code `1.121.0`, the current-stable lane to
-  VS Code `1.129.1`, and the compatible-editor lane to VSCodium `1.121.03429`. The current exact
-  candidate still requires fresh hosted results on those lanes; the recorded VS Code `1.127.0`
-  headed run is a superseded historical record and does not qualify the current performance
-  contract.
+  VS Code `1.129.1`, and the compatible-editor lane to VSCodium `1.121.03429`. The exact `0.3.0`
+  candidate passed those hosted lanes plus the four target-package and aggregate gates; the
+  recorded VS Code `1.127.0` headed run remains a superseded historical record and does not qualify
+  the current performance contract.
 - Node.js 24 LTS and npm for development and CI.
 - Rust `1.92.0`, Cargo, and the `wasm32-unknown-unknown` target.
 - TypeScript 6 with strict checking.
@@ -417,7 +417,12 @@ custom `d3` force for deterministic top-level clusters and weaker nested offsets
 folder nodes or edges, changes type colors, or mutates the received graph payload. The internal
 `ngraph` benchmark candidate receives deterministic initial positions instead of a `d3` API call.
 
-The former schema-v3 headed comparison selected `d3`, but the strengthened evidence contract invalidated that selection for release qualification. A fresh full same-Electron comparison must observe real WebGL clears/draws, verify every interaction outcome, and produce a positive coherent camera rate with camera-period graph draws covering every observed clear before selecting the current release engine. Dependency licensing and packaged notices are reviewed separately from the project-license gate. Any renderer or candidate-bundle change invalidates an evidence binding and requires a new evaluation.
+The current `0.3.0` schema-v3 headed comparison selects `d3` after a full same-Electron comparison
+that observes real WebGL clears and draws, verifies every interaction outcome, and produces a
+positive coherent camera rate with camera-period graph draws covering every observed clear.
+Dependency licensing and packaged notices are reviewed separately from the project-license gate.
+Any renderer or candidate-bundle change invalidates an evidence binding and requires a new
+evaluation.
 
 ## Performance targets
 
@@ -427,11 +432,9 @@ Accepted MVP thresholds:
 - Opening the graph does not block normal text editing.
 - File changes are reflected within one second after debounce for representative bundles.
 
-The tracked predecessor-bound schema-v3 headed VS Code `1.129.1` report records QR-002 at `677 ms`
-p95 across 20 samples, `d3` as its QR-003 selection, and zero remote HTTP(S)/WS or other-scheme
-requests. The current strict evaluator exits `2` because it does not accept the record as bound to
-the current Rust/Wasm source candidate, whose fresh capture is pending. The retained VS Code
-`1.127.0` run predates the current
+The current-candidate schema-v3 headed VS Code `1.129.1` report records QR-002 at `873 ms` p95
+across 20 samples, `d3` as its QR-003 selection, and zero remote HTTP(S)/WS or other-scheme
+requests for the exact bound `0.3.0` inputs. The retained VS Code `1.127.0` run predates the current
 diagnostics-correlation, WebGL/UI-outcome, causal-timing, and network-envelope requirements and
 remains historical-only. See [performance evidence](performance-evidence.md) for the exact
 environment, authority rules, and candidate-binding limits.

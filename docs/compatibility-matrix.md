@@ -1,7 +1,7 @@
 # Compatibility matrix
 
-- Status: current OKF-v0.2 source candidate pending fresh hosted and package-smoke qualification
-- Last predecessor matrix qualified: 2026-07-28
+- Status: `0.3.0` candidate qualified on its exact packaged-input revision
+- Current matrix qualified: 2026-08-03
 - Extension identifier expected by the gate: `straydog.okf-workbench`
 
 ## What this matrix proves
@@ -18,6 +18,30 @@ SHA-256 digest, the workflow packages the repository-owned, test-only `0.0.0`
 fixture with a fixed `SOURCE_DATE_EPOCH`, records its digest, and upgrades from
 that package. A same-version reinstall is recorded separately and is never
 counted as upgrade evidence.
+
+## Current `0.3.0` candidate qualification
+
+[Compatibility run 30804352708](https://github.com/koizumikento/okf-workbench/actions/runs/30804352708)
+passed the candidate, acceptance/Webview, and all seven required editor/OS lifecycle jobs for
+packaged-input revision `802e400c5bfec9174131b44e42fab6db3ee2fec0`. Every lane installed and
+activated `straydog.okf-workbench@0.3.0`, completed the clean, untrusted, upgrade, and uninstall
+lifecycles, and retained its JSON evidence. The universal candidate was `1,309,227` bytes with
+SHA-256 `d96aa19cc3ada5d4e34618d41bedc4195efa368e2b51b8ff8977984e815caf57`.
+
+The upgrade input was the published universal `v0.2.1` VSIX, verified before use with SHA-256
+`6c45cd00e620730d9c023764e822077a4444264ac1f3d4f88e8139a9df79dc32`. This is genuine
+published-version upgrade evidence, not the deterministic `0.0.0` test predecessor.
+
+[Package smoke run 30804007918](https://github.com/koizumikento/okf-workbench/actions/runs/30804007918)
+passed the browser security boundary, macOS arm64, macOS x64, Linux x64, Windows x64, and aggregate
+platform-set consistency for the same revision. The aggregate gate required exactly one package
+for every supported target and one canonical Wasm core, SHA-256
+`a5df92505393436fb3a7676d0f7c9c03756ffd225f65ba889efdf0ce81f935fe`; each target lane also
+verified its native CLI/VSIX byte parity, package identity, license, notices, and reproducibility.
+
+These receipts qualify only the exact revision and package identities named above. They do not
+turn the API floor or configured matrix into a general editor, operating-system, provider, or
+future-version compatibility claim.
 
 ## Retained predecessor `0.2.1` qualification
 
@@ -42,9 +66,8 @@ one package for every supported target and one canonical Wasm core; each target 
 its native CLI/VSIX byte parity, package identity, license, notices, and reproducibility.
 
 These receipts are bound to revision `80ae7d560337cbe8d97af864c77aee410d5e5988` and its exact
-package digests. The current OKF-v0.2 source candidate includes the Rust/Wasm migration and
-packaged-resource changes, so it does not inherit this qualification. Fresh Compatibility and
-package-smoke runs are required before a current-candidate claim can be made.
+package digests. They remain predecessor evidence and do not substitute for the current candidate
+receipts above.
 
 ## Preserved 0.2.0 qualification
 

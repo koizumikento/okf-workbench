@@ -20,12 +20,13 @@ The deterministic Rust core, capability-free Wasm Extension Host adapter, native
 VSIX CLI integration, seven MVP
 extension command workflows, diagnostics, URI-first workspace runtime, 3D Webview, agent-template
 generation, and release-candidate harnesses are implemented. A genuine schema-v3 headed VS Code
-1.129.1 capture for the `0.3.0` candidate passes QR-002 at 862 ms p95 across 20 samples, selects
+1.129.1 capture for the `0.3.0` candidate passes QR-002 at 873 ms p95 across 20 samples, selects
 `d3` for QR-003, and records zero remote HTTP(S)/WS or other-scheme Webview requests under the
 strict current-input contract. The retained VS Code 1.127.0 capture predates that contract and is
-historical-only. An earlier candidate passed the required hosted VS Code and VSCodium lifecycle
-matrix on Ubuntu, macOS, and Windows; the Rust/Wasm migration and current packaged-resource changes
-require a fresh hosted qualification before they can inherit that claim. The repository, issue
+historical-only. The exact `0.3.0` packaged-input revision passed the required hosted VS Code and
+VSCodium lifecycle matrix on Ubuntu, macOS, and Windows, including upgrade from the published
+`v0.2.1` universal VSIX; its browser boundary, four target packages, and aggregate package-set
+consistency also passed. The repository, issue
 tracker, security-advisory route, and GitHub Pages trust pages are public, and the hosted
 branch/scanning baseline is configured. The maintainer selected MIT for the project and approved
 the third-party notice inventory for the initial release. Signed tag `v0.1.0` on reviewed `main` commit

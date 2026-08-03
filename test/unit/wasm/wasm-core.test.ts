@@ -63,7 +63,7 @@ describe('Rust/Wasm core boundary', () => {
     const module = new WebAssembly.Module(bytes);
     expect(WebAssembly.Module.imports(module)).toEqual([]);
     expect(core.abiVersion).toBe(1);
-    expect(core.coreVersion).toBe('0.2.1');
+    expect(core.coreVersion).toBe('0.3.0');
   });
 
   test('has exact migration-plan parity with the TypeScript oracle', () => {

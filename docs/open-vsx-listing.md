@@ -9,7 +9,7 @@
 - Namespace: `straydog` — the retained `v0.2.1` release workflow verified publication authority
   and published the universal and four target packages. Credential, namespace-role, and Publisher
   Agreement readiness must be checked again for every future release.
-- Release record: the [completed `0.2.1` checklist](release-checklist.md) links the signed tag,
+- Release record: the [completed `0.2.1` checklist](releases/0.2.1.md) links the signed tag,
   workflow, GitHub Release, public Open VSX listing, and post-publication checks.
 
 ### Published listing metadata

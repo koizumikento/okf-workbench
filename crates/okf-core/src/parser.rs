@@ -3948,6 +3948,8 @@ fn non_string_mapping_key_range(source: &str) -> Option<(usize, usize)> {
     excluded_ranges.extend(flow_collection_ranges(source));
     normalize_ranges(&mut excluded_ranges);
     let spans = line_spans(source);
+    let standard_flow_set_ranges = standard_flow_set_ranges(source);
+    let parent_collection_tags = parent_collection_tag_flags(source, &spans);
     for (line_index, line) in spans.iter().enumerate() {
         let body = &source[line.start..line.content_end];
         let trimmed = body.trim_start_matches([' ', '\t']);
@@ -4047,8 +4049,8 @@ fn non_string_mapping_key_range(source: &str) -> Option<(usize, usize)> {
                 }
             }
         }
-        if inside_standard_flow_set(source, line.start + indent)
-            || sorted_range_contains(&excluded_ranges, line.start)
+        if sorted_range_contains(&excluded_ranges, line.start)
+            || sorted_range_contains(&standard_flow_set_ranges, line.start + indent)
         {
             continue;
         }
@@ -4130,28 +4132,10 @@ fn non_string_mapping_key_range(source: &str) -> Option<(usize, usize)> {
         }
         let key_start = line.start + mapping_offset;
         let (plain_key_source, _, key_tag) = split_node_properties(key_source);
-        let parent_collection_tag = spans[..line_index].iter().rev().find_map(|candidate| {
-            let candidate_body = &source[candidate.start..candidate.content_end];
-            let candidate_trimmed = candidate_body.trim_start_matches([' ', '\t']);
-            if candidate_trimmed.is_empty() || candidate_trimmed.starts_with('#') {
-                return None;
-            }
-            let candidate_indent = candidate_body.len() - candidate_trimmed.len();
-            if candidate_indent >= indent {
-                return None;
-            }
-            let parent_tag = mapping_key_colon(candidate_trimmed).and_then(|parent_colon| {
-                let value_source = candidate_trimmed[parent_colon + 1..].trim_start();
-                split_node_properties(value_source).2.map(str::to_owned)
-            });
-            Some(parent_tag.is_some_and(|tag| {
-                matches!(tag.as_str(), "map" | "seq" | "set" | "omap" | "pairs")
-            }))
-        });
         if item.is_none()
             && plain_key_source.is_empty()
             && key_tag == Some("str")
-            && parent_collection_tag == Some(false)
+            && parent_collection_tags[line_index] == Some(false)
         {
             let marker = key_start + colon;
             return Some((marker, marker));
@@ -5245,78 +5229,68 @@ fn duplicate_block_set_member_range(source: &str) -> Option<(usize, usize)> {
     None
 }
 
-fn inside_standard_flow_set(source: &str, offset: usize) -> bool {
-    let mut stack = Vec::new();
-    let mut quote = None;
-    let mut escaped = false;
-    let mut comment = false;
-    for (position, character) in source[..offset].char_indices() {
-        if comment {
-            if matches!(character, '\r' | '\n') {
-                comment = false;
+fn standard_flow_set_ranges(source: &str) -> Vec<(usize, usize)> {
+    let mut ranges = flow_collection_ranges(source)
+        .into_iter()
+        .filter(|(opening, _)| {
+            if !source[*opening..].starts_with('{') {
+                return false;
             }
+            let prefix = source[..*opening].trim_end();
+            let line_start = prefix.rfind(['\r', '\n']).map_or(0, |newline| newline + 1);
+            let line_prefix = &prefix[line_start..];
+            let node_start = line_prefix
+                .char_indices()
+                .rev()
+                .find_map(|(position, character)| {
+                    matches!(character, ':' | ',' | '[' | '{' | '?').then_some(position + 1)
+                })
+                .unwrap_or(0);
+            let node_source = line_prefix[node_start..]
+                .trim()
+                .strip_prefix("- ")
+                .unwrap_or(line_prefix[node_start..].trim());
+            let (_, _, tag_name) = split_node_properties(node_source);
+            tag_name == Some("set")
+        })
+        .collect::<Vec<_>>();
+    normalize_ranges(&mut ranges);
+    ranges
+}
+
+fn parent_collection_tag_flags(source: &str, spans: &[LineSpan]) -> Vec<Option<bool>> {
+    let mut parents = vec![None; spans.len()];
+    let mut stack = Vec::<(usize, bool)>::new();
+    for (line_index, line) in spans.iter().enumerate() {
+        let body = &source[line.start..line.content_end];
+        let trimmed = body.trim_start_matches([' ', '\t']);
+        if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
-        if let Some(active_quote) = quote {
-            if active_quote == '"' && character == '\\' && !escaped {
-                escaped = true;
-                continue;
-            }
-            if character == active_quote && !escaped {
-                quote = None;
-            }
-            escaped = false;
-            continue;
+        let indent = body.len() - trimmed.len();
+        while stack
+            .last()
+            .is_some_and(|(parent_indent, _)| *parent_indent >= indent)
+        {
+            stack.pop();
         }
-        match character {
-            '#' if position == 0
-                || source[..position]
-                    .chars()
-                    .next_back()
-                    .is_some_and(char::is_whitespace) =>
-            {
-                comment = true;
-            }
-            '"' | '\'' => quote = Some(character),
-            '{' => stack.push(('}', position)),
-            '[' => stack.push((']', position)),
-            '}' | ']'
-                if stack
-                    .last()
-                    .is_some_and(|(closing, _)| *closing == character) =>
-            {
-                stack.pop();
-            }
-            _ => {}
-        }
-    }
-    stack.iter().rev().any(|(closing, opening)| {
-        if *closing != '}' {
-            return false;
-        }
-        let prefix = source[..*opening].trim_end();
-        let line_start = prefix.rfind(['\r', '\n']).map_or(0, |newline| newline + 1);
-        let line_prefix = &prefix[line_start..];
-        let node_start = line_prefix
-            .char_indices()
-            .rev()
-            .find_map(|(position, character)| {
-                matches!(character, ':' | ',' | '[' | '{' | '?').then_some(position + 1)
+        parents[line_index] = stack.last().map(|(_, collection)| *collection);
+        let collection = mapping_key_colon(trimmed)
+            .and_then(|colon| {
+                let value_source = trimmed[colon + 1..].trim_start();
+                split_node_properties(value_source).2
             })
-            .unwrap_or(0);
-        let node_source = line_prefix[node_start..]
-            .trim()
-            .strip_prefix("- ")
-            .unwrap_or(line_prefix[node_start..].trim());
-        let (_, _, tag_name) = split_node_properties(node_source);
-        tag_name == Some("set")
-    })
+            .is_some_and(|tag| matches!(tag, "map" | "seq" | "set" | "omap" | "pairs"));
+        stack.push((indent, collection));
+    }
+    parents
 }
 
 fn alias_mapping_key_range(
     source: &str,
     excluded_ranges: &[(usize, usize)],
 ) -> Option<(usize, usize)> {
+    let standard_flow_set_ranges = standard_flow_set_ranges(source);
     let mut quote = None;
     let mut escaped = false;
     let mut comment = false;
@@ -5388,7 +5362,7 @@ fn alias_mapping_key_range(
                     cursor += next.len_utf8();
                 }
                 let alias_end = cursor;
-                if flow_explicit_key && !inside_standard_flow_set(source, offset) {
+                if flow_explicit_key && !sorted_range_contains(&standard_flow_set_ranges, offset) {
                     return Some((alias_start, alias_end));
                 }
                 while source[cursor..].starts_with([' ', '\t']) {
@@ -9610,6 +9584,7 @@ fn top_level_field_ranges(text: &str, start: usize, end: usize) -> Map<String, V
             expected_indent,
         ));
     }
+    let line_starts = source_line_starts(text);
     let mut fields = Map::new();
     for (index, (name, field_start, line_index, inline_end, value_source, field_indent)) in
         starts.iter().enumerate()
@@ -9630,7 +9605,13 @@ fn top_level_field_ranges(text: &str, start: usize, end: usize) -> Map<String, V
         });
         fields.insert(
             name.clone(),
-            serde_json::to_value(range_for(text, *field_start, field_end)).unwrap_or(Value::Null),
+            serde_json::to_value(range_for_with_line_starts(
+                text,
+                *field_start,
+                field_end,
+                &line_starts,
+            ))
+            .unwrap_or(Value::Null),
         );
     }
     fields
@@ -10188,6 +10169,7 @@ fn block_scalar_indicator(mut source: &str) -> Option<&str> {
 
 fn flow_field_ranges(text: &str, flow_start: usize, end: usize) -> Map<String, Value> {
     let mut fields = Map::new();
+    let line_starts = source_line_starts(text);
     let mut cursor = flow_start + 1;
     while cursor < end {
         cursor = skip_flow_space_and_comments(text, cursor, end);
@@ -10214,7 +10196,13 @@ fn flow_field_ranges(text: &str, flow_start: usize, end: usize) -> Map<String, V
         let (value_end, delimiter) = flow_mapping_value_end(text, cursor, end);
         fields.insert(
             name,
-            serde_json::to_value(range_for(text, key_start, value_end)).unwrap_or(Value::Null),
+            serde_json::to_value(range_for_with_line_starts(
+                text,
+                key_start,
+                value_end,
+                &line_starts,
+            ))
+            .unwrap_or(Value::Null),
         );
         cursor = delimiter;
         if text[cursor..].starts_with(',') {
@@ -10911,6 +10899,55 @@ fn range_for(text: &str, start: usize, end: usize) -> SourceRange {
     }
 }
 
+fn source_line_starts(text: &str) -> Vec<(usize, usize, usize)> {
+    let mut starts = vec![(0, 0, 0)];
+    let mut utf16_offset = 0usize;
+    let mut characters = text.char_indices().peekable();
+    while let Some((offset, character)) = characters.next() {
+        utf16_offset += character.len_utf16();
+        if character == '\r' {
+            if characters.peek().is_some_and(|(_, next)| *next == '\n') {
+                let (newline, _) = characters.next().expect("peeked newline exists");
+                let threshold = offset + character.len_utf8();
+                let threshold_utf16 = utf16_offset;
+                utf16_offset += 1;
+                starts.push((threshold, newline + 1, threshold_utf16));
+            } else {
+                starts.push((offset + 1, offset + 1, utf16_offset));
+            }
+        } else if character == '\n' {
+            starts.push((offset + 1, offset + 1, utf16_offset));
+        }
+    }
+    starts
+}
+
+fn range_for_with_line_starts(
+    text: &str,
+    start: usize,
+    end: usize,
+    line_starts: &[(usize, usize, usize)],
+) -> SourceRange {
+    let position = |offset: usize| {
+        let offset = offset.min(text.len());
+        let line = line_starts.partition_point(|(threshold, _, _)| *threshold <= offset) - 1;
+        let (threshold, content_start, threshold_utf16_offset) = line_starts[line];
+        let offset_utf16 = threshold_utf16_offset + text[threshold..offset].encode_utf16().count();
+        let character = text[content_start.min(offset)..offset]
+            .encode_utf16()
+            .count();
+        SourcePosition {
+            offset: offset_utf16,
+            line,
+            character,
+        }
+    };
+    SourceRange {
+        start: position(start),
+        end: position(end),
+    }
+}
+
 fn position_for(text: &str, byte_offset: usize) -> SourcePosition {
     let prefix = &text[..byte_offset.min(text.len())];
     let mut line = 0usize;
@@ -11453,6 +11490,26 @@ mod tests {
         }
         for offset in [0, 1, 7, 15, 19, 21] {
             assert!(!sorted_range_contains(&ranges, offset), "{offset}");
+        }
+    }
+
+    #[test]
+    fn indexed_source_positions_match_the_canonical_scanner() {
+        let text = "a\r\n日本😀\rZ\n";
+        let line_starts = source_line_starts(text);
+        let mut offsets = text
+            .char_indices()
+            .map(|(offset, _)| offset)
+            .collect::<Vec<_>>();
+        offsets.push(text.len());
+        for start in offsets.iter().copied() {
+            for end in offsets.iter().copied().filter(|end| *end >= start) {
+                assert_eq!(
+                    range_for_with_line_starts(text, start, end, &line_starts),
+                    range_for(text, start, end),
+                    "{start}..{end}"
+                );
+            }
         }
     }
 

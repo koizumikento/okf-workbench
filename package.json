@@ -439,7 +439,7 @@
   "devDependencies": {
     "@eslint/js": "9.39.5",
     "@playwright/test": "1.62.0",
-    "@types/node": "22.20.1",
+    "@types/node": "24.13.3",
     "@types/vscode": "1.120.0",
     "@vscode/test-cli": "0.0.15",
     "@vscode/test-electron": "3.1.0",

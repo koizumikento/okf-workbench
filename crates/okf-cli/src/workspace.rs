@@ -23,7 +23,14 @@ use walkdir::WalkDir;
 use std::os::windows::{
     ffi::OsStrExt,
     fs::{MetadataExt as _, OpenOptionsExt},
-    io::AsRawHandle,
+    io::{AsRawHandle, FromRawHandle},
+};
+#[cfg(windows)]
+use windows_sys::Wdk::{
+    Foundation::OBJECT_ATTRIBUTES,
+    Storage::FileSystem::{
+        FILE_CREATE, FILE_DIRECTORY_FILE, FILE_SYNCHRONOUS_IO_NONALERT, NtCreateFile,
+    },
 };
 #[cfg(windows)]
 use windows_sys::Win32::Storage::FileSystem::{
@@ -34,19 +41,92 @@ use windows_sys::Win32::Storage::FileSystem::{
     FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE, FileDispositionInfoEx, FileRenameInfoEx,
     GetFileInformationByHandle, SYNCHRONIZE, SetFileInformationByHandle,
 };
+#[cfg(windows)]
+use windows_sys::Win32::{
+    Foundation::{
+        INVALID_HANDLE_VALUE, OBJ_CASE_INSENSITIVE, RtlNtStatusToDosError, STATUS_PENDING,
+        STATUS_SUCCESS, UNICODE_STRING,
+    },
+    System::IO::IO_STATUS_BLOCK,
+};
 
 #[cfg(target_os = "linux")]
-use rustix::fs::{AtFlags, RenameFlags, linkat, renameat_with};
+use rustix::fs::{RenameFlags, linkat, renameat_with};
 #[cfg(target_os = "macos")]
 use rustix::fs::{RenameFlags, renameat_with};
 #[cfg(unix)]
 use rustix::{
-    fs::{Mode, OFlags, mkdirat, open, openat},
+    fs::{AtFlags, Mode, OFlags, mkdirat, open, openat, unlinkat},
     io::Errno,
 };
 
 const MAX_DOCUMENTS: usize = 2_000;
 const MAX_DOCUMENT_BYTES: u64 = 320 * 1024 + 16;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn update_staging_hash(hash: &mut u128, bytes: &[u8]) {
+    const FNV_128_PRIME: u128 = 0x0000_0000_0100_0000_0000_0000_0000_013b;
+    for byte in bytes {
+        *hash ^= u128::from(*byte);
+        *hash = hash.wrapping_mul(FNV_128_PRIME);
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn anchor_coordination_name(planned: &PlannedRootIdentity) -> Result<OsString, String> {
+    const FNV_128_OFFSET: u128 = 0x6c62_272e_07bb_0142_62b8_2175_6295_c58d;
+    let PlannedRootIdentity::Missing {
+        anchor_identity, ..
+    } = planned
+    else {
+        return Err("missing-root staging requires a missing-root plan".to_owned());
+    };
+    let mut hash = FNV_128_OFFSET;
+    update_staging_hash(&mut hash, &anchor_identity.first.to_le_bytes());
+    update_staging_hash(&mut hash, &anchor_identity.second.to_le_bytes());
+    // A dot plus zero-padded ASCII decimal digits has no case variants or canonical Unicode
+    // aliases on the supported filesystems. The anchor-wide key intentionally serializes every
+    // missing-root publication below the same existing directory.
+    Ok(format!(".{hash:039}").into())
+}
+
+#[cfg(windows)]
+fn windows_root_staging_name() -> &'static OsStr {
+    // This is itself a valid 8.3 name. Windows therefore has no distinct generated short-name
+    // alias that could expose the private directory through another requested component.
+    OsStr::new("00000000.000")
+}
+
+#[cfg(windows)]
+fn windows_reservation_name_matches_requested(reservation: &OsStr, requested: &OsStr) -> bool {
+    let reservation = reservation.encode_wide().collect::<Vec<_>>();
+    let requested = requested.encode_wide().collect::<Vec<_>>();
+    if reservation.len() != requested.len() {
+        return false;
+    }
+    reservation.iter().zip(requested).all(|(left, right)| {
+        let left = u8::try_from(*left).ok();
+        let right = u8::try_from(right).ok();
+        match (left, right) {
+            (Some(left), Some(right)) => left.eq_ignore_ascii_case(&right),
+            _ => false,
+        }
+    })
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn fresh_unix_root_staging_name() -> Result<OsString, String> {
+    const PREFIX: &str = ".okf-workbench-root-staging-";
+    let mut entropy = [0_u8; 16];
+    getrandom::fill(&mut entropy)
+        .map_err(|error| format!("cannot generate a private staging name: {error}"))?;
+    let mut name = String::with_capacity(PREFIX.len() + entropy.len() * 2);
+    name.push_str(PREFIX);
+    for byte in entropy {
+        use std::fmt::Write as _;
+        write!(name, "{byte:02x}").unwrap();
+    }
+    Ok(name.into())
+}
 
 #[derive(Clone, Copy, Debug)]
 pub enum PlanMode {
@@ -1480,16 +1560,30 @@ fn apply_missing_root_plan_windows(
     planned: &PlannedRootIdentity,
     plan: &[PlannedChange],
 ) -> Result<(), String> {
-    apply_missing_root_plan_windows_with_hook(planned, plan, || Ok(()))
+    apply_missing_root_plan_windows_with_hook(planned, plan, |_| Ok(()))
 }
 
 #[cfg(windows)]
 fn apply_missing_root_plan_windows_with_hook(
     planned: &PlannedRootIdentity,
     plan: &[PlannedChange],
-    before_publish: impl FnOnce() -> Result<(), String>,
+    before_publish: impl FnOnce(&OsStr) -> Result<(), String>,
 ) -> Result<(), String> {
-    const STAGING_NAME: &str = ".okf-workbench-root-staging";
+    apply_missing_root_plan_windows_with_staging_name_and_hook(
+        planned,
+        plan,
+        windows_root_staging_name(),
+        before_publish,
+    )
+}
+
+#[cfg(windows)]
+fn apply_missing_root_plan_windows_with_staging_name_and_hook(
+    planned: &PlannedRootIdentity,
+    plan: &[PlannedChange],
+    staging_name: &OsStr,
+    before_publish: impl FnOnce(&OsStr) -> Result<(), String>,
+) -> Result<(), String> {
     let PlannedRootIdentity::Missing {
         requested,
         anchor,
@@ -1512,8 +1606,14 @@ fn apply_missing_root_plan_windows_with_hook(
     let first = components
         .first()
         .ok_or_else(|| "missing-root plan has no missing component".to_owned())?;
+    if windows_reservation_name_matches_requested(staging_name, first) {
+        return Err(
+            "private staging reservation matched the requested root; no target was published"
+                .to_owned(),
+        );
+    }
     let final_path = anchor.join(first);
-    let staging_path = anchor.join(STAGING_NAME);
+    let staging_path = anchor.join(staging_name);
     for path in [&final_path, &staging_path] {
         match fs::symlink_metadata(path) {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -1526,13 +1626,24 @@ fn apply_missing_root_plan_windows_with_hook(
             Err(error) => return Err(format!("cannot preflight root publication: {error}")),
         }
     }
-    fs::create_dir(&staging_path).map_err(|error| {
-        format!(
-            "cannot reserve bounded root staging directory {}: {error}; no target was published",
-            staging_path.display()
-        )
-    })?;
-    let staging_handle = open_windows_directory_rename_handle(&staging_path)?;
+    let parent_handle = handle
+        .locks
+        .last()
+        .ok_or_else(|| "missing-root plan has no retained Windows ancestor handle".to_owned())?;
+    let staging_handle = create_windows_directory_rename_handle(parent_handle, staging_name)
+        .map_err(|error| {
+            format!(
+                "cannot reserve bounded root staging directory {}: {error}; no target was published",
+                staging_path.display()
+            )
+        })?;
+    let staging_identity = file_object_identity(&staging_handle)?;
+    if path_object_identity(&staging_path)? != staging_identity {
+        return Err(
+            "root staging reservation changed while it was being anchored; no target was published"
+                .to_owned(),
+        );
+    }
     let mut staged_root = staging_path.clone();
     let mut staged_directory_paths = HashSet::new();
     let mut staged_directory_locks = Vec::new();
@@ -1576,11 +1687,13 @@ fn apply_missing_root_plan_windows_with_hook(
             .and_then(|_| file.sync_all())
             .map_err(|error| error.to_string())?;
     }
-    before_publish()?;
-    let parent_handle = handle
-        .locks
-        .last()
-        .ok_or_else(|| "missing-root plan has no retained Windows ancestor handle".to_owned())?;
+    before_publish(staging_name)?;
+    if path_object_identity(&staging_path)? != staging_identity {
+        return Err(
+            "root staging reservation changed before publication; no target was published"
+                .to_owned(),
+        );
+    }
     rename_windows_handle(&staging_handle, parent_handle, first).map_err(|error| {
         format!(
             "cannot atomically publish the complete new root; concurrent content was preserved and bounded staging remains for inspection: {error}"
@@ -1888,21 +2001,58 @@ fn open_windows_directory_strict_mutation_lock(path: &Path) -> Result<File, Stri
 }
 
 #[cfg(windows)]
-fn open_windows_directory_rename_handle(path: &Path) -> Result<File, String> {
-    let file = OpenOptions::new()
-        .access_mode(FILE_GENERIC_READ | FILE_GENERIC_WRITE | DELETE | SYNCHRONIZE)
-        .share_mode(FILE_SHARE_READ)
-        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
-        .open(path)
-        .map_err(|error| {
-            format!(
-                "cannot open staged directory {} for publication: {error}",
-                path.display()
-            )
-        })?;
+fn create_windows_directory_rename_handle(parent: &File, name: &OsStr) -> Result<File, String> {
+    let name_wide = name.encode_wide().collect::<Vec<_>>();
+    let byte_length = name_wide
+        .len()
+        .checked_mul(std::mem::size_of::<u16>())
+        .and_then(|length| u16::try_from(length).ok())
+        .ok_or_else(|| "Windows staging name is too long".to_owned())?;
+    let unicode_name = UNICODE_STRING {
+        Length: byte_length,
+        MaximumLength: byte_length,
+        Buffer: name_wide.as_ptr().cast_mut(),
+    };
+    let object_attributes = OBJECT_ATTRIBUTES {
+        Length: u32::try_from(std::mem::size_of::<OBJECT_ATTRIBUTES>()).unwrap(),
+        RootDirectory: parent.as_raw_handle(),
+        ObjectName: &raw const unicode_name,
+        Attributes: OBJ_CASE_INSENSITIVE,
+        SecurityDescriptor: std::ptr::null(),
+        SecurityQualityOfService: std::ptr::null(),
+    };
+    let mut io_status = IO_STATUS_BLOCK::default();
+    // SAFETY: the union is initialized as an NTSTATUS before NtCreateFile reads or writes it.
+    io_status.Anonymous.Status = STATUS_PENDING;
+    let mut raw_handle = INVALID_HANDLE_VALUE;
+    // SAFETY: every pointer references a live value for the duration of the synchronous call;
+    // `name_wide` is kept alive, the parent handle is retained by the plan, and FILE_CREATE with
+    // FILE_DIRECTORY_FILE atomically creates the child and returns its publication handle.
+    let status = unsafe {
+        NtCreateFile(
+            &mut raw_handle,
+            FILE_GENERIC_READ | FILE_GENERIC_WRITE | DELETE | SYNCHRONIZE,
+            &raw const object_attributes,
+            &mut io_status,
+            std::ptr::null(),
+            FILE_ATTRIBUTE_DIRECTORY,
+            FILE_SHARE_READ,
+            FILE_CREATE,
+            FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT,
+            std::ptr::null(),
+            0,
+        )
+    };
+    if status != STATUS_SUCCESS {
+        // SAFETY: the status was returned by NtCreateFile and is valid for this conversion.
+        let code = unsafe { RtlNtStatusToDosError(status) };
+        return Err(std::io::Error::from_raw_os_error(code.cast_signed()).to_string());
+    }
+    // SAFETY: successful NtCreateFile returned one owned, valid handle.
+    let file = unsafe { File::from_raw_handle(raw_handle) };
     let metadata = file.metadata().map_err(|error| error.to_string())?;
     if windows_metadata_is_reparse(&metadata) || !metadata.is_dir() {
-        return Err(format!("{} is not a real directory", path.display()));
+        return Err("created staging object is not a real directory".to_owned());
     }
     Ok(file)
 }
@@ -2041,16 +2191,181 @@ fn apply_missing_root_plan_anchored(
     planned: &PlannedRootIdentity,
     plan: &[PlannedChange],
 ) -> Result<(), String> {
-    apply_missing_root_plan_anchored_with_hook(planned, plan, || Ok(()))
+    apply_missing_root_plan_anchored_with_hook(planned, plan, |_| Ok(()))
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn apply_missing_root_plan_anchored_with_hook(
     planned: &PlannedRootIdentity,
     plan: &[PlannedChange],
-    before_publish: impl FnOnce() -> Result<(), String>,
+    before_publish: impl FnOnce(&OsStr) -> Result<(), String>,
 ) -> Result<(), String> {
-    const STAGING_NAME: &str = ".okf-workbench-root-staging";
+    apply_missing_root_plan_anchored_with_name_factory_and_hook(
+        planned,
+        plan,
+        fresh_unix_root_staging_name,
+        before_publish,
+    )
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn apply_missing_root_plan_anchored_with_name_factory_and_hook(
+    planned: &PlannedRootIdentity,
+    plan: &[PlannedChange],
+    staging_name_factory: impl FnOnce() -> Result<OsString, String>,
+    before_publish: impl FnOnce(&OsStr) -> Result<(), String>,
+) -> Result<(), String> {
+    let (coordination, coordination_name, anchor, anchor_handle) =
+        reserve_unix_missing_root_coordination(planned)?;
+    // Arm cleanup immediately after the atomic reservation, before any fallible staging work.
+    // Explicit cleanup reports failures; Drop is the best-effort fallback for an early return.
+    let mut coordination =
+        UnixCoordinationGuard::new(anchor_handle, coordination_name, coordination);
+    let staging_name = match staging_name_factory() {
+        Ok(name) => name,
+        Err(primary) => {
+            return match coordination.remove() {
+                Ok(()) => Err(primary),
+                Err(cleanup) => Err(format!(
+                    "{primary}; additionally, the coordination entry could not be removed: {cleanup}"
+                )),
+            };
+        }
+    };
+    let staging_path = anchor.join(&staging_name);
+    let result = apply_missing_root_plan_anchored_with_staging_name_and_hook(
+        planned,
+        plan,
+        &staging_name,
+        before_publish,
+    );
+    let staging_exists = fs::symlink_metadata(&staging_path).is_ok();
+    if result.is_ok() || !staging_exists {
+        let cleanup = coordination.remove();
+        return match (result, cleanup) {
+            (Ok(()), Ok(())) => Ok(()),
+            (Ok(()), Err(cleanup)) => Err(format!(
+                "root was published but its coordination entry could not be removed: {cleanup}"
+            )),
+            (Err(primary), Ok(())) => Err(primary),
+            (Err(primary), Err(cleanup)) => Err(format!(
+                "{primary}; additionally, the coordination entry could not be removed: {cleanup}"
+            )),
+        };
+    }
+    coordination.leave_in_place();
+    result
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+struct UnixCoordinationGuard<'a> {
+    anchor: &'a File,
+    name: OsString,
+    coordination: File,
+    armed: bool,
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+impl<'a> UnixCoordinationGuard<'a> {
+    fn new(anchor: &'a File, name: OsString, coordination: File) -> Self {
+        Self {
+            anchor,
+            name,
+            coordination,
+            armed: true,
+        }
+    }
+
+    fn remove(&mut self) -> Result<(), String> {
+        if !self.armed {
+            return Ok(());
+        }
+        // Make every cleanup attempt single-shot. If it fails, retaining our entry is safer than
+        // retrying against a pathname whose identity may have changed in the meantime.
+        self.armed = false;
+        remove_unix_coordination(self.anchor, &self.name, &self.coordination)
+    }
+
+    fn leave_in_place(&mut self) {
+        self.armed = false;
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+impl Drop for UnixCoordinationGuard<'_> {
+    fn drop(&mut self) {
+        let _ = self.remove();
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn reserve_unix_missing_root_coordination(
+    planned: &PlannedRootIdentity,
+) -> Result<(File, OsString, PathBuf, &File), String> {
+    let PlannedRootIdentity::Missing {
+        anchor,
+        components,
+        handle,
+        ..
+    } = planned
+    else {
+        return Err("missing-root coordination requires a missing-root plan".to_owned());
+    };
+    let first = components
+        .first()
+        .ok_or_else(|| "missing-root plan has no missing component".to_owned())?;
+    let name = anchor_coordination_name(planned)?;
+    if name == *first {
+        return Err(
+            "coordination reservation matched the requested root; no target was published"
+                .to_owned(),
+        );
+    }
+    let file = File::from(
+        openat(
+            &handle.directory,
+            &name,
+            OFlags::CREATE | OFlags::EXCL | OFlags::WRONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::from_raw_mode(0o600),
+        )
+        .map_err(|error| {
+            format!(
+                "bounded root publication coordination entry {name:?} is unavailable: {error}; no target was published"
+            )
+        })?,
+    );
+    Ok((file, name, anchor.clone(), &handle.directory))
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn remove_unix_coordination(
+    anchor: &File,
+    name: &OsStr,
+    coordination: &File,
+) -> Result<(), String> {
+    let current = File::from(
+        openat(
+            anchor,
+            name,
+            OFlags::RDONLY | OFlags::NONBLOCK | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(|error| format!("cannot reopen coordination entry: {error}"))?,
+    );
+    if file_object_identity(&current)? != file_object_identity(coordination)? {
+        return Err("coordination entry identity changed; it was not removed".to_owned());
+    }
+    unlinkat(anchor, name, AtFlags::empty())
+        .map_err(|error| format!("cannot remove coordination entry: {error}"))
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn apply_missing_root_plan_anchored_with_staging_name_and_hook(
+    planned: &PlannedRootIdentity,
+    plan: &[PlannedChange],
+    staging_name: &OsStr,
+    before_publish: impl FnOnce(&OsStr) -> Result<(), String>,
+) -> Result<(), String> {
     let PlannedRootIdentity::Missing {
         anchor,
         anchor_identity,
@@ -2064,11 +2379,17 @@ fn apply_missing_root_plan_anchored_with_hook(
     let first = components
         .first()
         .ok_or_else(|| "missing-root plan has no missing component".to_owned())?;
+    if staging_name == first {
+        return Err(
+            "private staging reservation matched the requested root; no target was published"
+                .to_owned(),
+        );
+    }
     let current = open_anchored_root(anchor)?;
     if file_object_identity(&current)? != *anchor_identity {
         return Err("root ancestor changed after planning; no changes were written".to_owned());
     }
-    for leaf in [first.as_os_str(), OsStr::new(STAGING_NAME)] {
+    for leaf in [first.as_os_str(), staging_name] {
         match openat(
             &handle.directory,
             leaf,
@@ -2086,23 +2407,27 @@ fn apply_missing_root_plan_anchored_with_hook(
     }
     mkdirat(
         &handle.directory,
-        STAGING_NAME,
+        staging_name,
         Mode::from_raw_mode(0o755),
     )
     .map_err(|error| {
         format!(
-            "cannot reserve bounded root staging directory {STAGING_NAME}: {error}; no target was published"
+            "cannot reserve bounded root staging directory {staging_name:?}: {error}; no target was published"
         )
     })?;
-    let mut root_directory = File::from(
+    let staging_directory = File::from(
         openat(
             &handle.directory,
-            STAGING_NAME,
+            staging_name,
             OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
             Mode::empty(),
         )
         .map_err(|error| format!("cannot open root staging directory: {error}"))?,
     );
+    let staging_identity = file_object_identity(&staging_directory)?;
+    let mut root_directory = staging_directory
+        .try_clone()
+        .map_err(|error| format!("cannot retain root staging directory: {error}"))?;
     for component in components.iter().skip(1) {
         mkdirat(&root_directory, component, Mode::from_raw_mode(0o755)).map_err(|error| {
             format!("cannot build staged root component {component:?}: {error}")
@@ -2124,10 +2449,29 @@ fn apply_missing_root_plan_anchored_with_hook(
     root_directory
         .sync_all()
         .map_err(|error| error.to_string())?;
-    before_publish()?;
+    before_publish(staging_name)?;
+    let current_staging = File::from(
+        openat(
+            &handle.directory,
+            staging_name,
+            OFlags::RDONLY
+                | OFlags::DIRECTORY
+                | OFlags::NONBLOCK
+                | OFlags::NOFOLLOW
+                | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(|error| format!("root staging reservation changed before publication: {error}"))?,
+    );
+    if file_object_identity(&current_staging)? != staging_identity {
+        return Err(
+            "root staging reservation changed before publication; no target was published"
+                .to_owned(),
+        );
+    }
     renameat_with(
         &handle.directory,
-        STAGING_NAME,
+        staging_name,
         &handle.directory,
         first,
         RenameFlags::NOREPLACE,
@@ -2136,7 +2480,24 @@ fn apply_missing_root_plan_anchored_with_hook(
         format!(
             "cannot atomically publish the complete new root; concurrent content was preserved and bounded staging remains for inspection: {error}"
         )
-    })
+    })?;
+    let published = File::from(
+        openat(
+            &handle.directory,
+            first,
+            OFlags::RDONLY
+                | OFlags::DIRECTORY
+                | OFlags::NONBLOCK
+                | OFlags::NOFOLLOW
+                | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(|error| format!("cannot verify published root identity: {error}"))?,
+    );
+    if file_object_identity(&published)? != staging_identity {
+        return Err("published root identity does not match the staged tree".to_owned());
+    }
+    Ok(())
 }
 
 #[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
@@ -3091,6 +3452,380 @@ mod tests {
         assert!(!requested_root.exists());
     }
 
+    #[cfg(any(target_os = "linux", target_os = "macos", windows))]
+    #[test]
+    fn deterministic_staging_keeps_legacy_unicode_alias_root_private_until_publish() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join(".oKf-workbench-root-staging");
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+        let planned = planned_root_for_apply(&plan).unwrap();
+
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        let result = apply_missing_root_plan_anchored_with_hook(planned, &plan, |staging_name| {
+            assert!(!root.exists());
+            assert!(directory.path().join(staging_name).exists());
+            Ok(())
+        });
+        #[cfg(windows)]
+        let result = apply_missing_root_plan_windows_with_hook(planned, &plan, |staging_name| {
+            assert!(!root.exists());
+            assert!(directory.path().join(staging_name).exists());
+            Ok(())
+        });
+
+        result.unwrap();
+        assert_eq!(
+            fs::read_to_string(root.join("new.md")).unwrap(),
+            "generated\n"
+        );
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos", windows))]
+    #[test]
+    fn exact_staging_match_fails_before_reservation_or_hook() {
+        let directory = tempdir().unwrap();
+        let staging_name = OsStr::new(".okf-workbench-root-staging-forced-match");
+        let root = directory.path().join(staging_name);
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+        let planned = planned_root_for_apply(&plan).unwrap();
+        let hook_called = std::cell::Cell::new(false);
+
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        let result = apply_missing_root_plan_anchored_with_staging_name_and_hook(
+            planned,
+            &plan,
+            staging_name,
+            |_| {
+                hook_called.set(true);
+                Ok(())
+            },
+        );
+        #[cfg(windows)]
+        let result = apply_missing_root_plan_windows_with_staging_name_and_hook(
+            planned,
+            &plan,
+            staging_name,
+            |_| {
+                hook_called.set(true);
+                Ok(())
+            },
+        );
+
+        let error = result.unwrap_err();
+        assert!(error.contains("matched the requested root"), "{error}");
+        assert!(!hook_called.get());
+        assert!(!root.exists());
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn exact_coordination_match_fails_before_reservation_or_hook() {
+        let directory = tempdir().unwrap();
+        let render = || RenderedFile {
+            relative_path: "new.md".to_owned(),
+            encoding: "utf8",
+            content: "generated\n".to_owned(),
+        };
+        let seed = plan_files(
+            &directory.path().join("seed"),
+            vec![render()],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+        let coordination =
+            anchor_coordination_name(planned_root_for_apply(&seed).unwrap()).unwrap();
+        drop(seed);
+        let root = directory.path().join(coordination);
+        let plan = plan_files(&root, vec![render()], PlanMode::CreateOnly).unwrap();
+        let planned = planned_root_for_apply(&plan).unwrap();
+        let hook_called = std::cell::Cell::new(false);
+
+        let error = apply_missing_root_plan_anchored_with_hook(planned, &plan, |_| {
+            hook_called.set(true);
+            Ok(())
+        })
+        .unwrap_err();
+
+        assert!(
+            error.contains("coordination reservation matched"),
+            "{error}"
+        );
+        assert!(!hook_called.get());
+        assert!(!root.exists());
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 0);
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn staging_name_generation_failure_removes_coordination() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+        let planned = planned_root_for_apply(&plan).unwrap();
+        let hook_called = std::cell::Cell::new(false);
+
+        let error = apply_missing_root_plan_anchored_with_name_factory_and_hook(
+            planned,
+            &plan,
+            || Err("injected randomness failure".to_owned()),
+            |_| {
+                hook_called.set(true);
+                Ok(())
+            },
+        )
+        .unwrap_err();
+
+        assert!(error.contains("injected randomness failure"), "{error}");
+        assert!(!hook_called.get());
+        assert!(!root.exists());
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 0);
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn replaced_coordination_entry_is_not_removed() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+        let planned = planned_root_for_apply(&plan).unwrap();
+        let (coordination, name, anchor, anchor_handle) =
+            reserve_unix_missing_root_coordination(planned).unwrap();
+        let coordination_path = anchor.join(&name);
+        let moved_path = anchor.join("moved-owned-coordination");
+        fs::rename(&coordination_path, &moved_path).unwrap();
+        fs::write(&coordination_path, "third party\n").unwrap();
+
+        let error = remove_unix_coordination(anchor_handle, &name, &coordination).unwrap_err();
+
+        assert!(error.contains("identity changed"), "{error}");
+        assert_eq!(
+            fs::read_to_string(&coordination_path).unwrap(),
+            "third party\n"
+        );
+        assert!(moved_path.exists());
+        assert!(!root.exists());
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn coordination_name_is_anchor_wide_fixed_length_decimal() {
+        let directory = tempdir().unwrap();
+        let render = || RenderedFile {
+            relative_path: "new.md".to_owned(),
+            encoding: "utf8",
+            content: "generated\n".to_owned(),
+        };
+        let first = plan_files(
+            &directory.path().join("Bundle"),
+            vec![render()],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+        let second = plan_files(
+            &directory.path().join("unrelated-root"),
+            vec![render()],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+
+        let first_name = anchor_coordination_name(planned_root_for_apply(&first).unwrap()).unwrap();
+        let second_name =
+            anchor_coordination_name(planned_root_for_apply(&second).unwrap()).unwrap();
+        let text = first_name.to_str().unwrap();
+
+        assert_eq!(first_name, second_name);
+        assert_eq!(text.len(), 40);
+        assert!(text.starts_with('.'));
+        assert!(text[1..].bytes().all(|byte| byte.is_ascii_digit()));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_staging_name_is_83_and_self_match_is_rejected() {
+        let staging_name = windows_root_staging_name();
+        let text = staging_name.to_str().unwrap();
+        let (stem, extension) = text.split_once('.').unwrap();
+        assert_eq!(stem.len(), 8);
+        assert_eq!(extension.len(), 3);
+        assert!(stem.bytes().all(|byte| byte.is_ascii_digit()));
+        assert!(extension.bytes().all(|byte| byte.is_ascii_digit()));
+
+        let directory = tempdir().unwrap();
+        let root = directory.path().join(staging_name);
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+        let planned = planned_root_for_apply(&plan).unwrap();
+        let hook_called = std::cell::Cell::new(false);
+
+        let error = apply_missing_root_plan_windows_with_hook(planned, &plan, |_| {
+            hook_called.set(true);
+            Ok(())
+        })
+        .unwrap_err();
+
+        assert!(error.contains("matched the requested root"), "{error}");
+        assert!(!hook_called.get());
+        assert!(!root.exists());
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos", windows))]
+    #[test]
+    fn missing_root_staging_collision_preserves_the_existing_entry() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        let staging_name = OsStr::new(".okf-workbench-root-staging-collision");
+        let staging = directory.path().join(staging_name);
+        fs::create_dir(&staging).unwrap();
+        fs::write(staging.join("sentinel"), "owned elsewhere\n").unwrap();
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+        let planned = planned_root_for_apply(&plan).unwrap();
+
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        let error = apply_missing_root_plan_anchored_with_staging_name_and_hook(
+            planned,
+            &plan,
+            staging_name,
+            |_| Ok(()),
+        )
+        .unwrap_err();
+        #[cfg(windows)]
+        let error = apply_missing_root_plan_windows_with_staging_name_and_hook(
+            planned,
+            &plan,
+            staging_name,
+            |_| Ok(()),
+        )
+        .unwrap_err();
+
+        assert!(error.contains("appeared after planning"), "{error}");
+        assert!(!root.exists());
+        assert_eq!(
+            fs::read_to_string(staging.join("sentinel")).unwrap(),
+            "owned elsewhere\n"
+        );
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos", windows))]
+    #[test]
+    fn handled_failure_residue_blocks_an_additional_staging_tree() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        let rendered = || RenderedFile {
+            relative_path: "new.md".to_owned(),
+            encoding: "utf8",
+            content: "generated\n".to_owned(),
+        };
+        let plan = plan_files(&root, vec![rendered()], PlanMode::CreateOnly).unwrap();
+        let planned = planned_root_for_apply(&plan).unwrap();
+
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        let first_error = apply_missing_root_plan_anchored_with_hook(planned, &plan, |_| {
+            Err("injected handled failure".to_owned())
+        })
+        .unwrap_err();
+        #[cfg(windows)]
+        let first_error = apply_missing_root_plan_windows_with_hook(planned, &plan, |_| {
+            Err("injected handled failure".to_owned())
+        })
+        .unwrap_err();
+        assert!(first_error.contains("injected handled failure"));
+        assert!(!root.exists());
+
+        let retry = plan_files(&root, vec![rendered()], PlanMode::CreateOnly).unwrap();
+        let error = apply_plan(&root, &retry).unwrap_err();
+
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        assert!(error.contains("coordination entry"), "{error}");
+        #[cfg(windows)]
+        assert!(error.contains("appeared after planning"), "{error}");
+        assert_eq!(
+            fs::read_dir(directory.path())
+                .unwrap()
+                .filter_map(Result::ok)
+                .count(),
+            if cfg!(windows) { 1 } else { 2 }
+        );
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn maximum_length_root_component_uses_a_bounded_staging_name() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("r".repeat(255));
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+
+        apply_plan(&root, &plan).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root.join("new.md")).unwrap(),
+            "generated\n"
+        );
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
     fn missing_root_multiple_creates_publish_as_one_complete_tree() {
@@ -3139,8 +3874,10 @@ mod tests {
         )
         .unwrap();
         let planned = planned_root_for_apply(&plan).unwrap();
+        let staged_path = std::cell::RefCell::new(None);
 
-        let result = apply_missing_root_plan_anchored_with_hook(planned, &plan, || {
+        let result = apply_missing_root_plan_anchored_with_hook(planned, &plan, |staging_name| {
+            staged_path.replace(Some(directory.path().join(staging_name)));
             fs::create_dir(&root).map_err(|error| error.to_string())?;
             fs::write(root.join("sentinel"), "concurrent\n").map_err(|error| error.to_string())
         });
@@ -3151,11 +3888,47 @@ mod tests {
             "concurrent\n"
         );
         assert!(!root.join("new.md").exists());
-        assert!(
-            directory
-                .path()
-                .join(".okf-workbench-root-staging")
-                .exists()
+        assert!(staged_path.into_inner().unwrap().exists());
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn replaced_staging_entry_is_rejected_before_publish() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        let moved_staging = directory.path().join("moved-owned-staging");
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+        let planned = planned_root_for_apply(&plan).unwrap();
+        let replacement_path = std::cell::RefCell::new(None);
+
+        let error = apply_missing_root_plan_anchored_with_hook(planned, &plan, |staging_name| {
+            let staging = directory.path().join(staging_name);
+            replacement_path.replace(Some(staging.clone()));
+            fs::rename(&staging, &moved_staging).map_err(|error| error.to_string())?;
+            fs::create_dir(&staging).map_err(|error| error.to_string())?;
+            fs::write(staging.join("sentinel"), "third party\n").map_err(|error| error.to_string())
+        })
+        .unwrap_err();
+
+        assert!(error.contains("staging reservation changed"), "{error}");
+        assert!(!root.exists());
+        assert_eq!(
+            fs::read_to_string(moved_staging.join("new.md")).unwrap(),
+            "generated\n"
+        );
+        let replacement = replacement_path.into_inner().unwrap();
+        assert_eq!(
+            fs::read_to_string(replacement.join("sentinel")).unwrap(),
+            "third party\n"
         );
     }
 
@@ -3336,8 +4109,10 @@ mod tests {
         )
         .unwrap();
         let planned = planned_root_for_apply(&plan).unwrap();
+        let staged_path = std::cell::RefCell::new(None);
 
-        let result = apply_missing_root_plan_windows_with_hook(planned, &plan, || {
+        let result = apply_missing_root_plan_windows_with_hook(planned, &plan, |staging_name| {
+            staged_path.replace(Some(directory.path().join(staging_name)));
             fs::create_dir(&root).map_err(|error| error.to_string())?;
             fs::write(root.join("sentinel"), "concurrent\n").map_err(|error| error.to_string())
         });
@@ -3348,11 +4123,39 @@ mod tests {
             "concurrent\n"
         );
         assert!(!root.join("new.md").exists());
-        assert!(
-            directory
-                .path()
-                .join(".okf-workbench-root-staging")
-                .exists()
+        assert!(staged_path.into_inner().unwrap().exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_staging_handle_blocks_replacement_before_publish() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+        let planned = planned_root_for_apply(&plan).unwrap();
+
+        apply_missing_root_plan_windows_with_hook(planned, &plan, |staging_name| {
+            let staging = directory.path().join(staging_name);
+            assert!(
+                fs::rename(&staging, directory.path().join("moved-staging")).is_err(),
+                "the strict staging handle must deny rename before publication"
+            );
+            Ok(())
+        })
+        .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root.join("new.md")).unwrap(),
+            "generated\n"
         );
     }
 

@@ -14,6 +14,7 @@ path = "src/main.rs"
 [dependencies]
 chrono.workspace = true
 clap.workspace = true
+getrandom.workspace = true
 okf-core = { path = "../okf-core" }
 serde.workspace = true
 serde_json.workspace = true

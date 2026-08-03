@@ -342,36 +342,34 @@ where
     D: Deserializer<'de>,
 {
     let raw = Box::<RawValue>::deserialize(deserializer)?;
-    if let Some(revision) = exact_integral_json_number(raw.get()) {
-        return Ok(revision);
+    parse_revision_json_number(raw.get())
+        .ok_or_else(|| D::Error::custom("revision must be a non-negative integral JSON number"))
+}
+
+pub(crate) fn parse_revision_json_number(source: &str) -> Option<u64> {
+    if let Some(revision) = exact_integral_json_number(source) {
+        return Some(revision);
     }
-    let value = serde_json::from_str::<Value>(raw.get()).map_err(D::Error::custom)?;
-    if let Some(revision) = value.as_u64() {
-        return Ok(revision);
-    }
-    if let Some(revision) = value.as_f64()
+    if let Ok(revision) = source.parse::<f64>()
         && revision.is_finite()
         && revision >= 0.0
         && revision.fract() == 0.0
         && revision <= u64::MAX as f64
     {
-        return Ok(revision as u64);
+        return Some(revision as u64);
     }
-    Err(D::Error::custom(
-        "revision must be a non-negative integral JSON number",
-    ))
+    None
 }
 
 fn exact_integral_json_number(source: &str) -> Option<u64> {
     let (negative, unsigned) = source
         .strip_prefix('-')
         .map_or((false, source), |value| (true, value));
-    let (coefficient, exponent) =
-        if let Some((coefficient, exponent)) = unsigned.split_once(['e', 'E']) {
-            (coefficient, exponent.parse::<i64>().ok()?)
-        } else {
-            (unsigned, 0)
-        };
+    let (coefficient, exponent_source) = unsigned
+        .split_once(['e', 'E'])
+        .map_or((unsigned, None), |(coefficient, exponent)| {
+            (coefficient, Some(exponent))
+        });
     let (whole, fraction) = coefficient.split_once('.').unwrap_or((coefficient, ""));
     if whole.is_empty()
         || !whole.bytes().all(|byte| byte.is_ascii_digit())
@@ -386,6 +384,7 @@ fn exact_integral_json_number(source: &str) -> Option<u64> {
     if digits.bytes().all(|byte| byte == b'0') {
         return Some(0);
     }
+    let exponent = exponent_source.map_or(Some(0), |value| value.parse::<i64>().ok())?;
     let decimal_position = i64::try_from(whole.len()).ok()?.checked_add(exponent)?;
     if decimal_position <= 0 {
         return None;

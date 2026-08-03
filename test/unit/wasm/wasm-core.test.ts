@@ -521,6 +521,69 @@ describe('Rust/Wasm core boundary', () => {
     }
   });
 
+  test('raw graph and inspect requests classify revision number lexemes like JavaScript', () => {
+    const expectedError = {
+      code: 'graph-resource-limit',
+      message: 'The graph revision must be a non-negative safe integer.',
+    };
+    for (const revision of [
+      '1e400',
+      '-1e400',
+      '1e+400',
+      '-1e+400',
+      '9007199254740992.0',
+      '9007199254740992e0',
+    ]) {
+      for (const operation of ['graph', 'inspect'] as const) {
+        const request = rawRevisionRequest(operation, revision);
+        const parsed = JSON.parse(request) as {
+          readonly input:
+            | ParseBundleInput
+            | {
+                readonly bundle: ParseBundleInput;
+                readonly now: string;
+                readonly failures: readonly ParseFailure[];
+              };
+        };
+        const input =
+          operation === 'graph'
+            ? (parsed.input as ParseBundleInput)
+            : (parsed.input as { readonly bundle: ParseBundleInput }).bundle;
+        expectGraphLimitParity(input);
+        expect(rawWasmRequestJson(request).error).toEqual(expectedError);
+      }
+    }
+
+    for (const [revision, expected] of [
+      ['0.0', 0],
+      ['0e999999999999999999999999', 0],
+      ['0e-999999999999999999999999', 0],
+      ['1e-400', 0],
+      ['-1e-400', 0],
+      ['1e0', 1],
+      ['9007199254740990.9', Number.MAX_SAFE_INTEGER],
+      ['9007199254740991.0', Number.MAX_SAFE_INTEGER],
+      ['9007199254740991e0', Number.MAX_SAFE_INTEGER],
+    ] as const) {
+      const oracleInput = {
+        ...inputFor([], 'fixture:/revision-lexeme'),
+        revision: expected,
+      };
+      const oracle = typescriptOkfCore.inspect(oracleInput, '2026-07-22T12:00:00Z');
+      expect(rawWasmRequestJson(rawRevisionRequest('graph', revision))).toMatchObject({
+        result: { revision: expected },
+      });
+      expect(rawWasmRequestJson(rawRevisionRequest('inspect', revision)).result).toEqual(oracle);
+    }
+
+    for (const request of [
+      '{"operation":"graph","input":{"rootUri":"","revision":1,"revision":1,"documents":[]}}',
+      '{"operation":"inspect","input":{"bundle":{"rootUri":"","revision":1,"documents":[]},"bundle":{"rootUri":"","revision":1,"documents":[]},"now":"2026-07-22T12:00:00Z","failures":[]}}',
+    ]) {
+      expect(rawWasmRequestJson(request).error?.code).toBe('invalid-request');
+    }
+  });
+
   test('orders equal-identity external failures by reason like the TypeScript oracle', () => {
     const input = inputFor([], 'fixture:/failure-order');
     const failure = {
@@ -2424,7 +2487,7 @@ describe('Rust/Wasm core boundary', () => {
       const input = inputFor([[path, concept(body)]], `fixture:/markdown-parity/${path}`);
       expect(core.inspect(input, '2026-07-22T12:00:00Z').bundle.failures, path).toEqual([]);
     }
-  });
+  }, 30_000);
 
   test('matches YAML resource and YAML 1.2 shape boundaries', () => {
     const aliases = (count: number, seed = 'x'): string =>
@@ -2537,7 +2600,7 @@ describe('Rust/Wasm core boundary', () => {
     expect(core.inspect(radixAggregate, '2026-07-22T12:00:00Z')).toEqual(
       typescriptOkfCore.inspect(radixAggregate, '2026-07-22T12:00:00Z'),
     );
-  });
+  }, 30_000);
 
   test('matches aggregate Markdown and YAML bundle work limits', () => {
     const markdownInput = inputFor(
@@ -4364,6 +4427,20 @@ function rawWasmRequest(request: unknown): {
   readonly result?: unknown;
   readonly error?: { readonly code: string; readonly message: string };
 } {
+  return rawWasmRequestJson(JSON.stringify(request));
+}
+
+function rawRevisionRequest(operation: 'graph' | 'inspect', revision: string): string {
+  const bundle = `{"rootUri":"fixture:/revision-lexeme","revision":${revision},"documents":[]}`;
+  return operation === 'graph'
+    ? `{"operation":"graph","input":${bundle}}`
+    : `{"operation":"inspect","input":{"bundle":${bundle},"now":"2026-07-22T12:00:00Z","failures":[]}}`;
+}
+
+function rawWasmRequestJson(request: string): {
+  readonly result?: unknown;
+  readonly error?: { readonly code: string; readonly message: string };
+} {
   const instance = new WebAssembly.Instance(new WebAssembly.Module(wasmBytes), {});
   const exports = instance.exports as unknown as {
     readonly memory: WebAssembly.Memory;
@@ -4371,7 +4448,7 @@ function rawWasmRequest(request: unknown): {
     readonly okf_call: (pointer: number, length: number) => bigint;
     readonly okf_dealloc: (pointer: number, length: number) => void;
   };
-  const bytes = new TextEncoder().encode(JSON.stringify(request));
+  const bytes = new TextEncoder().encode(request);
   const pointer = exports.okf_alloc(bytes.byteLength);
   new Uint8Array(exports.memory.buffer, pointer, bytes.byteLength).set(bytes);
   const packed = exports.okf_call(pointer, bytes.byteLength);

@@ -1,7 +1,9 @@
 use serde_json::Value;
-#[cfg(unix)]
-use std::process::Stdio;
-use std::{fs, path::Path, process::Command};
+use std::{
+    fs,
+    path::Path,
+    process::{Command, Stdio},
+};
 use tempfile::tempdir;
 
 fn okf() -> Command {
@@ -44,6 +46,117 @@ fn explicit_apply_initializes_then_validates_offline() {
         .unwrap();
     assert!(validate.status.success(), "{:?}", validate);
     assert_eq!(json_stdout(&validate)["result"], Value::Array(vec![]));
+}
+
+#[test]
+fn concurrent_missing_root_initializers_leave_no_loser_staging_tree() {
+    let directory = tempdir().unwrap();
+    let root = directory.path().join("bundle");
+    let root_arg = root.to_str().unwrap();
+    let mut children = Vec::new();
+    for _ in 0..64 {
+        children.push(
+            okf()
+                .args(["init", root_arg, "--apply"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap(),
+        );
+    }
+
+    let statuses = children
+        .into_iter()
+        .map(|mut child| child.wait().unwrap())
+        .collect::<Vec<_>>();
+
+    assert!(statuses.iter().any(std::process::ExitStatus::success));
+    assert!(root.join("index.md").is_file());
+    let siblings = fs::read_dir(directory.path())
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name())
+        .collect::<Vec<_>>();
+    assert_eq!(siblings, vec![root.file_name().unwrap()]);
+}
+
+#[cfg(any(target_os = "macos", windows))]
+#[test]
+fn concurrent_case_alias_initializers_share_one_anchor_reservation() {
+    let directory = tempdir().unwrap();
+    let probe = directory.path().join("case-probe");
+    fs::write(&probe, "probe").unwrap();
+    let case_insensitive = directory.path().join("CASE-PROBE").exists();
+    fs::remove_file(&probe).unwrap();
+    if !case_insensitive {
+        return;
+    }
+
+    let lower = directory.path().join("bundle");
+    let upper = directory.path().join("BUNDLE");
+    let mut children = Vec::new();
+    for index in 0..64 {
+        let root = if index % 2 == 0 { &lower } else { &upper };
+        children.push(
+            okf()
+                .args(["init", root.to_str().unwrap(), "--apply"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap(),
+        );
+    }
+
+    let statuses = children
+        .into_iter()
+        .map(|mut child| child.wait().unwrap())
+        .collect::<Vec<_>>();
+
+    assert!(statuses.iter().any(std::process::ExitStatus::success));
+    assert!(lower.join("index.md").is_file());
+    assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn concurrent_unicode_alias_initializers_share_one_anchor_reservation() {
+    let directory = tempdir().unwrap();
+    let composed_probe = directory.path().join("é-probe");
+    fs::write(&composed_probe, "probe").unwrap();
+    let decomposed_probe = directory.path().join("e\u{301}-probe");
+    let normalization_insensitive = decomposed_probe.exists();
+    fs::remove_file(&composed_probe).unwrap();
+    if !normalization_insensitive {
+        return;
+    }
+
+    let composed = directory.path().join("Bündlé");
+    let decomposed = directory.path().join("Bu\u{308}ndle\u{301}");
+    let mut children = Vec::new();
+    for index in 0..64 {
+        let root = if index % 2 == 0 {
+            &composed
+        } else {
+            &decomposed
+        };
+        children.push(
+            okf()
+                .args(["init", root.to_str().unwrap(), "--apply"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap(),
+        );
+    }
+
+    let statuses = children
+        .into_iter()
+        .map(|mut child| child.wait().unwrap())
+        .collect::<Vec<_>>();
+
+    assert!(statuses.iter().any(std::process::ExitStatus::success));
+    assert!(composed.join("index.md").is_file());
+    assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
 }
 
 #[test]

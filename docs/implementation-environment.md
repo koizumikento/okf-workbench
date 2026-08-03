@@ -306,14 +306,46 @@ handled failure it attempts handle-bound cleanup; if cleanup also fails, both er
 An existing-root plan with multiple creates fails before any directory or file is added because
 these primitives do not provide a complete-plan transaction.
 
-For a missing root, the CLI reserves one fixed sibling `.okf-workbench-root-staging` directory
-below the retained deepest existing ancestor, constructs the entire planned subtree there, and
-publishes the first missing component with one atomic no-replace rename. A collision or failure
-therefore exposes no partial public bundle. Abrupt interruption may leave only that fixed staging
-name; a later invocation never deletes it blindly and fails closed with an actionable error. The
-locked filesystem crates were already present in the reviewed Rust
-dependency graph; making them direct CLI dependencies does not add a network, editor, or core
-capability.
+For a missing root, every process below one retained existing ancestor first contends for the same
+platform reservation. On Unix it is a fixed-length coordination entry: a dot followed by the
+zero-padded 39-digit decimal rendering of a deterministic 128-bit digest of that ancestor identity.
+Unix reserves this regular file and obtains its handle atomically with ancestor-relative
+`openat(O_CREAT | O_EXCL | O_NOFOLLOW)`. Only its winner generates a 128-bit
+operating-system-random staging-directory name and constructs the tree.
+Success, or a failure before staging exists (including operating-system randomness failure),
+best-effort removes the coordination entry only after its retained identity matches. Cleanup is
+armed immediately after reservation; cleanup failure is reported and retains owned residue rather
+than retrying against a possibly changed pathname. A failure after staging or an interruption
+leaves at most that one coordination file and one random staging tree, so a retry fails closed
+instead of accumulating residue. Windows uses the fixed `00000000.000` staging component and an
+ancestor-relative `NtCreateFile(FILE_CREATE | FILE_DIRECTORY_FILE)` call to create it and receive
+its strict delete-capable handle atomically. The digits-and-dot component is itself an 8.3 name, so
+8.3-enabled filesystems do not generate a distinct short-name alias for it; its exact filesystem
+name is rejected as a requested root before reservation. Thus case- or Unicode-alias spellings and
+unrelated missing roots below one anchor all share one reservation. This intentional serialization
+may make a concurrent operation fail closed and require a retry, but requires neither
+destination-name normalization nor an ancestor-wide scan. Exact source/destination name equality
+is rejected before reservation.
+
+The CLI publishes the first missing component with one atomic same-parent no-replace rename.
+Immediately before that rename, it reopens the staging name below the retained ancestor and rejects
+an observed identity change; Unix also verifies the published identity afterward. An entry already
+present when reservation is attempted, or a coordination pathname whose identity is observed to
+have changed, is never deleted. A destination collision publishes no generated leaf, and a
+successful operation leaves no staging or coordination entry.
+
+POSIX has no directory equivalent of `linkat(AT_EMPTY_PATH)` and no rename primitive that compares
+the source generation or an atomic create-directory-and-return-handle operation. Consequently, the
+Unix random staging name bounds the `mkdirat`-to-`openat` exposure, and the identity check and atomic
+`renameat2` / `renameatx_np` call are adjacent but not a source-generation CAS. POSIX likewise has
+no handle-bound unlink or unlink-generation CAS, so coordination cleanup compares the retained and
+reopened identities immediately before `unlinkat`, but cannot bind that comparison to the unlink.
+The guarantee does not claim to defeat a non-cooperating same-UID process that discovers and
+mutates an entry inside the random-stage `mkdirat`-to-`openat`, final identity-check-to-rename, or
+coordination identity-check-to-`unlinkat` syscall window. Observable substitution outside those
+windows is rejected; an observed cleanup mismatch leaves the entry in place. The locked filesystem
+and operating-system randomness crates were already present in the reviewed Rust dependency graph;
+making them direct CLI dependencies does not add a network, editor, or core capability.
 
 For a local file, `stat` uses `lstat({ bigint: true })` and returns an opaque generation containing
 device, inode, mode, nanosecond ctime, and birthtime. `read` requires that generation, opens with

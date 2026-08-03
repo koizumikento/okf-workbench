@@ -271,30 +271,54 @@ pub fn dispatch_json(request_json: &str) -> String {
 }
 
 fn graph_request_has_invalid_revision(request_json: &str) -> bool {
-    let Ok(request) = serde_json::from_str::<Value>(request_json) else {
+    #[derive(Deserialize)]
+    struct RequestProbe {
+        operation: Option<String>,
+        input: Option<Box<serde_json::value::RawValue>>,
+    }
+
+    #[derive(Deserialize)]
+    struct RevisionProbe {
+        revision: Option<Box<serde_json::value::RawValue>>,
+    }
+
+    #[derive(Deserialize)]
+    struct InspectProbe {
+        bundle: Option<Box<serde_json::value::RawValue>>,
+    }
+
+    let Ok(request) = serde_json::from_str::<RequestProbe>(request_json) else {
         return false;
     };
-    let revision = match request.get("operation").and_then(Value::as_str) {
-        Some("graph") => request.get("input").and_then(|input| input.get("revision")),
-        Some("inspect") => request
-            .get("input")
-            .and_then(|input| input.get("bundle"))
-            .and_then(|bundle| bundle.get("revision")),
+    let Some(input) = request.input else {
+        return matches!(request.operation.as_deref(), Some("graph" | "inspect"));
+    };
+    let revision = match request.operation.as_deref() {
+        Some("graph") => {
+            let Ok(input) = serde_json::from_str::<RevisionProbe>(input.get()) else {
+                return false;
+            };
+            input.revision
+        }
+        Some("inspect") => {
+            let Ok(input) = serde_json::from_str::<InspectProbe>(input.get()) else {
+                return false;
+            };
+            let Some(bundle) = input.bundle else {
+                return true;
+            };
+            let Ok(bundle) = serde_json::from_str::<RevisionProbe>(bundle.get()) else {
+                return false;
+            };
+            bundle.revision
+        }
         _ => return false,
     };
     let Some(revision) = revision else {
         return true;
     };
-    if let Some(revision) = revision.as_u64() {
-        return revision > 9_007_199_254_740_991;
-    }
-    let Some(revision) = revision.as_f64() else {
-        return true;
-    };
-    !revision.is_finite()
-        || revision < 0.0
-        || revision.fract() != 0.0
-        || revision > 9_007_199_254_740_991.0
+    parse_revision_json_number(revision.get())
+        .is_none_or(|revision| revision > 9_007_199_254_740_991)
 }
 
 fn compare_utf16(left: &str, right: &str) -> std::cmp::Ordering {
@@ -340,6 +364,33 @@ mod tests {
     }
 
     #[test]
+    fn graph_operations_normalize_overflowing_revision_errors() {
+        for operation in ["graph", "inspect"] {
+            for revision in ["1e400", "-1e400", "1e+400", "-1e+400"] {
+                let request = if operation == "graph" {
+                    format!(
+                        r#"{{"operation":"graph","input":{{"rootUri":"","revision":{revision},"documents":[]}}}}"#
+                    )
+                } else {
+                    format!(
+                        r#"{{"operation":"inspect","input":{{"bundle":{{"rootUri":"","revision":{revision},"documents":[]}},"now":"2026-08-03T00:00:00Z","failures":[]}}}}"#
+                    )
+                };
+                let response: Value = serde_json::from_str(&dispatch_json(&request)).unwrap();
+                assert_eq!(
+                    response["error"]["code"], "graph-resource-limit",
+                    "{operation} revision {revision}"
+                );
+                assert_eq!(
+                    response["error"]["message"],
+                    "The graph revision must be a non-negative safe integer.",
+                    "{operation} revision {revision}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn graph_operations_normalize_negative_and_fractional_revision_errors() {
         for request in [
             r#"{"operation":"graph","input":{"rootUri":"","revision":-1,"documents":[]}}"#,
@@ -360,8 +411,13 @@ mod tests {
     fn graph_operation_accepts_lexically_float_integral_revisions() {
         for (revision, expected) in [
             ("0.0", 0_u64),
+            ("0e999999999999999999999999", 0),
+            ("0e-999999999999999999999999", 0),
+            ("1e-400", 0),
+            ("-1e-400", 0),
             ("1.0", 1),
             ("1e0", 1),
+            ("9007199254740990.9", 9_007_199_254_740_991),
             ("9007199254740991.0", 9_007_199_254_740_991),
         ] {
             let graph: Value = serde_json::from_str(&dispatch_json(&format!(
@@ -377,6 +433,19 @@ mod tests {
             .unwrap();
             assert_eq!(inspect["error"], Value::Null, "inspect revision {revision}");
             assert_eq!(inspect["result"]["graph"]["revision"], expected);
+        }
+    }
+
+    #[test]
+    fn a_valid_rounded_revision_does_not_mask_an_unrelated_invalid_request() {
+        for request in [
+            r#"{"operation":"graph","input":{"rootUri":"","revision":9007199254740990.9}}"#,
+            r#"{"operation":"inspect","input":{"bundle":{"rootUri":"","revision":9007199254740990.9},"now":"2026-08-03T00:00:00Z","failures":[]}}"#,
+            r#"{"operation":"graph","input":{"rootUri":"","revision":1,"revision":1,"documents":[]}}"#,
+            r#"{"operation":"inspect","input":{"bundle":{"rootUri":"","revision":1,"documents":[]},"bundle":{"rootUri":"","revision":1,"documents":[]},"now":"2026-08-03T00:00:00Z","failures":[]}}"#,
+        ] {
+            let response: Value = serde_json::from_str(&dispatch_json(request)).unwrap();
+            assert_eq!(response["error"]["code"], "invalid-request");
         }
     }
 }

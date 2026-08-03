@@ -321,18 +321,27 @@ instead of accumulating residue. Windows uses the fixed `00000000.000` staging c
 ancestor-relative `NtCreateFile(FILE_CREATE | FILE_DIRECTORY_FILE)` call to create it and receive
 its strict delete-capable handle atomically. The digits-and-dot component is itself an 8.3 name, so
 8.3-enabled filesystems do not generate a distinct short-name alias for it; its exact filesystem
-name is rejected as a requested root before reservation. Thus case- or Unicode-alias spellings and
-unrelated missing roots below one anchor all share one reservation. This intentional serialization
-may make a concurrent operation fail closed and require a retry, but requires neither
-destination-name normalization nor an ancestor-wide scan. Exact source/destination name equality
-is rejected before reservation.
+name, including Win32-equivalent spellings with trailing ASCII dots or spaces, is rejected as a
+requested root before reservation. Thus case- or Unicode-alias spellings and unrelated missing
+roots below one anchor all share one reservation. This intentional serialization may make a
+concurrent operation fail closed and require a retry, but requires neither destination-name
+normalization nor an ancestor-wide scan. Exact source/destination name equality is rejected before
+reservation.
 
 The CLI publishes the first missing component with one atomic same-parent no-replace rename.
 Immediately before that rename, it reopens the staging name below the retained ancestor and rejects
-an observed identity change; Unix also verifies the published identity afterward. An entry already
-present when reservation is attempted, or a coordination pathname whose identity is observed to
-have changed, is never deleted. A destination collision publishes no generated leaf, and a
-successful operation leaves no staging or coordination entry.
+an observed identity change. Every generated leaf is bound to its created identity and exact bytes.
+Windows retains deny-write-and-delete-sharing handles for every staged leaf and descendant
+directory through post-hook identity and exact-byte validation. Because Windows forbids renaming
+an ancestor directory while a descendant handle remains open, it releases those descendant handles
+immediately before renaming the root through the retained root handle. Unix reopens every leaf
+relative to the retained staged-root handle, compares identity and exact bytes after the hook, revalidates the
+complete anchor pathname identity, and verifies the published root identity afterward. Unix also
+checks staging existence and performs coordination cleanup relative to the retained ancestor
+handle, so renaming that ancestor cannot redirect publication or cleanup to a recreated pathname.
+An entry already present when reservation is attempted, or a coordination pathname whose identity
+is observed to have changed, is never deleted. A destination collision publishes no generated
+leaf, and a successful operation leaves no staging or coordination entry.
 
 POSIX has no directory equivalent of `linkat(AT_EMPTY_PATH)` and no rename primitive that compares
 the source generation or an atomic create-directory-and-return-handle operation. Consequently, the
@@ -341,11 +350,16 @@ Unix random staging name bounds the `mkdirat`-to-`openat` exposure, and the iden
 no handle-bound unlink or unlink-generation CAS, so coordination cleanup compares the retained and
 reopened identities immediately before `unlinkat`, but cannot bind that comparison to the unlink.
 The guarantee does not claim to defeat a non-cooperating same-UID process that discovers and
-mutates an entry inside the random-stage `mkdirat`-to-`openat`, final identity-check-to-rename, or
-coordination identity-check-to-`unlinkat` syscall window. Observable substitution outside those
-windows is rejected; an observed cleanup mismatch leaves the entry in place. The locked filesystem
-and operating-system randomness crates were already present in the reviewed Rust dependency graph;
-making them direct CLI dependencies does not add a network, editor, or core capability.
+mutates an entry inside the random-stage `mkdirat`-to-`openat`, staged-leaf or staging-identity
+revalidation-to-rename, anchor-path-identity-revalidation-to-rename, or coordination
+identity-check-to-`unlinkat` syscall window. Observable substitution outside those windows is
+rejected; an observed cleanup mismatch leaves the entry in place. Windows likewise has no
+source-generation CAS: because staged descendant handles must be released for their ancestor to be
+renamed, a non-cooperating process with mutation rights can race that release and the root rename.
+Direct writes and replacements are denied through the final validation, and an observed earlier
+substitution is rejected. The locked filesystem and operating-system randomness crates were already
+present in the reviewed Rust dependency graph; making them direct CLI dependencies does not add a
+network, editor, or core capability.
 
 For a local file, `stat` uses `lstat({ bigint: true })` and returns an opaque generation containing
 device, inode, mode, nanosecond ctime, and birthtime. `read` requires that generation, opens with

@@ -582,6 +582,26 @@ describe('Rust/Wasm core boundary', () => {
     ]) {
       expect(rawWasmRequestJson(request).error?.code).toBe('invalid-request');
     }
+
+    for (const request of [
+      '{"operation":"graph"}',
+      '{"operation":"graph","input":null}',
+      '{"operation":"graph","input":1}',
+      '{"operation":"graph","input":[]}',
+      '{"operation":"graph","input":{"rootUri":"","revision":1e400,"documents":[]},"input":{"rootUri":"","revision":1e400,"documents":[]}}',
+      '{"operation":"inspect"}',
+      '{"operation":"inspect","input":null}',
+      '{"operation":"inspect","input":1}',
+      '{"operation":"inspect","input":[]}',
+      '{"operation":"inspect","input":{"now":"2026-07-22T12:00:00Z","failures":[]}}',
+      '{"operation":"inspect","input":{"bundle":null,"now":"2026-07-22T12:00:00Z","failures":[]}}',
+      '{"operation":"inspect","input":{"bundle":1,"now":"2026-07-22T12:00:00Z","failures":[]}}',
+      '{"operation":"inspect","input":{"bundle":{"rootUri":"","revision":1e400,"documents":[]},"now":"2026-07-22T12:00:00Z","failures":[]},"input":{"bundle":{"rootUri":"","revision":1e400,"documents":[]},"now":"2026-07-22T12:00:00Z","failures":[]}}',
+    ]) {
+      const error = rawWasmRequestJson(request).error;
+      expect(error?.code, request).toBe('invalid-request');
+      expect(error?.message, request).toMatch(/^The OKF core request is invalid:/);
+    }
   });
 
   test('orders equal-identity external failures by reason like the TypeScript oracle', () => {
@@ -2033,6 +2053,149 @@ describe('Rust/Wasm core boundary', () => {
     }
   });
 
+  test('tagged YAML nodes match the TypeScript oracle across root, nested, and line-ending variants', () => {
+    const shapes = [
+      ['flow-tagged-collection', 'x: {k: !!str {a: b}}\n'],
+      ['nested-flow-tagged-collection', 'outer:\n  x: {k: !!str {a: b}}\n'],
+      ['tight-flow-tagged-collection', 'x: {k: !!str {a:b}}\n'],
+      ['nested-tight-flow-tagged-collection', 'outer:\n  x: {k: !!str {a:b}}\n'],
+      ['anchored-tight-flow-tagged-collection', 'x: {k: &a !!str {a:b}, z: *a}\n'],
+      ['sequence-anchor-int', 'items:\n  - &a !!int bad\ncopy: *a\n'],
+      ['nested-sequence-anchor-int', 'outer:\n  items:\n    - &a !!int bad\n  copy: *a\n'],
+      ['sequence-anchor-timestamp', 'items:\n  - &a !!timestamp x\ncopy: *a\n'],
+      [
+        'nested-sequence-anchor-timestamp',
+        'outer:\n  items:\n    - &a !!timestamp x\n  copy: *a\n',
+      ],
+      ['root-implicit-int-key', '!!int key: value\n'],
+      ['nested-implicit-int-key', 'outer:\n  !!int key: value\n'],
+      ['root-implicit-seq-key', '!!seq key: value\n'],
+      ['nested-implicit-seq-key', 'outer:\n  !!seq key: value\n'],
+      ['root-implicit-map-key', '!!map key: value\n'],
+      ['nested-implicit-map-key', 'outer:\n  !!map key: value\n'],
+      ['root-implicit-set-key', '!!set key: value\n'],
+      ['nested-implicit-set-key', 'outer:\n  !!set key: value\n'],
+      ['root-implicit-omap-key', '!!omap key: value\n'],
+      ['nested-implicit-omap-key', 'outer:\n  !!omap key: value\n'],
+      ['root-implicit-pairs-key', '!!pairs key: value\n'],
+      ['nested-implicit-pairs-key', 'outer:\n  !!pairs key: value\n'],
+      ['map-tagged-scalar', 'x: !!map true\n'],
+      ['nested-map-tagged-scalar', 'outer:\n  x: !!map true\n'],
+      ['map-tagged-large-decimal', 'x: !!map 999999999999999999999999999999999999\n'],
+      [
+        'nested-map-tagged-large-decimal',
+        'outer:\n  x: !!map 999999999999999999999999999999999999\n',
+      ],
+      ['map-tagged-large-hexadecimal', `x: !!map 0x${'F'.repeat(256)}\n`],
+      [
+        'verbatim-map-tagged-large-decimal',
+        'x: !<tag:yaml.org,2002:map> 999999999999999999999999999999999999\n',
+      ],
+      ['sequence-tab-anchor-int', 'items:\n  -\t&a !!int bad\ncopy: *a\n'],
+      ['sequence-tab-anchor-timestamp', 'items:\n  -\t&a !!timestamp x\ncopy: *a\n'],
+      ['sequence-tab-plain', 'items:\n  -\tplain\n'],
+      ['sequence-tab-flow', 'items:\n  -\t[a]\n'],
+      ['sequence-tab-comment', 'items:\n  -\t# comment\n'],
+      ['leading-tab-comment', '\t# comment\nx: a\n'],
+      ['nested-tab-comment', 'x: a\n  \t# comment\ny: b\n'],
+      ['multiline-quoted-tab', 'x: "a\n  \tb"\n'],
+      ['sequence-wide-space-anchor-int', 'items:\n  -  &a !!int bad\ncopy: *a\n'],
+      ['compact-mapping-anchor-int', 'items:\n  - key: &a !!int bad\ncopy: *a\n'],
+      ['compact-mapping-anchor-timestamp', 'items:\n  - key: &a !!timestamp x\ncopy: *a\n'],
+      ['flow-mapping-anchor-int', 'items:\n  - {key: &a !!int bad}\ncopy: *a\n'],
+      ['flow-mapping-anchor-timestamp', 'items:\n  - {key: &a !!timestamp x}\ncopy: *a\n'],
+      ['root-string-tilde-key', '!!str ~: value\n'],
+      ['nested-string-tilde-key', 'outer:\n  !!str ~: value\n'],
+      ['root-empty-int-key', '!!int : value\n'],
+      ['nested-empty-int-key', 'outer:\n  !!int : value\n'],
+      ['root-empty-seq-key', '!!seq : value\n'],
+      ['nested-empty-seq-key', 'outer:\n  !!seq : value\n'],
+      ['root-empty-map-key', '!!map : value\n'],
+      ['nested-empty-map-key', 'outer:\n  !!map : value\n'],
+      ['root-empty-set-key', '!!set : value\n'],
+      ['nested-empty-set-key', 'outer:\n  !!set : value\n'],
+      ['nested-deferred-set-non-null-key', 'outer:\n  !!set\n  : value\n'],
+      ['nested-deferred-set-null-key', 'outer:\n  !!set\n  : null\n'],
+      ['nested-deferred-set-empty-key', 'outer:\n  !!set\n  : \n'],
+      ['nested-deferred-set-root-comment-boundary', 'outer:\n  !!set\n  : null\n# c\nafter: x\n'],
+      [
+        'nested-deferred-set-indented-comment-boundary',
+        'outer:\n  !!set\n  : null\n  # c\nafter: x\n',
+      ],
+      ['nested-deferred-set-inline-comment', 'outer:\n  !!set\n  : null # c\nafter: x\n'],
+      ['inline-deferred-set-null-key', 'outer: !!set\n  : ~\n'],
+      ['inline-deferred-set-root-comment-boundary', 'outer: !!set\n  : null\n# c\nafter: x\n'],
+      ['inline-deferred-set-blank-boundary', 'outer: !!set\n  : null\n\nafter: x\n'],
+      ['split-tag-anchor-deferred-set', 'outer: !!set\n  &a\n  : null\n# c\ncopy: *a\n'],
+      ['split-anchor-tag-deferred-set', 'outer: &a\n  !!set\n  : null\n# c\ncopy: *a\n'],
+      ['split-duplicate-anchor-deferred-set', 'outer:\n  !!set\n  &a\n  &b\n  : null\n'],
+      ['split-duplicate-tag-deferred-set', 'outer:\n  !!set\n  !!map\n  : null\n'],
+      ['split-duplicate-anchor-before-set-value-error', 'outer:\n  !!set\n  &a\n  &b\n  : value\n'],
+      ['split-duplicate-tag-before-set-value-error', 'outer:\n  !!set\n  !!map\n  : value\n'],
+      ['split-duplicate-anchor', 'x:\n  &a\n  &b\n  text\n'],
+      ['sequence-split-duplicate-tag', 'x:\n  - !!str\n    !!int\n    text\n'],
+      ['bare-sequence-split-duplicate-tag', 'x:\n  -\n    !!str\n    !!int\n    text\n'],
+      ['bare-sequence-split-duplicate-anchor', 'x:\n  -\n    &a\n    &b\n    text\n'],
+      [
+        'second-sequence-item-split-duplicate-tag',
+        'x:\n  - text\n  - !!str\n    !!int\n    text\n',
+      ],
+      [
+        'nested-sequence-item-split-duplicate-tag',
+        'x:\n  - !!seq\n    - !!str\n      !!int\n      text\n',
+      ],
+      ['separate-sequence-item-tags-are-not-duplicates', 'x:\n  -\n    !!str value\n  - !!int 2\n'],
+      [
+        'nested-deferred-set-parent-field-boundary',
+        'parent:\n  outer:\n    !!set\n    : null\n  # c\n  after: x\n',
+      ],
+      ['split-map-property-field-end', 'x:\n  !!map\n  &a\n  child: v\ncopy: *a\n'],
+      ['split-anchor-map-property-field-end', 'x:\n  &a\n  !!map\n  child: v\ncopy: *a\n'],
+      ['split-sequence-property-field-end', 'x:\n  !!seq\n  - v\nafter: x\n'],
+      ['split-block-scalar-property-field-end', 'x:\n  !!str\n  |\n    a\nafter: x\n'],
+      ['split-anchor-mapping-field-end', 'x:\n  &a\n  child: v\ncopy: *a\n'],
+      ['nested-deferred-empty-set-followed-by-comment', 'outer:\n  !!set\n  : \n# c\nafter: x\n'],
+      ['inline-deferred-empty-set-followed-by-comment', 'outer: !!set\n  :\n# c\nafter: x\n'],
+      ['root-empty-omap-key', '!!omap : value\n'],
+      ['nested-empty-omap-key', 'outer:\n  !!omap : value\n'],
+      ['root-empty-pairs-key', '!!pairs : value\n'],
+      ['nested-empty-pairs-key', 'outer:\n  !!pairs : value\n'],
+      ['indented-root-empty-int-key', '  !!int : value\n'],
+      ['tagged-string-and-plain-bool-keys', '!!seq true: one\ntrue: two\n'],
+      ['tagged-string-and-plain-null-keys', '!!seq ~: one\n~: two\n'],
+      ['duplicate-empty-tagged-string-keys', '!!seq : one\n!!map : two\n'],
+      ['nested-duplicate-empty-tagged-string-keys', 'outer:\n  !!seq : one\n  !!map : two\n'],
+      ['tagged-string-and-leading-zero-keys', '!!seq 01: one\n01: two\n'],
+      ['leading-zero-and-tagged-string-keys', '-01: one\n!!seq -01: two\n'],
+      ['tagged-string-and-binary-keys', '!!seq 0b10: one\n0b10: two\n'],
+      ['binary-and-tagged-string-keys', '0B10: one\n!!seq 0B10: two\n'],
+      ['root-large-seq-key', '!!seq 999999999999999999999999: value\n'],
+      ['nested-large-seq-key', 'outer:\n  !!seq 999999999999999999999999: value\n'],
+      ['sequence-large-seq-key', 'items:\n  - !!seq 999999999999999999999999: value\n'],
+      ['flow-large-seq-key', 'x: {!!seq 999999999999999999999999: value}\n'],
+      ['empty-map-tagged-scalar', 'x: !!map\n'],
+      ['flow-tagged-explicit-key-value', 'x: {k: !!str ? a: b}\n'],
+      ['flow-tagged-empty-key-value', 'x: {k: !!str : b}\n'],
+      ['flow-tagged-commented-block-value', 'x: {k: !!str # c\n  a: b}\n'],
+    ] as const;
+    const lineEndings = [
+      ['lf', '\n'],
+      ['crlf', '\r\n'],
+      ['cr', '\r'],
+    ] as const;
+
+    expect(shapes).toHaveLength(101);
+    for (const [name, fields] of shapes) {
+      for (const [endingName, lineEnding] of lineEndings) {
+        const path = `${name}-${endingName}.md`;
+        const content = concept('', fields).replaceAll('\n', lineEnding);
+        const input = inputFor([[path, content]], `fixture:/yaml-parity/${path}`);
+        const actual = core.inspect(input, '2026-07-22T12:00:00Z');
+        expect(actual, path).toEqual(typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'));
+      }
+    }
+  });
+
   test('matches Markdown definition limits and multiline link labels', () => {
     const exactDefinitionBody = Array.from(
       { length: 5_000 },
@@ -2285,12 +2448,124 @@ describe('Rust/Wasm core boundary', () => {
         'cross-container-inline-comment-attention-limit.md',
         `> paragraph <!--\n- ${'*a* '.repeat(1_025)}\n- -->\n`,
       ],
+      ['multiline-reference-definition.md', '[r]:\n dest.md\n "title"\n'],
+      [
+        'multiline-reference-definition-before-duplicate.md',
+        '[r]:\n dest.md\n "title"\n[r]: b.md\n',
+      ],
+      ['email-autolink.md', '<a@example.test>\n'],
+      ['invalid-email-autolink.md', '<a!b@example.test>\n'],
+      ['nested-autolink-order.md', '[<http://example.test/a>](f.md)\n'],
+      ['http-autolink-in-image-alt.md', '![<http://example.test/a>](img.png)\n'],
+      ['email-autolink-in-image-alt.md', '![<a@example.test>](img.png)\n'],
+      ['autolink-in-image-in-outer-link.md', '[![<http://example.test/a>](img.png)](outer.md)\n'],
+      [
+        'multiline-reference-definition-label-limit.md',
+        `[${'a'.repeat(300)}\n${'b'.repeat(213)}]: dest.md\n`,
+      ],
+      ['multiline-reference-definition-target-limit.md', `[foo\nbar]: ${'a'.repeat(2_049)}\n`],
+      [
+        'multiline-label-reference-definition-before-duplicate.md',
+        '[foo\nbar]: dest.md\n[foo bar]: b.md\n',
+      ],
+      [
+        'multiline-label-duplicate-definition-target-limit.md',
+        `[foo bar]: first.md\n[foo\nbar]: ${'a'.repeat(2_049)}\n`,
+      ],
+      [
+        'multiline-label-duplicate-title-bracket-lookalike.md',
+        `[foo bar]: first.md\n[foo\nbar]: second.md\n "${'['.repeat(65)}"\n[foo bar]\n`,
+      ],
     ] as const;
     for (const [path, body] of cases) {
       const input = inputFor([[path, concept(body)]], `fixture:/markdown-parity/${path}`);
       expect(core.inspect(input, '2026-07-22T12:00:00Z'), path).toEqual(
         typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'),
       );
+    }
+    for (const [path, body] of [
+      ['multiline-reference-definition.md', '[r]:\n dest.md\n "title"\n'],
+      [
+        'multiline-reference-definition-before-duplicate.md',
+        '[r]:\n dest.md\n "title"\n[r]: b.md\n',
+      ],
+      ['invalid-email-autolink.md', '<a!b@example.test>\n'],
+      ['http-autolink-in-image-alt.md', '![<http://example.test/a>](img.png)\n'],
+      ['email-autolink-in-image-alt.md', '![<a@example.test>](img.png)\n'],
+      [
+        'multiline-label-reference-definition-before-duplicate.md',
+        '[foo\nbar]: dest.md\n[foo bar]: b.md\n',
+      ],
+    ] as const) {
+      const input = inputFor([[path, concept(body)]], `fixture:/markdown-parity/${path}`);
+      expect(core.inspect(input, '2026-07-22T12:00:00Z').bundle.concepts[0]?.links, path).toEqual(
+        [],
+      );
+    }
+    const emailAutolinkInput = inputFor(
+      [['email-autolink.md', concept('<a@example.test>\n')]],
+      'fixture:/markdown-parity/email-autolink.md',
+    );
+    expect(
+      core.inspect(emailAutolinkInput, '2026-07-22T12:00:00Z').bundle.concepts[0]?.links,
+    ).toEqual([
+      expect.objectContaining({ classification: 'external', rawTarget: 'mailto:a@example.test' }),
+    ]);
+    const nestedAutolinkInput = inputFor(
+      [['nested-autolink-order.md', concept('[<http://example.test/a>](f.md)\n')]],
+      'fixture:/markdown-parity/nested-autolink-order.md',
+    );
+    expect(
+      core
+        .inspect(nestedAutolinkInput, '2026-07-22T12:00:00Z')
+        .bundle.concepts[0]?.links.map((link) => link.rawTarget),
+    ).toEqual(['f.md', 'http://example.test/a']);
+    const nestedImageAutolinkInput = inputFor(
+      [
+        [
+          'autolink-in-image-in-outer-link.md',
+          concept('[![<http://example.test/a>](img.png)](outer.md)\n'),
+        ],
+      ],
+      'fixture:/markdown-parity/autolink-in-image-in-outer-link.md',
+    );
+    expect(
+      core
+        .inspect(nestedImageAutolinkInput, '2026-07-22T12:00:00Z')
+        .bundle.concepts[0]?.links.map((link) => link.rawTarget),
+    ).toEqual(['outer.md']);
+    const multilineDuplicateTitleInput = inputFor(
+      [
+        [
+          'multiline-label-duplicate-title-bracket-lookalike.md',
+          concept(`[foo bar]: first.md\n[foo\nbar]: second.md\n "${'['.repeat(65)}"\n[foo bar]\n`),
+        ],
+      ],
+      'fixture:/markdown-parity/multiline-label-duplicate-title-bracket-lookalike.md',
+    );
+    const multilineDuplicateTitleInspection = core.inspect(
+      multilineDuplicateTitleInput,
+      '2026-07-22T12:00:00Z',
+    );
+    expect(multilineDuplicateTitleInspection.bundle.failures).toEqual([]);
+    expect(multilineDuplicateTitleInspection.bundle.concepts[0]?.links).toEqual([
+      expect.objectContaining({ rawTarget: 'first.md' }),
+    ]);
+    for (const [path, body] of [
+      [
+        'multiline-reference-definition-label-limit.md',
+        `[${'a'.repeat(300)}\n${'b'.repeat(213)}]: dest.md\n`,
+      ],
+      ['multiline-reference-definition-target-limit.md', `[foo\nbar]: ${'a'.repeat(2_049)}\n`],
+      [
+        'multiline-label-duplicate-definition-target-limit.md',
+        `[foo bar]: first.md\n[foo\nbar]: ${'a'.repeat(2_049)}\n`,
+      ],
+    ] as const) {
+      const input = inputFor([[path, concept(body)]], `fixture:/markdown-parity/${path}`);
+      expect(core.inspect(input, '2026-07-22T12:00:00Z').bundle.failures, path).toEqual([
+        expect.objectContaining({ reason: 'resource-limit' }),
+      ]);
     }
     const overDefinitionInput = inputFor(
       [['definition-limit.md', concept(cases[3][1])]],
@@ -2454,6 +2729,19 @@ describe('Rust/Wasm core boundary', () => {
     expect(core.inspect(malformedDuplicateDefinitionsInput, '2026-07-22T12:00:00Z')).toEqual(
       typescriptOkfCore.inspect(malformedDuplicateDefinitionsInput, '2026-07-22T12:00:00Z'),
     );
+    const multilineLinkFuelBody = `[${'f'.repeat(38)}\n${'b'.repeat(38)}](x)\n`.repeat(2_400);
+    const multilineLinkFuelInput = inputFor(
+      [['multiline-link-fuel.md', concept(multilineLinkFuelBody)]],
+      'fixture:/markdown-parity/multiline-link-fuel.md',
+    );
+    const multilineLinkFuelInspection = core.inspect(
+      multilineLinkFuelInput,
+      '2026-07-22T12:00:00Z',
+    );
+    expect(multilineLinkFuelInspection).toEqual(
+      typescriptOkfCore.inspect(multilineLinkFuelInput, '2026-07-22T12:00:00Z'),
+    );
+    expect(multilineLinkFuelInspection.bundle.concepts[0]?.links).toHaveLength(2_400);
     for (const [path, body] of [
       [
         'multiline-inline-comment-attention-lookalike.md',

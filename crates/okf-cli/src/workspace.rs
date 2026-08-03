@@ -99,7 +99,15 @@ fn windows_root_staging_name() -> &'static OsStr {
 #[cfg(windows)]
 fn windows_reservation_name_matches_requested(reservation: &OsStr, requested: &OsStr) -> bool {
     let reservation = reservation.encode_wide().collect::<Vec<_>>();
-    let requested = requested.encode_wide().collect::<Vec<_>>();
+    let mut requested = requested.encode_wide().collect::<Vec<_>>();
+    // Win32 normalizes trailing ASCII dots and spaces away when opening a component. Reject those
+    // aliases before the private reservation can become visible through the requested spelling.
+    while requested
+        .last()
+        .is_some_and(|unit| *unit == u16::from(b'.') || *unit == u16::from(b' '))
+    {
+        requested.pop();
+    }
     if reservation.len() != requested.len() {
         return false;
     }
@@ -1676,29 +1684,92 @@ fn apply_missing_root_plan_windows_with_staging_name_and_hook(
             )?;
         }
     }
+    let mut staged_leaf_bindings = Vec::with_capacity(plan.len());
     for change in plan {
         let target = staged_root.join(&change.relative_path);
         let mut file = OpenOptions::new()
-            .create_new(true)
+            .read(true)
             .write(true)
+            .create_new(true)
+            .share_mode(FILE_SHARE_READ)
+            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
             .open(&target)
             .map_err(|error| format!("cannot stage {}: {error}", target.display()))?;
         file.write_all(change.content.as_bytes())
             .and_then(|_| file.sync_all())
             .map_err(|error| error.to_string())?;
+        let identity = file_object_identity(&file)?;
+        staged_leaf_bindings.push(WindowsStagedLeafBinding {
+            path: target,
+            file,
+            identity,
+            expected: change.content.as_bytes().to_vec(),
+        });
     }
     before_publish(staging_name)?;
+    verify_windows_staged_leaf_bindings(&mut staged_leaf_bindings)?;
     if path_object_identity(&staging_path)? != staging_identity {
         return Err(
             "root staging reservation changed before publication; no target was published"
                 .to_owned(),
         );
     }
+    // Windows refuses an ancestor-directory rename while any descendant handle remains open.
+    // Hold strict leaf/directory handles through the final byte/identity checks, then release them
+    // immediately before the root-handle rename. The resulting non-cooperating mutation window is
+    // an explicit platform boundary in FR-104.
+    drop(staged_leaf_bindings);
+    drop(staged_directory_locks);
     rename_windows_handle(&staging_handle, parent_handle, first).map_err(|error| {
         format!(
             "cannot atomically publish the complete new root; concurrent content was preserved and bounded staging remains for inspection: {error}"
         )
     })
+}
+
+#[cfg(windows)]
+struct WindowsStagedLeafBinding {
+    path: PathBuf,
+    file: File,
+    identity: ObjectIdentity,
+    expected: Vec<u8>,
+}
+
+#[cfg(windows)]
+fn verify_windows_staged_leaf_bindings(
+    bindings: &mut [WindowsStagedLeafBinding],
+) -> Result<(), String> {
+    for binding in bindings {
+        if path_object_identity(&binding.path)? != binding.identity {
+            return Err(format!(
+                "staged file {} changed before publication; no target was published",
+                binding.path.display()
+            ));
+        }
+        binding
+            .file
+            .seek(SeekFrom::Start(0))
+            .map_err(|error| error.to_string())?;
+        let limit = u64::try_from(binding.expected.len())
+            .ok()
+            .and_then(|length| length.checked_add(1))
+            .ok_or_else(|| "staged file byte length is not representable".to_owned())?;
+        let mut bytes = Vec::with_capacity(binding.expected.len());
+        (&mut binding.file)
+            .take(limit)
+            .read_to_end(&mut bytes)
+            .map_err(|error| error.to_string())?;
+        if bytes != binding.expected
+            || file_object_identity(&binding.file)? != binding.identity
+            || path_object_identity(&binding.path)? != binding.identity
+        {
+            return Err(format!(
+                "staged file {} bytes or identity changed before publication; no target was published",
+                binding.path.display()
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -2215,7 +2286,7 @@ fn apply_missing_root_plan_anchored_with_name_factory_and_hook(
     staging_name_factory: impl FnOnce() -> Result<OsString, String>,
     before_publish: impl FnOnce(&OsStr) -> Result<(), String>,
 ) -> Result<(), String> {
-    let (coordination, coordination_name, anchor, anchor_handle) =
+    let (coordination, coordination_name, anchor_handle) =
         reserve_unix_missing_root_coordination(planned)?;
     // Arm cleanup immediately after the atomic reservation, before any fallible staging work.
     // Explicit cleanup reports failures; Drop is the best-effort fallback for an early return.
@@ -2232,29 +2303,66 @@ fn apply_missing_root_plan_anchored_with_name_factory_and_hook(
             };
         }
     };
-    let staging_path = anchor.join(&staging_name);
     let result = apply_missing_root_plan_anchored_with_staging_name_and_hook(
         planned,
         plan,
         &staging_name,
         before_publish,
     );
-    let staging_exists = fs::symlink_metadata(&staging_path).is_ok();
-    if result.is_ok() || !staging_exists {
-        let cleanup = coordination.remove();
-        return match (result, cleanup) {
-            (Ok(()), Ok(())) => Ok(()),
-            (Ok(()), Err(cleanup)) => Err(format!(
-                "root was published but its coordination entry could not be removed: {cleanup}"
-            )),
-            (Err(primary), Ok(())) => Err(primary),
-            (Err(primary), Err(cleanup)) => Err(format!(
-                "{primary}; additionally, the coordination entry could not be removed: {cleanup}"
-            )),
-        };
+    let staging_exists = match unix_anchored_entry_exists(anchor_handle, &staging_name) {
+        Ok(exists) => exists,
+        Err(inspect) => {
+            coordination.leave_in_place();
+            return Err(match result {
+                Ok(()) => format!(
+                    "root was published but the staging pathname could not be revalidated: {inspect}"
+                ),
+                Err(primary) => format!(
+                    "{primary}; additionally, the staging pathname could not be revalidated: {inspect}"
+                ),
+            });
+        }
+    };
+    match (result, staging_exists) {
+        (Ok(()), true) => {
+            coordination.leave_in_place();
+            Err(
+                "root was published but the staging pathname reappeared; coordination was retained"
+                    .to_owned(),
+            )
+        }
+        (Err(primary), true) => {
+            coordination.leave_in_place();
+            Err(primary)
+        }
+        (result, false) => {
+            let cleanup = coordination.remove();
+            match (result, cleanup) {
+                (Ok(()), Ok(())) => Ok(()),
+                (Ok(()), Err(cleanup)) => Err(format!(
+                    "root was published but its coordination entry could not be removed: {cleanup}"
+                )),
+                (Err(primary), Ok(())) => Err(primary),
+                (Err(primary), Err(cleanup)) => Err(format!(
+                    "{primary}; additionally, the coordination entry could not be removed: {cleanup}"
+                )),
+            }
+        }
     }
-    coordination.leave_in_place();
-    result
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn unix_anchored_entry_exists(anchor: &File, name: &OsStr) -> Result<bool, String> {
+    match openat(
+        anchor,
+        name,
+        OFlags::RDONLY | OFlags::NONBLOCK | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::empty(),
+    ) {
+        Ok(_) => Ok(true),
+        Err(Errno::NOENT) => Ok(false),
+        Err(error) => Err(format!("cannot inspect anchored entry {name:?}: {error}")),
+    }
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -2301,12 +2409,9 @@ impl Drop for UnixCoordinationGuard<'_> {
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn reserve_unix_missing_root_coordination(
     planned: &PlannedRootIdentity,
-) -> Result<(File, OsString, PathBuf, &File), String> {
+) -> Result<(File, OsString, &File), String> {
     let PlannedRootIdentity::Missing {
-        anchor,
-        components,
-        handle,
-        ..
+        components, handle, ..
     } = planned
     else {
         return Err("missing-root coordination requires a missing-root plan".to_owned());
@@ -2334,7 +2439,7 @@ fn reserve_unix_missing_root_coordination(
             )
         })?,
     );
-    Ok((file, name, anchor.clone(), &handle.directory))
+    Ok((file, name, &handle.directory))
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -2442,14 +2547,19 @@ fn apply_missing_root_plan_anchored_with_staging_name_and_hook(
             .map_err(|error| format!("cannot open staged root component: {error}"))?,
         );
     }
+    let mut staged_leaf_identities = Vec::with_capacity(plan.len());
     for change in plan {
         validate_relative_path(&change.relative_path)?;
         apply_anchored_change(&root_directory, change)?;
+        staged_leaf_identities.push(verify_unix_staged_leaf(&root_directory, change, None)?);
     }
     root_directory
         .sync_all()
         .map_err(|error| error.to_string())?;
     before_publish(staging_name)?;
+    for (change, identity) in plan.iter().zip(&staged_leaf_identities) {
+        verify_unix_staged_leaf(&root_directory, change, Some(identity))?;
+    }
     let current_staging = File::from(
         openat(
             &handle.directory,
@@ -2467,6 +2577,12 @@ fn apply_missing_root_plan_anchored_with_staging_name_and_hook(
         return Err(
             "root staging reservation changed before publication; no target was published"
                 .to_owned(),
+        );
+    }
+    let current_anchor = open_anchored_root(anchor)?;
+    if file_object_identity(&current_anchor)? != *anchor_identity {
+        return Err(
+            "root ancestor pathname changed before publication; no target was published".to_owned(),
         );
     }
     renameat_with(
@@ -2498,6 +2614,68 @@ fn apply_missing_root_plan_anchored_with_staging_name_and_hook(
         return Err("published root identity does not match the staged tree".to_owned());
     }
     Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn open_unix_staged_leaf(root: &File, relative_path: &str) -> Result<File, String> {
+    let Some((parent, leaf)) = open_anchored_parent(root, relative_path, false)? else {
+        return Err(format!(
+            "staged file {relative_path:?} disappeared before publication"
+        ));
+    };
+    let file = File::from(
+        openat(
+            &parent,
+            &leaf,
+            OFlags::RDONLY | OFlags::NONBLOCK | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(|error| format!("cannot reopen staged file {relative_path:?} safely: {error}"))?,
+    );
+    let metadata = file.metadata().map_err(|error| error.to_string())?;
+    if !metadata.is_file() {
+        return Err(format!(
+            "staged file {relative_path:?} is not a regular file"
+        ));
+    }
+    Ok(file)
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn verify_unix_staged_leaf(
+    root: &File,
+    change: &PlannedChange,
+    expected_identity: Option<&ObjectIdentity>,
+) -> Result<ObjectIdentity, String> {
+    let mut file = open_unix_staged_leaf(root, &change.relative_path)?;
+    let identity = file_object_identity(&file)?;
+    if expected_identity.is_some_and(|expected| *expected != identity) {
+        return Err(format!(
+            "staged file {:?} identity changed before publication; no target was published",
+            change.relative_path
+        ));
+    }
+    let expected = change.content.as_bytes();
+    let limit = u64::try_from(expected.len())
+        .ok()
+        .and_then(|length| length.checked_add(1))
+        .ok_or_else(|| "staged file byte length is not representable".to_owned())?;
+    let mut bytes = Vec::with_capacity(expected.len());
+    (&mut file)
+        .take(limit)
+        .read_to_end(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    let current = open_unix_staged_leaf(root, &change.relative_path)?;
+    if bytes != expected
+        || file_object_identity(&file)? != identity
+        || file_object_identity(&current)? != identity
+    {
+        return Err(format!(
+            "staged file {:?} bytes or identity changed before publication; no target was published",
+            change.relative_path
+        ));
+    }
+    Ok(identity)
 }
 
 #[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
@@ -3492,6 +3670,132 @@ mod tests {
 
     #[cfg(any(target_os = "linux", target_os = "macos", windows))]
     #[test]
+    fn staged_leaf_bytes_are_bound_before_root_publication() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+        let planned = planned_root_for_apply(&plan).unwrap();
+        let tamper_succeeded = std::cell::Cell::new(false);
+
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        let result = apply_missing_root_plan_anchored_with_hook(planned, &plan, |staging_name| {
+            tamper_succeeded.set(
+                fs::write(
+                    directory.path().join(staging_name).join("new.md"),
+                    "tampered\n",
+                )
+                .is_ok(),
+            );
+            Ok(())
+        });
+        #[cfg(windows)]
+        let result = apply_missing_root_plan_windows_with_hook(planned, &plan, |staging_name| {
+            tamper_succeeded.set(
+                fs::write(
+                    directory.path().join(staging_name).join("new.md"),
+                    "tampered\n",
+                )
+                .is_ok(),
+            );
+            Ok(())
+        });
+
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        {
+            let error = result.unwrap_err();
+            assert!(tamper_succeeded.get());
+            assert!(error.contains("bytes or identity changed"), "{error}");
+            assert!(!root.exists());
+        }
+        #[cfg(windows)]
+        {
+            result.unwrap();
+            assert!(!tamper_succeeded.get());
+            assert_eq!(
+                fs::read_to_string(root.join("new.md")).unwrap(),
+                "generated\n"
+            );
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_staged_leaf_handle_denies_replacement_until_final_validation() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("bundle");
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+        let planned = planned_root_for_apply(&plan).unwrap();
+
+        let replacement_succeeded = std::cell::Cell::new(false);
+        apply_missing_root_plan_windows_with_hook(planned, &plan, |staging_name| {
+            let staged = directory.path().join(staging_name);
+            replacement_succeeded
+                .set(fs::rename(staged.join("new.md"), staged.join("moved-new.md")).is_ok());
+            Ok(())
+        })
+        .unwrap();
+
+        assert!(!replacement_succeeded.get());
+        assert_eq!(
+            fs::read_to_string(root.join("new.md")).unwrap(),
+            "generated\n"
+        );
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn renamed_anchor_is_rejected_before_handle_relative_publication() {
+        let directory = tempdir().unwrap();
+        let anchor = directory.path().join("anchor");
+        let moved_anchor = directory.path().join("moved-anchor");
+        fs::create_dir(&anchor).unwrap();
+        let root = anchor.join("bundle");
+        let plan = plan_files(
+            &root,
+            vec![RenderedFile {
+                relative_path: "new.md".to_owned(),
+                encoding: "utf8",
+                content: "generated\n".to_owned(),
+            }],
+            PlanMode::CreateOnly,
+        )
+        .unwrap();
+        let planned = planned_root_for_apply(&plan).unwrap();
+
+        let error = apply_missing_root_plan_anchored_with_hook(planned, &plan, |staging_name| {
+            assert!(anchor.join(staging_name).exists());
+            fs::rename(&anchor, &moved_anchor).map_err(|error| error.to_string())?;
+            fs::create_dir(&anchor).map_err(|error| error.to_string())
+        })
+        .unwrap_err();
+
+        assert!(error.contains("ancestor pathname changed"), "{error}");
+        assert!(!root.exists());
+        assert!(!moved_anchor.join("bundle").exists());
+        assert_eq!(fs::read_dir(&anchor).unwrap().count(), 0);
+        assert_eq!(fs::read_dir(&moved_anchor).unwrap().count(), 2);
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos", windows))]
+    #[test]
     fn exact_staging_match_fails_before_reservation_or_hook() {
         let directory = tempdir().unwrap();
         let staging_name = OsStr::new(".okf-workbench-root-staging-forced-match");
@@ -3625,8 +3929,9 @@ mod tests {
         )
         .unwrap();
         let planned = planned_root_for_apply(&plan).unwrap();
-        let (coordination, name, anchor, anchor_handle) =
+        let (coordination, name, anchor_handle) =
             reserve_unix_missing_root_coordination(planned).unwrap();
+        let anchor = directory.path();
         let coordination_path = anchor.join(&name);
         let moved_path = anchor.join("moved-owned-coordination");
         fs::rename(&coordination_path, &moved_path).unwrap();
@@ -3711,6 +4016,42 @@ mod tests {
         assert!(error.contains("matched the requested root"), "{error}");
         assert!(!hook_called.get());
         assert!(!root.exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_staging_terminal_dot_and_space_aliases_are_rejected() {
+        for requested_name in ["00000000.000.", "00000000.000 ", "00000000.000. "] {
+            assert!(windows_reservation_name_matches_requested(
+                windows_root_staging_name(),
+                OsStr::new(requested_name)
+            ));
+
+            let directory = tempdir().unwrap();
+            let root = directory.path().join(requested_name);
+            let plan = plan_files(
+                &root,
+                vec![RenderedFile {
+                    relative_path: "new.md".to_owned(),
+                    encoding: "utf8",
+                    content: "generated\n".to_owned(),
+                }],
+                PlanMode::CreateOnly,
+            )
+            .unwrap();
+            let planned = planned_root_for_apply(&plan).unwrap();
+            let hook_called = std::cell::Cell::new(false);
+
+            let error = apply_missing_root_plan_windows_with_hook(planned, &plan, |_| {
+                hook_called.set(true);
+                Ok(())
+            })
+            .unwrap_err();
+
+            assert!(error.contains("matched the requested root"), "{error}");
+            assert!(!hook_called.get());
+            assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 0);
+        }
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos", windows))]
@@ -4059,6 +4400,23 @@ mod tests {
                 .open(&staged_parent)
                 .is_ok()
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_staged_descendant_lock_is_released_before_ancestor_rename() {
+        let directory = tempdir().unwrap();
+        let staged_root = directory.path().join("staged-root");
+        let staged_child = staged_root.join("nested");
+        let moved_root = directory.path().join("moved-root");
+        fs::create_dir_all(&staged_child).unwrap();
+        let lock = open_windows_directory_strict_mutation_lock(&staged_child).unwrap();
+
+        assert!(fs::rename(&staged_root, &moved_root).is_err());
+        drop(lock);
+        fs::rename(&staged_root, &moved_root).unwrap();
+
+        assert!(moved_root.join("nested").is_dir());
     }
 
     #[cfg(windows)]

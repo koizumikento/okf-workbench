@@ -291,7 +291,7 @@ fn graph_request_has_invalid_revision(request_json: &str) -> bool {
         return false;
     };
     let Some(input) = request.input else {
-        return matches!(request.operation.as_deref(), Some("graph" | "inspect"));
+        return false;
     };
     let revision = match request.operation.as_deref() {
         Some("graph") => {
@@ -305,7 +305,7 @@ fn graph_request_has_invalid_revision(request_json: &str) -> bool {
                 return false;
             };
             let Some(bundle) = input.bundle else {
-                return true;
+                return false;
             };
             let Ok(bundle) = serde_json::from_str::<RevisionProbe>(bundle.get()) else {
                 return false;
@@ -446,6 +446,34 @@ mod tests {
         ] {
             let response: Value = serde_json::from_str(&dispatch_json(request)).unwrap();
             assert_eq!(response["error"]["code"], "invalid-request");
+        }
+    }
+
+    #[test]
+    fn structural_graph_and_inspect_errors_remain_invalid_requests() {
+        for request in [
+            r#"{"operation":"graph"}"#,
+            r#"{"operation":"graph","input":null}"#,
+            r#"{"operation":"graph","input":1}"#,
+            r#"{"operation":"graph","input":[]}"#,
+            r#"{"operation":"graph","input":{"rootUri":"","revision":1e400,"documents":[]},"input":{"rootUri":"","revision":1e400,"documents":[]}}"#,
+            r#"{"operation":"inspect"}"#,
+            r#"{"operation":"inspect","input":null}"#,
+            r#"{"operation":"inspect","input":1}"#,
+            r#"{"operation":"inspect","input":[]}"#,
+            r#"{"operation":"inspect","input":{"now":"2026-08-03T00:00:00Z","failures":[]}}"#,
+            r#"{"operation":"inspect","input":{"bundle":null,"now":"2026-08-03T00:00:00Z","failures":[]}}"#,
+            r#"{"operation":"inspect","input":{"bundle":1,"now":"2026-08-03T00:00:00Z","failures":[]}}"#,
+            r#"{"operation":"inspect","input":{"bundle":{"rootUri":"","revision":1e400,"documents":[]},"now":"2026-08-03T00:00:00Z","failures":[]},"input":{"bundle":{"rootUri":"","revision":1e400,"documents":[]},"now":"2026-08-03T00:00:00Z","failures":[]}}"#,
+        ] {
+            let response: Value = serde_json::from_str(&dispatch_json(request)).unwrap();
+            assert_eq!(response["error"]["code"], "invalid-request", "{request}");
+            assert!(
+                response["error"]["message"]
+                    .as_str()
+                    .is_some_and(|message| message.starts_with("The OKF core request is invalid:")),
+                "{request}"
+            );
         }
     }
 }

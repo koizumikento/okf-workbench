@@ -1,0 +1,1025 @@
+{
+  "schemaVersion": 3,
+  "measurementKind": "headed-editor",
+  "capturedAt": "2026-08-03T07:58:45.653Z",
+  "environment": {
+    "hardware": "Mac16,7",
+    "os": "Darwin 25.5.0 arm64",
+    "cpu": "Apple M4 Pro; 14 logical processors",
+    "memoryGb": 48,
+    "gpu": "Google Inc. (Apple) / ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version)",
+    "editorName": "VS Code",
+    "editorVersion": "1.129.1",
+    "editorCommit": "8a7abeba6e03ea3af87bfbce9a1b7e48fed567b8",
+    "electronVersion": "42.6.0",
+    "chromiumVersion": "148.0.7778.280",
+    "fixtureSeed": 5196614,
+    "packageVersions": {
+      "okf-workbench": "0.3.0",
+      "3d-force-graph": "1.80.0"
+    },
+    "extensionHostBundleSha256": "a48398ffdf170d54666ca3e1af5bf77da7ae8b8f00b159df476d70768d5b4f77",
+    "webviewJavaScriptBundleSha256": "8f1dc414ec051650c58126133744e0715b44f24d68f24b2604a63f045205671a",
+    "webviewCssBundleSha256": "54feb87be31bdb9bb46aa776b483c2b5f6ce6a041b57ad7ca6f4ab06e1b9d155",
+    "productionBundleSetSha256": "fb630a150b2d9c0e33208bbec90a878343790c7b306be1a08d999e47a647b428",
+    "productGraphInteractiveMs": 2647,
+    "runnerNote": "This runner launches headed VS Code and measures its real Electron Webview; it does not use Playwright Chromium.",
+    "benchmarkEditorFlags": [
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-renderer-backgrounding"
+    ]
+  },
+  "inputIdentity": {
+    "productionRuntimeSnapshotSha256": "6fbcc3b2f004dcfd0f30bfcedd80aea76f79cd4c4e07a07edbf57596d64ab2b4",
+    "productionBuildInputSnapshotSha256": "c7c5189af35dc80c5ebdf1c92e6617dc3b2ec21f561c5f061c532d8742d06d6b",
+    "diagnosticsObserverSnapshotSha256": "b4902b14ea999ad00ef2ec8f723e2c55607a6d2262e844e71e56c9b8c29e2a21",
+    "qr003HarnessInputSnapshotSha256": "32cd973bdfe52fe211d134a334ab8a49adaf16cb959de16fe91d2e3a92edcec0",
+    "qr003HarnessDefinitionSha256": "56bab3d9a7f2656554e346b6be9437d05ce29027488c290187838705f0c364fa",
+    "qr003HarnessBundleSha256": "3b3fe4ac79a3b70e06688632d8a3c65827aa9e42ba149cf614ad818c592c549b"
+  },
+  "qr002": {
+    "debounceMs": 250,
+    "updateSamples": [
+      {
+        "eventKind": "create",
+        "durationMs": 860,
+        "graphPublicationMs": 860,
+        "diagnosticsPublicationMs": 828,
+        "startedAtEpochMs": 1785743892280,
+        "mutationCompletedAtEpochMs": 1785743892282,
+        "graphObservedAtEpochMs": 1785743893140,
+        "diagnosticsObservedAtEpochMs": 1785743893108,
+        "graphRevision": 2,
+        "diagnosticsSequence": 4,
+        "diagnosticsCorrelation": {
+          "authority": "okf-acceptance-runtime-publication",
+          "revision": 2,
+          "diagnosticsPublished": true,
+          "findingCount": 2,
+          "conceptCount": 1001,
+          "edgeCount": 5001
+        },
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
+            "code": "okf.curation.missing-description"
+          }
+        ],
+        "observedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
+            "code": "okf.curation.missing-description"
+          }
+        ]
+      },
+      {
+        "eventKind": "change",
+        "durationMs": 845,
+        "graphPublicationMs": 845,
+        "diagnosticsPublicationMs": 821,
+        "startedAtEpochMs": 1785743893179,
+        "mutationCompletedAtEpochMs": 1785743893179,
+        "graphObservedAtEpochMs": 1785743894024,
+        "diagnosticsObservedAtEpochMs": 1785743894000,
+        "graphRevision": 3,
+        "diagnosticsSequence": 5,
+        "diagnosticsCorrelation": {
+          "authority": "okf-acceptance-runtime-publication",
+          "revision": 3,
+          "diagnosticsPublished": true,
+          "findingCount": 2,
+          "conceptCount": 1001,
+          "edgeCount": 5001
+        },
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
+            "code": "okf.curation.broken-link"
+          }
+        ],
+        "observedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "rename",
+        "durationMs": 845,
+        "graphPublicationMs": 845,
+        "diagnosticsPublicationMs": 816,
+        "startedAtEpochMs": 1785743894068,
+        "mutationCompletedAtEpochMs": 1785743894068,
+        "graphObservedAtEpochMs": 1785743894913,
+        "diagnosticsObservedAtEpochMs": 1785743894884,
+        "graphRevision": 4,
+        "diagnosticsSequence": 6,
+        "diagnosticsCorrelation": {
+          "authority": "okf-acceptance-runtime-publication",
+          "revision": 4,
+          "diagnosticsPublished": true,
+          "findingCount": 1,
+          "conceptCount": 1001,
+          "edgeCount": 5002
+        },
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-renamed.md",
+            "code": "okf.curation.broken-link"
+          }
+        ],
+        "observedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-renamed.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "delete",
+        "durationMs": 844,
+        "graphPublicationMs": 844,
+        "diagnosticsPublicationMs": 805,
+        "startedAtEpochMs": 1785743894953,
+        "mutationCompletedAtEpochMs": 1785743894955,
+        "graphObservedAtEpochMs": 1785743895797,
+        "diagnosticsObservedAtEpochMs": 1785743895758,
+        "graphRevision": 5,
+        "diagnosticsSequence": 7,
+        "diagnosticsCorrelation": {
+          "authority": "okf-acceptance-runtime-publication",
+          "revision": 5,
+          "diagnosticsPublished": true,
+          "findingCount": 1,
+          "conceptCount": 1000,
+          "edgeCount": 5000
+        },
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          }
+        ],
+        "observedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "create",
+        "durationMs": 849,
+        "graphPublicationMs": 849,
+        "diagnosticsPublicationMs": 824,
+        "startedAtEpochMs": 1785743895840,
+        "mutationCompletedAtEpochMs": 1785743895840,
+        "graphObservedAtEpochMs": 1785743896689,
+        "diagnosticsObservedAtEpochMs": 1785743896664,
+        "graphRevision": 6,
+        "diagnosticsSequence": 8,
+        "diagnosticsCorrelation": {
+          "authority": "okf-acceptance-runtime-publication",
+          "revision": 6,
+          "diagnosticsPublished": true,
+          "findingCount": 2,
+          "conceptCount": 1001,
+          "edgeCount": 5001
+        },
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
+            "code": "okf.curation.missing-description"
+          }
+        ],
+        "observedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
+            "code": "okf.curation.missing-description"
+          }
+        ]
+      },
+      {
+        "eventKind": "change",
+        "durationMs": 840,
+        "graphPublicationMs": 840,
+        "diagnosticsPublicationMs": 802,
+        "startedAtEpochMs": 1785743896732,
+        "mutationCompletedAtEpochMs": 1785743896733,
+        "graphObservedAtEpochMs": 1785743897572,
+        "diagnosticsObservedAtEpochMs": 1785743897534,
+        "graphRevision": 7,
+        "diagnosticsSequence": 9,
+        "diagnosticsCorrelation": {
+          "authority": "okf-acceptance-runtime-publication",
+          "revision": 7,
+          "diagnosticsPublished": true,
+          "findingCount": 2,
+          "conceptCount": 1001,
+          "edgeCount": 5001
+        },
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
+            "code": "okf.curation.broken-link"
+          }
+        ],
+        "observedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "rename",
+        "durationMs": 836,
+        "graphPublicationMs": 836,
+        "diagnosticsPublicationMs": 798,
+        "startedAtEpochMs": 1785743897614,
+        "mutationCompletedAtEpochMs": 1785743897614,
+        "graphObservedAtEpochMs": 1785743898450,
+        "diagnosticsObservedAtEpochMs": 1785743898412,
+        "graphRevision": 8,
+        "diagnosticsSequence": 10,
+        "diagnosticsCorrelation": {
+          "authority": "okf-acceptance-runtime-publication",
+          "revision": 8,
+          "diagnosticsPublished": true,
+          "findingCount": 1,
+          "conceptCount": 1001,
+          "edgeCount": 5002
+        },
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-renamed.md",
+            "code": "okf.curation.broken-link"
+          }
+        ],
+        "observedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-renamed.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "delete",
+        "durationMs": 830,
+        "graphPublicationMs": 830,
+        "diagnosticsPublicationMs": 820,
+        "startedAtEpochMs": 1785743898493,
+        "mutationCompletedAtEpochMs": 1785743898494,
+        "graphObservedAtEpochMs": 1785743899323,
+        "diagnosticsObservedAtEpochMs": 1785743899313,
+        "graphRevision": 9,
+        "diagnosticsSequence": 11,
+        "diagnosticsCorrelation": {
+          "authority": "okf-acceptance-runtime-publication",
+          "revision": 9,
+          "diagnosticsPublished": true,
+          "findingCount": 1,
+          "conceptCount": 1000,
+          "edgeCount": 5000
+        },
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          }
+        ],
+        "observedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "create",
+        "durationMs": 863,
+        "graphPublicationMs": 863,
+        "diagnosticsPublicationMs": 818,
+        "startedAtEpochMs": 1785743899366,
+        "mutationCompletedAtEpochMs": 1785743899366,
+        "graphObservedAtEpochMs": 1785743900229,
+        "diagnosticsObservedAtEpochMs": 1785743900184,
+        "graphRevision": 10,
+        "diagnosticsSequence": 12,
+        "diagnosticsCorrelation": {
+          "authority": "okf-acceptance-runtime-publication",
+          "revision": 10,
+          "diagnosticsPublished": true,
+          "findingCount": 2,
+          "conceptCount": 1001,
+          "edgeCount": 5001
+        },
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
+            "code": "okf.curation.missing-description"
+          }
+        ],
+        "observedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
+            "code": "okf.curation.missing-description"
+          }
+        ]
+      },
+      {
+        "eventKind": "change",
+        "durationMs": 838,
+        "graphPublicationMs": 838,
+        "diagnosticsPublicationMs": 806,
+        "startedAtEpochMs": 1785743900274,
+        "mutationCompletedAtEpochMs": 1785743900275,
+        "graphObservedAtEpochMs": 1785743901112,
+        "diagnosticsObservedAtEpochMs": 1785743901080,
+        "graphRevision": 11,
+        "diagnosticsSequence": 13,
+        "diagnosticsCorrelation": {
+          "authority": "okf-acceptance-runtime-publication",
+          "revision": 11,
+          "diagnosticsPublished": true,
+          "findingCount": 2,
+          "conceptCount": 1001,
+          "edgeCount": 5001
+        },
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
+            "code": "okf.curation.broken-link"
+          }
+        ],
+        "observedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "rename",
+        "durationMs": 834,
+        "graphPublicationMs": 834,
+        "diagnosticsPublicationMs": 826,
+        "startedAtEpochMs": 1785743901157,
+        "mutationCompletedAtEpochMs": 1785743901158,
+        "graphObservedAtEpochMs": 1785743901991,
+        "diagnosticsObservedAtEpochMs": 1785743901983,
+        "graphRevision": 12,
+        "diagnosticsSequence": 14,
+        "diagnosticsCorrelation": {
+          "authority": "okf-acceptance-runtime-publication",
+          "revision": 12,
+          "diagnosticsPublished": true,
+          "findingCount": 1,
+          "conceptCount": 1001,
+          "edgeCount": 5002
+        },
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-renamed.md",
+            "code": "okf.curation.broken-link"
+          }
+        ],
+        "observedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-renamed.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "delete",
+        "durationMs": 820,
+        "graphPublicationMs": 820,
+        "diagnosticsPublicationMs": 810,
+        "startedAtEpochMs": 1785743902033,
+        "mutationCompletedAtEpochMs": 1785743902033,
+        "graphObservedAtEpochMs": 1785743902853,
+        "diagnosticsObservedAtEpochMs": 1785743902843,
+        "graphRevision": 13,
+        "diagnosticsSequence": 15,
+        "diagnosticsCorrelation": {
+          "authority": "okf-acceptance-runtime-publication",
+          "revision": 13,
+          "diagnosticsPublished": true,
+          "findingCount": 1,
+          "conceptCount": 1000,
+          "edgeCount": 5000
+        },
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          }
+        ],
+        "observedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "create",
+        "durationMs": 835,
+        "graphPublicationMs": 835,
+        "diagnosticsPublicationMs": 811,
+        "startedAtEpochMs": 1785743902897,
+        "mutationCompletedAtEpochMs": 1785743902898,
+        "graphObservedAtEpochMs": 1785743903732,
+        "diagnosticsObservedAtEpochMs": 1785743903708,
+        "graphRevision": 14,
+        "diagnosticsSequence": 16,
+        "diagnosticsCorrelation": {
+          "authority": "okf-acceptance-runtime-publication",
+          "revision": 14,
+          "diagnosticsPublished": true,
+          "findingCount": 2,
+          "conceptCount": 1001,
+          "edgeCount": 5001
+        },
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
+            "code": "okf.curation.missing-description"
+          }
+        ],
+        "observedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
+            "code": "okf.curation.missing-description"
+          }
+        ]
+      },
+      {
+        "eventKind": "change",
+        "durationMs": 816,
+        "graphPublicationMs": 816,
+        "diagnosticsPublicationMs": 805,
+        "startedAtEpochMs": 1785743903777,
+        "mutationCompletedAtEpochMs": 1785743903778,
+        "graphObservedAtEpochMs": 1785743904593,
+        "diagnosticsObservedAtEpochMs": 1785743904582,
+        "graphRevision": 15,
+        "diagnosticsSequence": 17,
+        "diagnosticsCorrelation": {
+          "authority": "okf-acceptance-runtime-publication",
+          "revision": 15,
+          "diagnosticsPublished": true,
+          "findingCount": 2,
+          "conceptCount": 1001,
+          "edgeCount": 5001
+        },
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
+            "code": "okf.curation.broken-link"
+          }
+        ],
+        "observedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "rename",
+        "durationMs": 834,
+        "graphPublicationMs": 834,
+        "diagnosticsPublicationMs": 800,
+        "startedAtEpochMs": 1785743904636,
+        "mutationCompletedAtEpochMs": 1785743904636,
+        "graphObservedAtEpochMs": 1785743905470,
+        "diagnosticsObservedAtEpochMs": 1785743905436,
+        "graphRevision": 16,
+        "diagnosticsSequence": 18,
+        "diagnosticsCorrelation": {
+          "authority": "okf-acceptance-runtime-publication",
+          "revision": 16,
+          "diagnosticsPublished": true,
+          "findingCount": 1,
+          "conceptCount": 1001,
+          "edgeCount": 5002
+        },
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-renamed.md",
+            "code": "okf.curation.broken-link"
+          }
+        ],
+        "observedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-renamed.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "delete",
+        "durationMs": 847,
+        "graphPublicationMs": 847,
+        "diagnosticsPublicationMs": 814,
+        "startedAtEpochMs": 1785743905518,
+        "mutationCompletedAtEpochMs": 1785743905519,
+        "graphObservedAtEpochMs": 1785743906365,
+        "diagnosticsObservedAtEpochMs": 1785743906332,
+        "graphRevision": 17,
+        "diagnosticsSequence": 19,
+        "diagnosticsCorrelation": {
+          "authority": "okf-acceptance-runtime-publication",
+          "revision": 17,
+          "diagnosticsPublished": true,
+          "findingCount": 1,
+          "conceptCount": 1000,
+          "edgeCount": 5000
+        },
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          }
+        ],
+        "observedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "create",
+        "durationMs": 824,
+        "graphPublicationMs": 824,
+        "diagnosticsPublicationMs": 816,
+        "startedAtEpochMs": 1785743906409,
+        "mutationCompletedAtEpochMs": 1785743906410,
+        "graphObservedAtEpochMs": 1785743907233,
+        "diagnosticsObservedAtEpochMs": 1785743907225,
+        "graphRevision": 18,
+        "diagnosticsSequence": 20,
+        "diagnosticsCorrelation": {
+          "authority": "okf-acceptance-runtime-publication",
+          "revision": 18,
+          "diagnosticsPublished": true,
+          "findingCount": 2,
+          "conceptCount": 1001,
+          "edgeCount": 5001
+        },
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
+            "code": "okf.curation.missing-description"
+          }
+        ],
+        "observedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
+            "code": "okf.curation.missing-description"
+          }
+        ]
+      },
+      {
+        "eventKind": "change",
+        "durationMs": 833,
+        "graphPublicationMs": 833,
+        "diagnosticsPublicationMs": 802,
+        "startedAtEpochMs": 1785743907275,
+        "mutationCompletedAtEpochMs": 1785743907276,
+        "graphObservedAtEpochMs": 1785743908108,
+        "diagnosticsObservedAtEpochMs": 1785743908077,
+        "graphRevision": 19,
+        "diagnosticsSequence": 21,
+        "diagnosticsCorrelation": {
+          "authority": "okf-acceptance-runtime-publication",
+          "revision": 19,
+          "diagnosticsPublished": true,
+          "findingCount": 2,
+          "conceptCount": 1001,
+          "edgeCount": 5001
+        },
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
+            "code": "okf.curation.broken-link"
+          }
+        ],
+        "observedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          },
+          {
+            "relativePath": "concepts/qr002-probe.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "rename",
+        "durationMs": 862,
+        "graphPublicationMs": 862,
+        "diagnosticsPublicationMs": 822,
+        "startedAtEpochMs": 1785743908158,
+        "mutationCompletedAtEpochMs": 1785743908159,
+        "graphObservedAtEpochMs": 1785743909020,
+        "diagnosticsObservedAtEpochMs": 1785743908980,
+        "graphRevision": 20,
+        "diagnosticsSequence": 22,
+        "diagnosticsCorrelation": {
+          "authority": "okf-acceptance-runtime-publication",
+          "revision": 20,
+          "diagnosticsPublished": true,
+          "findingCount": 1,
+          "conceptCount": 1001,
+          "edgeCount": 5002
+        },
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-renamed.md",
+            "code": "okf.curation.broken-link"
+          }
+        ],
+        "observedDiagnostics": [
+          {
+            "relativePath": "concepts/qr002-probe-renamed.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      },
+      {
+        "eventKind": "delete",
+        "durationMs": 816,
+        "graphPublicationMs": 816,
+        "diagnosticsPublicationMs": 803,
+        "startedAtEpochMs": 1785743909063,
+        "mutationCompletedAtEpochMs": 1785743909064,
+        "graphObservedAtEpochMs": 1785743909879,
+        "diagnosticsObservedAtEpochMs": 1785743909866,
+        "graphRevision": 21,
+        "diagnosticsSequence": 23,
+        "diagnosticsCorrelation": {
+          "authority": "okf-acceptance-runtime-publication",
+          "revision": 21,
+          "diagnosticsPublished": true,
+          "findingCount": 1,
+          "conceptCount": 1000,
+          "edgeCount": 5000
+        },
+        "expectedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          }
+        ],
+        "observedDiagnostics": [
+          {
+            "relativePath": "concepts/concept-0000.md",
+            "code": "okf.curation.broken-link"
+          }
+        ]
+      }
+    ]
+  },
+  "qr003": {
+    "capturedAt": "2026-08-03T07:58:45.540Z",
+    "provenance": {
+      "kind": "captured"
+    },
+    "fixture": {
+      "name": "representative",
+      "nodeCount": 1000,
+      "edgeCount": 5000,
+      "seed": 5196614
+    },
+    "engines": {
+      "d3": {
+        "firstInteractiveFrameMs": [
+          298
+        ],
+        "firstInteractiveFrameWebglClears": [
+          2
+        ],
+        "firstInteractiveFrameWebglDrawCalls": [
+          11000
+        ],
+        "cooldownReached": true,
+        "cooldownMs": [
+          2494.4000000953674
+        ],
+        "idleAnimationFramesAfterCooldown": [
+          0
+        ],
+        "interactions": {
+          "searchMs": [
+            5.6000001430511475,
+            3.799999952316284,
+            10.400000095367432,
+            3.6000001430511475,
+            7.799999952316284,
+            2.700000047683716,
+            9.200000047683716,
+            2.8000001907348633,
+            7.8999998569488525,
+            2.5999999046325684,
+            7.8999998569488525,
+            2.5,
+            8.199999809265137,
+            2.799999952316284,
+            7.8999998569488525,
+            2.8000001907348633,
+            8.099999904632568,
+            2.700000047683716,
+            8.200000047683716,
+            2.700000047683716
+          ],
+          "filterMs": [
+            2.3999998569488525,
+            24.09999990463257,
+            3.5999999046325684,
+            16.700000047683716,
+            2.799999952316284,
+            59,
+            3,
+            14.599999904632568,
+            2.9000000953674316,
+            14.700000047683716,
+            2.799999952316284,
+            14.399999856948853,
+            3.5,
+            14.700000047683716,
+            2.700000047683716,
+            15.299999952316284,
+            2.799999952316284,
+            15.5,
+            2.799999952316284,
+            15.900000095367432
+          ],
+          "selectionMs": [
+            2,
+            1.7000000476837158,
+            1.4000000953674316,
+            1.1999998092651367,
+            1.1000001430511475,
+            1.7000000476837158,
+            1.0999999046325684,
+            1.0999999046325684,
+            1,
+            1.2000000476837158,
+            1,
+            1.1000001430511475,
+            1.1000001430511475,
+            1.2000000476837158,
+            1,
+            1.0999999046325684,
+            1.1000001430511475,
+            1.0999999046325684,
+            1,
+            2.299999952316284
+          ],
+          "navigationMs": [
+            2.1000001430511475,
+            0.7999999523162842,
+            0.5999999046325684,
+            0.6000001430511475,
+            0.39999985694885254,
+            0.7999999523162842,
+            0.5,
+            0.6000001430511475,
+            0.40000009536743164,
+            0.5,
+            0.3000001907348633,
+            0.5,
+            0.5999999046325684,
+            0.7000000476837158,
+            0.2999999523162842,
+            0.6000001430511475,
+            0.2999999523162842,
+            0.5,
+            0.2999999523162842,
+            0.7999999523162842
+          ]
+        },
+        "interactionOutcomes": {
+          "search": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "filter": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "selection": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "navigation": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ]
+        },
+        "rendererJsHeapMb": 177.58672523498535,
+        "cameraDurationMs": 721.8999998569489,
+        "cameraFrameCount": 41,
+        "cameraDrawCallCount": 102492,
+        "cameraFps": 56.794569896279995,
+        "totalWebglClearCount": 166,
+        "totalWebglDrawCallCount": 468767,
+        "memoryPeakMb": 2366.8,
+        "idleCpuPercent": 0.5,
+        "processTreePeakRssMb": 2366.8,
+        "processTreeSampleCount": 9
+      },
+      "ngraph": {
+        "measurementFailure": {
+          "authority": "headed-vscode-webview-harness",
+          "phase": "first-interactive-frame",
+          "code": "graph-webgl-render-timeout",
+          "timeoutMs": 5000,
+          "observedClearCount": 1,
+          "observedDrawCallCount": 0,
+          "canvasPresent": true,
+          "nodeCount": 1000,
+          "edgeCount": 5000
+        },
+        "memoryPeakMb": 2339.14,
+        "idleCpuPercent": 0.13,
+        "processTreePeakRssMb": 2339.14,
+        "processTreeSampleCount": 10
+      }
+    }
+  },
+  "security": {
+    "schemaVersion": 1,
+    "webviewNetwork": {
+      "authority": "headed-vscode-webview-cdp",
+      "captureScope": "Initial Webview resources plus CDP events during watcher refresh, search, filter, selection, engine comparison, and disposal.",
+      "remoteRequestCount": 0,
+      "remoteOrigins": [],
+      "localResourceRequestCount": 2,
+      "localOrigins": [
+        "https://file+.vscode-resource.vscode-cdn.net"
+      ],
+      "webviewNavigationRequestCount": 2,
+      "webviewNavigationOrigins": [
+        "vscode-webview://1aqpg9gn6c94bi9tvenrcvkardd1k4oha082ort4ssd2orla31gn"
+      ],
+      "otherRequestCount": 0,
+      "otherSchemes": []
+    }
+  }
+}

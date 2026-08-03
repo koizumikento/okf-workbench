@@ -29,7 +29,12 @@ does not qualify these bytes. The completed `0.2.1` record is archived at
       package gates pass for the version candidate.
 - [x] A fresh genuine headed VS Code `1.129.1` schema-v3 capture passes QR-002 at `862 ms` p95
       across 20 samples, selects `d3` for QR-003, passes the interaction contract,
-      and strict no-remote-egress requirements for the exact candidate identities.
+      and strict no-remote-egress requirements for the exact candidate identities. The retained
+      [generated report](evidence/performance/vscode-1.129.1-0.3.0.md) and
+      [raw schema-v3 record](evidence/performance/vscode-1.129.1-0.3.0.json), SHA-256
+      `9b1ca57310da715de1ba5cc83b92ba28e9faaf6fdcc7f7111c7f96696f1c20d7`, bind the result to
+      production runtime snapshot `6fbcc3b2f004dcfd0f30bfcedd80aea76f79cd4c4e07a07edbf57596d64ab2b4`
+      and build-input snapshot `c7c5189af35dc80c5ebdf1c92e6617dc3b2ec21f561c5f061c532d8742d06d6b`.
 - [ ] Hosted `Compatibility` passes acceptance/Webview and all seven editor/OS lifecycle lanes for
       the exact candidate, using the published `v0.2.1` universal VSIX as the verified predecessor.
 - [ ] Hosted `Package smoke` passes the browser boundary, all four target packages, and aggregate

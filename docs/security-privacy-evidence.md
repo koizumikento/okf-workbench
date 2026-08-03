@@ -260,7 +260,7 @@ when compatible patched dependency paths become available.
 | Webview CSP, content injection, and local assets | covered | Host HTML, DOM source, protocol source, unit tests, Chromium harness, production bundle, headed VS Code Webview CDP network capture | `CSP-01`, `NET-01`, `XSS-01` | The zero-egress observation is candidate/editor-specific, not a universal guarantee. |
 | Privileged source navigation and messaging | covered | Strict decoder, controller, host source map, navigation rejection regression | `PROTO-01`, `NAV-01` | No active exploit testing was performed. |
 | Workspace path/read-and-write containment | covered for pure, memory-backed, and tested local `file:` symlink boundaries | Exact open-folder membership tracker, modeless-workflow invalidation, provider pre-commit authorization, path guard, native identity-bound read handles with close-failure tests, per-resource and per-traversed-directory parent generations, proposal applicator read boundaries, runtime/authoring regressions, VS Code `FileType.SymbolicLink` mapping, and real temporary-workspace permanent plus root/deep transient swap-and-restore regressions for command, watcher, discovery, and enumeration paths | `PATH-01` | Non-`file:` providers are an explicit trusted-provider boundary owned by compatibility evidence; no universal `openat`/privileged-mount atomicity or existing-file update-CAS claim is made. |
-| Secrets, logs, telemetry, and content egress | covered statically and by named predecessor headed/packaged observations; current-candidate dynamic coverage pending | First-party static scan, activation log review, browser interception, retained predecessor schema-v3 headed Webview CDP capture, historical packaged Extension Host CommonJS-owner/global hooks, hosted settings and alert APIs | `NET-01`, `LOG-01`, `PRIV-01`, `COMPAT-01`, `HOST-01` | The retained observations are candidate/editor/lane-specific and do not bind the current Rust/Wasm source. The Extension Host hooks are not OS isolation and exclude ESM named bindings, cached references, raw/prototype bindings, `dns.promises`, child processes, editor-owned traffic, Webview traffic, and trusted write-command execution. Hosted scanning is enabled and its initial open-alert queries are clean, but remains point-in-time evidence. |
+| Secrets, logs, telemetry, and content egress | covered statically and by current-candidate headed Webview observation; current packaged-lifecycle coverage pending | First-party static scan, activation log review, browser interception, current and predecessor schema-v3 headed Webview CDP captures, historical packaged Extension Host CommonJS-owner/global hooks, hosted settings and alert APIs | `NET-01`, `LOG-01`, `PRIV-01`, `COMPAT-01`, `HOST-01` | The observations are candidate/editor/lane-specific. Current headed evidence binds the `0.3.0` runtime/build/harness inputs, while hosted packaged lifecycle still requires fresh qualification. The Extension Host hooks are not OS isolation and exclude ESM named bindings, cached references, raw/prototype bindings, `dns.promises`, child processes, editor-owned traffic, Webview traffic, and trusted write-command execution. Hosted scanning is enabled and its initial open-alert queries are clean, but remains point-in-time evidence. |
 | Production dependency and license inventory | covered technically and approved for `0.1.0` | Lock graph, installed manifests, license texts, integrity, install-script gate, npm audit, and maintainer approval | `DEP-01`, `VULN-01` | Re-run technical and human review when the production graph changes. |
 | Project license and packaged notices | covered and approved in the final hosted-identical artifact | MIT manifest/root license plus exact final local and hosted VSIX license and notice inspection | `LIC-01` | Re-review changed notices before later releases. |
 | CI workflows and hosted repository policy | covered for `0.1.0` | Full-SHA action pins, local YAML permissions/triggers/artifacts, version-tag release workflow, protected-main/scanning APIs, and successful tagged publication | `CI-01`, `HOST-01`, `RELEASE-01` | Hosted controls and credentials remain point-in-time; repeat their review for later releases. |
@@ -285,7 +285,18 @@ when compatible patched dependency paths become available.
   inventories for `0.1.0`.
 - Release before closure: **no; closed for `0.1.0`**.
 
-### PG-02 — Actual editor network and data-egress observation (current candidate open)
+### PG-02 — Actual editor network and data-egress observation (current candidate locally closed)
+
+- Current-candidate headed Webview evidence: the genuine schema-v3 capture at
+  `2026-08-03T07:58:45.653Z` attached the strict pre-navigation CDP recorder to VS Code `1.129.1`
+  commit `8a7abeba6e03ea3af87bfbce9a1b7e48fed567b8`. Across initial loading, watcher refresh, search,
+  filter, selection, engine comparison, and disposal it recorded QR-002 at `862 ms` p95, `d3` as
+  the QR-003 selection, zero remote HTTP(S)/WS requests, two local packaged resources, two internal
+  Webview navigations, and zero other-scheme requests for the exact `0.3.0` input identities. The
+  retained [raw record](evidence/performance/vscode-1.129.1-0.3.0.json), SHA-256
+  `9b1ca57310da715de1ba5cc83b92ba28e9faaf6fdcc7f7111c7f96696f1c20d7`, and
+  [generated report](evidence/performance/vscode-1.129.1-0.3.0.md) pass strict evaluation. Hosted
+  compatibility and packaged-lifecycle network evidence remain separate release gates.
 
 - Predecessor headed Webview evidence: the genuine schema-v3 capture at
   `2026-07-28T06:23:03.350Z` attached the strict pre-navigation CDP recorder to VS Code `1.129.1`
@@ -408,19 +419,19 @@ when compatible patched dependency paths become available.
 ## Decision reconciliation
 
 Current state: **`v0.1.0` publication evidence is historical; the current OKF-v0.2 Rust/Wasm
-source candidate requires fresh headed, hosted compatibility, and package-smoke qualification**.
+source candidate has fresh headed qualification and still requires hosted compatibility and
+package-smoke qualification**.
 
 - `LIC-01` is remediated in source. The exact npm and Rust/Wasm notice gates passed on 2026-07-27,
   and the maintainer approved the generated inventories for `0.1.0`.
 - `CI-01` and `HOST-01` are remediated. Hosted branch protection, workflow ownership, scanning,
   private vulnerability reporting, and initial alert review close `PG-03`; point-in-time rechecks
   remain part of release operation.
-- `PG-02` is closed only for the named predecessor packaged activation/read/untrusted-refusal
-  surfaces. Strict re-evaluation keeps the retained headed record as predecessor evidence because
-  its identities do not match the current candidate. Fresh current-candidate headed Webview,
-  packaged lifecycle, trusted write-command execution, and the documented hook exclusions remain
-  open. The maintainer's bounded risk acceptance applied to the initial release and does not
-  qualify the current source.
+- `PG-02` is locally closed for the current candidate's named headed Webview surface. The fresh
+  versioned schema-v3 record binds the `0.3.0` identities and passes strict no-egress evaluation.
+  Fresh packaged lifecycle, trusted write-command execution, and the documented hook exclusions
+  remain open. The maintainer's bounded risk acceptance applied to the initial release and does not
+  qualify those remaining current-source surfaces.
 - `PG-01` and `PG-04` are closed for `0.1.0`. The successful tagged workflow retains current PAT
   authorization, checksum verification, all five Open VSX publications, the GitHub Release, and
   the package-repository update.

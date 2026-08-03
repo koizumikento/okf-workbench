@@ -30,7 +30,8 @@ use std::os::windows::{
 use windows_sys::Wdk::{
     Foundation::OBJECT_ATTRIBUTES,
     Storage::FileSystem::{
-        FILE_CREATE, FILE_DIRECTORY_FILE, FILE_SYNCHRONOUS_IO_NONALERT, NtCreateFile,
+        FILE_CREATE, FILE_DIRECTORY_FILE, FILE_RENAME_INFORMATION, FILE_RENAME_INFORMATION_0,
+        FILE_SYNCHRONOUS_IO_NONALERT, FileRenameInformation, NtCreateFile, NtSetInformationFile,
     },
 };
 #[cfg(windows)]
@@ -38,9 +39,8 @@ use windows_sys::Win32::Storage::FileSystem::{
     BY_HANDLE_FILE_INFORMATION, DELETE, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT,
     FILE_DISPOSITION_FLAG_DELETE, FILE_DISPOSITION_FLAG_POSIX_SEMANTICS, FILE_DISPOSITION_INFO_EX,
     FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_GENERIC_READ,
-    FILE_GENERIC_WRITE, FILE_READ_ATTRIBUTES, FILE_RENAME_INFO, FILE_RENAME_INFO_0,
-    FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE, FileDispositionInfoEx, FileRenameInfo,
-    GetFileInformationByHandle, SYNCHRONIZE, SetFileInformationByHandle,
+    FILE_GENERIC_WRITE, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE,
+    FileDispositionInfoEx, GetFileInformationByHandle, SYNCHRONIZE, SetFileInformationByHandle,
 };
 #[cfg(windows)]
 use windows_sys::Win32::{
@@ -1781,7 +1781,7 @@ fn apply_missing_root_plan_windows_with_staging_name_and_hook(
     // an explicit platform boundary in FR-104.
     drop(staged_leaf_bindings);
     drop(staged_directory_locks);
-    rename_windows_handle(&staging_handle, parent_handle, &final_path).map_err(|error| {
+    rename_windows_handle(&staging_handle, parent_handle, first).map_err(|error| {
         format!(
             "cannot atomically publish the complete new root; concurrent content was preserved and bounded staging remains for inspection: {error}"
         )
@@ -2012,7 +2012,7 @@ fn create_windows_file_with_writer(
         write_content(&mut temporary)?;
         temporary.sync_all().map_err(|error| error.to_string())?;
         before_publish()?;
-        rename_windows_handle(&temporary, parent_handle, &parent.join(leaf)).map_err(|error| {
+        rename_windows_handle(&temporary, parent_handle, leaf).map_err(|error| {
             format!(
                 "{} appeared after planning; no file was published: {error}",
                 change.target.display()
@@ -2246,37 +2246,35 @@ fn windows_rename_buffer_bytes(name_bytes: usize) -> Result<usize, String> {
     // The native FILE_RENAME_INFORMATION contract requires the buffer to include the complete
     // declared structure plus the counted filename bytes. This is intentionally larger than the
     // FileName offset plus one trailing WCHAR because the x64 structure has tail padding.
-    std::mem::size_of::<FILE_RENAME_INFO>()
+    std::mem::size_of::<FILE_RENAME_INFORMATION>()
         .checked_add(name_bytes)
         .ok_or_else(|| "replacement filename is too long".to_owned())
 }
 
 #[cfg(windows)]
-fn rename_windows_handle(file: &File, _parent_guard: &File, target: &Path) -> Result<(), String> {
-    if !target.is_absolute() {
-        return Err("replacement path must be absolute".to_owned());
-    }
-    let name = target.as_os_str().encode_wide().collect::<Vec<_>>();
+fn rename_windows_handle(file: &File, parent: &File, leaf: &OsStr) -> Result<(), String> {
+    let name = leaf.encode_wide().collect::<Vec<_>>();
     let name_bytes = name
         .len()
         .checked_mul(std::mem::size_of::<u16>())
         .ok_or_else(|| "replacement filename is too long".to_owned())?;
-    let header_bytes = std::mem::offset_of!(FILE_RENAME_INFO, FileName);
+    let header_bytes = std::mem::offset_of!(FILE_RENAME_INFORMATION, FileName);
     let buffer_bytes = windows_rename_buffer_bytes(name_bytes)?;
     let words = buffer_bytes.div_ceil(std::mem::size_of::<usize>());
     let mut buffer = vec![0usize; words];
-    let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFO>();
+    let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFORMATION>();
+    let mut io_status = IO_STATUS_BLOCK::default();
+    // SAFETY: the union is initialized as an NTSTATUS before NtSetInformationFile writes it.
+    io_status.Anonymous.Status = STATUS_PENDING;
     // SAFETY: `buffer` is word-aligned and large enough for the complete declared structure plus
-    // `name_bytes`. The source and parent guard handles remain live for the call.
-    let succeeded = unsafe {
-        // This is an ordinary atomic no-replace rename. The extended information class is only
-        // needed for extended flags such as POSIX replacement semantics.
-        (*info).Anonymous = FILE_RENAME_INFO_0 {
+    // `name_bytes`. Both file handles and the counted name remain live for the synchronous call.
+    let status = unsafe {
+        // The native information class accepts a verified directory handle plus a relative leaf.
+        // ReplaceIfExists=false preserves atomic no-overwrite publication.
+        (*info).Anonymous = FILE_RENAME_INFORMATION_0 {
             ReplaceIfExists: false,
         };
-        // The Win32 wrapper accepts an absolute destination when no secondary root handle is used.
-        // The retained parent handle remains the mutation guard.
-        (*info).RootDirectory = std::ptr::null_mut();
+        (*info).RootDirectory = parent.as_raw_handle();
         (*info).FileNameLength =
             u32::try_from(name_bytes).map_err(|_| "replacement filename is too long".to_owned())?;
         std::ptr::copy_nonoverlapping(
@@ -2284,18 +2282,21 @@ fn rename_windows_handle(file: &File, _parent_guard: &File, target: &Path) -> Re
             buffer.as_mut_ptr().cast::<u8>().add(header_bytes),
             name_bytes,
         );
-        SetFileInformationByHandle(
+        NtSetInformationFile(
             file.as_raw_handle(),
-            FileRenameInfo,
+            &mut io_status,
             buffer.as_ptr().cast(),
             u32::try_from(buffer_bytes)
                 .map_err(|_| "replacement filename is too long".to_owned())?,
+            FileRenameInformation,
         )
     };
-    if succeeded != 0 {
+    if status == STATUS_SUCCESS {
         Ok(())
     } else {
-        Err(std::io::Error::last_os_error().to_string())
+        // SAFETY: the status was returned by NtSetInformationFile and is valid for conversion.
+        let code = unsafe { RtlNtStatusToDosError(status) };
+        Err(std::io::Error::from_raw_os_error(code.cast_signed()).to_string())
     }
 }
 
@@ -4917,7 +4918,7 @@ mod tests {
 
         assert_eq!(
             windows_rename_buffer_bytes(name_bytes).unwrap(),
-            std::mem::size_of::<FILE_RENAME_INFO>() + name_bytes
+            std::mem::size_of::<FILE_RENAME_INFORMATION>() + name_bytes
         );
     }
 

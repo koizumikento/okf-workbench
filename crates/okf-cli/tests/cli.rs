@@ -321,6 +321,27 @@ fn index_adds_v02_declaration_to_an_existing_versionless_root() {
 }
 
 #[test]
+fn index_adds_v02_declaration_to_an_explicit_key_root_map() {
+    let directory = tempdir().unwrap();
+    initialize(directory.path());
+    fs::write(
+        directory.path().join("index.md"),
+        "---\n!!map\n? type\n: bundle\n? title\n: Knowledge\n---\n# Knowledge\n",
+    )
+    .unwrap();
+
+    let output = okf()
+        .args(["index", directory.path().to_str().unwrap(), "--apply"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "{output:?}");
+    let root = fs::read_to_string(directory.path().join("index.md")).unwrap();
+    assert!(root.starts_with("---\n!!map\nokf_version: \"0.2\"\n? type\n"));
+    assert!(root.contains("? title\n: Knowledge\n"));
+}
+
+#[test]
 fn missing_index_mode_only_adds_the_root_version_to_an_existing_index() {
     let directory = tempdir().unwrap();
     initialize(directory.path());
@@ -563,6 +584,38 @@ fn symbolic_link_bundle_root_is_refused() {
         .unwrap();
     assert_eq!(output.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&output.stderr).contains("not a real directory"));
+}
+
+#[cfg(unix)]
+#[test]
+fn symbolic_link_bundle_root_ancestor_is_refused_before_writing() {
+    use std::os::unix::fs::symlink;
+
+    let directory = tempdir().unwrap();
+    let real_parent = directory.path().join("real-parent");
+    let real_root = real_parent.join("bundle");
+    fs::create_dir_all(&real_root).unwrap();
+    initialize(&real_root);
+    let linked_parent = directory.path().join("linked-parent");
+    symlink(&real_parent, &linked_parent).unwrap();
+    let linked_root = linked_parent.join("bundle");
+
+    let output = okf()
+        .args([
+            "new",
+            linked_root.to_str().unwrap(),
+            "--title",
+            "Must not escape",
+            "--path",
+            "outside.md",
+            "--apply",
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("not a real directory"));
+    assert!(!real_root.join("outside.md").exists());
 }
 
 fn initialize(root: &Path) {

@@ -247,41 +247,62 @@ fn insert_root_version(existing: &str) -> Result<String, String> {
         return Ok(candidate);
     };
 
-    let mut insertions = vec![(opening_end, format!("okf_version: \"0.2\"{eol}"))];
-    if let Some(flow_start) = root_flow_mapping_start(&existing[opening_end..source_end]) {
-        let offset = opening_end + flow_start + 1;
-        let separator = if existing[offset..source_end].trim_start().starts_with('}') {
-            ""
+    let (offset, insertion) =
+        if let Some(flow_start) = root_flow_mapping_start(&existing[opening_end..source_end]) {
+            let offset = opening_end + flow_start + 1;
+            let separator = if existing[offset..source_end].trim_start().starts_with('}') {
+                ""
+            } else {
+                ","
+            };
+            (offset, format!("okf_version: \"0.2\"{separator}"))
         } else {
-            ","
+            root_block_mapping_insertion(existing, opening_end, source_end, eol)
         };
-        insertions.push((offset, format!("okf_version: \"0.2\"{separator}")));
-    }
-    for (line_start, content_end, line_end) in line_bounds(existing, opening_end, source_end) {
-        let line = &existing[line_start..content_end];
+    let candidate = format!("{}{insertion}{}", &existing[..offset], &existing[offset..]);
+    validate_root_version_insertion(existing, &candidate).map_err(|error| {
+        format!("cannot add `okf_version` safely to index.md using {eol:?} line endings: {error}")
+    })?;
+    Ok(candidate)
+}
+
+fn root_block_mapping_insertion(
+    source: &str,
+    start: usize,
+    end: usize,
+    default_eol: &'static str,
+) -> (usize, String) {
+    for (line_start, content_end, _) in line_bounds(source, start, end) {
+        let line = &source[line_start..content_end];
         let trimmed = line.trim_start();
-        if trimmed.is_empty() || trimmed.starts_with('#') || !trimmed.contains(':') {
+        if trimmed.is_empty() || trimmed.starts_with('#') || is_standalone_node_property(trimmed) {
             continue;
         }
         let indent = &line[..line.len() - trimmed.len()];
-        let line_eol = &existing[content_end..line_end];
-        insertions.push((
+        return (
             line_start,
-            format!("{indent}okf_version: \"0.2\"{line_eol}"),
-        ));
+            format!("{indent}okf_version: \"0.2\"{default_eol}"),
+        );
     }
+    (end, format!("okf_version: \"0.2\"{default_eol}"))
+}
 
-    let mut last_error = "the frontmatter mapping style is not safely editable".to_owned();
-    for (offset, insertion) in insertions {
-        let candidate = format!("{}{insertion}{}", &existing[..offset], &existing[offset..]);
-        match validate_root_version_insertion(existing, &candidate) {
-            Ok(()) => return Ok(candidate),
-            Err(error) => last_error = error,
-        }
-    }
-    Err(format!(
-        "cannot add `okf_version` safely to index.md using {eol:?} line endings: {last_error}"
-    ))
+fn is_standalone_node_property(line: &str) -> bool {
+    let comment_start = line.char_indices().find_map(|(index, character)| {
+        (character == '#'
+            && line[..index]
+                .chars()
+                .next_back()
+                .is_some_and(char::is_whitespace))
+        .then_some(index)
+    });
+    let content = comment_start
+        .map_or(line, |start| &line[..start])
+        .trim_end();
+    !content.is_empty()
+        && content
+            .split_whitespace()
+            .all(|token| token.starts_with('!') || token.starts_with('&'))
 }
 
 fn root_flow_mapping_start(source: &str) -> Option<usize> {
@@ -523,12 +544,44 @@ fn merge_region(existing: &str, rendered: &str, start: &str, end: &str) -> Resul
 }
 
 fn ensure_safe_root(root: &Path) -> Result<(), String> {
-    let metadata = fs::symlink_metadata(root)
+    let mut current = PathBuf::new();
+    for component in root.components() {
+        current.push(component.as_os_str());
+        let metadata = fs::symlink_metadata(&current)
+            .map_err(|error| format!("cannot inspect {}: {error}", current.display()))?;
+        if metadata.file_type().is_symlink() {
+            if is_trusted_platform_path_alias(&current) {
+                continue;
+            }
+            return Err(format!("{} is not a real directory", current.display()));
+        }
+        if !metadata.is_dir() && current != root {
+            return Err(format!("{} is not a real directory", current.display()));
+        }
+    }
+    let metadata = fs::metadata(root)
         .map_err(|error| format!("cannot inspect {}: {error}", root.display()))?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+    if !metadata.is_dir() {
         return Err(format!("{} is not a real directory", root.display()));
     }
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn is_trusted_platform_path_alias(path: &Path) -> bool {
+    // macOS exposes these root-owned compatibility aliases in otherwise ordinary user paths.
+    // Only the platform's exact fixed targets are exempt from the user-controlled symlink rule.
+    let expected_target = match path.to_str() {
+        Some("/tmp") => Path::new("private/tmp"),
+        Some("/var") => Path::new("private/var"),
+        _ => return false,
+    };
+    fs::read_link(path).is_ok_and(|target| target == expected_target)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn is_trusted_platform_path_alias(_path: &Path) -> bool {
+    false
 }
 
 fn ensure_plannable_root(root: &Path) -> Result<(), String> {
@@ -538,7 +591,7 @@ fn ensure_plannable_root(root: &Path) -> Result<(), String> {
             Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
                 return Err(format!("{} is not a real directory", candidate.display()));
             }
-            Ok(_) => return Ok(()),
+            Ok(_) => return ensure_safe_root(candidate),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 candidate = candidate.parent().ok_or_else(|| {
                     format!("{} has no existing directory ancestor", root.display())
@@ -753,6 +806,34 @@ mod tests {
             );
             assert_eq!(updated.replacen(insertion, "", 1), source, "{source:?}");
         }
+    }
+
+    #[test]
+    fn root_version_insertion_supports_explicit_key_maps() {
+        let source = "---\n!!map\n? type\n: bundle\n? title\n: Knowledge\n---\n# Knowledge\n";
+        let before = root_frontmatter(source).unwrap();
+        let updated = insert_root_version(source).unwrap();
+        let mut after = root_frontmatter(&updated).unwrap();
+        assert_eq!(
+            after.remove("okf_version"),
+            Some(serde_json::Value::String("0.2".to_owned())),
+            "{updated:?}"
+        );
+        assert_eq!(after, before, "{updated:?}");
+    }
+
+    #[test]
+    fn root_version_insertion_handles_many_explicit_entries_in_one_pass() {
+        let mut source = String::from("---\n!!map\n");
+        for index in 0..1_500 {
+            source.push_str(&format!("? field{index:04}\n: value{index:04}\n"));
+        }
+        source.push_str("---\n# Knowledge\n");
+
+        let updated = insert_root_version(&source).unwrap();
+
+        assert!(updated.starts_with("---\n!!map\nokf_version: \"0.2\"\n? field0000\n"));
+        assert_eq!(root_frontmatter(&updated).unwrap().len(), 1_501);
     }
 
     #[test]

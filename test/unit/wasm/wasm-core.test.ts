@@ -920,6 +920,9 @@ describe('Rust/Wasm core boundary', () => {
         '"first\n  !!str !!int key: one": value\n',
       ],
       ['duplicate-tag-multiline-node.md', 'title: !!str\n  !!int Visible\ncustom: 日本😀\n'],
+      ['duplicate-anchor-inline-node.md', 'custom: &first &second value\n'],
+      ['duplicate-anchor-multiline-node.md', 'custom: &first\n  &second value\n'],
+      ['duplicate-anchor-flow-node.md', 'custom: [&first &second value]\n'],
       [
         'duplicate-tag-anchor-property-chain.md',
         'title: &a\n  !!str\n  !!int Visible\ncustom: 日本😀\n',
@@ -927,6 +930,11 @@ describe('Rust/Wasm core boundary', () => {
       [
         'commented-multiline-empty-key-duplicate.md',
         'custom: { ? !!str # key\n  : one, ? !!str "" : two }\n',
+      ],
+      ['semantic-tagged-flow-key-duplicate.md', 'custom: { same: one, !!str same: two }\n'],
+      [
+        'multiline-commented-flow-key-duplicate-range.md',
+        'custom: { ? same : one, ? &a # anchor\n  !!str # tag\n  same : two }\n',
       ],
       [
         'commented-multiline-empty-key-plain-duplicate.md',
@@ -945,6 +953,25 @@ describe('Rust/Wasm core boundary', () => {
       ['literal-nel-tagged-invalid-compact.md', 'custom: !!str prefix\u0085: suffix\n'],
       ['literal-nel-anchored-invalid-compact.md', 'custom: &a !!str prefix\u0085: suffix\n'],
       ['malformed-multiline-flow-set-separator.md', 'custom: !!set { ? !!str\n  , ? "" }\n'],
+      ['block-scalar-nested-mapping-like-text.md', 'custom: |-\n  fake: one\n    fake: two\n'],
+      [
+        'plain-scalar-unmatched-quote-before-nonfinite.md',
+        'custom: plain "open\nbad: .inf\ntail: close"\n',
+      ],
+      [
+        'plain-scalar-unmatched-quote-before-large-integer.md',
+        'custom: plain "open\nbig: 999999999999999999999999999999999999\ntail: close"\n',
+      ],
+      [
+        'deferred-plain-scalar-property-like-text.md',
+        'custom:\n  first\n  !!str text\nafter: ok\n',
+      ],
+      ['sequence-map-tagged-empty-key.md', 'items:\n  - !!map\n    !!str : one\n'],
+      ['scalar-string-tagged-flow-map.md', 'custom: !!str { child: value }\n'],
+      ['scalar-binary-tagged-flow-sequence.md', 'custom: !!binary [one, two]\n'],
+      ['scalar-timestamp-tagged-flow-map.md', 'custom: !!timestamp { child: value }\n'],
+      ['scalar-integer-tagged-block-map.md', 'custom: !!int\n  child: value\n'],
+      ['scalar-string-tagged-block-sequence.md', 'custom: !!str\n  - one\n  - two\n'],
       ['duplicate-tag-empty-implicit-key.md', 'custom: !!map\n  !!str !!int : one\n'],
       ['block-scalar-flow-like-empty-key.md', 'custom: |-\n  - !!str : one\n'],
       ['block-scalar-implicit-empty-duplicates.md', 'custom: |-\n  : one\n  : two\n'],
@@ -1285,6 +1312,33 @@ describe('Rust/Wasm core boundary', () => {
     expect(core.inspect(preservedLiteralControl, '2026-07-22T12:00:00Z')).toEqual(
       typescriptOkfCore.inspect(preservedLiteralControl, '2026-07-22T12:00:00Z'),
     );
+  });
+
+  test('matches Markdown definition limits and multiline link labels', () => {
+    const cases = [
+      ['soft-break.md', '[first\nsecond](target.md)\n'],
+      ['hard-break-spaces.md', '[first  \nsecond](target.md)\n'],
+      ['hard-break-backslash.md', '[first\\\nsecond](target.md)\n'],
+      [
+        'definition-limit.md',
+        Array.from({ length: 5_001 }, (_, index) => `[d${String(index)}]: x`).join('\n'),
+      ],
+      ['duplicate-definition-limit.md', Array.from({ length: 5_001 }, () => '[d]: x').join('\n')],
+      [
+        'fenced-definition-lookalikes.md',
+        `\`\`\`\n${Array.from({ length: 5_001 }, () => '[d]: x').join('\n')}\n\`\`\`\n`,
+      ],
+      [
+        'indented-definition-lookalikes.md',
+        Array.from({ length: 5_001 }, () => '    [d]: x').join('\n'),
+      ],
+    ] as const;
+    for (const [path, body] of cases) {
+      const input = inputFor([[path, concept(body)]], `fixture:/markdown-parity/${path}`);
+      expect(core.inspect(input, '2026-07-22T12:00:00Z'), path).toEqual(
+        typescriptOkfCore.inspect(input, '2026-07-22T12:00:00Z'),
+      );
+    }
   });
 
   test.each([

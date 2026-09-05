@@ -1,12 +1,50 @@
 # Performance evidence
 
-- Status: **0.4.0 publication blocked by QR-002**; hosted compatibility and package
+- Status: **0.4.0 QR-002, QR-003, and Webview network gates pass**; hosted compatibility and package
   qualification remain separate release gates
 - Date: 2026-09-05
 - Governing decision:
   [ADR 0005, OQ-008](decisions/0005-resolve-mvp-implementation-questions.md#oq-008--performance-fixtures-and-thresholds)
 
 ## Current-candidate schema-v3 measurement and binding status
+
+The 0.4.0 [report](evidence/performance/vscode-1.129.1-0.4.0.md) and
+[raw capture](evidence/performance/vscode-1.129.1-0.4.0.json), SHA-256
+`439d47c36c935c7f6180d3edff7a2ec3107faaa0ca795b3ae0b55210fe81f59b`, record a genuine
+headed VS Code 1.129.1 run at 2026-09-05T12:01:22.462Z on Windows 11, Ryzen 9 9900X,
+31.15 GiB RAM, and RTX 5070. The strict evaluator exits `0`: QR-002 p95 is **961 ms
+across 20 samples**, below the unchanged 1,000 ms limit. QR-003 passes with `d3`;
+remote HTTP(S)/WS and other-scheme request counts are zero.
+
+The measured Wasm is the canonical CI artifact from
+[Package smoke 33964732126](https://github.com/koizumikento/okf-workbench/actions/runs/33964732126),
+revision `a676122d8589afe860169857182aa807e4e41e03`. Its SHA-256 is
+`2d767cdf51d621cf72847427fdb36ecb998bf0716bb48be85426261cad9a9455`.
+All **13 extension payload files** match the hosted universal candidate from
+[Compatibility 33964733330](https://github.com/koizumikento/okf-workbench/actions/runs/33964733330)
+byte-for-byte. That VSIX is 1,310,102 bytes with SHA-256
+`15c9893e45ba2213652ebd6d1d75a60909e1db94b566ba7acd3a5273372ae54d`.
+Runtime snapshot `8a6d032b167a7ec95d07b73024c989bab6dbdff5f9a263f09ae44701f88d8d3f`
+and build-input snapshot `8d56335cceb71959548d97bb3b06329a3d21f163843ed92e976e6750b1e29607`
+bind this capture. The retained [CI build receipt](evidence/performance/vscode-1.129.1-0.4.0-build-metadata.json)
+has SHA-256 `02b5cc9d0f2b39f05700204ecd8f4a0c7499b7529a19acc0e002cb343d856a9c`.
+
+Valid UTF-8 byte documents now cross the existing JSON ABI as strings, avoiding numeric
+byte-array expansion. Invalid UTF-8 still follows the original byte path so diagnostics
+remain intact. The watcher debounce and performance thresholds are unchanged. This one
+Windows observation is not a guarantee for other hardware and does not isolate the
+effect of the transport optimization from the change to canonical Wasm.
+
+To reproduce the canonical binding, obtain the Wasm and build receipt from the trusted
+CI artifact for these Rust inputs. Place them at `artifacts/canonical-wasm/okf_core.wasm`
+and `artifacts/canonical-wasm/build-metadata.json`. Explicitly set
+`OKF_ALLOW_CANONICAL_WASM=1` and `OKF_CANONICAL_WASM_PATH` to that module's absolute path
+before running the headed runner. The build checks the module hash and current Rust
+input hash against the receipt; the runner binds both files into its private build tree.
+The receipt provides checksum binding, not a signature: retrieve it from the verified CI
+run. Preserve the same canonical inputs when rebuilding to strictly reevaluate this capture.
+
+## Initial 0.4.0 Windows measurement (historical failure)
 
 The 0.4.0 Windows [report](evidence/performance/vscode-1.129.1-0.4.0-windows-blocked.md)
 and [raw capture](evidence/performance/vscode-1.129.1-0.4.0-windows-blocked.json), SHA-256
@@ -25,12 +63,11 @@ The other 12 VSIX payload files match the local workspace, but that does not est
 whole-runtime equality. This capture cannot qualify the hosted release artifact even
 if its QR-002 result were passing; exact-artifact measurement remains required.
 
-The failed run is retained explicitly as blocked evidence, not as qualification. Initial
+The failed run is retained explicitly as historical blocked evidence, not as qualification. Initial
 Windows attempts exposed and fixed drive-case watcher rejection and editor-process exit
 handling; those incomplete attempts supply no passing samples. Do not replace this result
-with the earlier Mac result or relax the threshold. Publication still requires a complete
-strict-passing run for the current candidate. Any new capture must record its environment
-and retain the scope of this observed Windows failure.
+with the earlier Mac result or relax the threshold. The newer complete capture above
+qualifies the corrected candidate while retaining the scope of this earlier failure.
 
 ## Published 0.3.0 schema-v3 measurement (historical)
 

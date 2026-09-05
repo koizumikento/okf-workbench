@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "kind": "packaged-extension-activation",
+  "status": "passed",
+  "recordedAt": "2026-09-05T12:54:14.991Z",
+  "extensionId": "straydog.okf-workbench",
+  "mode": "post-uninstall",
+  "editor": {
+    "version": "1.126.0",
+    "expectedVersion": "1.126.0",
+    "appName": "VSCodium",
+    "appHost": "desktop",
+    "remoteName": null,
+    "uiKind": 1,
+    "versionVerification": {
+      "requestedEditorVersion": "1.126.04524",
+      "expectedExtensionHostVersion": "1.126.0",
+      "reportedExtensionHostVersion": "1.126.0"
+    }
+  },
+  "runtime": {
+    "platform": "win32",
+    "architecture": "x64",
+    "node": "24.15.0",
+    "electron": "42.2.0",
+    "chrome": "148.0.7778.97",
+    "v8": "14.8.178.14-electron.0"
+  },
+  "networkAttempts": null,
+  "networkObservation": {
+    "status": "not-installed",
+    "scope": "none",
+    "interceptedMethods": [],
+    "limitations": "No Extension Host network hooks are installed in the post-uninstall phase; this phase verifies extension API absence only.",
+    "lifetime": null,
+    "guardRestored": null,
+    "quiescenceMs": null,
+    "result": "not-observed"
+  },
+  "commands": [],
+  "commandCatalog": [],
+  "workspaceTrust": {
+    "expected": null,
+    "actual": true
+  },
+  "completion": {
+    "runtimePublication": null,
+    "graphRender": null,
+    "guardedQuiescenceMs": null
+  },
+  "uninstall": {
+    "extensionApiAbsent": true
+  }
+}

@@ -5,6 +5,8 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
+import { CANONICAL_WASM_PATH, CANONICAL_WASM_METADATA_PATH } from './canonical-wasm.mjs';
+
 import {
   assertInputSnapshotUnchanged,
   captureStableInputSnapshot,
@@ -74,6 +76,9 @@ export async function captureProductionBuildInputSnapshot(repositoryRoot) {
     withResolverManifests([
       ...discoveredInputs,
       ...PRODUCTION_RUNTIME_STATIC_PATHS,
+      ...(metadata.core?.source === 'canonical-ci-artifact'
+        ? [CANONICAL_WASM_PATH, CANONICAL_WASM_METADATA_PATH]
+        : []),
       metadataRelativePath,
       ...HEADED_EXECUTION_SOURCE_PATHS,
       ...HEADED_HARNESS_STATIC_PATHS,

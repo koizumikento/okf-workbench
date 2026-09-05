@@ -872,6 +872,14 @@ function resolveStagedPath(relativePath) {
 }
 
 async function runBoundProductionBuild(targetRepositoryRoot) {
+  const canonicalPath = process.env.OKF_CANONICAL_WASM_PATH;
+  if (
+    canonicalPath !== undefined &&
+    path.resolve(canonicalPath) !==
+      path.resolve(repositoryRoot, 'artifacts/canonical-wasm/okf_core.wasm')
+  ) {
+    throw new Error('Headed evidence requires the repository canonical Wasm path.');
+  }
   await execFileAsync(
     process.execPath,
     [
@@ -880,7 +888,20 @@ async function runBoundProductionBuild(targetRepositoryRoot) {
       '--repository-root',
       targetRepositoryRoot,
     ],
-    { cwd: targetRepositoryRoot },
+    {
+      cwd: targetRepositoryRoot,
+      env: {
+        ...process.env,
+        ...(canonicalPath === undefined
+          ? {}
+          : {
+              OKF_CANONICAL_WASM_PATH: path.resolve(
+                targetRepositoryRoot,
+                'artifacts/canonical-wasm/okf_core.wasm',
+              ),
+            }),
+      },
+    },
   );
 }
 

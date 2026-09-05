@@ -201,6 +201,23 @@ targets below. Missing Rust, a missing target, or a failed Wasm build fails the 
 The only placeholder path requires an explicit test-only command flag and environment variable
 and is not accepted by package validation.
 
+Cross-platform packages and local headed qualification may instead reuse the exact CI
+Wasm with `OKF_ALLOW_CANONICAL_WASM=1` and `OKF_CANONICAL_WASM_PATH` pointing to
+`artifacts/canonical-wasm/okf_core.wasm`. The adjacent `build-metadata.json` must be retained
+from that same trusted CI artifact. The build verifies the module SHA-256, ABI metadata,
+and a source-input digest covering Cargo manifests/lock, pinned Rust toolchain, crates,
+and the build recipe before using it. Stale source or changed module bytes fail closed.
+This avoids treating separately compiled Windows and Linux modules as identical: Rust
+panic-location strings can contain different host source paths. Canonical module and
+receipt bytes are included in the immutable headed build snapshot and copied into each
+private binding tree; no source is rebuilt into a replacement Wasm during that measurement.
+Artifact provenance still requires checking the trusted workflow/run revision and downloaded
+artifact: a checksum receipt is not a cryptographic publisher signature.
+
+The TypeScript Wasm adapter uses the existing ABI text form for valid UTF-8 documents,
+avoiding per-byte JSON number arrays. Decoding is fatal and retains BOMs; malformed UTF-8
+uses the original byte-array form so Rust owns the same encoding findings and source ranges.
+
 ### Extension-host bundle
 
 - Entry: `src/extension/activate.ts`.

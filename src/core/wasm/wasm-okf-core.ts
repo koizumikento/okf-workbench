@@ -174,6 +174,18 @@ export function createWasmOkfCore(bytes: Uint8Array): OkfCore {
   };
 }
 
+const documentDecoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+
+function jsonDocumentContent(content: string | Uint8Array): string | number[] {
+  if (typeof content === 'string') return content;
+  try {
+    return documentDecoder.decode(content);
+  } catch {
+    // Preserve malformed bytes so the Rust parser still reports the encoding failure.
+    return Array.from(content);
+  }
+}
+
 function jsonBundleInput(input: ParseBundleInput): JsonValue {
   const invalidRootUriUtf16 = hasUnpairedUtf16Surrogate(input.rootUri);
   return {
@@ -221,8 +233,7 @@ function jsonBundleInput(input: ParseBundleInput): JsonValue {
       }
       return {
         ...identity,
-        content:
-          typeof document.content === 'string' ? document.content : Array.from(document.content),
+        content: jsonDocumentContent(document.content),
         ...(document.contentHash === undefined || invalidContentHash
           ? {}
           : { contentHash: document.contentHash }),

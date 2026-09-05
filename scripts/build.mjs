@@ -1,9 +1,13 @@
 import { execFileSync } from 'node:child_process';
-import { copyFile, mkdir, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import * as esbuild from 'esbuild';
+
+import { captureWasmBuildInputs, readCanonicalWasm } from './canonical-wasm.mjs';
+import { assertInputSnapshotUnchanged } from './performance-input-snapshot.mjs';
 
 const repositoryRootOptionIndexes = process.argv
   .map((argument, index) => (argument === '--repository-root' ? index : -1))
@@ -40,8 +44,6 @@ const canonicalWasmPath =
 const canonicalWasmRoot = resolve(repositoryRoot, 'artifacts/canonical-wasm');
 const allowCanonicalWasm =
   canonicalWasmPath !== undefined &&
-  process.env.CI === 'true' &&
-  process.env.GITHUB_ACTIONS === 'true' &&
   process.env.OKF_ALLOW_CANONICAL_WASM === '1' &&
   dirname(canonicalWasmPath) === canonicalWasmRoot &&
   canonicalWasmPath === resolve(canonicalWasmRoot, 'okf_core.wasm');
@@ -51,12 +53,19 @@ if (production && watch) {
 }
 if (canonicalWasmPath !== undefined && !allowCanonicalWasm) {
   throw new Error(
-    'A canonical Wasm artifact is accepted only from the fixed GitHub Actions package-smoke path.',
+    'A canonical Wasm artifact requires explicit opt-in and the fixed artifacts/canonical-wasm path.',
   );
 }
 if (allowCanonicalWasm && allowTestCorePlaceholder) {
   throw new Error('Choose either a canonical Wasm artifact or the test-only placeholder.');
 }
+
+const wasmBuildInputs = allowTestCorePlaceholder
+  ? undefined
+  : await captureWasmBuildInputs(repositoryRoot);
+const canonicalWasm = allowCanonicalWasm
+  ? await readCanonicalWasm(repositoryRoot, wasmBuildInputs.sha256)
+  : undefined;
 
 await rm(distDirectory, { force: true, recursive: true });
 await mkdir(distDirectory, { recursive: true });
@@ -68,7 +77,7 @@ if (allowTestCorePlaceholder) {
     Uint8Array.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]),
   );
 } else if (allowCanonicalWasm) {
-  await copyFile(canonicalWasmPath, resolve(distDirectory, 'okf_core.wasm'));
+  await writeFile(resolve(distDirectory, 'okf_core.wasm'), canonicalWasm);
 } else {
   execFileSync(
     'cargo',
@@ -88,6 +97,13 @@ if (allowTestCorePlaceholder) {
     resolve(distDirectory, 'okf_core.wasm'),
   );
 }
+
+if (wasmBuildInputs !== undefined) {
+  await assertInputSnapshotUnchanged(wasmBuildInputs, repositoryRoot, 'Wasm build inputs');
+}
+const wasmSha256 = createHash('sha256')
+  .update(await readFile(resolve(distDirectory, 'okf_core.wasm')))
+  .digest('hex');
 
 const sharedOptions = {
   absWorkingDir: repositoryRoot,
@@ -162,6 +178,8 @@ if (watch) {
       abiVersion: 1,
       artifact: 'dist/okf_core.wasm',
       source: allowCanonicalWasm ? 'canonical-ci-artifact' : 'local-locked-build',
+      sha256: wasmSha256,
+      sourceInputSha256: wasmBuildInputs?.sha256,
       wasi: false,
     },
   };

@@ -9,6 +9,7 @@ export const PERFORMANCE_TOOLCHAIN_MANIFEST_PATH = 'scripts/performance-toolchai
 export const HEADED_EXECUTION_SOURCE_PATHS = Object.freeze([
   'package-lock.json',
   'scripts/build.mjs',
+  'scripts/canonical-wasm.mjs',
   'scripts/benchmark-report.mjs',
   'scripts/performance-bundle-hash.mjs',
   'scripts/performance-evidence-inputs.mjs',

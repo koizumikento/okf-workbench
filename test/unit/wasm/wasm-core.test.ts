@@ -58,6 +58,40 @@ beforeAll(() => {
 }, 60_000);
 
 describe('Rust/Wasm core boundary', () => {
+  test('preserves UTF-8 bytes, BOM offsets, and invalid-byte findings in compact requests', () => {
+    const textInput = inputFor(
+      [
+        ['index.md', '---\nokf_version: "0.1"\n---\n# Root\n'],
+        ['資料.md', '\uFEFF---\r\ntype: custom\r\ntitle: 日本語 🐕\r\n---\r\n# Note\r\n'],
+      ],
+      'fixture:/compact-utf8',
+    );
+    const byteInput = {
+      ...textInput,
+      documents: textInput.documents.map((document) => ({
+        uri: document.uri,
+        bundlePath: document.bundlePath,
+        content: new TextEncoder().encode(String(document.content)),
+      })),
+    };
+    expect(core.inspect(byteInput, '2026-09-05T00:00:00Z')).toEqual(
+      core.inspect(textInput, '2026-09-05T00:00:00Z'),
+    );
+    const invalidInput = {
+      ...byteInput,
+      documents: [
+        {
+          uri: 'fixture:/compact-utf8/index.md',
+          bundlePath: 'index.md',
+          content: Uint8Array.from([0xff, 0xc0]),
+        },
+      ],
+    };
+    expect(core.inspect(invalidInput, '2026-09-05T00:00:00Z').bundle.failures).toEqual(
+      typescriptOkfCore.inspect(invalidInput, '2026-09-05T00:00:00Z').bundle.failures,
+    );
+  });
+
   test('is capability-free and reports the versioned ABI', () => {
     const bytes = readFileSync(resolve('target/wasm32-unknown-unknown/release/okf_wasm.wasm'));
     const module = new WebAssembly.Module(bytes);

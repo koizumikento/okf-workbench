@@ -112,7 +112,7 @@ describe('extension manifest', () => {
     const manifest = await readManifest();
     expect(manifest.main).toBe('./dist/extension.cjs');
     expect(manifest.browser).toBeUndefined();
-    expect(manifest.engines?.vscode).toBe('^1.121.0');
+    expect(manifest.engines?.vscode).toBe('^1.123.0');
     expect(manifest.extensionKind).toEqual(['workspace']);
   });
 

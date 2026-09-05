@@ -151,8 +151,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: minimum-1.121.0
-            vscode-version: 1.121.0
+          - label: minimum-1.123.0
+            vscode-version: 1.123.0
           - label: current-1.129.1
             vscode-version: 1.129.1
     steps:

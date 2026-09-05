@@ -91,6 +91,9 @@ Additional graph rules:
 
 ### OQ-007 — Compatibility matrix
 
+The editor floor and compatible-editor pin below are historical; post-0.3.0 builds
+follow [ADR 0012](0012-node24-extension-host.md).
+
 - Manifest/API floor: VS Code 1.121.0.
 - Current-stable lane: the stable VS Code release recorded by each release candidate; 1.127.0 at this decision date.
 - Compatible-editor lane: VSCodium 1.121.03429 at this decision date.

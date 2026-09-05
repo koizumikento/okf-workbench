@@ -66,7 +66,8 @@ graph inspection remain read-only. While an authoring preview awaits a decision,
 exact summary and choose Apply or Cancel. Proposals containing only new files apply immediately
 after the final input; collision checks refuse an existing target without overwriting it.
 
-The extension targets VS Code-compatible desktop editors with API floor `^1.121.0`. Compatibility
+The next extension package targets Node 24 and VS Code-compatible desktop editors with API floor
+`^1.123.0`; published 0.3.0 retains its original `^1.121.0` floor. Compatibility
 is specific to the editor version, operating system, and exact extension package; the manifest
 floor is not a universal compatibility guarantee.
 

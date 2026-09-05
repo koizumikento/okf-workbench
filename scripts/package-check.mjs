@@ -266,7 +266,7 @@ export function validateVsixArchive(input, expectedProjectLicense) {
     manifest.license !== 'MIT' ||
     manifest.icon !== 'assets/icon.png' ||
     manifest.main !== './dist/extension.cjs' ||
-    manifest.engines?.vscode !== '^1.121.0'
+    manifest.engines?.vscode !== '^1.123.0'
   ) {
     throw new Error(
       'The packaged manifest does not preserve the accepted identity, MIT license, icon, entry point, and API floor.',

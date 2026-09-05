@@ -70,6 +70,10 @@ async function withExtensionHostNetworkDenied(action) {
 }
 
 suite('OKF Workbench foundation', () => {
+  test('runs on the Node 24 extension-host baseline or newer', () => {
+    assert.ok(Number(process.versions.node.split('.')[0]) >= 24, process.versions.node);
+  });
+
   test('activates offline and registers core, recovery, and sidebar command IDs', async () => {
     const extension = vscode.extensions.getExtension(extensionId);
     assert.ok(extension, `Extension ${extensionId} was not found.`);

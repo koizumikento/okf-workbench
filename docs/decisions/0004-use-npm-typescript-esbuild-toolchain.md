@@ -11,6 +11,9 @@ At the decision date, Node.js 24 is LTS, VS Code stable is 1.127, and VSCodium s
 
 ## Decision
 
+The Node target and editor floor below are superseded by
+[ADR 0012](0012-node24-extension-host.md) for post-0.3.0 builds.
+
 - Use one npm package and one committed `package-lock.json`; do not start with a monorepo or alternate package manager.
 - Pin local and CI tooling to Node.js 24.18.0 and npm 11.16.0.
 - Set the VS Code API floor to `^1.121.0` and compile the extension-host bundle for Node 22.

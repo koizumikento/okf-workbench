@@ -55,16 +55,17 @@ native CLI.
 ## Implementation baseline
 
 - Desktop-only VS Code-compatible extension for the MVP; no Web extension entry point.
-- VS Code API floor `^1.121.0`, covering the current VSCodium stable line at the decision date.
-- Release qualification pins the API-floor lane to VS Code `1.121.0`, the current-stable lane to
-  VS Code `1.129.1`, and the compatible-editor lane to VSCodium `1.121.03429`. The exact `0.3.0`
-  candidate passed those hosted lanes plus the four target-package and aggregate gates; the
+- VS Code API floor `^1.123.0` and Node 24, as accepted in [ADR 0012](decisions/0012-node24-extension-host.md).
+- Release qualification pins the API-floor lane to VS Code `1.123.0`, the current-stable lane to
+  VS Code `1.129.1`, and the compatible-editor lane to VSCodium `1.126.04524`. The exact `0.3.0`
+  candidate passed the earlier VS Code 1.121.0 / 1.129.1 and VSCodium 1.121.03429 lanes
+  plus the four target-package and aggregate gates; the
   recorded VS Code `1.127.0` headed run remains a superseded historical record and does not qualify
   the current performance contract.
 - Node.js 24 LTS and npm for development and CI.
 - Rust `1.92.0`, Cargo, and the `wasm32-unknown-unknown` target.
 - TypeScript 6 with strict checking.
-- Node 22/CommonJS extension bundle and ES2022/ESM Webview bundle produced by esbuild.
+- Node 24/CommonJS extension bundle and ES2022/ESM Webview bundle produced by esbuild.
 - Plain TypeScript and DOM UI with no React or state-management framework.
 - Vitest, VS Code Test CLI, Playwright Webview harness, and packaged-editor smoke tests at distinct layers.
 

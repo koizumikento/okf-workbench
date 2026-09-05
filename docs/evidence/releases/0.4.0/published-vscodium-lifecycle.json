@@ -1,0 +1,688 @@
+{
+  "schemaVersion": 1,
+  "kind": "packaged-extension-lifecycle",
+  "status": "passed",
+  "recordedAt": "2026-09-05T12:53:53.983Z",
+  "repositoryRevision": null,
+  "requestedEditor": "vscodium",
+  "requestedEditorVersion": "1.126.04524",
+  "extensionId": "straydog.okf-workbench",
+  "runner": {
+    "platform": "win32",
+    "architecture": "x64",
+    "node": "v24.18.0",
+    "runnerOs": null,
+    "runnerArchitecture": null,
+    "imageOs": null,
+    "imageVersion": null
+  },
+  "offlineBoundary": {
+    "extensionHost": {
+      "scope": "listed-commonjs-export-owner-properties-only",
+      "requiredInterceptedMethods": [
+        "node:http.get",
+        "node:http.request",
+        "node:https.get",
+        "node:https.request",
+        "node:http2.connect",
+        "node:net.connect",
+        "node:net.createConnection",
+        "node:tls.connect",
+        "node:dns.lookup",
+        "node:dns.resolve",
+        "node:dns.resolve4",
+        "node:dns.resolve6",
+        "node:dgram.createSocket"
+      ],
+      "optionalAvailableGlobals": [
+        "globalThis.fetch",
+        "globalThis.WebSocket"
+      ],
+      "lifetime": "extension-host-exit",
+      "limitations": "This is JavaScript-hook evidence for the listed CommonJS builtin export-owner properties and available globals only. It is not OS-level isolation and does not observe ESM named bindings, cached references, prototype or raw bindings, dns.promises, child processes, editor-owned traffic, or Webview traffic. The persisted attempt list ends at report creation; the hooks remain installed to deny later tail calls until process exit."
+    },
+    "processEnvironment": "HTTP(S)/ALL proxy points at a closed loopback port; NO_PROXY is empty",
+    "webview": "packaged CSP is separately required to contain connect-src 'none'",
+    "postUninstall": "No network observer is installed; that phase verifies extension API absence only."
+  },
+  "editor": {
+    "acquisition": "verified-vscodium-release",
+    "expectedReportedVersion": "1.126.04524",
+    "reported": {
+      "reportedVersion": "1.126.04524",
+      "commit": "4c0b0c6cc561d2d3636d1ec250935431876ce4dc",
+      "architecture": "x64"
+    },
+    "expectedExtensionHostVersion": "1.126.0",
+    "cli": {
+      "expectedReportedVersion": "1.126.04524",
+      "reported": {
+        "reportedVersion": "1.126.04524",
+        "commit": "4c0b0c6cc561d2d3636d1ec250935431876ce4dc",
+        "architecture": "x64"
+      }
+    },
+    "extensionHost": {
+      "expectedReportedVersion": "1.126.0",
+      "reportedVersion": "1.126.0"
+    }
+  },
+  "candidate": {
+    "id": "straydog.okf-workbench",
+    "version": "0.4.0",
+    "sha256": "0412dbf7120157689dc0fbca2dfb1dc1e10bc86150268f0ea2c07b490c6011bb",
+    "file": "okf-workbench-win32-x64.vsix"
+  },
+  "predecessor": {
+    "supplied": true,
+    "sha256": "d96aa19cc3ada5d4e34618d41bedc4195efa368e2b51b8ff8977984e815caf57",
+    "file": "previous.vsix"
+  },
+  "cleanInstall": {
+    "status": "passed",
+    "cleanProfile": true,
+    "installedVersion": "0.4.0",
+    "activationReport": "published-vscodium-lifecycle.activation-clean.json",
+    "activation": {
+      "schemaVersion": 1,
+      "kind": "packaged-extension-activation",
+      "status": "passed",
+      "recordedAt": "2026-09-05T12:53:58.465Z",
+      "extensionId": "straydog.okf-workbench",
+      "mode": "read-only",
+      "editor": {
+        "version": "1.126.0",
+        "expectedVersion": "1.126.0",
+        "appName": "VSCodium",
+        "appHost": "desktop",
+        "remoteName": null,
+        "uiKind": 1,
+        "versionVerification": {
+          "requestedEditorVersion": "1.126.04524",
+          "expectedExtensionHostVersion": "1.126.0",
+          "reportedExtensionHostVersion": "1.126.0"
+        }
+      },
+      "runtime": {
+        "platform": "win32",
+        "architecture": "x64",
+        "node": "24.15.0",
+        "electron": "42.2.0",
+        "chrome": "148.0.7778.97",
+        "v8": "14.8.178.14-electron.0"
+      },
+      "networkAttempts": [],
+      "networkObservation": {
+        "status": "installed",
+        "scope": "listed-commonjs-export-owner-properties-only",
+        "interceptedMethods": [
+          "node:http.get",
+          "node:http.request",
+          "node:https.get",
+          "node:https.request",
+          "node:http2.connect",
+          "node:net.connect",
+          "node:net.createConnection",
+          "node:tls.connect",
+          "node:dns.lookup",
+          "node:dns.resolve",
+          "node:dns.resolve4",
+          "node:dns.resolve6",
+          "node:dgram.createSocket",
+          "globalThis.fetch",
+          "globalThis.WebSocket"
+        ],
+        "limitations": "This is JavaScript-hook evidence for the listed CommonJS builtin export-owner properties and available globals only. It is not OS-level isolation and does not observe ESM named bindings, cached references, prototype or raw bindings, dns.promises, child processes, editor-owned traffic, or Webview traffic. The persisted attempt list ends at report creation; the hooks remain installed to deny later tail calls until process exit.",
+        "lifetime": "extension-host-exit",
+        "guardRestored": false,
+        "quiescenceMs": 500,
+        "result": "zero-attempts-observed"
+      },
+      "commands": [
+        "okfWorkbench.initializeBundle",
+        "okfWorkbench.newConcept",
+        "okfWorkbench.validateBundle",
+        "okfWorkbench.regenerateIndexes",
+        "okfWorkbench.openGraph",
+        "okfWorkbench.setupAgentIntegration",
+        "okfWorkbench.migrateBundle"
+      ],
+      "commandCatalog": [
+        {
+          "id": "okfWorkbench.initializeBundle",
+          "title": "Initialize Bundle",
+          "workspaceAccess": "write"
+        },
+        {
+          "id": "okfWorkbench.newConcept",
+          "title": "New Concept",
+          "workspaceAccess": "write"
+        },
+        {
+          "id": "okfWorkbench.validateBundle",
+          "title": "Validate Bundle",
+          "workspaceAccess": "read"
+        },
+        {
+          "id": "okfWorkbench.regenerateIndexes",
+          "title": "Regenerate Indexes",
+          "workspaceAccess": "write"
+        },
+        {
+          "id": "okfWorkbench.openGraph",
+          "title": "Open 3D Graph",
+          "workspaceAccess": "read"
+        },
+        {
+          "id": "okfWorkbench.setupAgentIntegration",
+          "title": "Set Up Agent Integration",
+          "workspaceAccess": "write"
+        },
+        {
+          "id": "okfWorkbench.migrateBundle",
+          "title": "Migrate Bundle to v0.2",
+          "workspaceAccess": "write"
+        }
+      ],
+      "workspaceTrust": {
+        "expected": null,
+        "actual": true,
+        "readOnlyAvailable": true
+      },
+      "completion": {
+        "runtimePublication": {
+          "requestId": 1,
+          "revision": 1,
+          "diagnosticsPublished": true,
+          "findingCount": 1,
+          "conceptCount": 1,
+          "edgeCount": 0
+        },
+        "graphRender": {
+          "revision": 2,
+          "requestId": 2
+        },
+        "guardedQuiescenceMs": 500
+      },
+      "readOnlyCommands": [
+        "okfWorkbench.validateBundle",
+        "okfWorkbench.openGraph"
+      ],
+      "extensionVersion": "0.4.0"
+    },
+    "sameVersionReinstall": "passed-not-counted-as-upgrade",
+    "uninstall": "passed",
+    "uninstallVerification": {
+      "extensionListAbsent": true,
+      "extensionApiAbsent": true,
+      "cleanupRestartRequired": true,
+      "editorResidueBeforeRestart": {
+        "present": true,
+        "count": 1,
+        "paths": [
+          "straydog.okf-workbench-0.4.0"
+        ]
+      },
+      "editorResidueAfterRestart": {
+        "present": true,
+        "count": 1,
+        "paths": [
+          "straydog.okf-workbench-0.4.0"
+        ]
+      },
+      "harnessCleanup": {
+        "required": true,
+        "removedCount": 1,
+        "removedVerifiedInstallationPaths": [
+          "straydog.okf-workbench-0.4.0"
+        ],
+        "policy": "remove only a direct, non-symlink extension directory whose package identity and versioned directory name match the uninstalled extension"
+      },
+      "installationResidueAbsent": true,
+      "residueCountBeforeCleanupRestart": 1,
+      "residueCountAfterCleanupRestart": 1,
+      "residueCount": 0,
+      "cleanupReport": "published-vscodium-lifecycle.uninstall-clean.json"
+    },
+    "workspacePreserved": true,
+    "workspaceFileCount": 5
+  },
+  "untrustedWorkspace": {
+    "status": "passed",
+    "cleanProfile": true,
+    "workspaceTrustEnabled": true,
+    "workspaceTrusted": false,
+    "readOnlyAvailable": true,
+    "refusedWriteCommands": [
+      {
+        "command": "okfWorkbench.initializeBundle",
+        "outcome": "refused",
+        "problemCodes": [
+          "workspace-untrusted"
+        ],
+        "completedWithoutInputAutomation": true,
+        "durationMs": 1
+      },
+      {
+        "command": "okfWorkbench.newConcept",
+        "outcome": "refused",
+        "problemCodes": [
+          "workspace-untrusted"
+        ],
+        "completedWithoutInputAutomation": true,
+        "durationMs": 0
+      },
+      {
+        "command": "okfWorkbench.regenerateIndexes",
+        "outcome": "refused",
+        "problemCodes": [
+          "workspace-untrusted"
+        ],
+        "completedWithoutInputAutomation": true,
+        "durationMs": 0
+      },
+      {
+        "command": "okfWorkbench.setupAgentIntegration",
+        "outcome": "refused",
+        "problemCodes": [
+          "workspace-untrusted"
+        ],
+        "completedWithoutInputAutomation": true,
+        "durationMs": 0
+      },
+      {
+        "command": "okfWorkbench.migrateBundle",
+        "outcome": "refused",
+        "problemCodes": [
+          "workspace-untrusted"
+        ],
+        "completedWithoutInputAutomation": true,
+        "durationMs": 0
+      }
+    ],
+    "activationReport": "published-vscodium-lifecycle.activation-untrusted.json",
+    "activation": {
+      "schemaVersion": 1,
+      "kind": "packaged-extension-activation",
+      "status": "passed",
+      "recordedAt": "2026-09-05T12:54:05.585Z",
+      "extensionId": "straydog.okf-workbench",
+      "mode": "untrusted",
+      "editor": {
+        "version": "1.126.0",
+        "expectedVersion": "1.126.0",
+        "appName": "VSCodium",
+        "appHost": "desktop",
+        "remoteName": null,
+        "uiKind": 1,
+        "versionVerification": {
+          "requestedEditorVersion": "1.126.04524",
+          "expectedExtensionHostVersion": "1.126.0",
+          "reportedExtensionHostVersion": "1.126.0"
+        }
+      },
+      "runtime": {
+        "platform": "win32",
+        "architecture": "x64",
+        "node": "24.15.0",
+        "electron": "42.2.0",
+        "chrome": "148.0.7778.97",
+        "v8": "14.8.178.14-electron.0"
+      },
+      "networkAttempts": [],
+      "networkObservation": {
+        "status": "installed",
+        "scope": "listed-commonjs-export-owner-properties-only",
+        "interceptedMethods": [
+          "node:http.get",
+          "node:http.request",
+          "node:https.get",
+          "node:https.request",
+          "node:http2.connect",
+          "node:net.connect",
+          "node:net.createConnection",
+          "node:tls.connect",
+          "node:dns.lookup",
+          "node:dns.resolve",
+          "node:dns.resolve4",
+          "node:dns.resolve6",
+          "node:dgram.createSocket",
+          "globalThis.fetch",
+          "globalThis.WebSocket"
+        ],
+        "limitations": "This is JavaScript-hook evidence for the listed CommonJS builtin export-owner properties and available globals only. It is not OS-level isolation and does not observe ESM named bindings, cached references, prototype or raw bindings, dns.promises, child processes, editor-owned traffic, or Webview traffic. The persisted attempt list ends at report creation; the hooks remain installed to deny later tail calls until process exit.",
+        "lifetime": "extension-host-exit",
+        "guardRestored": false,
+        "quiescenceMs": 500,
+        "result": "zero-attempts-observed"
+      },
+      "commands": [
+        "okfWorkbench.initializeBundle",
+        "okfWorkbench.newConcept",
+        "okfWorkbench.validateBundle",
+        "okfWorkbench.regenerateIndexes",
+        "okfWorkbench.openGraph",
+        "okfWorkbench.setupAgentIntegration",
+        "okfWorkbench.migrateBundle"
+      ],
+      "commandCatalog": [
+        {
+          "id": "okfWorkbench.initializeBundle",
+          "title": "Initialize Bundle",
+          "workspaceAccess": "write"
+        },
+        {
+          "id": "okfWorkbench.newConcept",
+          "title": "New Concept",
+          "workspaceAccess": "write"
+        },
+        {
+          "id": "okfWorkbench.validateBundle",
+          "title": "Validate Bundle",
+          "workspaceAccess": "read"
+        },
+        {
+          "id": "okfWorkbench.regenerateIndexes",
+          "title": "Regenerate Indexes",
+          "workspaceAccess": "write"
+        },
+        {
+          "id": "okfWorkbench.openGraph",
+          "title": "Open 3D Graph",
+          "workspaceAccess": "read"
+        },
+        {
+          "id": "okfWorkbench.setupAgentIntegration",
+          "title": "Set Up Agent Integration",
+          "workspaceAccess": "write"
+        },
+        {
+          "id": "okfWorkbench.migrateBundle",
+          "title": "Migrate Bundle to v0.2",
+          "workspaceAccess": "write"
+        }
+      ],
+      "workspaceTrust": {
+        "expected": false,
+        "actual": false,
+        "readOnlyAvailable": true
+      },
+      "completion": {
+        "runtimePublication": {
+          "requestId": 1,
+          "revision": 1,
+          "diagnosticsPublished": true,
+          "findingCount": 1,
+          "conceptCount": 1,
+          "edgeCount": 0
+        },
+        "graphRender": {
+          "revision": 2,
+          "requestId": 2
+        },
+        "guardedQuiescenceMs": 500
+      },
+      "readOnlyCommands": [
+        "okfWorkbench.validateBundle",
+        "okfWorkbench.openGraph"
+      ],
+      "untrustedWrites": [
+        {
+          "command": "okfWorkbench.initializeBundle",
+          "outcome": "refused",
+          "problemCodes": [
+            "workspace-untrusted"
+          ],
+          "completedWithoutInputAutomation": true,
+          "durationMs": 1
+        },
+        {
+          "command": "okfWorkbench.newConcept",
+          "outcome": "refused",
+          "problemCodes": [
+            "workspace-untrusted"
+          ],
+          "completedWithoutInputAutomation": true,
+          "durationMs": 0
+        },
+        {
+          "command": "okfWorkbench.regenerateIndexes",
+          "outcome": "refused",
+          "problemCodes": [
+            "workspace-untrusted"
+          ],
+          "completedWithoutInputAutomation": true,
+          "durationMs": 0
+        },
+        {
+          "command": "okfWorkbench.setupAgentIntegration",
+          "outcome": "refused",
+          "problemCodes": [
+            "workspace-untrusted"
+          ],
+          "completedWithoutInputAutomation": true,
+          "durationMs": 0
+        },
+        {
+          "command": "okfWorkbench.migrateBundle",
+          "outcome": "refused",
+          "problemCodes": [
+            "workspace-untrusted"
+          ],
+          "completedWithoutInputAutomation": true,
+          "durationMs": 0
+        }
+      ],
+      "extensionVersion": "0.4.0"
+    },
+    "uninstall": "passed",
+    "uninstallVerification": {
+      "extensionListAbsent": true,
+      "extensionApiAbsent": true,
+      "cleanupRestartRequired": true,
+      "editorResidueBeforeRestart": {
+        "present": true,
+        "count": 1,
+        "paths": [
+          "straydog.okf-workbench-0.4.0"
+        ]
+      },
+      "editorResidueAfterRestart": {
+        "present": true,
+        "count": 1,
+        "paths": [
+          "straydog.okf-workbench-0.4.0"
+        ]
+      },
+      "harnessCleanup": {
+        "required": true,
+        "removedCount": 1,
+        "removedVerifiedInstallationPaths": [
+          "straydog.okf-workbench-0.4.0"
+        ],
+        "policy": "remove only a direct, non-symlink extension directory whose package identity and versioned directory name match the uninstalled extension"
+      },
+      "installationResidueAbsent": true,
+      "residueCountBeforeCleanupRestart": 1,
+      "residueCountAfterCleanupRestart": 1,
+      "residueCount": 0,
+      "cleanupReport": "published-vscodium-lifecycle.uninstall-untrusted.json"
+    },
+    "workspacePreserved": true,
+    "workspaceFileCount": 5
+  },
+  "upgrade": {
+    "status": "passed",
+    "predecessorVersion": "0.3.0",
+    "candidateVersion": "0.4.0",
+    "activationReport": "published-vscodium-lifecycle.activation-upgrade.json",
+    "activation": {
+      "schemaVersion": 1,
+      "kind": "packaged-extension-activation",
+      "status": "passed",
+      "recordedAt": "2026-09-05T12:54:11.785Z",
+      "extensionId": "straydog.okf-workbench",
+      "mode": "read-only",
+      "editor": {
+        "version": "1.126.0",
+        "expectedVersion": "1.126.0",
+        "appName": "VSCodium",
+        "appHost": "desktop",
+        "remoteName": null,
+        "uiKind": 1,
+        "versionVerification": {
+          "requestedEditorVersion": "1.126.04524",
+          "expectedExtensionHostVersion": "1.126.0",
+          "reportedExtensionHostVersion": "1.126.0"
+        }
+      },
+      "runtime": {
+        "platform": "win32",
+        "architecture": "x64",
+        "node": "24.15.0",
+        "electron": "42.2.0",
+        "chrome": "148.0.7778.97",
+        "v8": "14.8.178.14-electron.0"
+      },
+      "networkAttempts": [],
+      "networkObservation": {
+        "status": "installed",
+        "scope": "listed-commonjs-export-owner-properties-only",
+        "interceptedMethods": [
+          "node:http.get",
+          "node:http.request",
+          "node:https.get",
+          "node:https.request",
+          "node:http2.connect",
+          "node:net.connect",
+          "node:net.createConnection",
+          "node:tls.connect",
+          "node:dns.lookup",
+          "node:dns.resolve",
+          "node:dns.resolve4",
+          "node:dns.resolve6",
+          "node:dgram.createSocket",
+          "globalThis.fetch",
+          "globalThis.WebSocket"
+        ],
+        "limitations": "This is JavaScript-hook evidence for the listed CommonJS builtin export-owner properties and available globals only. It is not OS-level isolation and does not observe ESM named bindings, cached references, prototype or raw bindings, dns.promises, child processes, editor-owned traffic, or Webview traffic. The persisted attempt list ends at report creation; the hooks remain installed to deny later tail calls until process exit.",
+        "lifetime": "extension-host-exit",
+        "guardRestored": false,
+        "quiescenceMs": 500,
+        "result": "zero-attempts-observed"
+      },
+      "commands": [
+        "okfWorkbench.initializeBundle",
+        "okfWorkbench.newConcept",
+        "okfWorkbench.validateBundle",
+        "okfWorkbench.regenerateIndexes",
+        "okfWorkbench.openGraph",
+        "okfWorkbench.setupAgentIntegration",
+        "okfWorkbench.migrateBundle"
+      ],
+      "commandCatalog": [
+        {
+          "id": "okfWorkbench.initializeBundle",
+          "title": "Initialize Bundle",
+          "workspaceAccess": "write"
+        },
+        {
+          "id": "okfWorkbench.newConcept",
+          "title": "New Concept",
+          "workspaceAccess": "write"
+        },
+        {
+          "id": "okfWorkbench.validateBundle",
+          "title": "Validate Bundle",
+          "workspaceAccess": "read"
+        },
+        {
+          "id": "okfWorkbench.regenerateIndexes",
+          "title": "Regenerate Indexes",
+          "workspaceAccess": "write"
+        },
+        {
+          "id": "okfWorkbench.openGraph",
+          "title": "Open 3D Graph",
+          "workspaceAccess": "read"
+        },
+        {
+          "id": "okfWorkbench.setupAgentIntegration",
+          "title": "Set Up Agent Integration",
+          "workspaceAccess": "write"
+        },
+        {
+          "id": "okfWorkbench.migrateBundle",
+          "title": "Migrate Bundle to v0.2",
+          "workspaceAccess": "write"
+        }
+      ],
+      "workspaceTrust": {
+        "expected": null,
+        "actual": true,
+        "readOnlyAvailable": true
+      },
+      "completion": {
+        "runtimePublication": {
+          "requestId": 1,
+          "revision": 1,
+          "diagnosticsPublished": true,
+          "findingCount": 1,
+          "conceptCount": 1,
+          "edgeCount": 0
+        },
+        "graphRender": {
+          "revision": 2,
+          "requestId": 2
+        },
+        "guardedQuiescenceMs": 500
+      },
+      "readOnlyCommands": [
+        "okfWorkbench.validateBundle",
+        "okfWorkbench.openGraph"
+      ],
+      "extensionVersion": "0.4.0"
+    },
+    "userSettingVerification": {
+      "key": "okfWorkbench.compatibilityUpgradeSentinel",
+      "schemaVersion": 1,
+      "predecessorVersion": "0.3.0",
+      "candidateVersion": "0.4.0",
+      "preserved": true
+    },
+    "uninstall": "passed",
+    "uninstallVerification": {
+      "extensionListAbsent": true,
+      "extensionApiAbsent": true,
+      "cleanupRestartRequired": true,
+      "editorResidueBeforeRestart": {
+        "present": true,
+        "count": 1,
+        "paths": [
+          "straydog.okf-workbench-0.4.0"
+        ]
+      },
+      "editorResidueAfterRestart": {
+        "present": true,
+        "count": 1,
+        "paths": [
+          "straydog.okf-workbench-0.4.0"
+        ]
+      },
+      "harnessCleanup": {
+        "required": true,
+        "removedCount": 1,
+        "removedVerifiedInstallationPaths": [
+          "straydog.okf-workbench-0.4.0"
+        ],
+        "policy": "remove only a direct, non-symlink extension directory whose package identity and versioned directory name match the uninstalled extension"
+      },
+      "installationResidueAbsent": true,
+      "residueCountBeforeCleanupRestart": 1,
+      "residueCountAfterCleanupRestart": 1,
+      "residueCount": 0,
+      "cleanupReport": "published-vscodium-lifecycle.uninstall-upgrade.json"
+    },
+    "workspacePreserved": true
+  }
+}

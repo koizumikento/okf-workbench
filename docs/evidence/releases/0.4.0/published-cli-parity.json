@@ -1,0 +1,26 @@
+{
+  "status": "passed",
+  "recordedAt": "2026-09-05T12:53:34.012Z",
+  "results": [
+    {
+      "target": "darwin-arm64",
+      "sha256": "c7fd52ca92854c2d514a2fa1a5046bedc17b502788f1bd415d4f60a9a0a5c29c",
+      "bytes": 2520928
+    },
+    {
+      "target": "darwin-x64",
+      "sha256": "8e8236105fe14c124623aaa214fe993b2a2efa2b1416df72c55d2438decff47e",
+      "bytes": 2927512
+    },
+    {
+      "target": "linux-x64",
+      "sha256": "034cefcaf4ea2607eede42cee12173a7c986dac0572d64997e1eeaf24245fddf",
+      "bytes": 3233600
+    },
+    {
+      "target": "win32-x64",
+      "sha256": "a09275230336841d15cc384f4196a4aab83872fe2edc9a7fc925f128a5eca1c4",
+      "bytes": 2783232
+    }
+  ]
+}

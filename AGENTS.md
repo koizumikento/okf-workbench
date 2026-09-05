@@ -17,27 +17,32 @@ initialize -> create -> edit -> validate -> explore -> repair
 ## Current state
 
 The deterministic Rust core, capability-free Wasm Extension Host adapter, native CLI, platform
-VSIX CLI integration, seven MVP
-extension command workflows, diagnostics, URI-first workspace runtime, 3D Webview, agent-template
-generation, and release-candidate harnesses are implemented. A genuine schema-v3 headed VS Code
-1.129.1 capture for the `0.3.0` candidate passes QR-002 at 873 ms p95 across 20 samples, selects
-`d3` for QR-003, and records zero remote HTTP(S)/WS or other-scheme Webview requests under the
-strict current-input contract. The retained VS Code 1.127.0 capture predates that contract and is
-historical-only. The exact `0.3.0` packaged-input revision passed the required hosted VS Code and
-VSCodium lifecycle matrix on Ubuntu, macOS, and Windows, including upgrade from the published
-`v0.2.1` universal VSIX; its browser boundary, four target packages, and aggregate package-set
-consistency also passed. The repository, issue
-tracker, security-advisory route, and GitHub Pages trust pages are public, and the hosted
-branch/scanning baseline is configured. The maintainer selected MIT for the project and approved
-the third-party notice inventory for the initial release. Signed tag `v0.3.0` on reviewed `main`
-commit `3ca746d75538d656d894d8e768b143a078e420a6` completed release workflow `30806349131`,
-publishing the GitHub Release, the universal and four target Open VSX packages, and the
-Homebrew/Scoop manifests in `koizumikento/stray-tools`. Post-publication checks matched all five
-Open VSX packages to the GitHub Release, passed the clean VSCodium macOS arm64 install/upgrade/
-uninstall lifecycle, and passed a clean Homebrew install/test/uninstall. A clean Scoop install on
-Windows and release-credential disposition remain outstanding. Do not turn a configured matrix,
-component test, single-machine benchmark, or prepared listing into a broader compatibility,
-performance, or publication claim.
+VSIX CLI integration, seven MVP command workflows, diagnostics, URI-first workspace runtime,
+3D Webview, agent-template generation, and release-candidate harnesses are implemented.
+Published `0.4.0` targets Node 24/CommonJS and VS Code 1.123 or newer. A genuine schema-v3
+headed VS Code 1.129.1 capture on Windows 11 / Ryzen 9 9900X / RTX 5070 passes QR-002 at
+851 ms p95 across 20 samples, selects `d3` for QR-003, and records zero remote HTTP(S)/WS
+or other-scheme Webview requests. The exact canonical Wasm and all universal VSIX bytes
+match the measured candidate; historical 0.3.0 and intermediate 0.4.0 captures remain
+non-qualifying for the final bytes. Release compilation favors execution speed and provider
+operations use fixed batches of sixteen while retaining byte and path safety checks.
+
+The final packaged inputs passed all seven hosted VS Code/VSCodium lifecycle lanes on Ubuntu,
+macOS, and Windows, including upgrade from published `v0.3.0`, plus the browser boundary,
+four target packages, and aggregate package-set checks. Annotated tag `v0.4.0` on reviewed
+main commit `ed45214b1d3afc4cd017a2ecc250ae182ab038ab` completed release workflow
+`33966653519`, publishing the GitHub Release, five Open VSX packages, and Homebrew/Scoop
+manifests in `koizumikento/stray-tools`. All 18 release assets and all five Open VSX packages
+were verified; each standalone CLI matches its target VSIX. Clean published VSCodium Windows
+install/upgrade/uninstall and isolated Scoop install/version/uninstall pass. A live 0.4.0
+Homebrew lifecycle and release-credential disposition remain unverified; the 0.3.0 Mac/Homebrew
+result is historical. See `docs/releases/0.4.0.md` for evidence and limits.
+
+The repository, issue tracker, security-advisory route, and GitHub Pages trust pages are public.
+The hosted branch/scanning baseline is configured. MIT and the initial third-party notice
+inventory were approved by the maintainer. Do not turn a configured matrix, component test,
+single-machine benchmark, or prepared listing into a broader compatibility, performance, or
+publication claim.
 
 Supported releases distribute the exact same native CLI bytes in both target-platform VSIX
 packages and standalone archives for macOS arm64/x64, Linux x64, and Windows x64. The universal

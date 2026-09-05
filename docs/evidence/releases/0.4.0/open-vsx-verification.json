@@ -1,0 +1,36 @@
+{
+  "status": "passed",
+  "recordedAt": "2026-09-05T12:57:56.7866624Z",
+  "packages": [
+    {
+      "target": "universal",
+      "sha256": "ac11074af65f02ddeb1ff3bbf0f58d12a2b1327281a13d72fa21b0d3d5b5dcf8",
+      "bytes": 1459446,
+      "api": "https://open-vsx.org/api/straydog/okf-workbench/0.4.0"
+    },
+    {
+      "target": "darwin-arm64",
+      "sha256": "f2282d3f614c85d34cdcbcdc5ee63bbb7858316f31ca4ec541a0d6c24c09887b",
+      "bytes": 2756412,
+      "api": "https://open-vsx.org/api/straydog/okf-workbench/darwin-arm64/0.4.0"
+    },
+    {
+      "target": "darwin-x64",
+      "sha256": "d8c3baa5ab7d7fb996ad26774a52ed1e90354d84d739ee5d72559b1cfa721c69",
+      "bytes": 2886198,
+      "api": "https://open-vsx.org/api/straydog/okf-workbench/darwin-x64/0.4.0"
+    },
+    {
+      "target": "linux-x64",
+      "sha256": "28bfda85eb9a8dfb4f8861a1d697a91c3d8c8c96f8c90ee7021b3bea14f8c2df",
+      "bytes": 2932516,
+      "api": "https://open-vsx.org/api/straydog/okf-workbench/linux-x64/0.4.0"
+    },
+    {
+      "target": "win32-x64",
+      "sha256": "0412dbf7120157689dc0fbca2dfb1dc1e10bc86150268f0ea2c07b490c6011bb",
+      "bytes": 2804234,
+      "api": "https://open-vsx.org/api/straydog/okf-workbench/win32-x64/0.4.0"
+    }
+  ]
+}

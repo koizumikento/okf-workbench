@@ -92,6 +92,29 @@ describe('Rust/Wasm core boundary', () => {
     );
   });
 
+  test('preserves byte-backed document limit diagnostics during compaction', () => {
+    for (const offset of [-1, 0, 1]) {
+      const content = new Uint8Array(OKF_SEMANTIC_LIMITS.maxSemanticDocumentBytes + offset).fill(
+        97,
+      );
+      content.set(new TextEncoder().encode('---\ntype: note\n---\n'));
+      const input: ParseBundleInput = {
+        rootUri: 'fixture:/byte-limit',
+        revision: 1,
+        documents: [
+          {
+            uri: 'fixture:/byte-limit/note.md',
+            bundlePath: 'note.md',
+            content,
+          },
+        ],
+      };
+      expect(core.inspect(input, '2026-09-05T00:00:00Z').bundle.failures).toEqual(
+        typescriptOkfCore.inspect(input, '2026-09-05T00:00:00Z').bundle.failures,
+      );
+    }
+  });
+
   test('is capability-free and reports the versioned ABI', () => {
     const bytes = readFileSync(resolve('target/wasm32-unknown-unknown/release/okf_wasm.wasm'));
     const module = new WebAssembly.Module(bytes);

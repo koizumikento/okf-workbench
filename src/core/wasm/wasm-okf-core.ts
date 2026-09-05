@@ -2,7 +2,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { GraphResourceLimitError } from '../graph/index.js';
-import { hasUnpairedUtf16Surrogate, type JsonValue, type ParseFailure } from '../model/index.js';
+import {
+  hasUnpairedUtf16Surrogate,
+  OKF_SEMANTIC_LIMITS,
+  type JsonValue,
+  type ParseFailure,
+} from '../model/index.js';
 import type { MigrationPlan } from '../migration/index.js';
 import type { ParseBundleInput } from '../parser/index.js';
 import type {
@@ -178,6 +183,8 @@ const documentDecoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true 
 
 function jsonDocumentContent(content: string | Uint8Array): string | number[] {
   if (typeof content === 'string') return content;
+  // Oversized byte inputs must keep byte-limit diagnostic precedence.
+  if (content.byteLength > OKF_SEMANTIC_LIMITS.maxSemanticDocumentBytes) return Array.from(content);
   try {
     return documentDecoder.decode(content);
   } catch {

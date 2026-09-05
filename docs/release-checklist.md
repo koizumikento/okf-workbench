@@ -2,7 +2,7 @@
 
 - Candidate: OKF Workbench `0.4.0`
 - Identifier: `straydog.okf-workbench`
-- Status: Preparing; not published
+- Status: Blocked by QR-002 performance and unavailable signing key; not published
 - Authority: the maintainer requested this release on 2026-09-05; publication uses a
   matching signed tag on reviewed `main`, per [ADR 0006](decisions/0006-publish-open-vsx-from-version-tags.md).
 
@@ -20,6 +20,8 @@ are unchanged. The completed predecessor record is [0.3.0](releases/0.3.0.md).
       minimum/current editor integration, notices, production audit, and package checks.
 - [ ] Genuine headed VS Code 1.129.1 schema-v3 evidence passes the strict evaluator
       for the current runtime and build-input identities; retain raw JSON and Markdown.
+      The retained Windows capture fails at 1,252 ms p95 (limit: 1,000 ms); QR-003 and
+      Webview network observation pass. See the [performance record](performance-evidence.md).
 - [ ] Hosted Compatibility passes all seven editor/OS lifecycle lanes, using the
       published v0.3.0 universal VSIX and its verified checksum as the upgrade input.
 - [ ] Hosted Package smoke passes the browser boundary, four target packages, and

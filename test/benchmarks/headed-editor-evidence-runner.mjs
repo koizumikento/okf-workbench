@@ -1238,13 +1238,13 @@ function onceExit(child) {
 }
 
 async function stopEditorProcess(child) {
-  if (child?.pid === undefined || child.exitCode !== null) return;
+  if (child?.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
   child.kill('SIGTERM');
   await Promise.race([onceExit(child), delay(5_000)]);
-  if (child.exitCode !== null) return;
+  if (child.exitCode !== null || child.signalCode !== null) return;
   child.kill('SIGKILL');
   await Promise.race([onceExit(child), delay(5_000)]);
-  if (child.exitCode === null) {
+  if (child.exitCode === null && child.signalCode === null) {
     throw new Error('VS Code did not exit before final performance-input verification.');
   }
 }

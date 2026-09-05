@@ -1,14 +1,33 @@
 # Performance evidence
 
-- Status: **current-candidate local headed qualification passes**; hosted compatibility and package
+- Status: **0.4.0 publication blocked by QR-002**; hosted compatibility and package
   qualification remain separate release gates
-- Date: 2026-08-03
+- Date: 2026-09-05
 - Governing decision:
   [ADR 0005, OQ-008](decisions/0005-resolve-mvp-implementation-questions.md#oq-008--performance-fixtures-and-thresholds)
 
 ## Current-candidate schema-v3 measurement and binding status
 
-The current-candidate [generated report](evidence/performance/vscode-1.129.1-0.3.0.md) and
+The 0.4.0 Windows [report](evidence/performance/vscode-1.129.1-0.4.0-windows-blocked.md)
+and [raw capture](evidence/performance/vscode-1.129.1-0.4.0-windows-blocked.json), SHA-256
+`0b702ca14996f97ac39ea5af2d3fcba57ed3d07a1f713d210b93aebefafad0bf`, record one genuine
+headed VS Code 1.129.1 run on Windows 11, Ryzen 9 9900X, and RTX 5070. The strict
+evaluator exits `2`: QR-002 p95 is **1,252 ms across 20 samples**, exceeding the
+1,000 ms gate. QR-003 selects `d3`; Webview observation records zero remote HTTP(S)/WS
+and other-scheme requests. Runtime snapshot
+`4199e8af47f641d248c55a499b334bf5884696c7abe7ee0c1223be70a97510ac` and build-input snapshot
+`d562324d3f9f6a5148656159f66c15dd86dcf9d83e267b2da07baa000a69dda8` bind the complete capture.
+
+The failed run is retained explicitly as blocked evidence, not as qualification. Initial
+Windows attempts exposed and fixed drive-case watcher rejection and editor-process exit
+handling; those incomplete attempts supply no passing samples. Do not replace this result
+with the earlier Mac result or relax the threshold. Publication still requires a complete
+strict-passing run for the current candidate. Any new capture must record its environment
+and retain the scope of this observed Windows failure.
+
+## Published 0.3.0 schema-v3 measurement (historical)
+
+The predecessor [generated report](evidence/performance/vscode-1.129.1-0.3.0.md) and
 [raw samples](evidence/performance/vscode-1.129.1-0.3.0.json), SHA-256
 `3514a963459ac213728d6baed1d697f8ae75da676b2d386c3c66bb1eb5cd3985`, were captured in one
 genuine headed VS Code `1.129.1` session on 2026-08-03. The strict evaluator exits `0` and binds

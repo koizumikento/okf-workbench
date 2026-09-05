@@ -1,4 +1,4 @@
-import { RelativePattern, workspace, type Uri } from 'vscode';
+import { RelativePattern, Uri, workspace } from 'vscode';
 
 import { isUriContained } from './pathSafety.js';
 import type {
@@ -13,22 +13,25 @@ import type {
  * provider with native rename events may submit `kind: "rename"` directly.
  */
 export function createVscodeMarkdownChangeSource(root: Uri): WorkspaceChangeSource<Uri> {
+  // VS Code serializes Windows drive letters canonically, while Uri.path can retain their case.
+  const canonicalRoot = Uri.parse(root.toString());
+  const contains = (uri: Uri): boolean => isUriContained(canonicalRoot, Uri.parse(uri.toString()));
   return {
     subscribe(listener: (change: WorkspaceChange<Uri>) => void): DisposableLike {
       const watcher = workspace.createFileSystemWatcher(new RelativePattern(root, '**/*.md'));
       const subscriptions = [
         watcher.onDidCreate((uri) => {
-          if (isUriContained(root, uri)) {
+          if (contains(uri)) {
             listener({ kind: 'create', uri });
           }
         }),
         watcher.onDidChange((uri) => {
-          if (isUriContained(root, uri)) {
+          if (contains(uri)) {
             listener({ kind: 'change', uri });
           }
         }),
         watcher.onDidDelete((uri) => {
-          if (isUriContained(root, uri)) {
+          if (contains(uri)) {
             listener({ kind: 'delete', uri });
           }
         }),

@@ -552,7 +552,13 @@ async function measureUpdateSample(options) {
   const [graphPublication, diagnosticsPublication] = await Promise.all([
     graphWait,
     diagnosticsWait,
-  ]);
+  ]).catch(async (cause) => {
+    const events = await options.frame.evaluate(() => globalThis.__okfRefreshEvents);
+    throw new Error(
+      `QR-002 ${options.eventKind} failed; graph publications: ${JSON.stringify(events)}`,
+      { cause },
+    );
+  });
   const graphPublicationMs = graphPublication.at - startedAt;
   const diagnosticsPublicationMs = diagnosticsPublication.observedAtEpochMs - startedAt;
   if (graphPublicationMs < 0 || diagnosticsPublicationMs < 0) {
@@ -1163,15 +1169,10 @@ async function readEditorMetadata(executablePath) {
   const [cli, ...prefix] = resolveCliArgsFromVSCodeExecutablePath(executablePath);
   const { stdout } =
     process.platform === 'win32'
-      ? await execFileAsync(
-          executablePath,
-          [
-            path.join(path.dirname(executablePath), 'resources/app/out/cli.js'),
-            ...prefix,
-            '--version',
-          ],
-          { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, windowsHide: true },
-        )
+      ? await execFileAsync(`"${cli}"`, ['--version'], {
+          shell: true,
+          windowsHide: true,
+        })
       : await execFileAsync(cli, [...prefix, '--version']);
   const [versionLine, commitLine] = stdout.trim().split(/\r?\n/u);
   if (

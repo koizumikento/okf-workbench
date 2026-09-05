@@ -14,6 +14,11 @@ The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 - Update development dependencies undici, fast-uri, js-yaml, and postcss, including
   their security fixes, and the transitive nanoid package.
 
+### Fixed
+
+- Keep Windows file-watcher refreshes working when the bundle root and event URI
+  use different drive-letter casing.
+
 ## 0.3.0 - 2026-08-03
 
 ### Added

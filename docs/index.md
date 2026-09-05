@@ -100,6 +100,7 @@ Accepted decisions are recorded under [decisions/](decisions/):
 - [0009 — Preview only proposals that may change existing files](decisions/0009-preview-only-existing-file-changes.md)
 - [0010 — Support OKF v0.2 with a v0.1 compatibility fallback](decisions/0010-adopt-okf-v0.2-with-v0.1-fallback.md)
 - [0011 — Provide explicit assisted v0.2 migration](decisions/0011-explicit-assisted-v0.2-migration.md)
+- [0012 — Target Node 24 in the Extension Host](decisions/0012-node24-extension-host.md)
 
 ## Documentation rules
 

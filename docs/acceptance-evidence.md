@@ -87,7 +87,7 @@ The Extension Host suite separately registers an actual non-`file:` workspace pr
 the public commands with its Explorer/root URI:
 
 ```sh
-mise x node@24.18.0 -- env VSCODE_TEST_VERSION=1.121.0 npm run test:integration
+mise x node@24.18.0 -- env VSCODE_TEST_VERSION=1.123.0 npm run test:integration
 mise x node@24.18.0 -- env VSCODE_TEST_VERSION=1.129.1 npm run test:integration
 ```
 

@@ -1,7 +1,7 @@
 # Compatibility matrix
 
-- Status: `0.3.0` candidate qualified on its exact packaged-input revision
-- Current matrix qualified: 2026-08-03
+- Status: Node 24 matrix configured; qualification is bound to each new candidate
+- Historical `0.3.0` matrix qualified: 2026-08-03
 - Extension identifier expected by the gate: `straydog.okf-workbench`
 
 ## What this matrix proves
@@ -45,7 +45,7 @@ future-version compatibility claim.
 
 ## Retained predecessor `0.2.1` qualification
 
-The workflow requires VS Code `1.121.0` on Ubuntu, VS Code `1.129.1` on Ubuntu, macOS,
+The recorded workflow required VS Code `1.121.0` on Ubuntu, VS Code `1.129.1` on Ubuntu, macOS,
 and Windows, and VSCodium `1.121.03429` on Ubuntu, macOS, and Windows.
 [Compatibility run 30335399539](https://github.com/koizumikento/okf-workbench/actions/runs/30335399539)
 passed the candidate, acceptance/Webview, and all seven lifecycle jobs for revision
@@ -84,7 +84,7 @@ Those results remain historical evidence for the exact `0.2.0` bytes and do not 
 
 ## Preserved prior universal-candidate qualification
 
-The workflow requires VS Code `1.121.0` on Ubuntu, VS Code `1.129.1` on Ubuntu, macOS,
+The recorded workflow required VS Code `1.121.0` on Ubuntu, VS Code `1.129.1` on Ubuntu, macOS,
 and Windows, and VSCodium `1.121.03429` on Ubuntu, macOS, and Windows.
 [Compatibility run 30058922150](https://github.com/koizumikento/okf-workbench/actions/runs/30058922150)
 passed the candidate, acceptance/Webview, and all seven lifecycle jobs at evidence revision
@@ -180,9 +180,9 @@ a published migration source.
 
 | Editor | Exact version | Ubuntu 24.04 | macOS 15 | Windows 2025 | Acquisition |
 | --- | --- | --- | --- | --- | --- |
-| VS Code | `1.121.0` | Required | N/A | N/A | Pinned editor test download |
+| VS Code | `1.123.0` | Required | N/A | N/A | Pinned editor test download |
 | VS Code | `1.129.1` | Required | Required | Required | Pinned editor test download |
-| VSCodium | `1.121.03429` | Required | Required | Required | Official archive with pinned SHA-256 |
+| VSCodium | `1.126.04524` | Required | Required | Required | Official archive with pinned SHA-256 |
 
 These are the lanes the next qualification run must pass. The `Passed` results above belong to the
 explicitly named predecessor revisions and do not transfer to the current source candidate.
@@ -201,12 +201,12 @@ architecture fails closed rather than downloading a different build.
 ## VSCodium release pin
 
 The compatible-editor lane uses the official
-[VSCodium `1.121.03429` GitHub release](https://github.com/VSCodium/vscodium/releases/tag/1.121.03429),
-published at `2026-05-22T22:14:58Z`. That release states that it updates its
-upstream VS Code base to `1.121.0`.
+[VSCodium `1.126.04524` GitHub release](https://github.com/VSCodium/vscodium/releases/tag/1.126.04524),
+published at `2026-07-07T13:01:09Z`. That release states that it updates its
+upstream VS Code base to `1.126.0`.
 
-The VSCodium command-line wrapper reports the release tag `1.121.03429`, while
-the extension host reports its upstream API version as `1.121.0`. The gate
+The VSCodium command-line wrapper reports the release tag `1.126.04524`, while
+the extension host reports its upstream API version as `1.126.0`. The gate
 checks and records both values instead of treating either one as an alias.
 
 Every supported desktop archive is pinned by its exact release URL and SHA-256.
@@ -214,12 +214,12 @@ The workflow verifies the digest before extraction or execution.
 
 | Platform | Architecture | Official archive | SHA-256 |
 | --- | --- | --- | --- |
-| Linux | x64 | [`VSCodium-linux-x64-1.121.03429.tar.gz`](https://github.com/VSCodium/vscodium/releases/download/1.121.03429/VSCodium-linux-x64-1.121.03429.tar.gz) | `2c9b06735d4c1face570935f4968d358f9f6269f5d9237813d0b825c7d70a143` |
-| Linux | arm64 | [`VSCodium-linux-arm64-1.121.03429.tar.gz`](https://github.com/VSCodium/vscodium/releases/download/1.121.03429/VSCodium-linux-arm64-1.121.03429.tar.gz) | `993e5dbf0f06399d069d968a452fd30334031046033a0723eb0ea534bcb9910d` |
-| macOS | x64 | [`VSCodium-darwin-x64-1.121.03429.zip`](https://github.com/VSCodium/vscodium/releases/download/1.121.03429/VSCodium-darwin-x64-1.121.03429.zip) | `6c2ec07c7d9e2a69ac58838789f346283fe4550098cae31f5374948a5d035e43` |
-| macOS | arm64 | [`VSCodium-darwin-arm64-1.121.03429.zip`](https://github.com/VSCodium/vscodium/releases/download/1.121.03429/VSCodium-darwin-arm64-1.121.03429.zip) | `73c2b5ed72a9446d638b69947e8ca0dbe71117ea9cd4a54c61591a428508cfb6` |
-| Windows | x64 | [`VSCodium-win32-x64-1.121.03429.zip`](https://github.com/VSCodium/vscodium/releases/download/1.121.03429/VSCodium-win32-x64-1.121.03429.zip) | `cde622b803be7e0e24742790a2f3583eeeadae91c9332ea78af579853625bd8d` |
-| Windows | arm64 | [`VSCodium-win32-arm64-1.121.03429.zip`](https://github.com/VSCodium/vscodium/releases/download/1.121.03429/VSCodium-win32-arm64-1.121.03429.zip) | `661ba191c8f4a590275554c8d983fbde105b960656c55cc8929413a9935affff` |
+| Linux | x64 | [`VSCodium-linux-x64-1.126.04524.tar.gz`](https://github.com/VSCodium/vscodium/releases/download/1.126.04524/VSCodium-linux-x64-1.126.04524.tar.gz) | `adf3548df055d18e476cdee887488ba7486b879ad99a31a546c6b5c5ff296c24` |
+| Linux | arm64 | [`VSCodium-linux-arm64-1.126.04524.tar.gz`](https://github.com/VSCodium/vscodium/releases/download/1.126.04524/VSCodium-linux-arm64-1.126.04524.tar.gz) | `73d87d46d4dc208fe12c0497dc607aab0a6e2bf332f54a0b6826a3a1aa32bc34` |
+| macOS | x64 | [`VSCodium-darwin-x64-1.126.04524.zip`](https://github.com/VSCodium/vscodium/releases/download/1.126.04524/VSCodium-darwin-x64-1.126.04524.zip) | `fa0637bf6fa511487611bc65dc47b0d4e247513e16309879bf9bd4677cf5243e` |
+| macOS | arm64 | [`VSCodium-darwin-arm64-1.126.04524.zip`](https://github.com/VSCodium/vscodium/releases/download/1.126.04524/VSCodium-darwin-arm64-1.126.04524.zip) | `f21ee52629eb5e39c055daea70118b7a6055c639aecf3dad05e1997a9ad83ac0` |
+| Windows | x64 | [`VSCodium-win32-x64-1.126.04524.zip`](https://github.com/VSCodium/vscodium/releases/download/1.126.04524/VSCodium-win32-x64-1.126.04524.zip) | `5b5bc348861ce861aed968b086233b45050694013c0607ea66b401f31b987c57` |
+| Windows | arm64 | [`VSCodium-win32-arm64-1.126.04524.zip`](https://github.com/VSCodium/vscodium/releases/download/1.126.04524/VSCodium-win32-arm64-1.126.04524.zip) | `f1b6c2303c6c69142aec6f0d4bb8048c7a9f664fcc535b0adc7ff02eac66dae7` |
 
 ## Lifecycle evidence
 

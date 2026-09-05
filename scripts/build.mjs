@@ -107,7 +107,7 @@ const extensionOptions = {
   format: 'cjs',
   outfile: 'dist/extension.cjs',
   platform: 'node',
-  target: 'node22',
+  target: 'node24',
 };
 
 const webviewOptions = {
@@ -150,7 +150,7 @@ if (watch) {
   const metadata = {
     production,
     targets: {
-      extension: 'node22/commonjs',
+      extension: 'node24/commonjs',
       webview: 'es2022/esm',
       core: 'wasm32-unknown-unknown',
     },

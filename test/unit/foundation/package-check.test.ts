@@ -163,7 +163,7 @@ function contentFor(name: string): string | Uint8Array {
       },
       icon: 'assets/icon.png',
       main: './dist/extension.cjs',
-      engines: { vscode: '^1.121.0' },
+      engines: { vscode: '^1.123.0' },
     })}\n`;
   }
   if (name === 'extension.vsixmanifest') return VSIX_MANIFEST;

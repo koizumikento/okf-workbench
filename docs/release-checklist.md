@@ -72,7 +72,7 @@ does not qualify these bytes. The completed `0.2.1` record is archived at
    mise x node@24.18.0 -- npm ci
    mise x node@24.18.0 -- npx --no-install playwright install chromium
    mise x node@24.18.0 -- npm run check
-   mise x node@24.18.0 -- env VSCODE_TEST_VERSION=1.121.0 npm run test:integration
+   mise x node@24.18.0 -- env VSCODE_TEST_VERSION=1.123.0 npm run test:integration
    mise x node@24.18.0 -- env VSCODE_TEST_VERSION=1.129.1 npm run test:integration
    mise x node@24.18.0 -- npm run test:webview
    mise x node@24.18.0 -- npm run package

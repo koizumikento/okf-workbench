@@ -16,15 +16,17 @@ are unchanged. The completed predecessor record is [0.3.0](releases/0.3.0.md).
 - [x] Maintainer authorized release preparation and publication.
 - [x] Manifest, npm/Cargo lockfiles, package checks, and version assertions use 0.4.0.
 - [x] Changelog contains the dated 0.4.0 entry and explains the editor requirement.
-- [ ] Current candidate passes source, Rust, unit, acceptance, security, browser,
+- [x] Packaged-input revision `4c5a092` passes source, Rust, unit, acceptance, security, browser,
       minimum/current editor integration, notices, production audit, and package checks.
 - [ ] Genuine headed VS Code 1.129.1 schema-v3 evidence passes the strict evaluator
       for the current runtime and build-input identities; retain raw JSON and Markdown.
       The retained Windows capture fails at 1,252 ms p95 (limit: 1,000 ms); QR-003 and
       Webview network observation pass. See the [performance record](performance-evidence.md).
-- [ ] Hosted Compatibility passes all seven editor/OS lifecycle lanes, using the
+      Its locally built Wasm also differs from the hosted canonical Wasm; a passing
+      exact-artifact capture is required before publication.
+- [x] Hosted Compatibility passes all seven editor/OS lifecycle lanes, using the
       published v0.3.0 universal VSIX and its verified checksum as the upgrade input.
-- [ ] Hosted Package smoke passes the browser boundary, four target packages, and
+- [x] Hosted Package smoke passes the browser boundary, four target packages, and
       aggregate consistency on the same packaged-input revision.
 - [ ] Version and evidence changes are reviewed and merged into protected main.
 - [x] Repository secret names OPEN_VSX_TOKEN, STRAY_TOOLS_TOKEN, and TAP_REPO exist.

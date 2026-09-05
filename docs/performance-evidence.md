@@ -18,6 +18,13 @@ and other-scheme requests. Runtime snapshot
 `4199e8af47f641d248c55a499b334bf5884696c7abe7ee0c1223be70a97510ac` and build-input snapshot
 `d562324d3f9f6a5148656159f66c15dd86dcf9d83e267b2da07baa000a69dda8` bind the complete capture.
 
+This runtime was built locally on Windows. Its Wasm SHA-256 is
+`98bdcb2ae0e9e219dcdbf7a56b09441aab823805a4cb37658556ece391e4a1fc`, while the hosted
+candidate contains `2d767cdf51d621cf72847427fdb36ecb998bf0716bb48be85426261cad9a9455`.
+The other 12 VSIX payload files match the local workspace, but that does not establish
+whole-runtime equality. This capture cannot qualify the hosted release artifact even
+if its QR-002 result were passing; exact-artifact measurement remains required.
+
 The failed run is retained explicitly as blocked evidence, not as qualification. Initial
 Windows attempts exposed and fixed drive-case watcher rejection and editor-process exit
 handling; those incomplete attempts supply no passing samples. Do not replace this result

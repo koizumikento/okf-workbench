@@ -13,11 +13,13 @@ The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
   New packages require VS Code 1.123 or newer; the VSCodium test pin is 1.126.04524.
 - Update development dependencies undici, fast-uri, js-yaml, and postcss, including
   their security fixes, and the transitive nanoid package.
+- Optimize release binaries for execution speed and process provider reads in bounded
+  batches of sixteen, retaining the document and aggregate byte limits.
 
 ### Fixed
 
-- Reduce document transfer overhead at the Wasm boundary while preserving UTF-8 errors
-  and source offsets.
+- Reduce document transfer overhead at the Wasm boundary while preserving UTF-8 errors,
+  source offsets, and oversized byte-document diagnostics.
 - Keep Windows file-watcher refreshes working when the bundle root and event URI
   use different drive-letter casing.
 

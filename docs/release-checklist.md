@@ -2,7 +2,7 @@
 
 - Candidate: OKF Workbench `0.4.0`
 - Identifier: `straydog.okf-workbench`
-- Status: All candidate qualification gates pass; awaiting reviewed main and tag publication
+- Status: Final performance requalification in progress; not published
 - Authority: the maintainer requested this release on 2026-09-05; publication uses a
   matching version tag on reviewed `main`, per [ADR 0006](decisions/0006-publish-open-vsx-from-version-tags.md).
 
@@ -16,15 +16,15 @@ are unchanged. The completed predecessor record is [0.3.0](releases/0.3.0.md).
 - [x] Maintainer authorized release preparation and publication.
 - [x] Manifest, npm/Cargo lockfiles, package checks, and version assertions use 0.4.0.
 - [x] Changelog contains the dated 0.4.0 entry and explains the editor requirement.
-- [x] Packaged-input revision `a676122` passes source, Rust, unit, acceptance, security, browser,
+- [ ] Packaged-input revision `a676122` passes source, Rust, unit, acceptance, security, browser,
       minimum/current editor integration, notices, production audit, and package checks.
-- [x] Genuine headed VS Code 1.129.1 schema-v3 evidence passes the strict evaluator:
+- [ ] Genuine headed VS Code 1.129.1 schema-v3 evidence passes the strict evaluator:
       QR-002 p95 961 ms across 20 samples, QR-003 `d3`, and zero remote Webview requests.
       All 13 hosted VSIX payload files, including canonical Wasm, match the measured
       runtime. Raw JSON and the CI receipt are retained in the [performance record](performance-evidence.md).
-- [x] Hosted Compatibility passes all seven editor/OS lifecycle lanes, using the
+- [ ] Hosted Compatibility passes all seven editor/OS lifecycle lanes, using the
       published v0.3.0 universal VSIX and its verified checksum as the upgrade input.
-- [x] Hosted Package smoke passes the browser boundary, four target packages, and
+- [ ] Hosted Package smoke passes the browser boundary, four target packages, and
       aggregate consistency on the same packaged-input revision.
 - [ ] Version and evidence changes are reviewed and merged into protected main.
 - [x] Repository secret names OPEN_VSX_TOKEN, STRAY_TOOLS_TOKEN, and TAP_REPO exist.

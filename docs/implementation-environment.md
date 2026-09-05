@@ -613,7 +613,7 @@ code-unit/UTF-8 envelope. This admits the roughly 12 KiB percent-encoded represe
 4 KiB multibyte path while still bounding retained URI identities.
 
 One selected-bundle refresh admits at most 2,000 Markdown documents, 2 MiB for each reported and
-actual document, 32 MiB of cumulative Markdown bytes, eight concurrent provider operations,
+actual document, 32 MiB of cumulative Markdown bytes, sixteen concurrent provider operations,
 64 traversal segments, 32 MiB of cumulative retained path/URI identity, and 128 retained failures.
 Every fixed concurrency batch uses `Promise.allSettled`; cancellation or one fatal result is
 reported only after all already-issued physical calls settle. Provider metadata is checked before
@@ -860,3 +860,10 @@ Before merging the Phase 0 scaffold:
 - Custom templates and third-party template packages.
 - TypeScript 7 adoption.
 - Backward compatibility below VS Code 1.123.
+
+Release builds use Rust optimization level 3 with the existing single codegen unit and LTO.
+The 0.4.0 qualification favors execution speed over the former size-focused profile;
+all canonical Wasm and native CLI artifacts are rebuilt and qualified with this profile.
+The provider concurrency bound is sixteen calls per fixed batch. Per-document, aggregate-byte,
+identity, and cancellation-draining checks remain in force; parent generations are still
+validated around every batch.

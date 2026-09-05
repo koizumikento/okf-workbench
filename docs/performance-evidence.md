@@ -1,14 +1,14 @@
 # Performance evidence
 
-- Status: **0.4.0 QR-002, QR-003, and Webview network gates pass**; hosted compatibility and package
+- Status: **0.4.0 final performance requalification in progress**; hosted compatibility and package
   qualification remain separate release gates
 - Date: 2026-09-05
 - Governing decision:
   [ADR 0005, OQ-008](decisions/0005-resolve-mvp-implementation-questions.md#oq-008--performance-fixtures-and-thresholds)
 
-## Current-candidate schema-v3 measurement and binding status
+## Earlier 0.4.0 schema-v3 measurement (a676122)
 
-The 0.4.0 [report](evidence/performance/vscode-1.129.1-0.4.0.md) and
+The earlier 0.4.0 [report](evidence/performance/vscode-1.129.1-0.4.0.md) and
 [raw capture](evidence/performance/vscode-1.129.1-0.4.0.json), SHA-256
 `439d47c36c935c7f6180d3edff7a2ec3107faaa0ca795b3ae0b55210fe81f59b`, record a genuine
 headed VS Code 1.129.1 run at 2026-09-05T12:01:22.462Z on Windows 11, Ryzen 9 9900X,
@@ -43,6 +43,11 @@ before running the headed runner. The build checks the module hash and current R
 input hash against the receipt; the runner binds both files into its private build tree.
 The receipt provides checksum binding, not a signature: retrieve it from the verified CI
 run. Preserve the same canonical inputs when rebuilding to strictly reevaluate this capture.
+
+The subsequent byte-limit diagnostic fix required remeasurement: revision f793844 recorded
+1,190 ms p95 on the same Windows hardware. It is retained below as a failed gate; the
+961 ms result cannot qualify later runtime bytes. Speed-focused compiler optimization and
+bounded provider batching are now undergoing fresh exact-artifact qualification.
 
 ## Initial 0.4.0 Windows measurement (historical failure)
 

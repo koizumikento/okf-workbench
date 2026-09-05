@@ -2,7 +2,7 @@
 
 - Candidate: OKF Workbench `0.4.0`
 - Identifier: `straydog.okf-workbench`
-- Status: Performance and exact-Wasm gates pass; completing hosted qualification
+- Status: All candidate qualification gates pass; awaiting reviewed main and tag publication
 - Authority: the maintainer requested this release on 2026-09-05; publication uses a
   matching version tag on reviewed `main`, per [ADR 0006](decisions/0006-publish-open-vsx-from-version-tags.md).
 
@@ -22,7 +22,7 @@ are unchanged. The completed predecessor record is [0.3.0](releases/0.3.0.md).
       QR-002 p95 961 ms across 20 samples, QR-003 `d3`, and zero remote Webview requests.
       All 13 hosted VSIX payload files, including canonical Wasm, match the measured
       runtime. Raw JSON and the CI receipt are retained in the [performance record](performance-evidence.md).
-- [ ] Hosted Compatibility passes all seven editor/OS lifecycle lanes, using the
+- [x] Hosted Compatibility passes all seven editor/OS lifecycle lanes, using the
       published v0.3.0 universal VSIX and its verified checksum as the upgrade input.
 - [x] Hosted Package smoke passes the browser boundary, four target packages, and
       aggregate consistency on the same packaged-input revision.

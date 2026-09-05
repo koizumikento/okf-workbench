@@ -1,39 +1,38 @@
 # Performance evidence
 
-- Status: **0.4.0 final performance requalification in progress**; hosted compatibility and package
-  qualification remain separate release gates
+- Status: **0.4.0 exact-Wasm QR-002, QR-003, and Webview network gates pass**;
+  hosted compatibility and packaging remain separate gates
 - Date: 2026-09-05
 - Governing decision:
   [ADR 0005, OQ-008](decisions/0005-resolve-mvp-implementation-questions.md#oq-008--performance-fixtures-and-thresholds)
 
-## Earlier 0.4.0 schema-v3 measurement (a676122)
+## Current-candidate schema-v3 measurement and binding
 
-The earlier 0.4.0 [report](evidence/performance/vscode-1.129.1-0.4.0.md) and
+The final 0.4.0 [report](evidence/performance/vscode-1.129.1-0.4.0.md) and
 [raw capture](evidence/performance/vscode-1.129.1-0.4.0.json), SHA-256
-`439d47c36c935c7f6180d3edff7a2ec3107faaa0ca795b3ae0b55210fe81f59b`, record a genuine
-headed VS Code 1.129.1 run at 2026-09-05T12:01:22.462Z on Windows 11, Ryzen 9 9900X,
-31.15 GiB RAM, and RTX 5070. The strict evaluator exits `0`: QR-002 p95 is **961 ms
+`d193c406d67456d8cb90187a840a28349696dc602f3ce766ffc15565989603da`, record one genuine
+headed VS Code 1.129.1 run at 2026-09-05T12:26:53.393Z on Windows 11, Ryzen 9 9900X,
+31.15 GiB RAM, and RTX 5070. The strict evaluator exits `0`: QR-002 p95 is **851 ms
 across 20 samples**, below the unchanged 1,000 ms limit. QR-003 passes with `d3`;
 remote HTTP(S)/WS and other-scheme request counts are zero.
 
-The measured Wasm is the canonical CI artifact from
-[Package smoke 33964732126](https://github.com/koizumikento/okf-workbench/actions/runs/33964732126),
-revision `a676122d8589afe860169857182aa807e4e41e03`. Its SHA-256 is
-`2d767cdf51d621cf72847427fdb36ecb998bf0716bb48be85426261cad9a9455`.
-All **13 extension payload files** match the hosted universal candidate from
-[Compatibility 33964733330](https://github.com/koizumikento/okf-workbench/actions/runs/33964733330)
-byte-for-byte. That VSIX is 1,310,102 bytes with SHA-256
-`15c9893e45ba2213652ebd6d1d75a60909e1db94b566ba7acd3a5273372ae54d`.
-Runtime snapshot `8a6d032b167a7ec95d07b73024c989bab6dbdff5f9a263f09ae44701f88d8d3f`
-and build-input snapshot `8d56335cceb71959548d97bb3b06329a3d21f163843ed92e976e6750b1e29607`
+The measured Wasm is the canonical artifact from
+[Package smoke 33965908284](https://github.com/koizumikento/okf-workbench/actions/runs/33965908284),
+revision `06287122d3ceaa028875643276fdaca8e92aef7b`. Its SHA-256 is
+`000f1fd0a721285e31ec4ec6673b4717892a468a77116225dd656eccbb37dc2f`.
+Runtime snapshot `d5b2436cba1ee474a97b208242fdea2300ff23b8446d28214fca40e79c30e704`
+and build-input snapshot `a22b99a07a6adca3d5b459670ce03f02b1f85dd905b6d892ff6c9d758baca1ba`
 bind this capture. The retained [CI build receipt](evidence/performance/vscode-1.129.1-0.4.0-build-metadata.json)
-has SHA-256 `02b5cc9d0f2b39f05700204ecd8f4a0c7499b7529a19acc0e002cb343d856a9c`.
+has SHA-256 `a6c5f341ff1679fe3479c06b6c731c870fea2ef04cd117c36377dcd032e193c7`
+and Rust input digest `80916738fa3be41c86ade827e392ebf484282d9f8438f325c51ae0fd96c29a92`.
+The [release record](releases/0.4.0.md) tracks the universal candidate and hosted package comparison.
 
-Valid UTF-8 byte documents now cross the existing JSON ABI as strings, avoiding numeric
-byte-array expansion. Invalid UTF-8 still follows the original byte path so diagnostics
-remain intact. The watcher debounce and performance thresholds are unchanged. This one
-Windows observation is not a guarantee for other hardware and does not isolate the
-effect of the transport optimization from the change to canonical Wasm.
+Valid UTF-8 byte documents within the source-size limit now cross the existing JSON ABI
+as strings. Malformed or oversized byte inputs retain their original representation and
+diagnostics. Release compilation favors execution speed, and provider operations use
+bounded batches of sixteen while retaining all byte, identity, parent-generation, and
+cancellation checks. The watcher debounce remains 250 ms. This one Windows observation
+is not a guarantee for other machines and does not isolate each optimization's contribution.
 
 To reproduce the canonical binding, obtain the Wasm and build receipt from the trusted
 CI artifact for these Rust inputs. Place them at `artifacts/canonical-wasm/okf_core.wasm`
@@ -44,10 +43,15 @@ input hash against the receipt; the runner binds both files into its private bui
 The receipt provides checksum binding, not a signature: retrieve it from the verified CI
 run. Preserve the same canonical inputs when rebuilding to strictly reevaluate this capture.
 
-The subsequent byte-limit diagnostic fix required remeasurement: revision f793844 recorded
-1,190 ms p95 on the same Windows hardware. It is retained below as a failed gate; the
-961 ms result cannot qualify later runtime bytes. Speed-focused compiler optimization and
-bounded provider batching are now undergoing fresh exact-artifact qualification.
+## Intermediate 0.4.0 measurements (historical)
+
+Revision a676122 recorded [961 ms p95](evidence/performance/vscode-1.129.1-0.4.0-a676122.md)
+([raw capture](evidence/performance/vscode-1.129.1-0.4.0-a676122.json)). The later byte-limit
+correction required new runtime evidence: f793844 recorded **1,190 ms p95**, failing QR-002
+([raw capture](evidence/performance/vscode-1.129.1-0.4.0-f793844-blocked.json)). Its regenerated
+[historical report](evidence/performance/vscode-1.129.1-0.4.0-f793844-blocked.md) marks its
+input identities unmeasured against the subsequent candidate. Neither capture qualifies
+the final bytes. Both are retained rather than selecting a favorable predecessor result.
 
 ## Initial 0.4.0 Windows measurement (historical failure)
 

@@ -83,7 +83,7 @@
           "format": "esm"
         },
         "src/core/wasm/wasm-okf-core.ts": {
-          "bytes": 17118,
+          "bytes": 17320,
           "imports": [
             {
               "path": "node:fs",
@@ -3480,7 +3480,7 @@
           "format": "esm"
         },
         "src/extension/workspace/readSafety.ts": {
-          "bytes": 4372,
+          "bytes": 4373,
           "imports": [
             {
               "path": "src/extension/workspace/types.ts",
@@ -4994,7 +4994,7 @@
               "bytesInOutput": 16043
             },
             "src/core/wasm/wasm-okf-core.ts": {
-              "bytesInOutput": 7231
+              "bytesInOutput": 7295
             },
             "src/core/model/resource-limits.ts": {
               "bytesInOutput": 2089
@@ -5321,7 +5321,7 @@
               "bytesInOutput": 591
             },
             "src/extension/workspace/readSafety.ts": {
-              "bytesInOutput": 1877
+              "bytesInOutput": 1878
             },
             "src/extension/workspace/directorySafety.ts": {
               "bytesInOutput": 4049
@@ -5471,7 +5471,7 @@
               "bytesInOutput": 1755
             }
           },
-          "bytes": 462247
+          "bytes": 462312
         }
       }
     },
@@ -12094,8 +12094,8 @@
     "abiVersion": 1,
     "artifact": "dist/okf_core.wasm",
     "source": "local-locked-build",
-    "sha256": "2d767cdf51d621cf72847427fdb36ecb998bf0716bb48be85426261cad9a9455",
-    "sourceInputSha256": "cff8e5a20d9234e33d94cd3dce11df45cca74057ae5e36025e8ae3ccd3e6de0e",
+    "sha256": "000f1fd0a721285e31ec4ec6673b4717892a468a77116225dd656eccbb37dc2f",
+    "sourceInputSha256": "80916738fa3be41c86ade827e392ebf484282d9f8438f325c51ae0fd96c29a92",
     "wasi": false
   }
 }

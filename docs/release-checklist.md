@@ -2,7 +2,7 @@
 
 - Candidate: OKF Workbench `0.4.0`
 - Identifier: `straydog.okf-workbench`
-- Status: Final exact-artifact performance and CI pass; completing hosted qualification
+- Status: Published and verified; remaining scope is recorded in the release record
 - Authority: the maintainer requested this release on 2026-09-05; publication uses a
   matching version tag on reviewed `main`, per [ADR 0006](decisions/0006-publish-open-vsx-from-version-tags.md).
 
@@ -22,11 +22,11 @@ are unchanged. The completed predecessor record is [0.3.0](releases/0.3.0.md).
       QR-002 p95 851 ms across 20 samples, QR-003 `d3`, and zero remote Webview requests.
       All 13 hosted VSIX payload files, including canonical Wasm, match the measured
       runtime. Raw JSON and the CI receipt are retained in the [performance record](performance-evidence.md).
-- [ ] Hosted Compatibility passes all seven editor/OS lifecycle lanes, using the
+- [x] Hosted Compatibility passes all seven editor/OS lifecycle lanes, using the
       published v0.3.0 universal VSIX and its verified checksum as the upgrade input.
-- [ ] Hosted Package smoke passes the browser boundary, four target packages, and
+- [x] Hosted Package smoke passes the browser boundary, four target packages, and
       aggregate consistency on the same packaged-input revision.
-- [ ] Version and evidence changes are reviewed and merged into protected main.
+- [x] Version and evidence changes are reviewed and merged into protected main (#59).
 - [x] Repository secret names OPEN_VSX_TOKEN, STRAY_TOOLS_TOKEN, and TAP_REPO exist.
       Only the tagged workflow verifies their values and publisher authorization.
 - [x] Tag-triggered publication follows ADR 0006; a signature is not a workflow prerequisite.
@@ -49,13 +49,13 @@ for different bytes. Missing credentials fail closed.
 
 ## After publication
 
-- [ ] Verify tag identity, release workflow, all 18 release assets, and checksums.
-- [ ] Match all five Open VSX packages to their GitHub Release bytes.
-- [ ] Run a clean published VSCodium Windows lifecycle, including 0.3.0 upgrade,
+- [x] Verify tag identity, release workflow, all 18 release assets, and checksums.
+- [x] Match all five Open VSX packages to their GitHub Release bytes.
+- [x] Run a clean published VSCodium Windows lifecycle, including 0.3.0 upgrade,
       untrusted/offline behavior, uninstall, and workspace/settings preservation.
-- [ ] Verify Homebrew/Scoop manifest version and archive checksums.
-- [ ] Run an isolated clean Scoop install, `okf version`, and uninstall.
-- [ ] Record any unavailable post-publication checks and credential-disposition gaps.
+- [x] Verify Homebrew/Scoop manifest version and archive checksums.
+- [x] Run an isolated clean Scoop install, `okf version`, and uninstall.
+- [x] Record any unavailable post-publication checks and credential-disposition gaps.
 
 Record results in [the 0.4.0 release record](releases/0.4.0.md). Existing 0.3.0
 receipts remain historical. Open VSX versions are immutable; preserve evidence and

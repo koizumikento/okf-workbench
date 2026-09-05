@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "kind": "packaged-extension-activation",
+  "status": "passed",
+  "recordedAt": "2026-09-05T12:54:05.585Z",
+  "extensionId": "straydog.okf-workbench",
+  "mode": "untrusted",
+  "editor": {
+    "version": "1.126.0",
+    "expectedVersion": "1.126.0",
+    "appName": "VSCodium",
+    "appHost": "desktop",
+    "remoteName": null,
+    "uiKind": 1,
+    "versionVerification": {
+      "requestedEditorVersion": "1.126.04524",
+      "expectedExtensionHostVersion": "1.126.0",
+      "reportedExtensionHostVersion": "1.126.0"
+    }
+  },
+  "runtime": {
+    "platform": "win32",
+    "architecture": "x64",
+    "node": "24.15.0",
+    "electron": "42.2.0",
+    "chrome": "148.0.7778.97",
+    "v8": "14.8.178.14-electron.0"
+  },
+  "networkAttempts": [],
+  "networkObservation": {
+    "status": "installed",
+    "scope": "listed-commonjs-export-owner-properties-only",
+    "interceptedMethods": [
+      "node:http.get",
+      "node:http.request",
+      "node:https.get",
+      "node:https.request",
+      "node:http2.connect",
+      "node:net.connect",
+      "node:net.createConnection",
+      "node:tls.connect",
+      "node:dns.lookup",
+      "node:dns.resolve",
+      "node:dns.resolve4",
+      "node:dns.resolve6",
+      "node:dgram.createSocket",
+      "globalThis.fetch",
+      "globalThis.WebSocket"
+    ],
+    "limitations": "This is JavaScript-hook evidence for the listed CommonJS builtin export-owner properties and available globals only. It is not OS-level isolation and does not observe ESM named bindings, cached references, prototype or raw bindings, dns.promises, child processes, editor-owned traffic, or Webview traffic. The persisted attempt list ends at report creation; the hooks remain installed to deny later tail calls until process exit.",
+    "lifetime": "extension-host-exit",
+    "guardRestored": false,
+    "quiescenceMs": 500,
+    "result": "zero-attempts-observed"
+  },
+  "commands": [
+    "okfWorkbench.initializeBundle",
+    "okfWorkbench.newConcept",
+    "okfWorkbench.validateBundle",
+    "okfWorkbench.regenerateIndexes",
+    "okfWorkbench.openGraph",
+    "okfWorkbench.setupAgentIntegration",
+    "okfWorkbench.migrateBundle"
+  ],
+  "commandCatalog": [
+    {
+      "id": "okfWorkbench.initializeBundle",
+      "title": "Initialize Bundle",
+      "workspaceAccess": "write"
+    },
+    {
+      "id": "okfWorkbench.newConcept",
+      "title": "New Concept",
+      "workspaceAccess": "write"
+    },
+    {
+      "id": "okfWorkbench.validateBundle",
+      "title": "Validate Bundle",
+      "workspaceAccess": "read"
+    },
+    {
+      "id": "okfWorkbench.regenerateIndexes",
+      "title": "Regenerate Indexes",
+      "workspaceAccess": "write"
+    },
+    {
+      "id": "okfWorkbench.openGraph",
+      "title": "Open 3D Graph",
+      "workspaceAccess": "read"
+    },
+    {
+      "id": "okfWorkbench.setupAgentIntegration",
+      "title": "Set Up Agent Integration",
+      "workspaceAccess": "write"
+    },
+    {
+      "id": "okfWorkbench.migrateBundle",
+      "title": "Migrate Bundle to v0.2",
+      "workspaceAccess": "write"
+    }
+  ],
+  "workspaceTrust": {
+    "expected": false,
+    "actual": false,
+    "readOnlyAvailable": true
+  },
+  "completion": {
+    "runtimePublication": {
+      "requestId": 1,
+      "revision": 1,
+      "diagnosticsPublished": true,
+      "findingCount": 1,
+      "conceptCount": 1,
+      "edgeCount": 0
+    },
+    "graphRender": {
+      "revision": 2,
+      "requestId": 2
+    },
+    "guardedQuiescenceMs": 500
+  },
+  "readOnlyCommands": [
+    "okfWorkbench.validateBundle",
+    "okfWorkbench.openGraph"
+  ],
+  "untrustedWrites": [
+    {
+      "command": "okfWorkbench.initializeBundle",
+      "outcome": "refused",
+      "problemCodes": [
+        "workspace-untrusted"
+      ],
+      "completedWithoutInputAutomation": true,
+      "durationMs": 1
+    },
+    {
+      "command": "okfWorkbench.newConcept",
+      "outcome": "refused",
+      "problemCodes": [
+        "workspace-untrusted"
+      ],
+      "completedWithoutInputAutomation": true,
+      "durationMs": 0
+    },
+    {
+      "command": "okfWorkbench.regenerateIndexes",
+      "outcome": "refused",
+      "problemCodes": [
+        "workspace-untrusted"
+      ],
+      "completedWithoutInputAutomation": true,
+      "durationMs": 0
+    },
+    {
+      "command": "okfWorkbench.setupAgentIntegration",
+      "outcome": "refused",
+      "problemCodes": [
+        "workspace-untrusted"
+      ],
+      "completedWithoutInputAutomation": true,
+      "durationMs": 0
+    },
+    {
+      "command": "okfWorkbench.migrateBundle",
+      "outcome": "refused",
+      "problemCodes": [
+        "workspace-untrusted"
+      ],
+      "completedWithoutInputAutomation": true,
+      "durationMs": 0
+    }
+  ],
+  "extensionVersion": "0.4.0"
+}

@@ -211,7 +211,7 @@ workspace URIs
    user-entered write targets. An unreadable document or child subtree becomes a path- and
    URI-scoped conformance finding while readable siblings continue through parsing, validation, and
    graph construction. One load admits at most 2,000 Markdown documents, 2 MiB per document,
-   32 MiB of reported and actual Markdown bytes, eight concurrent provider calls, 64 path segments,
+   32 MiB of reported and actual Markdown bytes, sixteen concurrent provider calls, 64 path segments,
    32 MiB of cumulative traversal identity, and 128 retained failures. A 4 KiB relative path uses a
    16 KiB serialized-URI envelope to accommodate percent expansion. One oversized document is
    retained as a typed identity-only input; aggregate, root, count, depth, and traversal-identity

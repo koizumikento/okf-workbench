@@ -140,6 +140,30 @@ function emit(
 }
 
 describe('createVscodeMarkdownChangeSource', () => {
+  it('accepts canonical Windows drive events without admitting sibling roots or other drives', () => {
+    const root = Uri.parse('file:///C:/space%20dir/資料');
+    // Match VS Code: Uri.path retains C:, but toString() canonicalizes it to c:.
+    vi.spyOn(root, 'toString').mockReturnValue('file:///c%3A/space%20dir/資料');
+    const changes: WorkspaceChange<Uri>[] = [];
+    const disposable = createVscodeMarkdownChangeSource(root).subscribe((change) => {
+      changes.push(change);
+    });
+    const watcher = vscodeState.watchers[0];
+    if (watcher === undefined) throw new Error('Expected a watcher.');
+    const uri = Uri.parse('file:///c%3A/space%20dir/資料/nested/note.md');
+    for (const kind of ['create', 'change', 'delete'] as const) {
+      emit(watcher, kind, uri);
+      emit(watcher, kind, Uri.parse('file:///d%3A/space%20dir/資料/nested/note.md'));
+      emit(watcher, kind, Uri.parse('file:///c%3A/space%20dir/資料-other/note.md'));
+    }
+    expect(changes).toEqual([
+      { kind: 'create', uri },
+      { kind: 'change', uri },
+      { kind: 'delete', uri },
+    ]);
+    disposable.dispose();
+  });
+
   it('uses a root-relative Markdown pattern and retains URI containment defense', () => {
     const root = Uri.parse('memfs://workspace/bundles/one');
     const changes: WorkspaceChange<Uri>[] = [];

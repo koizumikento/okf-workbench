@@ -22,6 +22,7 @@ const TOOLCHAIN_MANIFEST_PATH = 'scripts/performance-toolchain-manifest.json';
 const EXECUTION_SOURCE_PATHS = [
   'package-lock.json',
   'scripts/build.mjs',
+  'scripts/canonical-wasm.mjs',
   'scripts/benchmark-report.mjs',
   'scripts/performance-bundle-hash.mjs',
   'scripts/performance-evidence-inputs.mjs',

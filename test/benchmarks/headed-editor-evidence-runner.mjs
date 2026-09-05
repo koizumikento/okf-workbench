@@ -552,7 +552,13 @@ async function measureUpdateSample(options) {
   const [graphPublication, diagnosticsPublication] = await Promise.all([
     graphWait,
     diagnosticsWait,
-  ]);
+  ]).catch(async (cause) => {
+    const events = await options.frame.evaluate(() => globalThis.__okfRefreshEvents);
+    throw new Error(
+      `QR-002 ${options.eventKind} failed; graph publications: ${JSON.stringify(events)}`,
+      { cause },
+    );
+  });
   const graphPublicationMs = graphPublication.at - startedAt;
   const diagnosticsPublicationMs = diagnosticsPublication.observedAtEpochMs - startedAt;
   if (graphPublicationMs < 0 || diagnosticsPublicationMs < 0) {
@@ -866,6 +872,14 @@ function resolveStagedPath(relativePath) {
 }
 
 async function runBoundProductionBuild(targetRepositoryRoot) {
+  const canonicalPath = process.env.OKF_CANONICAL_WASM_PATH;
+  if (
+    canonicalPath !== undefined &&
+    path.resolve(canonicalPath) !==
+      path.resolve(repositoryRoot, 'artifacts/canonical-wasm/okf_core.wasm')
+  ) {
+    throw new Error('Headed evidence requires the repository canonical Wasm path.');
+  }
   await execFileAsync(
     process.execPath,
     [
@@ -874,7 +888,20 @@ async function runBoundProductionBuild(targetRepositoryRoot) {
       '--repository-root',
       targetRepositoryRoot,
     ],
-    { cwd: targetRepositoryRoot },
+    {
+      cwd: targetRepositoryRoot,
+      env: {
+        ...process.env,
+        ...(canonicalPath === undefined
+          ? {}
+          : {
+              OKF_CANONICAL_WASM_PATH: path.resolve(
+                targetRepositoryRoot,
+                'artifacts/canonical-wasm/okf_core.wasm',
+              ),
+            }),
+      },
+    },
   );
 }
 
@@ -1006,9 +1033,21 @@ async function monitorProcessTree(rootPid, evaluation) {
 }
 
 async function sampleProcessTree(rootPid) {
-  const { stdout } = await execFileAsync('/bin/ps', ['-axo', 'pid=,ppid=,%cpu=,rss='], {
-    timeout: PROCESS_TREE_SAMPLE_TIMEOUT_MS,
-  });
+  const { stdout } =
+    process.platform === 'win32'
+      ? await execFileAsync(
+          'powershell.exe',
+          [
+            '-NoProfile',
+            '-NonInteractive',
+            '-Command',
+            "$ErrorActionPreference = 'Stop'; Get-CimInstance Win32_PerfFormattedData_PerfProc_Process | ForEach-Object { '{0} {1} {2} {3}' -f $_.IDProcess, $_.CreatingProcessID, $_.PercentProcessorTime, [math]::Floor($_.WorkingSet / 1024) }",
+          ],
+          { timeout: 15_000, windowsHide: true },
+        )
+      : await execFileAsync('/bin/ps', ['-axo', 'pid=,ppid=,%cpu=,rss='], {
+          timeout: PROCESS_TREE_SAMPLE_TIMEOUT_MS,
+        });
   const processes = stdout
     .split(/\r?\n/u)
     .map((line) => line.trim().split(/\s+/u))
@@ -1149,7 +1188,13 @@ function describeTargets(connectedBrowser) {
 
 async function readEditorMetadata(executablePath) {
   const [cli, ...prefix] = resolveCliArgsFromVSCodeExecutablePath(executablePath);
-  const { stdout } = await execFileAsync(cli, [...prefix, '--version']);
+  const { stdout } =
+    process.platform === 'win32'
+      ? await execFileAsync(`"${cli}"`, ['--version'], {
+          shell: true,
+          windowsHide: true,
+        })
+      : await execFileAsync(cli, [...prefix, '--version']);
   const [versionLine, commitLine] = stdout.trim().split(/\r?\n/u);
   if (
     typeof versionLine !== 'string' ||
@@ -1214,13 +1259,13 @@ function onceExit(child) {
 }
 
 async function stopEditorProcess(child) {
-  if (child?.pid === undefined || child.exitCode !== null) return;
+  if (child?.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
   child.kill('SIGTERM');
   await Promise.race([onceExit(child), delay(5_000)]);
-  if (child.exitCode !== null) return;
+  if (child.exitCode !== null || child.signalCode !== null) return;
   child.kill('SIGKILL');
   await Promise.race([onceExit(child), delay(5_000)]);
-  if (child.exitCode === null) {
+  if (child.exitCode === null && child.signalCode === null) {
     throw new Error('VS Code did not exit before final performance-input verification.');
   }
 }

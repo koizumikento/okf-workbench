@@ -58,12 +58,69 @@ beforeAll(() => {
 }, 60_000);
 
 describe('Rust/Wasm core boundary', () => {
+  test('preserves UTF-8 bytes, BOM offsets, and invalid-byte findings in compact requests', () => {
+    const textInput = inputFor(
+      [
+        ['index.md', '---\nokf_version: "0.1"\n---\n# Root\n'],
+        ['資料.md', '\uFEFF---\r\ntype: custom\r\ntitle: 日本語 🐕\r\n---\r\n# Note\r\n'],
+      ],
+      'fixture:/compact-utf8',
+    );
+    const byteInput = {
+      ...textInput,
+      documents: textInput.documents.map((document) => ({
+        uri: document.uri,
+        bundlePath: document.bundlePath,
+        content: new TextEncoder().encode(String(document.content)),
+      })),
+    };
+    expect(core.inspect(byteInput, '2026-09-05T00:00:00Z')).toEqual(
+      core.inspect(textInput, '2026-09-05T00:00:00Z'),
+    );
+    const invalidInput = {
+      ...byteInput,
+      documents: [
+        {
+          uri: 'fixture:/compact-utf8/index.md',
+          bundlePath: 'index.md',
+          content: Uint8Array.from([0xff, 0xc0]),
+        },
+      ],
+    };
+    expect(core.inspect(invalidInput, '2026-09-05T00:00:00Z').bundle.failures).toEqual(
+      typescriptOkfCore.inspect(invalidInput, '2026-09-05T00:00:00Z').bundle.failures,
+    );
+  });
+
+  test('preserves byte-backed document limit diagnostics during compaction', () => {
+    for (const offset of [-1, 0, 1]) {
+      const content = new Uint8Array(OKF_SEMANTIC_LIMITS.maxSemanticDocumentBytes + offset).fill(
+        97,
+      );
+      content.set(new TextEncoder().encode('---\ntype: note\n---\n'));
+      const input: ParseBundleInput = {
+        rootUri: 'fixture:/byte-limit',
+        revision: 1,
+        documents: [
+          {
+            uri: 'fixture:/byte-limit/note.md',
+            bundlePath: 'note.md',
+            content,
+          },
+        ],
+      };
+      expect(core.inspect(input, '2026-09-05T00:00:00Z').bundle.failures).toEqual(
+        typescriptOkfCore.inspect(input, '2026-09-05T00:00:00Z').bundle.failures,
+      );
+    }
+  });
+
   test('is capability-free and reports the versioned ABI', () => {
     const bytes = readFileSync(resolve('target/wasm32-unknown-unknown/release/okf_wasm.wasm'));
     const module = new WebAssembly.Module(bytes);
     expect(WebAssembly.Module.imports(module)).toEqual([]);
     expect(core.abiVersion).toBe(1);
-    expect(core.coreVersion).toBe('0.3.0');
+    expect(core.coreVersion).toBe('0.4.0');
   });
 
   test('has exact migration-plan parity with the TypeScript oracle', () => {

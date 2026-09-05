@@ -1,14 +1,86 @@
 # Performance evidence
 
-- Status: **current-candidate local headed qualification passes**; hosted compatibility and package
-  qualification remain separate release gates
-- Date: 2026-08-03
+- Status: **0.4.0 exact-Wasm QR-002, QR-003, and Webview network gates pass**;
+  hosted compatibility and packaging remain separate gates
+- Date: 2026-09-05
 - Governing decision:
   [ADR 0005, OQ-008](decisions/0005-resolve-mvp-implementation-questions.md#oq-008--performance-fixtures-and-thresholds)
 
-## Current-candidate schema-v3 measurement and binding status
+## Current-candidate schema-v3 measurement and binding
 
-The current-candidate [generated report](evidence/performance/vscode-1.129.1-0.3.0.md) and
+The final 0.4.0 [report](evidence/performance/vscode-1.129.1-0.4.0.md) and
+[raw capture](evidence/performance/vscode-1.129.1-0.4.0.json), SHA-256
+`d193c406d67456d8cb90187a840a28349696dc602f3ce766ffc15565989603da`, record one genuine
+headed VS Code 1.129.1 run at 2026-09-05T12:26:53.393Z on Windows 11, Ryzen 9 9900X,
+31.15 GiB RAM, and RTX 5070. The strict evaluator exits `0`: QR-002 p95 is **851 ms
+across 20 samples**, below the unchanged 1,000 ms limit. QR-003 passes with `d3`;
+remote HTTP(S)/WS and other-scheme request counts are zero.
+
+The measured Wasm is the canonical artifact from
+[Package smoke 33965908284](https://github.com/koizumikento/okf-workbench/actions/runs/33965908284),
+revision `06287122d3ceaa028875643276fdaca8e92aef7b`. Its SHA-256 is
+`000f1fd0a721285e31ec4ec6673b4717892a468a77116225dd656eccbb37dc2f`.
+Runtime snapshot `d5b2436cba1ee474a97b208242fdea2300ff23b8446d28214fca40e79c30e704`
+and build-input snapshot `a22b99a07a6adca3d5b459670ce03f02b1f85dd905b6d892ff6c9d758baca1ba`
+bind this capture. The retained [CI build receipt](evidence/performance/vscode-1.129.1-0.4.0-build-metadata.json)
+has SHA-256 `a6c5f341ff1679fe3479c06b6c731c870fea2ef04cd117c36377dcd032e193c7`
+and Rust input digest `80916738fa3be41c86ade827e392ebf484282d9f8438f325c51ae0fd96c29a92`.
+The [release record](releases/0.4.0.md) tracks the universal candidate and hosted package comparison.
+
+Valid UTF-8 byte documents within the source-size limit now cross the existing JSON ABI
+as strings. Malformed or oversized byte inputs retain their original representation and
+diagnostics. Release compilation favors execution speed, and provider operations use
+bounded batches of sixteen while retaining all byte, identity, parent-generation, and
+cancellation checks. The watcher debounce remains 250 ms. This one Windows observation
+is not a guarantee for other machines and does not isolate each optimization's contribution.
+
+To reproduce the canonical binding, obtain the Wasm and build receipt from the trusted
+CI artifact for these Rust inputs. Place them at `artifacts/canonical-wasm/okf_core.wasm`
+and `artifacts/canonical-wasm/build-metadata.json`. Explicitly set
+`OKF_ALLOW_CANONICAL_WASM=1` and `OKF_CANONICAL_WASM_PATH` to that module's absolute path
+before running the headed runner. The build checks the module hash and current Rust
+input hash against the receipt; the runner binds both files into its private build tree.
+The receipt provides checksum binding, not a signature: retrieve it from the verified CI
+run. Preserve the same canonical inputs when rebuilding to strictly reevaluate this capture.
+
+## Intermediate 0.4.0 measurements (historical)
+
+Revision a676122 recorded [961 ms p95](evidence/performance/vscode-1.129.1-0.4.0-a676122.md)
+([raw capture](evidence/performance/vscode-1.129.1-0.4.0-a676122.json)). The later byte-limit
+correction required new runtime evidence: f793844 recorded **1,190 ms p95**, failing QR-002
+([raw capture](evidence/performance/vscode-1.129.1-0.4.0-f793844-blocked.json)). Its regenerated
+[historical report](evidence/performance/vscode-1.129.1-0.4.0-f793844-blocked.md) marks its
+input identities unmeasured against the subsequent candidate. Neither capture qualifies
+the final bytes. Both are retained rather than selecting a favorable predecessor result.
+
+## Initial 0.4.0 Windows measurement (historical failure)
+
+The 0.4.0 Windows [report](evidence/performance/vscode-1.129.1-0.4.0-windows-blocked.md)
+and [raw capture](evidence/performance/vscode-1.129.1-0.4.0-windows-blocked.json), SHA-256
+`0b702ca14996f97ac39ea5af2d3fcba57ed3d07a1f713d210b93aebefafad0bf`, record one genuine
+headed VS Code 1.129.1 run on Windows 11, Ryzen 9 9900X, and RTX 5070. The strict
+evaluator exits `2`: QR-002 p95 is **1,252 ms across 20 samples**, exceeding the
+1,000 ms gate. QR-003 selects `d3`; Webview observation records zero remote HTTP(S)/WS
+and other-scheme requests. Runtime snapshot
+`4199e8af47f641d248c55a499b334bf5884696c7abe7ee0c1223be70a97510ac` and build-input snapshot
+`d562324d3f9f6a5148656159f66c15dd86dcf9d83e267b2da07baa000a69dda8` bind the complete capture.
+
+This runtime was built locally on Windows. Its Wasm SHA-256 is
+`98bdcb2ae0e9e219dcdbf7a56b09441aab823805a4cb37658556ece391e4a1fc`, while the hosted
+candidate contains `2d767cdf51d621cf72847427fdb36ecb998bf0716bb48be85426261cad9a9455`.
+The other 12 VSIX payload files match the local workspace, but that does not establish
+whole-runtime equality. This capture cannot qualify the hosted release artifact even
+if its QR-002 result were passing; exact-artifact measurement remains required.
+
+The failed run is retained explicitly as historical blocked evidence, not as qualification. Initial
+Windows attempts exposed and fixed drive-case watcher rejection and editor-process exit
+handling; those incomplete attempts supply no passing samples. Do not replace this result
+with the earlier Mac result or relax the threshold. The newer complete capture above
+qualifies the corrected candidate while retaining the scope of this earlier failure.
+
+## Published 0.3.0 schema-v3 measurement (historical)
+
+The predecessor [generated report](evidence/performance/vscode-1.129.1-0.3.0.md) and
 [raw samples](evidence/performance/vscode-1.129.1-0.3.0.json), SHA-256
 `3514a963459ac213728d6baed1d697f8ae75da676b2d386c3c66bb1eb5cd3985`, were captured in one
 genuine headed VS Code `1.129.1` session on 2026-08-03. The strict evaluator exits `0` and binds

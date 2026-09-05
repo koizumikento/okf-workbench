@@ -201,6 +201,23 @@ targets below. Missing Rust, a missing target, or a failed Wasm build fails the 
 The only placeholder path requires an explicit test-only command flag and environment variable
 and is not accepted by package validation.
 
+Cross-platform packages and local headed qualification may instead reuse the exact CI
+Wasm with `OKF_ALLOW_CANONICAL_WASM=1` and `OKF_CANONICAL_WASM_PATH` pointing to
+`artifacts/canonical-wasm/okf_core.wasm`. The adjacent `build-metadata.json` must be retained
+from that same trusted CI artifact. The build verifies the module SHA-256, ABI metadata,
+and a source-input digest covering Cargo manifests/lock, pinned Rust toolchain, crates,
+and the build recipe before using it. Stale source or changed module bytes fail closed.
+This avoids treating separately compiled Windows and Linux modules as identical: Rust
+panic-location strings can contain different host source paths. Canonical module and
+receipt bytes are included in the immutable headed build snapshot and copied into each
+private binding tree; no source is rebuilt into a replacement Wasm during that measurement.
+Artifact provenance still requires checking the trusted workflow/run revision and downloaded
+artifact: a checksum receipt is not a cryptographic publisher signature.
+
+The TypeScript Wasm adapter uses the existing ABI text form for valid UTF-8 documents,
+avoiding per-byte JSON number arrays. Decoding is fatal and retains BOMs; malformed UTF-8
+uses the original byte-array form so Rust owns the same encoding findings and source ranges.
+
 ### Extension-host bundle
 
 - Entry: `src/extension/activate.ts`.
@@ -596,7 +613,7 @@ code-unit/UTF-8 envelope. This admits the roughly 12 KiB percent-encoded represe
 4 KiB multibyte path while still bounding retained URI identities.
 
 One selected-bundle refresh admits at most 2,000 Markdown documents, 2 MiB for each reported and
-actual document, 32 MiB of cumulative Markdown bytes, eight concurrent provider operations,
+actual document, 32 MiB of cumulative Markdown bytes, sixteen concurrent provider operations,
 64 traversal segments, 32 MiB of cumulative retained path/URI identity, and 128 retained failures.
 Every fixed concurrency batch uses `Promise.allSettled`; cancellation or one fatal result is
 reported only after all already-issued physical calls settle. Provider metadata is checked before
@@ -655,6 +672,9 @@ References:
 - [Playwright Test](https://www.npmjs.com/package/@playwright/test)
 
 Playwright is not treated as proof of Electron Webview performance. WebGL performance claims require the headed editor benchmark with hardware, GPU, editor, Electron, and fixture versions recorded.
+On Windows, the headed runner reads process-tree CPU and working-set counters through
+`Win32_PerfFormattedData_PerfProc_Process`; Unix hosts use `ps`. These are descriptive
+host measurements, not interchangeable cross-platform performance guarantees.
 That benchmark starts through a built-in-only bootstrap which copies the exact runner, recorder,
 build/report helpers, Playwright, `@vscode/test-electron`, esbuild, and their runtime closure into
 an owner-only temporary module root outside the repository. The checked-in performance-toolchain
@@ -840,3 +860,10 @@ Before merging the Phase 0 scaffold:
 - Custom templates and third-party template packages.
 - TypeScript 7 adoption.
 - Backward compatibility below VS Code 1.123.
+
+Release builds use Rust optimization level 3 with the existing single codegen unit and LTO.
+The 0.4.0 qualification favors execution speed over the former size-focused profile;
+all canonical Wasm and native CLI artifacts are rebuilt and qualified with this profile.
+The provider concurrency bound is sixteen calls per fixed batch. Per-document, aggregate-byte,
+identity, and cancellation-draining checks remain in force; parent generations are still
+validated around every batch.

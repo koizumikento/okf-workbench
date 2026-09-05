@@ -13,7 +13,7 @@ export const BUNDLE_READ_LIMITS = Object.freeze({
   maxTraversalIdentityBytes: 32 * 1024 * 1024,
   maxDocumentBytes: 2 * 1024 * 1024,
   maxTotalDocumentBytes: 32 * 1024 * 1024,
-  maxConcurrentReads: 8,
+  maxConcurrentReads: 16,
   maxRetainedFailures: 128,
 });
 

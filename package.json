@@ -2,7 +2,7 @@
   "name": "okf-workbench",
   "displayName": "OKF Workbench",
   "description": "Create, validate, index, and explore Open Knowledge Format bundles locally.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "license": "MIT",
   "homepage": "https://koizumikento.github.io/okf-workbench/",

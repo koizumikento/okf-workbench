@@ -227,7 +227,7 @@ dependencies = [
 
 [[package]]
 name = "okf-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "clap",
@@ -244,7 +244,7 @@ dependencies = [
 
 [[package]]
 name = "okf-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "base64",
  "chrono",
@@ -257,7 +257,7 @@ dependencies = [
 
 [[package]]
 name = "okf-wasm"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "okf-core",
 ]

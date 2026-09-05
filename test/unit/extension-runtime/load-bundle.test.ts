@@ -485,7 +485,7 @@ describe('loadBundle', () => {
     expect(aggregate.maxActiveReads).toBeLessThanOrEqual(BUNDLE_READ_LIMITS.maxConcurrentReads);
   });
 
-  it('never schedules more than eight provider operations at once', async () => {
+  it('never schedules more than sixteen provider operations at once', async () => {
     const port = new ControlledWorkspacePort(19);
     port.statImpl = async (uri) => {
       await Promise.resolve();
@@ -509,7 +509,7 @@ describe('loadBundle', () => {
   });
 
   it('waits for every physical provider call in an aborted batch before settling', async () => {
-    const port = new ControlledWorkspacePort(9);
+    const port = new ControlledWorkspacePort(BUNDLE_READ_LIMITS.maxConcurrentReads + 1);
     const pendingStats: Deferred<WorkspaceStat | undefined>[] = [];
     port.statImpl = async () => {
       const pending = deferred<WorkspaceStat | undefined>();

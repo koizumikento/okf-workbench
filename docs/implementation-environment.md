@@ -655,6 +655,9 @@ References:
 - [Playwright Test](https://www.npmjs.com/package/@playwright/test)
 
 Playwright is not treated as proof of Electron Webview performance. WebGL performance claims require the headed editor benchmark with hardware, GPU, editor, Electron, and fixture versions recorded.
+On Windows, the headed runner reads process-tree CPU and working-set counters through
+`Win32_PerfFormattedData_PerfProc_Process`; Unix hosts use `ps`. These are descriptive
+host measurements, not interchangeable cross-platform performance guarantees.
 That benchmark starts through a built-in-only bootstrap which copies the exact runner, recorder,
 build/report helpers, Playwright, `@vscode/test-electron`, esbuild, and their runtime closure into
 an owner-only temporary module root outside the repository. The checked-in performance-toolchain

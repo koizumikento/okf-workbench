@@ -5,12 +5,14 @@ All notable changes to OKF Workbench are documented in this file.
 The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and intends to use
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) after the first public release.
 
-## Unreleased
+## 0.4.0 - 2026-09-05
 
 ### Changed
 
 - Target Node 24 in the Extension Host and update `@types/node` to 24.13.3.
   New packages require VS Code 1.123 or newer; the VSCodium test pin is 1.126.04524.
+- Update development dependencies undici, fast-uri, js-yaml, and postcss, including
+  their security fixes, and the transitive nanoid package.
 
 ## 0.3.0 - 2026-08-03
 

@@ -1006,9 +1006,21 @@ async function monitorProcessTree(rootPid, evaluation) {
 }
 
 async function sampleProcessTree(rootPid) {
-  const { stdout } = await execFileAsync('/bin/ps', ['-axo', 'pid=,ppid=,%cpu=,rss='], {
-    timeout: PROCESS_TREE_SAMPLE_TIMEOUT_MS,
-  });
+  const { stdout } =
+    process.platform === 'win32'
+      ? await execFileAsync(
+          'powershell.exe',
+          [
+            '-NoProfile',
+            '-NonInteractive',
+            '-Command',
+            "$ErrorActionPreference = 'Stop'; Get-CimInstance Win32_PerfFormattedData_PerfProc_Process | ForEach-Object { '{0} {1} {2} {3}' -f $_.IDProcess, $_.CreatingProcessID, $_.PercentProcessorTime, [math]::Floor($_.WorkingSet / 1024) }",
+          ],
+          { timeout: 15_000, windowsHide: true },
+        )
+      : await execFileAsync('/bin/ps', ['-axo', 'pid=,ppid=,%cpu=,rss='], {
+          timeout: PROCESS_TREE_SAMPLE_TIMEOUT_MS,
+        });
   const processes = stdout
     .split(/\r?\n/u)
     .map((line) => line.trim().split(/\s+/u))
@@ -1149,7 +1161,18 @@ function describeTargets(connectedBrowser) {
 
 async function readEditorMetadata(executablePath) {
   const [cli, ...prefix] = resolveCliArgsFromVSCodeExecutablePath(executablePath);
-  const { stdout } = await execFileAsync(cli, [...prefix, '--version']);
+  const { stdout } =
+    process.platform === 'win32'
+      ? await execFileAsync(
+          executablePath,
+          [
+            path.join(path.dirname(executablePath), 'resources/app/out/cli.js'),
+            ...prefix,
+            '--version',
+          ],
+          { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, windowsHide: true },
+        )
+      : await execFileAsync(cli, [...prefix, '--version']);
   const [versionLine, commitLine] = stdout.trim().split(/\r?\n/u);
   if (
     typeof versionLine !== 'string' ||

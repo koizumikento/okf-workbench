@@ -1,7 +1,8 @@
 # Preserved compatibility evidence
 
-No JSON file in this directory describes the current exact candidate. Current hosted lifecycle
-qualification and cross-platform package-byte identity are pending.
+No JSON file in this directory describes the current exact candidate. Its hosted lifecycle and
+cross-platform package-set qualification are retained in the linked GitHub Actions runs and
+summarized in the repository [compatibility matrix](../../compatibility-matrix.md).
 
 The historical hosted candidate is the `582231`-byte VSIX from commit
 `aa90832aab64dac1bccf9c9092fabc004991f7b1`, SHA-256
@@ -89,5 +90,5 @@ Every checked-in primary record has
 `repositoryRevision: "524eca3f36e1a1b3da935495d3fbbd0eb0d03f56"` and the same
 predecessor-candidate digest above. These local files must not be used as
 cross-platform evidence. The historical hosted workflow and its per-lane artifacts are
-cross-platform evidence only for their historical exact bytes; current-source qualification and
-byte identity remain pending.
+cross-platform evidence only for their historical exact bytes. Current exact-candidate receipts
+remain in the hosted workflow artifacts rather than this historical directory.

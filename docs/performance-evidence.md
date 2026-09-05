@@ -10,17 +10,17 @@
 
 The current-candidate [generated report](evidence/performance/vscode-1.129.1-0.3.0.md) and
 [raw samples](evidence/performance/vscode-1.129.1-0.3.0.json), SHA-256
-`9b1ca57310da715de1ba5cc83b92ba28e9faaf6fdcc7f7111c7f96696f1c20d7`, were captured in one
+`3514a963459ac213728d6baed1d697f8ae75da676b2d386c3c66bb1eb5cd3985`, were captured in one
 genuine headed VS Code `1.129.1` session on 2026-08-03. The strict evaluator exits `0` and binds
 the result to OKF Workbench `0.3.0`, production runtime snapshot
 `6fbcc3b2f004dcfd0f30bfcedd80aea76f79cd4c4e07a07edbf57596d64ab2b4`, build-input snapshot
-`c7c5189af35dc80c5ebdf1c92e6617dc3b2ec21f561c5f061c532d8742d06d6b`, and the recorded
+`08bd76db5b6ce735472fb9c2780c6e8fe5c28aa7efa38c1778d65290bad147bb`, and the recorded
 diagnostics and QR-003 harness identities.
 
 | Target | Current-candidate status | Evidence |
 | --- | --- | --- |
-| QR-002 — update p95 at or below 1,000 ms | **Pass** | `862.00 ms` nearest-rank p95 across 20 create/change/rename/delete samples, with runtime-originated same-revision Problems and graph correlation. |
-| QR-003 — representative graph remains interactive | **Pass** | `d3` first-frame maximum `298.00 ms`, cooldown mean `2,494.40 ms`, interaction p95 values `9.20/24.10/2.00/0.80 ms`, and zero idle frames. |
+| QR-002 — update p95 at or below 1,000 ms | **Pass** | `873.00 ms` nearest-rank p95 across 20 create/change/rename/delete samples, with runtime-originated same-revision Problems and graph correlation. |
+| QR-003 — representative graph remains interactive | **Pass** | `d3` first-frame maximum `284.10 ms`, cooldown mean `2,497.90 ms`, interaction p95 values `8.90/14.60/1.40/0.60 ms`, and zero idle frames. |
 | Headed Webview network | **Pass** | Strict pre-navigation CDP observation recorded zero remote HTTP(S)/WS requests, two packaged-resource loads, two internal Webview navigations, and zero other-scheme requests. |
 | Release force-engine default | **`d3` selected** | Same-Electron comparison passed `d3`; `ngraph` recorded a structured WebGL draw timeout after 5,000 ms and was not selected. |
 

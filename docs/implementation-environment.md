@@ -113,6 +113,21 @@ major ranges that close the applicable advisories while retaining the CommonJS A
 pinned VS Code test runner. Both packages remain excluded from the VSIX. Clean install, the full
 test matrix, and a full-tree `npm audit` must pass whenever either override changes.
 
+[ADR 0013](decisions/0013-development-tooling-security-updates.md) updates the development
+tooling to Vitest `4.1.11` and `@vscode/vsce` `4.0.0`. The `@vscode/vsce` override references
+the exact direct dependency with `$@vscode/vsce`, so `ovsx` `1.0.2` uses the same reviewed
+packager instead of retaining a vulnerable `3.9.2` dependency tree. The four exact install-script
+decisions allow `@vscode/vsce-sign` `2.1.0` and esbuild `0.28.1`, and deny both fsevents
+versions; the removed keytar installer is no longer allowed. The signing helper's installer
+copies its locked platform package first and retains the upstream npm-download fallback.
+These are development-only capabilities and remain excluded from the VSIX.
+
+Ordinary PR CI, compatibility candidate builds, and tagged release candidate builds run
+`npm audit --audit-level=low` across the complete locked tree, including development and optional
+dependencies. Production-only audits do not satisfy this gate. A clean full-tree audit covers
+known registry advisories at the time of the command, not unknown vulnerabilities or runtime
+exploitability.
+
 ## Source layout
 
 The planned layout is refined as follows:
@@ -775,7 +790,7 @@ duplicate, conditional, or failure-tolerating security command. The default Vite
 only `test/unit`, and the default Playwright config includes only `test/webview`; neither is counted
 as a substitute for the dedicated configs under `test/security`.
 
-Package with `@vscode/vsce` `3.9.x`. Validate and publish an already built VSIX with `ovsx`
+Package with `@vscode/vsce` `4.0.x`. Validate and publish an already built VSIX with `ovsx`
 `1.0.x`. The root `package.json` keeps `"private": true` as an npm-registry publish guard; it does
 not make the GitHub repository private and does not prevent an MIT-licensed VSIX from being
 submitted to Open VSX.

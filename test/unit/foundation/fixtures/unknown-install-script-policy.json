@@ -2,11 +2,10 @@
   "npmrc": "strict-allow-scripts=true\n",
   "packageManifest": {
     "allowScripts": {
-      "@vscode/vsce-sign@2.0.9": true,
+      "@vscode/vsce-sign@2.1.0": true,
       "esbuild@0.28.1": true,
       "fsevents@2.3.2": false,
-      "fsevents@2.3.3": false,
-      "keytar@7.9.0": true
+      "fsevents@2.3.3": false
     },
     "scripts": {}
   },
@@ -14,7 +13,7 @@
     "packages": {
       "": {},
       "node_modules/@vscode/vsce-sign": {
-        "version": "2.0.9",
+        "version": "2.1.0",
         "hasInstallScript": true
       },
       "node_modules/esbuild": {
@@ -23,10 +22,6 @@
       },
       "node_modules/fsevents": {
         "version": "2.3.2",
-        "hasInstallScript": true
-      },
-      "node_modules/keytar": {
-        "version": "7.9.0",
         "hasInstallScript": true
       },
       "node_modules/unknown-native-helper": {

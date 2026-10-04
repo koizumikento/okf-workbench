@@ -118,8 +118,8 @@ jobs:
       - name: Review runtime dependencies and licenses
         run: npm run dependency:check
 
-      - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+      - name: Audit all locked dependencies
+        run: npm audit --audit-level=low
 
       - name: Package VSIX
         run: npm run package

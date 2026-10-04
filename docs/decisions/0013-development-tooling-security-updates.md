@@ -1,0 +1,46 @@
+# 0013 — Keep development tooling free of known dependency advisories
+
+- Status: Accepted
+- Date: 2026-10-04
+
+## Context
+
+The maintainer requested remediation of the twelve remaining development-dependency audit
+entries after Dependabot PRs #61 and #62 were merged. The full-tree `npm audit` reported nine
+high and three moderate entries; the production-only audit reported zero. Those entries include
+affected packages and dependent packages, rather than twelve independent advisories. This
+confirms vulnerable versions in the development tree, without establishing runtime exploitability.
+
+Vitest `4.1.11` fixes the
+[redirect-mock advisory](https://github.com/vitest-dev/vitest/security/advisories/GHSA-82fw-gwwq-j7x9).
+Updating brace-expansion, js-yaml, and qs within their existing declared ranges removes their
+audit entries. The remaining braces advisory has no fixed release in the available `3.x` line.
+[`@vscode/vsce` 4.0.0](https://github.com/microsoft/vscode-vsce/releases/tag/v4.0.0) replaces the
+affected secretlint/globby/fast-glob dependency chain and removes fast-uri from that tree, but
+`ovsx` `1.0.2` still declares a `^3.7.1` packager dependency.
+
+## Decision
+
+- Pin Vitest `4.1.11` and `@vscode/vsce` `4.0.0` as development dependencies. Keep Node 24,
+  the existing npm/esbuild/Cargo pipeline, and the published editor API floor.
+- Override transitive `@vscode/vsce` with `$@vscode/vsce`, matching the exact direct version.
+  Retain `ovsx` `1.0.2` and verify its CLI startup and the existing `createVSIX` API offline.
+- Refresh affected indirect dependencies within their existing ranges. Preserve the approved
+  production dependency graph and its notices.
+- Review the `@vscode/vsce-sign` `2.1.0` installer and synchronize its exact allowlist entry with
+  the repository policy and fixture. Remove the obsolete keytar install permission. New native
+  keyring packages are development-only and have no install lifecycle script.
+- Run `npm audit --audit-level=low` on the entire locked dependency tree in PR CI, compatibility
+  candidate builds, and tagged release candidate builds. Do not suppress development advisories.
+
+## Consequences and validation
+
+The new packager requires Node 22 or newer, within the accepted Node 24 tooling baseline. Its
+public `createVSIX` API retains the options used by the repository and by `ovsx`, but the override
+crosses `ovsx`'s declared major range. Clean `npm ci`, CLI startup, unit and boundary tests,
+VSIX content checks, and reproducibility checks are required before merge. Publishing an existing
+VSIX must retain the current arguments; a live registry publish is outside this maintenance task.
+
+All new packaging, installation, and scan evidence applies to the updated development tree.
+Existing 0.4.0 release lifecycle and performance receipts continue to describe only their original
+bytes. A zero-result npm audit is a time-bound known-advisory result, not a complete security claim.

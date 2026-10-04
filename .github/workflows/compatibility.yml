@@ -58,7 +58,7 @@ jobs:
           npm test
           npm run test:security
           npm run dependency:check
-          npm audit --omit=dev --audit-level=high
+          npm audit --audit-level=low
 
       - name: Package and inspect candidate
         run: |

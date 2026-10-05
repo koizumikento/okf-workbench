@@ -21,8 +21,9 @@ affected secretlint/globby/fast-glob dependency chain and removes fast-uri from 
 
 ## Decision
 
-- Pin Vitest `4.1.11` and `@vscode/vsce` `4.0.0` as development dependencies. Keep Node 24,
-  the existing npm/esbuild/Cargo pipeline, and the published editor API floor.
+- Pin Vitest `5.0.3` (see the amendment below) and `@vscode/vsce` `4.0.0` as development
+  dependencies. Keep Node 24, the existing npm/esbuild/Cargo pipeline, and the published editor
+  API floor.
 - Override transitive `@vscode/vsce` with `$@vscode/vsce`, matching the exact direct version.
   Retain `ovsx` `1.0.2` and verify its CLI startup and the existing `createVSIX` API offline.
 - Refresh affected indirect dependencies within their existing ranges. Preserve the approved
@@ -44,3 +45,20 @@ VSIX must retain the current arguments; a live registry publish is outside this 
 All new packaging, installation, and scan evidence applies to the updated development tree.
 Existing 0.4.0 release lifecycle and performance receipts continue to describe only their original
 bytes. A zero-result npm audit is a time-bound known-advisory result, not a complete security claim.
+
+## 2026-10-05 amendment: Vitest 5 benchmark migration
+
+The maintainer authorized the major-version migration in Dependabot PR #71. This supersedes
+the original Vitest `4.1.11` pin with `5.0.3`; the packager, overrides, installer policy, Node
+baseline, and editor API floor retain their existing decisions.
+
+Following the [Vitest 5 migration guide](https://vitest.dev/guide/migration.html) and the
+[version-pinned benchmark API](https://github.com/vitest-dev/vitest/blob/v5.0.3/docs/guide/benchmarking.md),
+the five harness workloads use async tests with the test-context `bench` fixture and explicitly
+await each registration's `.run()`. Benchmark discovery is limited to `test/benchmarks`, separate
+from ordinary unit tests. PR CI runs the existing `npm run benchmark` command so registration
+alone cannot masquerade as an executed measurement.
+
+Validation requires clean installation, formatting, lint, type checks, all test and security
+gates, five completed benchmark measurements, full-tree audit, and reproducible inspected VSIX
+packaging. These harness measurements remain overhead evidence, not headed-editor QR evidence.

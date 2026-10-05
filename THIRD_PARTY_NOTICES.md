@@ -6,7 +6,7 @@ OKF Workbench bundles the production packages listed below. The inventory is der
 
 License classification is a release-engineering gate, not legal advice. `allowed` means the SPDX expression is on the repository permissive-license allowlist; any other classification requires resolution before packaging.
 
-Production package count: **78**
+Production package count: **79**
 
 <!-- prettier-ignore-start -->
 
@@ -18,7 +18,7 @@ Production package count: **78**
 | [@types/mdast](https://www.npmjs.com/package/%40types/mdast/v/4.0.4) | 4.0.4 | MIT | allowed | [ff82c90f8494](#notice-ff82c90f84945c60601e96b43246009b9bc589f3ebe1cd8a0fd39a3520d8c310) |
 | [@types/ms](https://www.npmjs.com/package/%40types/ms/v/2.1.0) | 2.1.0 | MIT | allowed | [ff82c90f8494](#notice-ff82c90f84945c60601e96b43246009b9bc589f3ebe1cd8a0fd39a3520d8c310) |
 | [@types/unist](https://www.npmjs.com/package/%40types/unist/v/3.0.3) | 3.0.3 | MIT | allowed | [ff82c90f8494](#notice-ff82c90f84945c60601e96b43246009b9bc589f3ebe1cd8a0fd39a3520d8c310) |
-| [3d-force-graph](https://www.npmjs.com/package/3d-force-graph/v/1.80.0) | 1.80.0 | MIT | allowed | [c81e08f2a436](#notice-c81e08f2a4364d08611c888e00017d1000168d4a6991b2df34ccec52e71c84a5) |
+| [3d-force-graph](https://www.npmjs.com/package/3d-force-graph/v/1.80.1) | 1.80.1 | MIT | allowed | [c81e08f2a436](#notice-c81e08f2a4364d08611c888e00017d1000168d4a6991b2df34ccec52e71c84a5) |
 | [accessor-fn](https://www.npmjs.com/package/accessor-fn/v/1.5.3) | 1.5.3 | MIT | allowed | [c81e08f2a436](#notice-c81e08f2a4364d08611c888e00017d1000168d4a6991b2df34ccec52e71c84a5) |
 | [bail](https://www.npmjs.com/package/bail/v/2.0.2) | 2.0.2 | MIT | allowed | [c37a32dd1cd4](#notice-c37a32dd1cd44e7b68afdf88cb45eb2c4028574f7d894c720371d5688f73ef45) |
 | [character-entities](https://www.npmjs.com/package/character-entities/v/2.0.2) | 2.0.2 | MIT | allowed | [c37a32dd1cd4](#notice-c37a32dd1cd44e7b68afdf88cb45eb2c4028574f7d894c720371d5688f73ef45) |
@@ -50,11 +50,11 @@ Production package count: **78**
 | [lodash-es](https://www.npmjs.com/package/lodash-es/v/4.18.1) | 4.18.1 | MIT | allowed | [2314aa0e2bae](#notice-2314aa0e2bae2fcbc099b29c8815e26688cef6c2cf76226927a3f24f091f7114) |
 | [mdast-util-from-markdown](https://www.npmjs.com/package/mdast-util-from-markdown/v/2.0.3) | 2.0.3 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
 | [mdast-util-to-string](https://www.npmjs.com/package/mdast-util-to-string/v/4.0.0) | 4.0.0 | MIT | allowed | [c37a32dd1cd4](#notice-c37a32dd1cd44e7b68afdf88cb45eb2c4028574f7d894c720371d5688f73ef45) |
-| [micromark](https://www.npmjs.com/package/micromark/v/4.0.2) | 4.0.2 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
-| [micromark-core-commonmark](https://www.npmjs.com/package/micromark-core-commonmark/v/2.0.3) | 2.0.3 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
+| [micromark](https://www.npmjs.com/package/micromark/v/4.0.3) | 4.0.3 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
+| [micromark-core-commonmark](https://www.npmjs.com/package/micromark-core-commonmark/v/2.0.4) | 2.0.4 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
 | [micromark-factory-destination](https://www.npmjs.com/package/micromark-factory-destination/v/2.0.1) | 2.0.1 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
 | [micromark-factory-label](https://www.npmjs.com/package/micromark-factory-label/v/2.0.1) | 2.0.1 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
-| [micromark-factory-space](https://www.npmjs.com/package/micromark-factory-space/v/2.0.1) | 2.0.1 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
+| [micromark-factory-space](https://www.npmjs.com/package/micromark-factory-space/v/2.1.0) | 2.1.0 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
 | [micromark-factory-title](https://www.npmjs.com/package/micromark-factory-title/v/2.0.1) | 2.0.1 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
 | [micromark-factory-whitespace](https://www.npmjs.com/package/micromark-factory-whitespace/v/2.0.1) | 2.0.1 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
 | [micromark-util-character](https://www.npmjs.com/package/micromark-util-character/v/2.1.1) | 2.1.1 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
@@ -63,6 +63,7 @@ Production package count: **78**
 | [micromark-util-combine-extensions](https://www.npmjs.com/package/micromark-util-combine-extensions/v/2.0.1) | 2.0.1 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
 | [micromark-util-decode-numeric-character-reference](https://www.npmjs.com/package/micromark-util-decode-numeric-character-reference/v/2.0.2) | 2.0.2 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
 | [micromark-util-decode-string](https://www.npmjs.com/package/micromark-util-decode-string/v/2.0.1) | 2.0.1 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
+| [micromark-util-edit-map](https://www.npmjs.com/package/micromark-util-edit-map/v/1.0.0) | 1.0.0 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
 | [micromark-util-encode](https://www.npmjs.com/package/micromark-util-encode/v/2.0.1) | 2.0.1 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
 | [micromark-util-html-tag-name](https://www.npmjs.com/package/micromark-util-html-tag-name/v/2.0.1) | 2.0.1 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
 | [micromark-util-normalize-identifier](https://www.npmjs.com/package/micromark-util-normalize-identifier/v/2.0.1) | 2.0.1 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
@@ -70,7 +71,7 @@ Production package count: **78**
 | [micromark-util-sanitize-uri](https://www.npmjs.com/package/micromark-util-sanitize-uri/v/2.0.1) | 2.0.1 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
 | [micromark-util-subtokenize](https://www.npmjs.com/package/micromark-util-subtokenize/v/2.1.0) | 2.1.0 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
 | [micromark-util-symbol](https://www.npmjs.com/package/micromark-util-symbol/v/2.0.1) | 2.0.1 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
-| [micromark-util-types](https://www.npmjs.com/package/micromark-util-types/v/2.0.2) | 2.0.2 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
+| [micromark-util-types](https://www.npmjs.com/package/micromark-util-types/v/2.0.3) | 2.0.3 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
 | [ms](https://www.npmjs.com/package/ms/v/2.1.3) | 2.1.3 | MIT | allowed | [e91069c31b4e](#notice-e91069c31b4e4daee9db0e946308531fe585f091b655bb68fee44a83830ab9b6) |
 | [ngraph.events](https://www.npmjs.com/package/ngraph.events/v/1.4.0) | 1.4.0 | BSD-3-Clause | allowed | [083f6503efc9](#notice-083f6503efc98d6a9af8a7d6f45dd34b660ccec36b4970147c5c0826c969164f) |
 | [ngraph.forcelayout](https://www.npmjs.com/package/ngraph.forcelayout/v/3.3.1) | 3.3.1 | BSD-3-Clause | allowed | [c824066e012a](#notice-c824066e012ac3eecc0544cc4c24619a146da9c1c6e2db1798dc15438ddff393) |
@@ -89,7 +90,7 @@ Production package count: **78**
 | [unist-util-stringify-position](https://www.npmjs.com/package/unist-util-stringify-position/v/4.0.0) | 4.0.0 | MIT | allowed | [d9c32f07344c](#notice-d9c32f07344cb9c8160725e998daa6a4bf5760ff6508ee645e0f192a06e929cb) |
 | [vfile](https://www.npmjs.com/package/vfile/v/6.0.3) | 6.0.3 | MIT | allowed | [e453dafb35c9](#notice-e453dafb35c9b3cb911a8d2f1a0b37526ee15d1bc21cfc689756bed25e9483b8) |
 | [vfile-message](https://www.npmjs.com/package/vfile-message/v/4.0.3) | 4.0.3 | MIT | allowed | [ea559213e0e9](#notice-ea559213e0e927a249bd60f4f6a27d1a272fb5d38d2babbd723099c66a17c5af) |
-| [yaml](https://www.npmjs.com/package/yaml/v/2.9.0) | 2.9.0 | ISC | allowed | [cf12d35c36ba](#notice-cf12d35c36bad4b21582e8549d43283d304574764c28fe0b93f25f475c5e832c) |
+| [yaml](https://www.npmjs.com/package/yaml/v/2.9.1) | 2.9.1 | ISC | allowed | [cf12d35c36ba](#notice-cf12d35c36bad4b21582e8549d43283d304574764c28fe0b93f25f475c5e832c) |
 
 <!-- prettier-ignore-end -->
 
@@ -689,7 +690,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### c81e08f2a436
 
-Packages: `3d-force-graph@1.80.0`, `accessor-fn@1.5.3`, `d3-binarytree@1.0.2`, `d3-force-3d@3.0.6`, `d3-octree@1.1.0`, `kapsule@1.16.3`, `three-forcegraph@1.43.4`
+Packages: `3d-force-graph@1.80.1`, `accessor-fn@1.5.3`, `d3-binarytree@1.0.2`, `d3-force-3d@3.0.6`, `d3-octree@1.1.0`, `kapsule@1.16.3`, `three-forcegraph@1.43.4`
 
 Source files: `node_modules/3d-force-graph/LICENSE`, `node_modules/accessor-fn/LICENSE`, `node_modules/d3-binarytree/LICENSE`, `node_modules/d3-force-3d/LICENSE`, `node_modules/d3-octree/LICENSE`, `node_modules/kapsule/LICENSE`, `node_modules/three-forcegraph/LICENSE`
 
@@ -759,7 +760,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ### cf12d35c36ba
 
-Packages: `yaml@2.9.0`
+Packages: `yaml@2.9.1`
 
 Source files: `node_modules/yaml/LICENSE`
 
@@ -1076,9 +1077,9 @@ THE SOFTWARE.
 
 ### ea559213e0e9
 
-Packages: `decode-named-character-reference@1.3.0`, `mdast-util-from-markdown@2.0.3`, `micromark-core-commonmark@2.0.3`, `micromark-factory-destination@2.0.1`, `micromark-factory-label@2.0.1`, `micromark-factory-space@2.0.1`, `micromark-factory-title@2.0.1`, `micromark-factory-whitespace@2.0.1`, `micromark-util-character@2.1.1`, `micromark-util-chunked@2.0.1`, `micromark-util-classify-character@2.0.1`, `micromark-util-combine-extensions@2.0.1`, `micromark-util-decode-numeric-character-reference@2.0.2`, `micromark-util-decode-string@2.0.1`, `micromark-util-encode@2.0.1`, `micromark-util-html-tag-name@2.0.1`, `micromark-util-normalize-identifier@2.0.1`, `micromark-util-resolve-all@2.0.1`, `micromark-util-sanitize-uri@2.0.1`, `micromark-util-subtokenize@2.1.0`, `micromark-util-symbol@2.0.1`, `micromark-util-types@2.0.2`, `micromark@4.0.2`, `vfile-message@4.0.3`
+Packages: `decode-named-character-reference@1.3.0`, `mdast-util-from-markdown@2.0.3`, `micromark-core-commonmark@2.0.4`, `micromark-factory-destination@2.0.1`, `micromark-factory-label@2.0.1`, `micromark-factory-space@2.1.0`, `micromark-factory-title@2.0.1`, `micromark-factory-whitespace@2.0.1`, `micromark-util-character@2.1.1`, `micromark-util-chunked@2.0.1`, `micromark-util-classify-character@2.0.1`, `micromark-util-combine-extensions@2.0.1`, `micromark-util-decode-numeric-character-reference@2.0.2`, `micromark-util-decode-string@2.0.1`, `micromark-util-edit-map@1.0.0`, `micromark-util-encode@2.0.1`, `micromark-util-html-tag-name@2.0.1`, `micromark-util-normalize-identifier@2.0.1`, `micromark-util-resolve-all@2.0.1`, `micromark-util-sanitize-uri@2.0.1`, `micromark-util-subtokenize@2.1.0`, `micromark-util-symbol@2.0.1`, `micromark-util-types@2.0.3`, `micromark@4.0.3`, `vfile-message@4.0.3`
 
-Source files: `node_modules/decode-named-character-reference/license`, `node_modules/mdast-util-from-markdown/license`, `node_modules/micromark-core-commonmark/license`, `node_modules/micromark-factory-destination/license`, `node_modules/micromark-factory-label/license`, `node_modules/micromark-factory-space/license`, `node_modules/micromark-factory-title/license`, `node_modules/micromark-factory-whitespace/license`, `node_modules/micromark-util-character/license`, `node_modules/micromark-util-chunked/license`, `node_modules/micromark-util-classify-character/license`, `node_modules/micromark-util-combine-extensions/license`, `node_modules/micromark-util-decode-numeric-character-reference/license`, `node_modules/micromark-util-decode-string/license`, `node_modules/micromark-util-encode/license`, `node_modules/micromark-util-html-tag-name/license`, `node_modules/micromark-util-normalize-identifier/license`, `node_modules/micromark-util-resolve-all/license`, `node_modules/micromark-util-sanitize-uri/license`, `node_modules/micromark-util-subtokenize/license`, `node_modules/micromark-util-symbol/license`, `node_modules/micromark-util-types/license`, `node_modules/micromark/license`, `node_modules/vfile-message/license`
+Source files: `node_modules/decode-named-character-reference/license`, `node_modules/mdast-util-from-markdown/license`, `node_modules/micromark-core-commonmark/license`, `node_modules/micromark-factory-destination/license`, `node_modules/micromark-factory-label/license`, `node_modules/micromark-factory-space/license`, `node_modules/micromark-factory-title/license`, `node_modules/micromark-factory-whitespace/license`, `node_modules/micromark-util-character/license`, `node_modules/micromark-util-chunked/license`, `node_modules/micromark-util-classify-character/license`, `node_modules/micromark-util-combine-extensions/license`, `node_modules/micromark-util-decode-numeric-character-reference/license`, `node_modules/micromark-util-decode-string/license`, `node_modules/micromark-util-edit-map/license`, `node_modules/micromark-util-encode/license`, `node_modules/micromark-util-html-tag-name/license`, `node_modules/micromark-util-normalize-identifier/license`, `node_modules/micromark-util-resolve-all/license`, `node_modules/micromark-util-sanitize-uri/license`, `node_modules/micromark-util-subtokenize/license`, `node_modules/micromark-util-symbol/license`, `node_modules/micromark-util-types/license`, `node_modules/micromark/license`, `node_modules/vfile-message/license`
 
 <pre>
 (The MIT License)

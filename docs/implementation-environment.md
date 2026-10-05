@@ -117,10 +117,17 @@ test matrix, and a full-tree `npm audit` must pass whenever either override chan
 tooling to Vitest `4.1.11` and `@vscode/vsce` `4.0.0`. The `@vscode/vsce` override references
 the exact direct dependency with `$@vscode/vsce`, so `ovsx` `1.0.2` uses the same reviewed
 packager instead of retaining a vulnerable `3.9.2` dependency tree. The four exact install-script
-decisions allow `@vscode/vsce-sign` `2.1.0` and esbuild `0.28.1`, and deny both fsevents
+decisions allow `@vscode/vsce-sign` `2.1.0` and esbuild `0.28.2`, and deny both fsevents
 versions; the removed keytar installer is no longer allowed. The signing helper's installer
 copies its locked platform package first and retains the upstream npm-download fallback.
 These are development-only capabilities and remain excluded from the VSIX.
+
+The reviewed esbuild `0.28.2` patch retains the byte-identical `install.js` from `0.28.1`:
+its normal path uses the locked platform-optional package, retaining upstream download fallbacks.
+Only the exact `esbuild@0.28.2` installer is allowed. The performance toolchain manifest binds
+the updated portable files and four supported platform packages to their official archive
+integrities and exact file hashes; historical release/performance receipts retain their original
+toolchain identities.
 
 Ordinary PR CI, compatibility candidate builds, and tagged release candidate builds run
 `npm audit --audit-level=low` across the complete locked tree, including development and optional

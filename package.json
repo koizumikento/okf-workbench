@@ -444,10 +444,10 @@
     "@vscode/test-cli": "0.0.15",
     "@vscode/test-electron": "3.1.0",
     "@vscode/vsce": "4.0.0",
-    "esbuild": "0.28.1",
+    "esbuild": "0.28.2",
     "eslint": "9.39.5",
     "ovsx": "1.0.2",
-    "prettier": "3.9.6",
+    "prettier": "3.9.9",
     "typescript": "6.0.3",
     "typescript-eslint": "8.71.0",
     "vitest": "4.1.11"
@@ -459,7 +459,7 @@
   },
   "allowScripts": {
     "@vscode/vsce-sign@2.1.0": true,
-    "esbuild@0.28.1": true,
+    "esbuild@0.28.2": true,
     "fsevents@2.3.2": false,
     "fsevents@2.3.3": false
   }

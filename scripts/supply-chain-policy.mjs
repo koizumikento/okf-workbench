@@ -49,7 +49,7 @@ const requiredSecurityWorkflowGates = Object.freeze({
 
 export const EXPECTED_INSTALL_SCRIPT_DECISIONS = Object.freeze({
   '@vscode/vsce-sign@2.1.0': true,
-  'esbuild@0.28.1': true,
+  'esbuild@0.28.2': true,
   'fsevents@2.3.2': false,
   'fsevents@2.3.3': false,
 });

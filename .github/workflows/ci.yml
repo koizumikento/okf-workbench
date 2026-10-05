@@ -77,6 +77,9 @@ jobs:
       - name: Run acceptance component gate
         run: npm run test:acceptance
 
+      - name: Run benchmark harness
+        run: npm run benchmark
+
       - name: Run security boundary gate
         run: npm run test:security
 

@@ -114,8 +114,9 @@ pinned VS Code test runner. Both packages remain excluded from the VSIX. Clean i
 test matrix, and a full-tree `npm audit` must pass whenever either override changes.
 
 [ADR 0013](decisions/0013-development-tooling-security-updates.md) updates the development
-tooling to Vitest `4.1.11` and `@vscode/vsce` `4.0.0`. The `@vscode/vsce` override references
-the exact direct dependency with `$@vscode/vsce`, so `ovsx` `1.0.2` uses the same reviewed
+tooling to Vitest `5.0.3` through its 2026-10-05 amendment and `@vscode/vsce` `4.0.0`. The
+`@vscode/vsce` override references the exact direct dependency with `$@vscode/vsce`, so `ovsx`
+`1.0.2` uses the same reviewed
 packager instead of retaining a vulnerable `3.9.2` dependency tree. The four exact install-script
 decisions allow `@vscode/vsce-sign` `2.1.0` and esbuild `0.28.2`, and deny both fsevents
 versions; the removed keytar installer is no longer allowed. The signing helper's installer
@@ -675,10 +676,11 @@ retaining individual entries, and discovery uses `stat.size` to avoid avoidable 
 
 | Layer | Tool baseline | What it proves |
 | --- | --- | --- |
-| Core and presentation-model unit tests | Vitest `4.1.x`, Node environment | Parsing, preservation, resolution, validation, indexes, templates, graph model, and deterministic sidebar resource hierarchy |
+| Core and presentation-model unit tests | Vitest `5.0.3`, Node environment | Parsing, preservation, resolution, validation, indexes, templates, graph model, and deterministic sidebar resource hierarchy |
 | Rust core and CLI | `cargo test --workspace` | Native semantics, deterministic generation, CLI no-write/apply/collision behavior |
 | Wasm parity | Vitest plus locked release Wasm build | ABI/import boundary and canonical Rust/TypeScript fixture and byte parity |
-| Webview state unit tests | Vitest `4.1.x`, Node environment | Pure search, type/tag/folder filtering, folder hierarchy, focus, presentation, color, custom-force, and message-decoding state without claiming browser DOM behavior |
+| Webview state unit tests | Vitest `5.0.3`, Node environment | Pure search, type/tag/folder filtering, folder hierarchy, focus, presentation, color, custom-force, and message-decoding state without claiming browser DOM behavior |
+| Benchmark harness | Vitest `5.0.3` test-context `bench`, `npm run benchmark` | Five executed fixture/model overhead measurements in PR CI; separate discovery from unit tests and no headed-editor performance claim |
 | Security boundaries | Dedicated Vitest and Playwright configs | Host/path/protocol boundaries plus hostile-content DOM execution and browser egress interception |
 | Extension integration | `@vscode/test-cli` `0.0.x` and `@vscode/test-electron` `3.1.x` with Mocha | Commands and Activity Bar views, workspace FS, diagnostics, watchers, URI behavior, source navigation, and the registered non-`file:` read boundary |
 | Webview browser harness | Playwright `1.62.x` on Chromium | Real DOM, WebGL smoke, CSP-compatible bundle loading, folder tree/filter/breadcrumb interaction, keyboard interaction, camera toolbar behavior, and wheel/pinch event boundaries |

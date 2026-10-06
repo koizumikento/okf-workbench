@@ -1,5 +1,8 @@
 # Acceptance evidence
 
+Source builds now require VS Code API 1.140.0; see [ADR 0014](decisions/0014-vscode-1140-api-floor.md).
+Historical editor and performance receipts below do not qualify this new floor.
+
 - Target: MVP acceptance scenarios AC-001 through AC-009
 - Packaged extension ID: `straydog.okf-workbench`
 - Evidence date: 2026-08-03
@@ -87,8 +90,8 @@ The Extension Host suite separately registers an actual non-`file:` workspace pr
 the public commands with its Explorer/root URI:
 
 ```sh
-mise x node@24.18.0 -- env VSCODE_TEST_VERSION=1.123.0 npm run test:integration
-mise x node@24.18.0 -- env VSCODE_TEST_VERSION=1.129.1 npm run test:integration
+mise x node@24.18.0 -- env VSCODE_TEST_VERSION=1.140.0 npm run test:integration
+mise x node@24.18.0 -- env VSCODE_TEST_VERSION=1.140.0 npm run test:integration
 ```
 
 That test requires provider reads for the selected bundle, publishes the broken-link diagnostic at

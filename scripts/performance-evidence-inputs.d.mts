@@ -1,6 +1,6 @@
 import type { PerformanceInputSnapshot } from './performance-input-snapshot.mjs';
 
-export declare const CURRENT_PERFORMANCE_VSCODE_VERSION: '1.129.1';
+export declare const CURRENT_PERFORMANCE_VSCODE_VERSION: '1.140.0';
 export declare const PERFORMANCE_INPUT_IDENTITY_FIELDS: readonly string[];
 export declare const HEADED_HARNESS_BUILD_CONFIGURATION_PATH: string;
 export declare const DIAGNOSTICS_OBSERVER_PATH: string;

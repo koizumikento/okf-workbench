@@ -28,7 +28,7 @@ export const PERFORMANCE_INPUT_IDENTITY_FIELDS = Object.freeze([
   'qr003HarnessDefinitionSha256',
   'qr003HarnessBundleSha256',
 ]);
-export const CURRENT_PERFORMANCE_VSCODE_VERSION = '1.129.1';
+export const CURRENT_PERFORMANCE_VSCODE_VERSION = '1.140.0';
 
 export const HEADED_HARNESS_BUILD_CONFIGURATION_PATH = 'test/benchmarks/headed-harness-build.json';
 export const DIAGNOSTICS_OBSERVER_PATH = 'test/benchmarks/diagnostics-observer';

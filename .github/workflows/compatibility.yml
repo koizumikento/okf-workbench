@@ -134,28 +134,28 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: VS Code 1.123.0 / Ubuntu 24.04
-            artifact_label: vscode-1.123.0-ubuntu-24.04
+          - label: VS Code 1.140.0 minimum / Ubuntu 24.04
+            artifact_label: vscode-minimum-1.140.0-ubuntu-24.04
             editor: vscode
-            editor_version: 1.123.0
+            editor_version: 1.140.0
             os: ubuntu-24.04
             platform: linux
-          - label: VS Code 1.129.1 / Ubuntu 24.04
-            artifact_label: vscode-1.129.1-ubuntu-24.04
+          - label: VS Code 1.140.0 current / Ubuntu 24.04
+            artifact_label: vscode-current-1.140.0-ubuntu-24.04
             editor: vscode
-            editor_version: 1.129.1
+            editor_version: 1.140.0
             os: ubuntu-24.04
             platform: linux
-          - label: VS Code 1.129.1 / macOS 15
-            artifact_label: vscode-1.129.1-macos-15
+          - label: VS Code 1.140.0 current / macOS 15
+            artifact_label: vscode-current-1.140.0-macos-15
             editor: vscode
-            editor_version: 1.129.1
+            editor_version: 1.140.0
             os: macos-15
             platform: darwin
-          - label: VS Code 1.129.1 / Windows 2025
-            artifact_label: vscode-1.129.1-windows-2025
+          - label: VS Code 1.140.0 current / Windows 2025
+            artifact_label: vscode-current-1.140.0-windows-2025
             editor: vscode
-            editor_version: 1.129.1
+            editor_version: 1.140.0
             os: windows-2025
             platform: win32
           - label: VSCodium 1.126.04524 / Ubuntu 24.04

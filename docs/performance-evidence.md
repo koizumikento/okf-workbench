@@ -1,5 +1,8 @@
 # Performance evidence
 
+Source builds now require VS Code API 1.140.0; see [ADR 0014](decisions/0014-vscode-1140-api-floor.md).
+Historical editor and performance receipts below do not qualify this new floor.
+
 - Status: **0.4.0 exact-Wasm QR-002, QR-003, and Webview network gates pass**;
   hosted compatibility and packaging remain separate gates
 - Date: 2026-09-05

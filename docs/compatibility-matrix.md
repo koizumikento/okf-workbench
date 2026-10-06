@@ -180,9 +180,16 @@ a published migration source.
 
 | Editor | Exact version | Ubuntu 24.04 | macOS 15 | Windows 2025 | Acquisition |
 | --- | --- | --- | --- | --- | --- |
-| VS Code | `1.123.0` | Required | N/A | N/A | Pinned editor test download |
-| VS Code | `1.129.1` | Required | Required | Required | Pinned editor test download |
+| VS Code (minimum) | `1.140.0` | Required | N/A | N/A | Pinned editor test download |
+| VS Code (current) | `1.140.0` | Required | Required | Required | Pinned editor test download |
 | VSCodium | `1.126.04524` | Required | Required | Required | Official archive with pinned SHA-256 |
+
+The two VS Code roles currently share the latest stable 1.140.0 release.
+The VSCodium lanes remain enabled but cannot install the new API-1.140 package:
+the latest official release checked on 2026-10-06 is 1.135.06055 (API 1.135).
+Full packaged qualification is blocked until a compatible release and reviewed
+archive pins are available. Existing pins and historical receipts are retained.
+See [ADR 0014](decisions/0014-vscode-1140-api-floor.md).
 
 These are the lanes the next qualification run must pass. The `Passed` results above belong to the
 explicitly named predecessor revisions and do not transfer to the current source candidate.

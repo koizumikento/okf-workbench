@@ -4,7 +4,6 @@
     "allowScripts": {
       "@vscode/vsce-sign@2.1.0": true,
       "esbuild@0.28.2": true,
-      "fsevents@2.3.2": false,
       "fsevents@2.3.3": false
     },
     "scripts": {}
@@ -18,10 +17,6 @@
       },
       "node_modules/esbuild": {
         "version": "0.28.2",
-        "hasInstallScript": true
-      },
-      "node_modules/fsevents": {
-        "version": "2.3.2",
         "hasInstallScript": true
       },
       "node_modules/unknown-native-helper": {

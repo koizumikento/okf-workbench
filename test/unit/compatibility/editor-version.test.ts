@@ -9,7 +9,7 @@ import { COMPATIBILITY_PINS } from '../../../scripts/compatibility/pins.mjs';
 
 describe('packaged editor version oracle', () => {
   it('pins the API-floor and current-stable VS Code lanes', () => {
-    expect(COMPATIBILITY_PINS.vscodeVersions).toEqual(['1.123.0', '1.129.1']);
+    expect(COMPATIBILITY_PINS.vscodeVersions).toEqual(['1.140.0', '1.140.0']);
   });
 
   it('disables Electron sandboxes only for the isolated Linux editor test harness', () => {

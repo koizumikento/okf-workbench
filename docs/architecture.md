@@ -55,9 +55,10 @@ native CLI.
 ## Implementation baseline
 
 - Desktop-only VS Code-compatible extension for the MVP; no Web extension entry point.
-- VS Code API floor `^1.123.0` and Node 24, as accepted in [ADR 0012](decisions/0012-node24-extension-host.md).
-- Release qualification pins the API-floor lane to VS Code `1.123.0`, the current-stable lane to
-  VS Code `1.129.1`, and the compatible-editor lane to VSCodium `1.126.04524`. The exact `0.3.0`
+- VS Code API floor `^1.140.0` and Node 24, as amended in [ADR 0014](decisions/0014-vscode-1140-api-floor.md).
+- Release qualification pins both VS Code roles to `1.140.0`. The retained VSCodium
+  `1.126.04524` lanes are blocked by the new floor until a compatible official release
+  is available and its archives are reviewed; they are not disabled. The exact `0.3.0`
   candidate passed the earlier VS Code 1.121.0 / 1.129.1 and VSCodium 1.121.03429 lanes
   plus the four target-package and aggregate gates; the
   recorded VS Code `1.127.0` headed run remains a superseded historical record and does not qualify

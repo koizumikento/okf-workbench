@@ -104,6 +104,8 @@ Accepted decisions are recorded under [decisions/](decisions/):
 - [0012 — Target Node 24 in the Extension Host](decisions/0012-node24-extension-host.md)
 - [0013 — Keep development tooling free of known dependency advisories](decisions/0013-development-tooling-security-updates.md)
 
+- [0014 — Align the VS Code API floor with 1.140 types](decisions/0014-vscode-1140-api-floor.md)
+
 ## Documentation rules
 
 - Update the relevant document when a product or architecture decision changes.

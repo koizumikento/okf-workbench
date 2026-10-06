@@ -154,10 +154,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Keep the required-check identifiers stable; actual editor pins are below.
+          # Both roles currently use 1.140.0, the API floor and latest stable release.
           - label: minimum-1.123.0
-            vscode-version: 1.123.0
+            vscode-version: 1.140.0
           - label: current-1.129.1
-            vscode-version: 1.129.1
+            vscode-version: 1.140.0
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

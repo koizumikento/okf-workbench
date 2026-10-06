@@ -66,8 +66,10 @@ graph inspection remain read-only. While an authoring preview awaits a decision,
 exact summary and choose Apply or Cancel. Proposals containing only new files apply immediately
 after the final input; collision checks refuse an existing target without overwriting it.
 
-Version 0.4.0 targets Node 24 and VS Code-compatible desktop editors with API floor
-`^1.123.0`; published 0.3.0 retains its original `^1.121.0` floor. Compatibility
+Source builds require VS Code API `^1.140.0` and target Node 24. Published 0.4.0 retains
+its `^1.123.0` floor, and published 0.3.0 retains `^1.121.0`. Older editors, including
+VSCodium releases below API 1.140, must keep published 0.4.0. See
+[ADR 0014](docs/decisions/0014-vscode-1140-api-floor.md) for the new qualification limits. Compatibility
 is specific to the editor version, operating system, and exact extension package; the manifest
 floor is not a universal compatibility guarantee.
 

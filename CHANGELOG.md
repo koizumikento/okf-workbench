@@ -5,6 +5,14 @@ All notable changes to OKF Workbench are documented in this file.
 The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and intends to use
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) after the first public release.
 
+## Unreleased
+
+### Changed
+
+- Raise the VS Code API minimum to 1.140.0 with `@types/vscode` 1.140.0.
+  Older editors must retain published 0.4.0; current VSCodium releases below API 1.140
+  cannot install new packages. Node 24 and the extension workflows remain unchanged.
+
 ## 0.4.0 - 2026-09-05
 
 ### Changed

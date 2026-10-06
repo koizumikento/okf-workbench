@@ -44,6 +44,9 @@ The shipped trust boundaries are:
 
 ## Runtime and compatibility baseline
 
+[ADR 0014](decisions/0014-vscode-1140-api-floor.md) raises the source-build API floor
+and VS Code test pins to 1.140.0. Published release records below remain historical.
+
 The post-0.3.0 Node 24 target and editor pins follow
 [ADR 0012](decisions/0012-node24-extension-host.md). Earlier release receipts below
 remain bound to their original Node 22 build and editor matrix.
@@ -51,18 +54,18 @@ remain bound to their original Node 22 build and editor matrix.
 | Concern | Baseline | Reason |
 | --- | --- | --- |
 | Primary surface | VS Code-compatible desktop extension | MVP requires VS Code and VSCodium desktop testing |
-| VS Code API floor | `engines.vscode: ^1.123.0` | Requires the Node 24 Extension Host baseline accepted in ADR 0012 |
+| VS Code API floor | `engines.vscode: ^1.140.0` | Matches the compile-time API ceiling accepted in ADR 0014 |
 | Development and CI Node | Node.js `24.18.0` LTS | Supported LTS, pinned for reproducible tooling |
 | Package manager | npm `11.16.0` | Bundled with the pinned Node release; one tool and one lockfile |
 | Rust toolchain | Rust `1.92.0`, edition 2024 | Pinned by `rust-toolchain.toml`; owns the shared core, Wasm, and CLI |
 | Wasm target | `wasm32-unknown-unknown` | Portable, capability-free Extension Host artifact without WASI |
-| Extension-host output target | Node.js 24 / CommonJS | Matches @types/node 24.13.3 and Node 24.15.0 in VS Code 1.123.0 |
+| Extension-host output target | Node.js 24 / CommonJS | Node 24 minimum, asserted in the real Extension Host integration suite |
 | Webview output target | ES2022 browser module | Conservative target for the Electron/Chromium Webview matrix |
 | Type checker | TypeScript `6.0.3` | Mature stable line; TypeScript 7 adoption is deferred until extension tooling compatibility is verified |
-| VS Code compile-time types | `@types/vscode` `1.120.0` | Conservative API ceiling; this runtime update adds no newer VS Code API usage |
-| Minimum editor test | VS Code `1.123.0` | Matches the manifest API floor |
-| Current editor test | VS Code `1.129.1` | Stable VS Code release pinned for the current release-candidate qualification |
-| VSCodium test | VSCodium `1.126.04524` | Stable VSCodium release at the decision date |
+| VS Code compile-time types | `@types/vscode` `1.140.0` | Matches the minimum editor API |
+| Minimum editor test | VS Code `1.140.0` | Matches the manifest API floor |
+| Current editor test | VS Code `1.140.0` | Stable VS Code release pinned for the current release-candidate qualification |
+| VSCodium test | VSCodium `1.126.04524` | Retained gate, blocked below the new API floor; see ADR 0014 |
 
 Node.js 26 is Current rather than LTS at the decision date, so it is not the development baseline.
 The extension must not include native Node add-ons. Extension behavior stays portable through Wasm,
@@ -685,7 +688,7 @@ retaining individual entries, and discovery uses `stat.size` to avoid avoidable 
 | Extension integration | `@vscode/test-cli` `0.0.x` and `@vscode/test-electron` `3.1.x` with Mocha | Commands and Activity Bar views, workspace FS, diagnostics, watchers, URI behavior, source navigation, and the registered non-`file:` read boundary |
 | Webview browser harness | Playwright `1.62.x` on Chromium | Real DOM, WebGL smoke, CSP-compatible bundle loading, folder tree/filter/breadcrumb interaction, keyboard interaction, camera toolbar behavior, and wheel/pinch event boundaries |
 | Release smoke | Packaged VSIX in VS Code and VSCodium | Installation, activation, packaged resources, upgrade, uninstall |
-| Performance | Headed VS Code `1.129.1` release benchmark harness | QR-002 and QR-003 evidence on recorded hardware; VSCodium performance may be investigated separately but cannot satisfy the current strict release record |
+| Performance | Headed VS Code `1.140.0` release benchmark harness | QR-002 and QR-003 evidence on recorded hardware; VSCodium performance may be investigated separately but cannot satisfy the current strict release record |
 
 References:
 
@@ -872,7 +875,7 @@ Before merging the Phase 0 scaffold:
 - Confirm esbuild produces one extension bundle and one locally loadable Webview bundle.
 - Inspect the VSIX and ensure source, fixtures, tests, and development-only dependencies are excluded where appropriate.
 - Verify the extension runs without network access.
-- Verify the manifest installs on VS Code 1.123 and VSCodium 1.126.04524.
+- Verify the manifest installs on VS Code 1.140.0; VSCodium qualification requires an official API 1.140+ build.
 - Record any deviation from this baseline in an ADR update before adding overlapping tooling.
 
 ## Deferred decisions
@@ -883,7 +886,7 @@ Before merging the Phase 0 scaffold:
 - Incremental graph patch protocol.
 - Custom templates and third-party template packages.
 - TypeScript 7 adoption.
-- Backward compatibility below VS Code 1.123.
+- Backward compatibility below VS Code 1.140.
 
 Release builds use Rust optimization level 3 with the existing single codegen unit and LTO.
 The 0.4.0 qualification favors execution speed over the former size-focused profile;

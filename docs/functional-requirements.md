@@ -13,7 +13,7 @@ The canonical OKF v0.2 specification and accepted architecture decisions take pr
 
 ## Product boundary
 
-New extension packages MUST require VS Code API 1.123 or newer and target Node 24
+New extension packages MUST require VS Code API 1.140 or newer and target Node 24
 in the Extension Host, as accepted in [ADR 0012](decisions/0012-node24-extension-host.md).
 The published 0.3.0 package retains its original editor compatibility floor.
 

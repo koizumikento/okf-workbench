@@ -25,7 +25,8 @@ affected secretlint/globby/fast-glob dependency chain and removes fast-uri from 
   dependencies. Keep Node 24, the existing npm/esbuild/Cargo pipeline, and the published editor
   API floor.
 - Override transitive `@vscode/vsce` with `$@vscode/vsce`, matching the exact direct version.
-  Retain `ovsx` `1.0.2` and verify its CLI startup and the existing `createVSIX` API offline.
+  Pin `ovsx` `1.2.0` (see the amendment below) and verify its CLI startup and the existing
+  `createVSIX` API offline.
 - Refresh affected indirect dependencies within their existing ranges. Preserve the approved
   production dependency graph and its notices.
 - Review the `@vscode/vsce-sign` `2.1.0` installer and synchronize its exact allowlist entry with
@@ -62,3 +63,17 @@ alone cannot masquerade as an executed measurement.
 Validation requires clean installation, formatting, lint, type checks, all test and security
 gates, five completed benchmark measurements, full-tree audit, and reproducible inspected VSIX
 packaging. These harness measurements remain overhead evidence, not headed-editor QR evidence.
+
+## 2026-10-06 amendment: Open VSX CLI 1.2.0
+
+Dependabot PR #69 updates the development-only `ovsx` pin from `1.0.2` to `1.2.0`.
+Its Node 22 minimum fits the Node 24 baseline. It still declares `@vscode/vsce` `^3.7.1`,
+so the reviewed override to `4.0.0` remains necessary. The added prompt and keychain
+helpers remain development-only; the production dependency graph is unchanged.
+
+The tagged workflow's CLI version assertion must match `1.2.0`. Keep the existing
+`verify-pat straydog` and retained-VSIX `publish --skip-duplicate` arguments, token scope,
+and tag-only authorization unchanged. Validation covers clean locked installation,
+CLI version/help, the overridden packager API, supply-chain checks, full-tree audit,
+and reproducible inspected VSIX packaging. No registry publication or credential
+verification is performed as part of this dependency maintenance.

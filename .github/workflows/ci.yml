@@ -253,14 +253,14 @@ jobs:
 
       - name: Install, activate, upgrade, and uninstall the candidate
         env:
-          EDITOR: ${{ matrix.editor }}
+          OKF_EDITOR: ${{ matrix.editor }}
           EDITOR_VERSION: ${{ matrix.version }}
           VSCODIUM_EXECUTABLE: ${{ steps.codium.outputs['editor-executable'] }}
           VSCODIUM_CLI: ${{ steps.codium.outputs['editor-cli'] }}
           PREDECESSOR_SHA256: ${{ steps.predecessor.outputs['predecessor-sha256'] }}
         run: |
           args=(
-            --editor "${EDITOR}"
+            --editor "${OKF_EDITOR}"
             --version "${EDITOR_VERSION}"
             --vsix "${GITHUB_WORKSPACE}/artifacts/okf-workbench.vsix"
             --workspace "${GITHUB_WORKSPACE}/test/fixtures/minimal-valid"
@@ -269,7 +269,7 @@ jobs:
             --previous-vsix-sha256 "${PREDECESSOR_SHA256}"
             --editor-cache "${RUNNER_TEMP}/vscode-cache"
           )
-          if [[ "${EDITOR}" == "vscodium" ]]; then
+          if [[ "${OKF_EDITOR}" == "vscodium" ]]; then
             args+=(--editor-executable "${VSCODIUM_EXECUTABLE}" --editor-cli "${VSCODIUM_CLI}")
           fi
           xvfb-run --auto-servernum node scripts/compatibility/run-package-lifecycle.mjs "${args[@]}"

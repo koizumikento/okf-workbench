@@ -800,7 +800,7 @@ only `test/unit`, and the default Playwright config includes only `test/webview`
 as a substitute for the dedicated configs under `test/security`.
 
 Package with `@vscode/vsce` `4.0.x`. Validate and publish an already built VSIX with `ovsx`
-`1.0.x`. The root `package.json` keeps `"private": true` as an npm-registry publish guard; it does
+`1.2.x`. The root `package.json` keeps `"private": true` as an npm-registry publish guard; it does
 not make the GitHub repository private and does not prevent an MIT-licensed VSIX from being
 submitted to Open VSX.
 
@@ -820,7 +820,7 @@ GitHub Release archives; they do not introduce another binary build.
 The repository secret `OPEN_VSX_TOKEN` is exposed only to `ovsx verify-pat straydog` and the
 subsequent `ovsx publish` step. Missing or invalid authorization fails closed. Pull requests,
 ordinary branch builds, the candidate build job, and the GitHub Release job do not receive the
-credential. The locked `ovsx` `1.0.2` command uses duplicate-safe retry behavior, while Open VSX
+credential. The locked `ovsx` `1.2.0` command uses duplicate-safe retry behavior, while Open VSX
 still treats a published version as immutable; changed bytes require a higher SemVer version and a
 new tag. The package-repository credential follows the same step-local boundary:
 `STRAY_TOOLS_TOKEN` and `TAP_REPO` are exposed only to the manifest push step, both are required,

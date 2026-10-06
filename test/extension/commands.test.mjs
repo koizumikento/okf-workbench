@@ -72,8 +72,6 @@ async function withExtensionHostNetworkDenied(action) {
 suite('OKF Workbench foundation', () => {
   test('runs on the explicitly requested VS Code API version', () => {
     assert.equal(vscode.version, process.env.OKF_EXPECTED_VSCODE_VERSION);
-    const [major, minor] = vscode.version.split('.').map(Number);
-    assert.ok(major > 1 || (major === 1 && minor >= 140), vscode.version);
   });
 
   test('runs on the Node 24 extension-host baseline or newer', () => {

@@ -134,46 +134,46 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: VS Code 1.140.0 minimum / Ubuntu 24.04
-            artifact_label: vscode-minimum-1.140.0-ubuntu-24.04
+          - label: VS Code 1.123.0 / Ubuntu 24.04
+            artifact_label: vscode-1.123.0-ubuntu-24.04
+            editor: vscode
+            editor_version: 1.123.0
+            os: ubuntu-24.04
+            platform: linux
+          - label: VS Code 1.140.0 / Ubuntu 24.04
+            artifact_label: vscode-1.140.0-ubuntu-24.04
             editor: vscode
             editor_version: 1.140.0
             os: ubuntu-24.04
             platform: linux
-          - label: VS Code 1.140.0 current / Ubuntu 24.04
-            artifact_label: vscode-current-1.140.0-ubuntu-24.04
-            editor: vscode
-            editor_version: 1.140.0
-            os: ubuntu-24.04
-            platform: linux
-          - label: VS Code 1.140.0 current / macOS 15
-            artifact_label: vscode-current-1.140.0-macos-15
+          - label: VS Code 1.140.0 / macOS 15
+            artifact_label: vscode-1.140.0-macos-15
             editor: vscode
             editor_version: 1.140.0
             os: macos-15
             platform: darwin
-          - label: VS Code 1.140.0 current / Windows 2025
-            artifact_label: vscode-current-1.140.0-windows-2025
+          - label: VS Code 1.140.0 / Windows 2025
+            artifact_label: vscode-1.140.0-windows-2025
             editor: vscode
             editor_version: 1.140.0
             os: windows-2025
             platform: win32
-          - label: VSCodium 1.126.04524 / Ubuntu 24.04
-            artifact_label: vscodium-1.126.04524-ubuntu-24.04
+          - label: VSCodium 1.135.06055 / Ubuntu 24.04
+            artifact_label: vscodium-1.135.06055-ubuntu-24.04
             editor: vscodium
-            editor_version: 1.126.04524
+            editor_version: 1.135.06055
             os: ubuntu-24.04
             platform: linux
-          - label: VSCodium 1.126.04524 / macOS 15
-            artifact_label: vscodium-1.126.04524-macos-15
+          - label: VSCodium 1.135.06055 / macOS 15
+            artifact_label: vscodium-1.135.06055-macos-15
             editor: vscodium
-            editor_version: 1.126.04524
+            editor_version: 1.135.06055
             os: macos-15
             platform: darwin
-          - label: VSCodium 1.126.04524 / Windows 2025
-            artifact_label: vscodium-1.126.04524-windows-2025
+          - label: VSCodium 1.135.06055 / Windows 2025
+            artifact_label: vscodium-1.135.06055-windows-2025
             editor: vscodium
-            editor_version: 1.126.04524
+            editor_version: 1.135.06055
             os: windows-2025
             platform: win32
     env:

@@ -15,11 +15,11 @@ export interface CompatibilityPins {
   readonly extensionId: 'straydog.okf-workbench';
   readonly nodeVersion: '24.18.0';
   readonly npmVersion: '11.16.0';
-  readonly vscodeVersions: readonly ['1.140.0', '1.140.0'];
+  readonly vscodeVersions: readonly ['1.123.0', '1.140.0'];
   readonly vscodium: {
-    readonly releaseVersion: '1.126.04524';
-    readonly expectedReportedVersion: '1.126.04524';
-    readonly expectedExtensionHostVersion: '1.126.0';
+    readonly releaseVersion: '1.135.06055';
+    readonly expectedReportedVersion: '1.135.06055';
+    readonly expectedExtensionHostVersion: '1.135.0';
     readonly publishedAt: string;
     readonly releaseUrl: string;
     readonly assets: Readonly<

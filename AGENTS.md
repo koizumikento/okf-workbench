@@ -19,8 +19,9 @@ initialize -> create -> edit -> validate -> explore -> repair
 The deterministic Rust core, capability-free Wasm Extension Host adapter, native CLI, platform
 VSIX CLI integration, seven MVP command workflows, diagnostics, URI-first workspace runtime,
 3D Webview, agent-template generation, and release-candidate harnesses are implemented.
-Source builds now require VS Code API 1.140.0 (ADR 0014); older editor and performance
-receipts do not qualify them. VSCodium qualification awaits an official API 1.140+ release.
+Source builds preserve API floor 1.123.0 with 1.120.0 types. Current-stable package CI
+pins VS Code 1.140.0 and VSCodium 1.135.06055; see ADR 0014. Do not raise the floor
+above either supported stable editor or count older receipts as new qualification.
 Published `0.4.0` targets Node 24/CommonJS and VS Code 1.123 or newer. A genuine schema-v3
 headed VS Code 1.129.1 capture on Windows 11 / Ryzen 9 9900X / RTX 5070 passes QR-002 at
 851 ms p95 across 20 samples, selects `d3` for QR-003, and records zero remote HTTP(S)/WS

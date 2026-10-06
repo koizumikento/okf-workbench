@@ -1,7 +1,8 @@
 # Performance evidence
 
-Source builds now require VS Code API 1.140.0; see [ADR 0014](decisions/0014-vscode-1140-api-floor.md).
-Historical editor and performance receipts below do not qualify this new floor.
+The current headed oracle now targets VS Code 1.140.0. Records below remain historical
+for their exact released bytes; the stable-editor compatibility correction adds no new
+headed performance claim. See [ADR 0014](decisions/0014-stable-editor-compatibility.md).
 
 - Status: **0.4.0 exact-Wasm QR-002, QR-003, and Webview network gates pass**;
   hosted compatibility and packaging remain separate gates

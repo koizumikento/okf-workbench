@@ -154,10 +154,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Keep the required-check identifiers stable; actual editor pins are below.
-          # Both roles currently use 1.140.0, the API floor and latest stable release.
           - label: minimum-1.123.0
-            vscode-version: 1.140.0
+            vscode-version: 1.123.0
+          # Preserve the protected check name; the actual current stable pin is 1.140.0.
           - label: current-1.129.1
             vscode-version: 1.140.0
     steps:
@@ -197,3 +196,89 @@ jobs:
         run: xvfb-run --auto-servernum npm run test:integration
         env:
           VSCODE_TEST_VERSION: ${{ matrix.vscode-version }}
+
+  stable-editor-package:
+    name: Stable editor package (${{ matrix.editor }} ${{ matrix.version }})
+    needs: quality-and-package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - editor: vscode
+            version: 1.140.0
+          - editor: vscodium
+            version: 1.135.06055
+    env:
+      EVIDENCE_DIR: artifacts/stable-editor/${{ matrix.editor }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install locked tools
+        run: |
+          npm install --global npm@${NPM_VERSION}
+          npm ci
+
+      - name: Download the inspected candidate VSIX
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: okf-workbench-vsix-Linux-X64
+          path: artifacts
+
+      - name: Build the test-only upgrade predecessor
+        id: predecessor
+        run: |
+          node scripts/compatibility/build-test-predecessor.mjs \
+            --destination "${RUNNER_TEMP}/previous.vsix" \
+            --evidence "${EVIDENCE_DIR}/predecessor.json" \
+            --github-output "${GITHUB_OUTPUT}"
+
+      - name: Prepare digest-verified VSCodium
+        if: ${{ matrix.editor == 'vscodium' }}
+        id: codium
+        run: |
+          node scripts/compatibility/prepare-vscodium.mjs \
+            --platform linux \
+            --destination "${RUNNER_TEMP}/vscodium" \
+            --evidence "${EVIDENCE_DIR}/preparation.json" \
+            --github-output "${GITHUB_OUTPUT}"
+
+      - name: Install, activate, upgrade, and uninstall the candidate
+        env:
+          EDITOR: ${{ matrix.editor }}
+          EDITOR_VERSION: ${{ matrix.version }}
+          VSCODIUM_EXECUTABLE: ${{ steps.codium.outputs['editor-executable'] }}
+          VSCODIUM_CLI: ${{ steps.codium.outputs['editor-cli'] }}
+          PREDECESSOR_SHA256: ${{ steps.predecessor.outputs['predecessor-sha256'] }}
+        run: |
+          args=(
+            --editor "${EDITOR}"
+            --version "${EDITOR_VERSION}"
+            --vsix "${GITHUB_WORKSPACE}/artifacts/okf-workbench.vsix"
+            --workspace "${GITHUB_WORKSPACE}/test/fixtures/minimal-valid"
+            --evidence "${EVIDENCE_DIR}/lifecycle.json"
+            --previous-vsix "${RUNNER_TEMP}/previous.vsix"
+            --previous-vsix-sha256 "${PREDECESSOR_SHA256}"
+            --editor-cache "${RUNNER_TEMP}/vscode-cache"
+          )
+          if [[ "${EDITOR}" == "vscodium" ]]; then
+            args+=(--editor-executable "${VSCODIUM_EXECUTABLE}" --editor-cli "${VSCODIUM_CLI}")
+          fi
+          xvfb-run --auto-servernum node scripts/compatibility/run-package-lifecycle.mjs "${args[@]}"
+
+      - name: Retain stable editor evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: stable-editor-${{ matrix.editor }}-${{ github.sha }}
+          path: ${{ env.EVIDENCE_DIR }}/*.json
+          if-no-files-found: error
+          retention-days: 14

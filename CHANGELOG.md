@@ -7,11 +7,12 @@ The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ## Unreleased
 
-### Changed
+### Fixed
 
-- Raise the VS Code API minimum to 1.140.0 with `@types/vscode` 1.140.0.
-  Older editors must retain published 0.4.0; current VSCodium releases below API 1.140
-  cannot install new packages. Node 24 and the extension workflows remain unchanged.
+- Restore the VS Code API 1.123 minimum and 1.120 compile-time types after the
+  incompatible 1.140 minimum change. Keep current VSCodium stable installable.
+- Check packaged installation, activation, upgrade, and uninstall on official stable
+  VS Code 1.140.0 and VSCodium 1.135.06055 in PR CI.
 
 ## 0.4.0 - 2026-09-05
 

@@ -87,10 +87,9 @@ mise x node@24.18.0 -- npm exec -- vitest run --config test/acceptance/vitest.co
 The suite is deterministic: it injects its clock, uses an in-memory workspace and `memfs:` logical bundle URIs, reads no external fixture, and makes no network request. AC-008 additionally replaces the JavaScript `fetch` boundary with a throwing test double. That check does not establish operating-system or Electron process network isolation.
 
 The Extension Host suite separately registers an actual non-`file:` workspace provider and executes
-the public commands with its Explorer/root URI:
+the public commands with its Explorer/root URI. Both CI editor roles currently use 1.140.0:
 
 ```sh
-mise x node@24.18.0 -- env VSCODE_TEST_VERSION=1.140.0 npm run test:integration
 mise x node@24.18.0 -- env VSCODE_TEST_VERSION=1.140.0 npm run test:integration
 ```
 

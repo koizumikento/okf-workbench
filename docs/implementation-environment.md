@@ -59,7 +59,7 @@ remain bound to their original Node 22 build and editor matrix.
 | Package manager | npm `11.16.0` | Bundled with the pinned Node release; one tool and one lockfile |
 | Rust toolchain | Rust `1.92.0`, edition 2024 | Pinned by `rust-toolchain.toml`; owns the shared core, Wasm, and CLI |
 | Wasm target | `wasm32-unknown-unknown` | Portable, capability-free Extension Host artifact without WASI |
-| Extension-host output target | Node.js 24 / CommonJS | Matches @types/node 24.13.3 and Node 24.15.0 in VS Code 1.123.0 |
+| Extension-host output target | Node.js 24 / CommonJS | Node 24 minimum, asserted in the real Extension Host integration suite |
 | Webview output target | ES2022 browser module | Conservative target for the Electron/Chromium Webview matrix |
 | Type checker | TypeScript `6.0.3` | Mature stable line; TypeScript 7 adoption is deferred until extension tooling compatibility is verified |
 | VS Code compile-time types | `@types/vscode` `1.140.0` | Matches the minimum editor API |

@@ -17,16 +17,19 @@ checklist is retained in that version's Git history.
 - [x] Maintainer authorized release preparation and publication.
 - [x] Manifest, npm/Cargo lockfiles, package checks, and assertions use `0.4.1`.
 - [x] Changelog has a dated `0.4.1` entry.
-- [ ] Final candidate passes source, Rust, unit, acceptance, security, browser,
+- [x] Final candidate passes source, Rust, unit, acceptance, security, browser,
       minimum/current editor integration, notices, full-tree audit, and package checks.
-- [ ] Reproducible universal and target VSIX contents preserve the approved boundaries.
+- [x] Reproducible universal and target VSIX contents preserve the approved boundaries.
 - [x] Current stable VS Code `1.143.1` and VSCodium `1.140.06880` pass local Linux packaged lifecycle
       tests, including upgrade from the checksum-verified published `v0.4.0` VSIX.
-- [ ] Exact final candidate has strict-passing headed-editor QR-002, QR-003, and network
+- [x] Exact final candidate has strict-passing headed-editor QR-002, QR-003, and network
       evidence. Older or headless receipts cannot satisfy this gate.
-- [ ] Required compatibility and platform package gates pass on the final packaged inputs.
+- [x] Required compatibility and platform package gates pass on the final packaged inputs.
 - [ ] Candidate changes are reviewed and merged into protected main with required checks.
 - [ ] Confirm `v0.4.1` is absent locally, remotely, and in Open VSX.
+
+The completed candidate gates are linked in [the release record](releases/0.4.1.md).
+Documentation-only final updates still require successful latest-head CI and protected merge.
 
 ## Publication
 

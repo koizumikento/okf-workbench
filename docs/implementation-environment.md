@@ -112,10 +112,18 @@ The Phase 0 scaffold includes:
 CI and local clean installs use `npm ci`. Production, development, and optional dependencies must remain visibly separated. Open VSX or marketplace tokens are release secrets only and are never required for build, test, or package validation.
 
 The lockfile overrides Mocha's development-only transitive `diff` and `serialize-javascript`
-packages to `8.0.4` and `7.0.7`. Those are the first reviewed releases outside Mocha's declared
-major ranges that close the applicable advisories while retaining the CommonJS APIs used by the
+packages to `8.0.4` and `7.1.3`. These reviewed releases outside Mocha's declared
+major ranges close the applicable advisories while retaining the CommonJS APIs used by the
 pinned VS Code test runner. Both packages remain excluded from the VSIX. Clean install, the full
 test matrix, and a full-tree `npm audit` must pass whenever either override changes.
+
+The development-only Azure Identity dependency of `@vscode/vsce` still declares MSAL Node `6.x`.
+Override `@azure/msal-node` to `7.1.0`, the patched release for
+[GHSA-xcx6-jx8p-x3h5](https://github.com/advisories/GHSA-xcx6-jx8p-x3h5). The offline tooling
+regression test exercises Azure Identity's client-secret flow through MSAL with a fake transport,
+and checks the serialize-javascript function-source escaping fix for
+[GHSA-m5mm-p8h7-m29v](https://github.com/advisories/GHSA-m5mm-p8h7-m29v). These overrides add no
+runtime dependency, installer permission, credential, or editor API requirement.
 
 [ADR 0013](decisions/0013-development-tooling-security-updates.md) updates the development
 tooling to Vitest `5.0.3` through its 2026-10-05 amendment and `@vscode/vsce` `4.0.0`. The

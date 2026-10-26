@@ -77,3 +77,19 @@ and tag-only authorization unchanged. Validation covers clean locked installatio
 CLI version/help, the overridden packager API, supply-chain checks, full-tree audit,
 and reproducible inspected VSIX packaging. No registry publication or credential
 verification is performed as part of this dependency maintenance.
+
+## 2026-10-26 amendment: MSAL Node and serializer advisories
+
+Dependabot PR #81 exposes existing development-tree advisories also present on main.
+Pin `@azure/msal-node` to `7.1.0` through an override because the locked Azure Identity
+`4.13.3` declares `6.x`, while
+[GHSA-xcx6-jx8p-x3h5](https://github.com/advisories/GHSA-xcx6-jx8p-x3h5) requires `7.1.0`.
+Advance the existing serialize-javascript override from `7.0.7` to `7.1.3` for
+[GHSA-m5mm-p8h7-m29v](https://github.com/advisories/GHSA-m5mm-p8h7-m29v).
+
+Both remain development-only. Preserve production dependencies, Node 24, the editor floor,
+and the exact installer allowlist. The cross-major MSAL override requires an offline Azure
+Identity client-secret token acquisition with a fake transport, in addition to the packager
+and editor gates; it does not establish live Azure authentication. Retain a serializer
+regression for a function source ending with a bare script terminator. Clean installation,
+full-tree audit, supply-chain checks, and the existing test/package gates remain required.

@@ -17,9 +17,9 @@ export interface CompatibilityPins {
   readonly npmVersion: '11.16.0';
   readonly vscodeVersions: readonly ['1.123.0', '1.143.1'];
   readonly vscodium: {
-    readonly releaseVersion: '1.140.06880';
-    readonly expectedReportedVersion: '1.140.06880';
-    readonly expectedExtensionHostVersion: '1.140.0';
+    readonly releaseVersion: '1.143.17183';
+    readonly expectedReportedVersion: '1.143.17183';
+    readonly expectedExtensionHostVersion: '1.143.1';
     readonly publishedAt: string;
     readonly releaseUrl: string;
     readonly assets: Readonly<

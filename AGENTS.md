@@ -20,7 +20,7 @@ The deterministic Rust core, capability-free Wasm Extension Host adapter, native
 VSIX CLI integration, seven MVP command workflows, diagnostics, URI-first workspace runtime,
 3D Webview, agent-template generation, and release-candidate harnesses are implemented.
 Source builds preserve API floor 1.123.0 with 1.120.0 types. Current-stable package CI
-pins VS Code 1.143.1 and VSCodium 1.140.06880; see ADR 0014. Do not raise the floor
+pins VS Code 1.143.1 and VSCodium 1.143.17183; see ADR 0014. Do not raise the floor
 above either supported stable editor or count older receipts as new qualification.
 Published `0.4.0` targets Node 24/CommonJS and VS Code 1.123 or newer. A genuine schema-v3
 headed VS Code 1.129.1 capture on Windows 11 / Ryzen 9 9900X / RTX 5070 passes QR-002 at

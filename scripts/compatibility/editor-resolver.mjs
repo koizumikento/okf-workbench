@@ -88,7 +88,8 @@ export function electronTestGraphicsArguments(
   platform = process.platform,
   environment = process.env,
 ) {
-  return platform === 'linux' && environment.GITHUB_ACTIONS === 'true'
+  return platform === 'linux' &&
+    (environment.GITHUB_ACTIONS === 'true' || environment.OKF_TEST_SOFTWARE_RENDERING === '1')
     ? ['--enable-unsafe-swiftshader']
     : [];
 }

@@ -20,7 +20,7 @@ checklist is retained in that version's Git history.
 - [ ] Final candidate passes source, Rust, unit, acceptance, security, browser,
       minimum/current editor integration, notices, full-tree audit, and package checks.
 - [ ] Reproducible universal and target VSIX contents preserve the approved boundaries.
-- [ ] Current stable VS Code `1.143.1` and VSCodium `1.140.06880` pass packaged lifecycle
+- [x] Current stable VS Code `1.143.1` and VSCodium `1.140.06880` pass local Linux packaged lifecycle
       tests, including upgrade from the checksum-verified published `v0.4.0` VSIX.
 - [ ] Exact final candidate has strict-passing headed-editor QR-002, QR-003, and network
       evidence. Older or headless receipts cannot satisfy this gate.

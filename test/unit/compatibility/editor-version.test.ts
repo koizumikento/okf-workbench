@@ -49,6 +49,12 @@ describe('packaged editor version oracle', () => {
       '--enable-unsafe-swiftshader',
     ]);
     expect(electronTestGraphicsArguments('linux', {})).toEqual([]);
+    expect(electronTestGraphicsArguments('linux', { OKF_TEST_SOFTWARE_RENDERING: '1' })).toEqual([
+      '--enable-unsafe-swiftshader',
+    ]);
+    expect(electronTestGraphicsArguments('darwin', { OKF_TEST_SOFTWARE_RENDERING: '1' })).toEqual(
+      [],
+    );
     expect(electronTestGraphicsArguments('darwin', githubActions)).toEqual([]);
     expect(electronTestGraphicsArguments('win32', githubActions)).toEqual([]);
   });

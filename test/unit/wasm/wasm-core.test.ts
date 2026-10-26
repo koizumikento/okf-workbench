@@ -120,7 +120,7 @@ describe('Rust/Wasm core boundary', () => {
     const module = new WebAssembly.Module(bytes);
     expect(WebAssembly.Module.imports(module)).toEqual([]);
     expect(core.abiVersion).toBe(1);
-    expect(core.coreVersion).toBe('0.4.0');
+    expect(core.coreVersion).toBe('0.4.1');
   });
 
   test('has exact migration-plan parity with the TypeScript oracle', () => {

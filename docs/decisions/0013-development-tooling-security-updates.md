@@ -94,6 +94,24 @@ and editor gates; it does not establish live Azure authentication. Retain a seri
 regression for a function source ending with a bare script terminator. Clean installation,
 full-tree audit, supply-chain checks, and the existing test/package gates remain required.
 
+The review of the installed `6.0.1` and `7.1.0` declarations and the
+[upstream changelog](https://github.com/AzureAD/microsoft-authentication-library-for-js/blob/msal-node-v7.1.0/lib/msal-node/CHANGELOG.md)
+identifies removal of interactive `responseMode` as the major change. Locked Azure
+Identity does not set that option. Its public/confidential client, managed identity,
+logger, token-cache, silent, client-credential, device-code, username/password,
+authorization-code, on-behalf-of, and interactive API entry points remain present.
+Both MSAL versions require Node `>=20` and retain CommonJS exports; the reviewed
+tooling runs Node `24.18.0`. A second local fake-transport check also acquires a token
+through Azure Identity's managed-identity path.
+
+The reachability boundary is `@vscode/vsce` -> `@azure/identity` -> MSAL, all development-only.
+VSCE's optional Azure authentication chain uses environment, CLI, managed identity,
+PowerShell, and developer CLI credentials. Packaging does not request those tokens;
+the Open VSX publication path uses its supplied PAT and registry client instead.
+Production-only dependency inspection, packaged-content/security checks, CLI startup,
+and actual VSIX packaging confirm no Azure/MSAL dependency enters the shipped runtime.
+These checks support this tooling override, not live Azure credential qualification.
+
 ## 2026-10-26 amendment: Open VSX CLI 1.3.0
 
 Dependabot PR #82 advances the development-only `ovsx` pin to `1.3.0` and the

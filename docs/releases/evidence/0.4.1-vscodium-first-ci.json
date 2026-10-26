@@ -1,0 +1,42 @@
+{
+  "sourceHead": "5797baefe8a892fa16599033fbf5a065dd7618bb",
+  "ciMergeRevision": "ae04d63f0f94ec2b4239a82a32ac7fc4c567e92b",
+  "ciRunId": 40354253078,
+  "qualityStatus": "success",
+  "mandatoryCurrentIntegration": {
+    "status": "failure",
+    "reason": "VS Code version resolution ETIMEDOUT before editor launch/test execution",
+    "jobId": 121682315923
+  },
+  "compatibilityRunId": 40354297279,
+  "compatibilityStatus": "failure",
+  "compatibilityReason": "performance-evidence.test.ts beforeAll hook timed out in 60000 ms; editor lanes not started",
+  "candidateArtifact": {
+    "id": 12665592313,
+    "archiveSha256": "7cc91e7b33a9d63a43bacf8439b46a1c9a684285c85256ab42642884c2784174",
+    "vsixSha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+    "bytes": 1461633,
+    "receiptSha256": "d3ffb38b28e22fd0af4c3e2f8e2fc173bdc44d5a4541095a8f372c178b521ef5",
+    "wasmSha256": "299ee8c6e76eca0ccdefac741b246ea5e9a38c510fcc6278d5762f168a926d84",
+    "sourceInputSha256": "c3f02ff8ce17ae6f58bfd713ec4e073bdea81c94ed0fcb436ea6c1c40c7a3470",
+    "matchesWindowsQualifiedVsix": true
+  },
+  "newStableLinux": {
+    "artifactId": 12663973834,
+    "archiveSha256": "7b132320230fa43056c811f45329b005928010d859635630b8f5b6386ac40a40",
+    "editor": "VSCodium",
+    "releaseVersion": "1.143.17183",
+    "reportedExtensionHostVersion": "1.143.1",
+    "status": "passed",
+    "candidateSha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+    "predecessorVersion": "0.0.0",
+    "predecessorKind": "test-only deterministic fixture; not published 0.4.0 upgrade evidence",
+    "cleanInstall": "passed",
+    "untrustedWorkspace": "passed",
+    "upgrade": "passed",
+    "uninstall": "passed",
+    "workspaceAndSettingsPreserved": true,
+    "recordedNetworkAttempts": 0,
+    "networkObservationLimit": "listed CommonJS builtin export-owner hooks and available globals; not OS isolation or all editor/Webview traffic"
+  }
+}

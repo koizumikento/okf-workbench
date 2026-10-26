@@ -128,7 +128,7 @@ runtime dependency, installer permission, credential, or editor API requirement.
 [ADR 0013](decisions/0013-development-tooling-security-updates.md) updates the development
 tooling to Vitest `5.0.3` through its 2026-10-05 amendment and `@vscode/vsce` `4.0.0`. The
 `@vscode/vsce` override references the exact direct dependency with `$@vscode/vsce`, so `ovsx`
-`1.0.2` uses the same reviewed
+`1.3.0` uses the same reviewed
 packager instead of retaining a vulnerable `3.9.2` dependency tree. The four exact install-script
 decisions allow `@vscode/vsce-sign` `2.1.0` and esbuild `0.28.2`, and deny both fsevents
 versions; the removed keytar installer is no longer allowed. The signing helper's installer
@@ -832,7 +832,7 @@ GitHub Release archives; they do not introduce another binary build.
 The repository secret `OPEN_VSX_TOKEN` is exposed only to `ovsx verify-pat straydog` and the
 subsequent `ovsx publish` step. Missing or invalid authorization fails closed. Pull requests,
 ordinary branch builds, the candidate build job, and the GitHub Release job do not receive the
-credential. The locked `ovsx` `1.2.0` command uses duplicate-safe retry behavior, while Open VSX
+credential. The locked `ovsx` `1.3.0` command uses duplicate-safe retry behavior, while Open VSX
 still treats a published version as immutable; changed bytes require a higher SemVer version and a
 new tag. The package-repository credential follows the same step-local boundary:
 `STRAY_TOOLS_TOKEN` and `TAP_REPO` are exposed only to the manifest push step, both are required,

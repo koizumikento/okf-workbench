@@ -93,3 +93,38 @@ Identity client-secret token acquisition with a fake transport, in addition to t
 and editor gates; it does not establish live Azure authentication. Retain a serializer
 regression for a function source ending with a bare script terminator. Clean installation,
 full-tree audit, supply-chain checks, and the existing test/package gates remain required.
+
+The review of the installed `6.0.1` and `7.1.0` declarations and the
+[upstream changelog](https://github.com/AzureAD/microsoft-authentication-library-for-js/blob/msal-node-v7.1.0/lib/msal-node/CHANGELOG.md)
+identifies removal of interactive `responseMode` as the major change. Locked Azure
+Identity does not set that option. Its public/confidential client, managed identity,
+logger, token-cache, silent, client-credential, device-code, username/password,
+authorization-code, on-behalf-of, and interactive API entry points remain present.
+Both MSAL versions require Node `>=20` and retain CommonJS exports; the reviewed
+tooling runs Node `24.18.0`. A second local fake-transport check also acquires a token
+through Azure Identity's managed-identity path.
+
+The reachability boundary is `@vscode/vsce` -> `@azure/identity` -> MSAL, all development-only.
+VSCE's optional Azure authentication chain uses environment, CLI, managed identity,
+PowerShell, and developer CLI credentials. Packaging does not request those tokens;
+the Open VSX publication path uses its supplied PAT and registry client instead.
+Production-only dependency inspection, packaged-content/security checks, CLI startup,
+and actual VSIX packaging confirm no Azure/MSAL dependency enters the shipped runtime.
+These checks support this tooling override, not live Azure credential qualification.
+
+## 2026-10-26 amendment: Open VSX CLI 1.3.0
+
+Dependabot PR #82 advances the development-only `ovsx` pin to `1.3.0` and the
+tagged workflow's version assertion to match. The CLI now declares `@vscode/vsce`
+`^4.0.0`, so the existing exact override no longer crosses its declared major range.
+Its transitive Commander upgrade from `6.2.1` to `14.0.3` rejects surplus positional
+arguments. The retained-VSIX publication passes exactly one path per invocation,
+and `verify-pat` passes exactly the `straydog` namespace, so both fit the new parser.
+
+Keep the existing tag boundary, token scope, `verify-pat straydog`, and
+`publish <retained.vsix> --skip-duplicate` commands. A loopback-only integration
+test runs the installed CLI against a fake registry with a test token, verifies
+the exact retained VSIX upload and duplicate handling, and rejects extra arguments.
+It exercises the real Commander parser and registry client without live publication
+or credential use. Clean installation, full-tree audit, packager API, reproducibility,
+supply-chain, and supported-editor gates remain required before merging.

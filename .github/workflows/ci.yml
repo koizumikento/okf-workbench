@@ -156,9 +156,9 @@ jobs:
         include:
           - label: minimum-1.123.0
             vscode-version: 1.123.0
-          # Preserve the protected check name; the actual current stable pin is 1.140.0.
+          # Preserve the protected check name; the actual current stable pin is 1.143.1.
           - label: current-1.129.1
-            vscode-version: 1.140.0
+            vscode-version: 1.143.1
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -207,9 +207,9 @@ jobs:
       matrix:
         include:
           - editor: vscode
-            version: 1.140.0
+            version: 1.143.1
           - editor: vscodium
-            version: 1.135.06055
+            version: 1.140.06880
     env:
       EVIDENCE_DIR: artifacts/stable-editor/${{ matrix.editor }}
     steps:

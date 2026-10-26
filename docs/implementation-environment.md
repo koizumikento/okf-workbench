@@ -65,8 +65,8 @@ remain bound to their original Node 22 build and editor matrix.
 | Type checker | TypeScript `6.0.3` | Mature stable line; TypeScript 7 adoption is deferred until extension tooling compatibility is verified |
 | VS Code compile-time types | `@types/vscode` `1.120.0` | Conservative API ceiling; this runtime update adds no newer VS Code API usage |
 | Minimum editor test | VS Code `1.123.0` | Matches the manifest API floor |
-| Current editor test | VS Code `1.140.0` | Stable VS Code release pinned for the current release-candidate qualification |
-| VSCodium test | VSCodium `1.135.06055` | Official stable release reviewed on 2026-10-06 |
+| Current editor test | VS Code `1.143.1` | Stable VS Code release pinned for the current release-candidate qualification |
+| VSCodium test | VSCodium `1.140.06880` | Official stable release reviewed on 2026-10-26 |
 
 Node.js 26 is Current rather than LTS at the decision date, so it is not the development baseline.
 The extension must not include native Node add-ons. Extension behavior stays portable through Wasm,
@@ -697,7 +697,7 @@ retaining individual entries, and discovery uses `stat.size` to avoid avoidable 
 | Extension integration | `@vscode/test-cli` `0.0.x` and `@vscode/test-electron` `3.1.x` with Mocha | Commands and Activity Bar views, workspace FS, diagnostics, watchers, URI behavior, source navigation, and the registered non-`file:` read boundary |
 | Webview browser harness | Playwright `1.62.x` on Chromium | Real DOM, WebGL smoke, CSP-compatible bundle loading, folder tree/filter/breadcrumb interaction, keyboard interaction, camera toolbar behavior, and wheel/pinch event boundaries |
 | Release smoke | Packaged VSIX in VS Code and VSCodium | Installation, activation, packaged resources, upgrade, uninstall |
-| Performance | Headed VS Code `1.140.0` release benchmark harness | QR-002 and QR-003 evidence on recorded hardware; VSCodium performance may be investigated separately but cannot satisfy the current strict release record |
+| Performance | Headed VS Code `1.143.1` release benchmark harness | QR-002 and QR-003 evidence on recorded hardware; VSCodium performance may be investigated separately but cannot satisfy the current strict release record |
 
 References:
 
@@ -884,7 +884,7 @@ Before merging the Phase 0 scaffold:
 - Confirm esbuild produces one extension bundle and one locally loadable Webview bundle.
 - Inspect the VSIX and ensure source, fixtures, tests, and development-only dependencies are excluded where appropriate.
 - Verify the extension runs without network access.
-- Verify the manifest installs on VS Code 1.123.0, current VS Code 1.140.0, and VSCodium 1.135.06055.
+- Verify the manifest installs on VS Code 1.123.0, current VS Code 1.143.1, and VSCodium 1.140.06880.
 - Record any deviation from this baseline in an ADR update before adding overlapping tooling.
 
 ## Deferred decisions

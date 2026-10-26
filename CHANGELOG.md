@@ -5,14 +5,20 @@ All notable changes to OKF Workbench are documented in this file.
 The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and intends to use
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) after the first public release.
 
-## Unreleased
+## 0.4.1 - 2026-10-26
 
 ### Fixed
 
 - Restore the VS Code API 1.123 minimum and 1.120 compile-time types after the
   incompatible 1.140 minimum change. Keep current VSCodium stable installable.
 - Check packaged installation, activation, upgrade, and uninstall on official stable
-  VS Code 1.140.0 and VSCodium 1.135.06055 in PR CI.
+  VS Code 1.143.1 and VSCodium 1.140.06880 in PR CI.
+
+### Changed
+
+- Update development tooling to typescript-eslint 8.72.0 and Open VSX CLI 1.3.0;
+  verify retained-package publication arguments after the Commander major update.
+- Pin patched development-only MSAL Node 7.1.0 and serialize-javascript 7.1.3.
 
 ## 0.4.0 - 2026-09-05
 

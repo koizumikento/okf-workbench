@@ -1,62 +1,43 @@
 # Release checklist
 
-- Candidate: OKF Workbench `0.4.0`
+- Candidate: OKF Workbench `0.4.1`
 - Identifier: `straydog.okf-workbench`
-- Status: Published and verified; remaining scope is recorded in the release record
-- Authority: the maintainer requested this release on 2026-09-05; publication uses a
-  matching version tag on reviewed `main`, per [ADR 0006](decisions/0006-publish-open-vsx-from-version-tags.md).
+- Status: Preparation; not tagged or published
+- Authority: the maintainer authorized this maintenance release on 2026-10-26.
+- Publication uses a matching version tag on reviewed `main`, per
+  [ADR 0006](decisions/0006-publish-open-vsx-from-version-tags.md).
 
-This release raises the extension target to Node 24 and the VS Code floor to 1.123,
-updates development dependencies, and qualifies VSCodium 1.126.04524. The minor version
-advance makes the changed editor requirement visible. The native CLI and OKF contract
-are unchanged. The completed predecessor record is [0.3.0](releases/0.3.0.md).
+The release updates development tooling and security overrides and refreshes current
+stable editor qualification. It preserves the VS Code API floor and production dependency
+boundary. The published predecessor remains [0.4.0](releases/0.4.0.md); its completed
+checklist is retained in that version's Git history.
 
 ## Before tagging
 
 - [x] Maintainer authorized release preparation and publication.
-- [x] Manifest, npm/Cargo lockfiles, package checks, and version assertions use 0.4.0.
-- [x] Changelog contains the dated 0.4.0 entry and explains the editor requirement.
-- [x] Packaged-input revision `0628712` passes source, Rust, unit, acceptance, security, browser,
-      minimum/current editor integration, notices, production audit, and package checks.
-- [x] Genuine headed VS Code 1.129.1 schema-v3 evidence passes the strict evaluator:
-      QR-002 p95 851 ms across 20 samples, QR-003 `d3`, and zero remote Webview requests.
-      All 13 hosted VSIX payload files, including canonical Wasm, match the measured
-      runtime. Raw JSON and the CI receipt are retained in the [performance record](performance-evidence.md).
-- [x] Hosted Compatibility passes all seven editor/OS lifecycle lanes, using the
-      published v0.3.0 universal VSIX and its verified checksum as the upgrade input.
-- [x] Hosted Package smoke passes the browser boundary, four target packages, and
-      aggregate consistency on the same packaged-input revision.
-- [x] Version and evidence changes are reviewed and merged into protected main (#59).
-- [x] Repository secret names OPEN_VSX_TOKEN, STRAY_TOOLS_TOKEN, and TAP_REPO exist.
-      Only the tagged workflow verifies their values and publisher authorization.
-- [x] Tag-triggered publication follows ADR 0006; a signature is not a workflow prerequisite.
-
-The previous PR #47 validation predates the version change. It does not qualify
-0.4.0 package bytes. Any changed packaged input requires the affected gates to run again.
+- [x] Manifest, npm/Cargo lockfiles, package checks, and assertions use `0.4.1`.
+- [x] Changelog has a dated `0.4.1` entry.
+- [ ] Final candidate passes source, Rust, unit, acceptance, security, browser,
+      minimum/current editor integration, notices, full-tree audit, and package checks.
+- [ ] Reproducible universal and target VSIX contents preserve the approved boundaries.
+- [ ] Current stable VS Code `1.143.1` and VSCodium `1.140.06880` pass packaged lifecycle
+      tests, including upgrade from the checksum-verified published `v0.4.0` VSIX.
+- [ ] Exact final candidate has strict-passing headed-editor QR-002, QR-003, and network
+      evidence. Older or headless receipts cannot satisfy this gate.
+- [ ] Required compatibility and platform package gates pass on the final packaged inputs.
+- [ ] Candidate changes are reviewed and merged into protected main with required checks.
+- [ ] Confirm `v0.4.1` is absent locally, remotely, and in Open VSX.
 
 ## Publication
 
-1. Confirm v0.4.0 does not exist locally, remotely, or in Open VSX.
-2. Confirm the final commit is reviewed, in main, and has passing required CI.
-3. Create `git tag -a v0.4.0 -m "OKF Workbench 0.4.0"`, inspect its target with
-   `git rev-parse v0.4.0^{commit}`, confirm main containment, then push that tag.
-4. Wait for all tagged release jobs to pass. They publish the GitHub Release,
-   universal and four target VSIX packages, four CLI archives and checksums,
-   Open VSX package set, and Homebrew/Scoop manifests.
+1. Recheck the exact reviewed main commit and successful required checks.
+2. Create annotated tag `v0.4.1`, inspect its target, verify main containment, and push it.
+3. Observe the existing tag-triggered release workflow. It validates and retains packages,
+   creates the GitHub Release, and publishes Open VSX and Homebrew/Scoop manifests.
+4. Verify all 18 released assets and checksums, CLI/VSIX parity, all five Open VSX
+   packages, and package-manager manifest versions and archive digests.
+5. Record actual post-publication lifecycle results and any remaining limits in
+   [the 0.4.1 record](releases/0.4.1.md).
 
-Never print tokens, use local ovsx publication as a fallback, or reuse a version/tag
-for different bytes. Missing credentials fail closed.
-
-## After publication
-
-- [x] Verify tag identity, release workflow, all 18 release assets, and checksums.
-- [x] Match all five Open VSX packages to their GitHub Release bytes.
-- [x] Run a clean published VSCodium Windows lifecycle, including 0.3.0 upgrade,
-      untrusted/offline behavior, uninstall, and workspace/settings preservation.
-- [x] Verify Homebrew/Scoop manifest version and archive checksums.
-- [x] Run an isolated clean Scoop install, `okf version`, and uninstall.
-- [x] Record any unavailable post-publication checks and credential-disposition gaps.
-
-Record results in [the 0.4.0 release record](releases/0.4.0.md). Existing 0.3.0
-receipts remain historical. Open VSX versions are immutable; preserve evidence and
-fix forward with a higher version if publication reveals a defect.
+Do not print tokens, add credentials, bypass protection, publish locally as a fallback,
+or reuse a version/tag for different bytes. Missing authorization fails closed.

@@ -46,3 +46,18 @@ versions and exact bytes. The two Ubuntu package lanes do not establish current
 macOS/Windows editor lifecycle results; the full compatibility workflow remains
 enabled with refreshed pins for that qualification. This correction publishes no
 release and changes no immutable 0.4.0 release asset.
+
+## 2026-10-26 amendment: current stable release qualification
+
+For the authorized `0.4.1` maintenance candidate, refresh the current test lanes to
+official [VS Code 1.143.1](https://github.com/microsoft/vscode/releases/tag/1.143.1)
+and [VSCodium 1.140.06880](https://github.com/VSCodium/vscodium/releases/tag/1.140.06880).
+The VSCodium release was published on 2026-10-13; its
+[upstream pin](https://github.com/VSCodium/vscodium/blob/1.140.06880/upstream/stable.json)
+is VS Code 1.140.0. Refresh all six archive sizes and SHA-256 values from the official
+release assets and preserve separate CLI and Extension Host checks. The protected
+`current-1.129.1` identifier remains unchanged and now executes VS Code 1.143.1.
+
+Keep API floor `^1.123.0`, types `1.120.0`, and the minimum-editor lane. The headed
+performance oracle follows VS Code 1.143.1. Earlier 0.4.0 receipts remain historical;
+the new version and build-input identity require new evidence before publication.

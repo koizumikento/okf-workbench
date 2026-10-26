@@ -181,14 +181,14 @@ a published migration source.
 | Editor | Exact version | Ubuntu 24.04 | macOS 15 | Windows 2025 | Acquisition |
 | --- | --- | --- | --- | --- | --- |
 | VS Code | `1.123.0` | Required | N/A | N/A | Pinned editor test download |
-| VS Code | `1.140.0` | Required | Required | Required | Pinned editor test download |
-| VSCodium | `1.135.06055` | Required | Required | Required | Official archive with pinned SHA-256 |
+| VS Code | `1.143.1` | Required | Required | Required | Pinned editor test download |
+| VSCodium | `1.140.06880` | Required | Required | Required | Official archive with pinned SHA-256 |
 
 PR CI also installs the inspected universal VSIX on the current VS Code and VSCodium
 Ubuntu lanes, then checks activation, read commands, untrusted-workspace behavior,
 test-predecessor upgrade, uninstall, and workspace preservation. Both must pass before
 merging an editor compatibility change. The required CI check name containing
-`current-1.129.1` is a historical identifier; its actual editor pin is 1.140.0.
+`current-1.129.1` is a historical identifier; its actual editor pin is 1.143.1.
 
 These are the lanes the next full cross-platform qualification run must pass. The `Passed` results above belong to the
 explicitly named predecessor revisions and do not transfer to the current source candidate.
@@ -207,12 +207,12 @@ architecture fails closed rather than downloading a different build.
 ## VSCodium release pin
 
 The compatible-editor lane uses the official
-[VSCodium `1.135.06055` GitHub release](https://github.com/VSCodium/vscodium/releases/tag/1.135.06055),
-published at `2026-09-09T08:19:21Z`. That release states that it updates its
-upstream VS Code base to `1.135.0`.
+[VSCodium `1.140.06880` GitHub release](https://github.com/VSCodium/vscodium/releases/tag/1.140.06880),
+published at `2026-10-13T17:03:30Z`. That release states that it updates its
+upstream VS Code base to `1.140.0`.
 
-The VSCodium command-line wrapper reports the release tag `1.135.06055`, while
-the extension host reports its upstream API version as `1.135.0`. The gate
+The VSCodium command-line wrapper reports the release tag `1.140.06880`, while
+the extension host reports its upstream API version as `1.140.0`. The gate
 checks and records both values instead of treating either one as an alias.
 
 Every supported desktop archive is pinned by its exact release URL and SHA-256.
@@ -220,12 +220,12 @@ The workflow verifies the digest before extraction or execution.
 
 | Platform | Architecture | Official archive | SHA-256 |
 | --- | --- | --- | --- |
-| Linux | x64 | [`VSCodium-linux-x64-1.135.06055.tar.gz`](https://github.com/VSCodium/vscodium/releases/download/1.135.06055/VSCodium-linux-x64-1.135.06055.tar.gz) | `c09d8ac8dd7f52b09ee159ee24b440541dfd8f937a0f6f88cc428c78e48ee1f2` |
-| Linux | arm64 | [`VSCodium-linux-arm64-1.135.06055.tar.gz`](https://github.com/VSCodium/vscodium/releases/download/1.135.06055/VSCodium-linux-arm64-1.135.06055.tar.gz) | `9765cea4f707ff7dc83a40be408a7318a59abb6996b359631639d9aab2f48a90` |
-| macOS | x64 | [`VSCodium-darwin-x64-1.135.06055.zip`](https://github.com/VSCodium/vscodium/releases/download/1.135.06055/VSCodium-darwin-x64-1.135.06055.zip) | `2fce180317a011576dc7e0910e1033d3287472b56e362b33175f5416415b604a` |
-| macOS | arm64 | [`VSCodium-darwin-arm64-1.135.06055.zip`](https://github.com/VSCodium/vscodium/releases/download/1.135.06055/VSCodium-darwin-arm64-1.135.06055.zip) | `61ff9ebc3ac5563c63a0a9e1b479822647e7f2c3303b0629f15fefe9e291f7cc` |
-| Windows | x64 | [`VSCodium-win32-x64-1.135.06055.zip`](https://github.com/VSCodium/vscodium/releases/download/1.135.06055/VSCodium-win32-x64-1.135.06055.zip) | `0bec978f201238624bc9ad43966f5e201ed8afacc37d77035a822252d9c9c200` |
-| Windows | arm64 | [`VSCodium-win32-arm64-1.135.06055.zip`](https://github.com/VSCodium/vscodium/releases/download/1.135.06055/VSCodium-win32-arm64-1.135.06055.zip) | `079aafaf0a141abd3a0b2078eca0a86b502cee38089014b81415ebb8e3675f21` |
+| Linux | x64 | [`VSCodium-linux-x64-1.140.06880.tar.gz`](https://github.com/VSCodium/vscodium/releases/download/1.140.06880/VSCodium-linux-x64-1.140.06880.tar.gz) | `61223b74f9e40834117311ec4177cb386d09b84c1aae4f9e674c96580569cef3` |
+| Linux | arm64 | [`VSCodium-linux-arm64-1.140.06880.tar.gz`](https://github.com/VSCodium/vscodium/releases/download/1.140.06880/VSCodium-linux-arm64-1.140.06880.tar.gz) | `a57be0d528adf7d6508318e37dbd982d695bf91501e324c37e97e11d5b375811` |
+| macOS | x64 | [`VSCodium-darwin-x64-1.140.06880.zip`](https://github.com/VSCodium/vscodium/releases/download/1.140.06880/VSCodium-darwin-x64-1.140.06880.zip) | `e828c20847f4c00f0d9396f168a6cd536d0df5e32903b880541ddc8022264a97` |
+| macOS | arm64 | [`VSCodium-darwin-arm64-1.140.06880.zip`](https://github.com/VSCodium/vscodium/releases/download/1.140.06880/VSCodium-darwin-arm64-1.140.06880.zip) | `3a0ba1a13b6d743f79ffc20bebd7a2ef8bab2b40e54bcc80fae123da9ed552e0` |
+| Windows | x64 | [`VSCodium-win32-x64-1.140.06880.zip`](https://github.com/VSCodium/vscodium/releases/download/1.140.06880/VSCodium-win32-x64-1.140.06880.zip) | `024ae1e88f431aee300e73c2ece92e42ebde80a7f3c484ff684f455ffa6a6a7f` |
+| Windows | arm64 | [`VSCodium-win32-arm64-1.140.06880.zip`](https://github.com/VSCodium/vscodium/releases/download/1.140.06880/VSCodium-win32-arm64-1.140.06880.zip) | `c0eb6a22e4c7bbf61b3be0d065496831ea9857cc2510111071eb4bab56e7ae29` |
 
 ## Lifecycle evidence
 

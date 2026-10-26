@@ -58,6 +58,9 @@ const BENCHMARK_EDITOR_FLAGS = [
   '--disable-background-timer-throttling',
   '--disable-backgrounding-occluded-windows',
   '--disable-renderer-backgrounding',
+  ...(process.platform === 'linux'
+    ? ['--no-sandbox', '--disable-gpu-sandbox', '--enable-unsafe-swiftshader']
+    : []),
 ];
 
 const { values } = parseArgs({

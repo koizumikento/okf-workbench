@@ -1,0 +1,32 @@
+{
+  "publishedTag": "v0.4.0",
+  "tagCommit": "ed45214b1d3afc4cd017a2ecc250ae182ab038ab",
+  "publishedVsixSha256": "ac11074af65f02ddeb1ff3bbf0f58d12a2b1327281a13d72fa21b0d3d5b5dcf8",
+  "wasmSourceInputSha256": "80916738fa3be41c86ade827e392ebf484282d9f8438f325c51ae0fd96c29a92",
+  "files": [
+    {
+      "path": "dist/extension.cjs",
+      "publishedSha256": "33d84d472c3f81d599e5e7b7d7ba12afed170c55dc5ba2fa3e2c420ac3a8fecd",
+      "measuredSha256": "33d84d472c3f81d599e5e7b7d7ba12afed170c55dc5ba2fa3e2c420ac3a8fecd",
+      "equal": true
+    },
+    {
+      "path": "dist/okf_core.wasm",
+      "publishedSha256": "000f1fd0a721285e31ec4ec6673b4717892a468a77116225dd656eccbb37dc2f",
+      "measuredSha256": "000f1fd0a721285e31ec4ec6673b4717892a468a77116225dd656eccbb37dc2f",
+      "equal": true
+    },
+    {
+      "path": "dist/webview/main.js",
+      "publishedSha256": "8f1dc414ec051650c58126133744e0715b44f24d68f24b2604a63f045205671a",
+      "measuredSha256": "8f1dc414ec051650c58126133744e0715b44f24d68f24b2604a63f045205671a",
+      "equal": true
+    },
+    {
+      "path": "dist/webview/main.css",
+      "publishedSha256": "54feb87be31bdb9bb46aa776b483c2b5f6ce6a041b57ad7ca6f4ab06e1b9d155",
+      "measuredSha256": "54feb87be31bdb9bb46aa776b483c2b5f6ce6a041b57ad7ca6f4ab06e1b9d155",
+      "equal": true
+    }
+  ]
+}

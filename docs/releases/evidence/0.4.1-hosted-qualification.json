@@ -1,0 +1,312 @@
+{
+  "head_sha": "1fed1b98255433cbba81ce899e4384543caa48f7",
+  "runs": [
+    {
+      "id": 40262304701,
+      "name": "Compatibility",
+      "status": "completed",
+      "conclusion": "success",
+      "jobs": 9
+    },
+    {
+      "id": 40262315253,
+      "name": "Package smoke",
+      "status": "completed",
+      "conclusion": "success",
+      "jobs": 6
+    }
+  ],
+  "canonical": {
+    "artifactId": 12624832024,
+    "archiveSha256": "5d51a1d8d8149eae0ab8e222cc153733b9d56f98a14fd9921d89d79686ff3a36",
+    "files": [
+      {
+        "name": "okf_core.wasm",
+        "bytes": 2559437,
+        "sha256": "299ee8c6e76eca0ccdefac741b246ea5e9a38c510fcc6278d5762f168a926d84"
+      },
+      {
+        "name": "build-metadata.json",
+        "bytes": 402475,
+        "sha256": "d3ffb38b28e22fd0af4c3e2f8e2fc173bdc44d5a4541095a8f372c178b521ef5"
+      }
+    ],
+    "core": {
+      "abiVersion": 1,
+      "artifact": "dist/okf_core.wasm",
+      "source": "local-locked-build",
+      "sha256": "299ee8c6e76eca0ccdefac741b246ea5e9a38c510fcc6278d5762f168a926d84",
+      "sourceInputSha256": "c3f02ff8ce17ae6f58bfd713ec4e073bdea81c94ed0fcb436ea6c1c40c7a3470",
+      "wasi": false
+    },
+    "windowsQualifiedWasmMatches": true
+  },
+  "candidateAndLinux": [
+    {
+      "artifactId": 12625440561,
+      "archiveSha256": "e8b48836f0c737a64bc4007d030c12e9b6ddb3b51747b0eae53f898dbcba33f5",
+      "vsixFile": "okf-workbench.vsix",
+      "vsixSha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+      "bytes": 1461633,
+      "commonRuntime": [
+        {
+          "path": "extension/dist/extension.cjs",
+          "sha256": "749ddbe37ca2e821588d53cbab7d08008edd337a036874c96c60e7543c5e7aa6",
+          "matchesWindows": true
+        },
+        {
+          "path": "extension/dist/okf_core.wasm",
+          "sha256": "299ee8c6e76eca0ccdefac741b246ea5e9a38c510fcc6278d5762f168a926d84",
+          "matchesWindows": true
+        },
+        {
+          "path": "extension/dist/webview/main.js",
+          "sha256": "fdc539e0091f324793285dacc30c4085f57fa30f5cb906b0c191818b4ec26682",
+          "matchesWindows": true
+        },
+        {
+          "path": "extension/dist/webview/main.css",
+          "sha256": "54feb87be31bdb9bb46aa776b483c2b5f6ce6a041b57ad7ca6f4ab06e1b9d155",
+          "matchesWindows": true
+        }
+      ],
+      "core": {
+        "abiVersion": 1,
+        "artifact": "dist/okf_core.wasm",
+        "source": "local-locked-build",
+        "sha256": "299ee8c6e76eca0ccdefac741b246ea5e9a38c510fcc6278d5762f168a926d84",
+        "sourceInputSha256": "c3f02ff8ce17ae6f58bfd713ec4e073bdea81c94ed0fcb436ea6c1c40c7a3470",
+        "wasi": false
+      },
+      "target": null,
+      "version": "0.4.1",
+      "exactWindowsVsix": true
+    },
+    {
+      "artifactId": 12625550481,
+      "archiveSha256": "19b587f7f95d50f7f1b707eb173128ad2ca010ee8a671d3fa33a99a4de588f6a",
+      "vsixFile": "okf-workbench-linux-x64.vsix",
+      "vsixSha256": "db31281849f710c2a1ef564485020c62e11572420bba38588af533e05c164306",
+      "bytes": 2940910,
+      "commonRuntime": [
+        {
+          "path": "extension/dist/extension.cjs",
+          "sha256": "749ddbe37ca2e821588d53cbab7d08008edd337a036874c96c60e7543c5e7aa6",
+          "matchesWindows": true
+        },
+        {
+          "path": "extension/dist/okf_core.wasm",
+          "sha256": "299ee8c6e76eca0ccdefac741b246ea5e9a38c510fcc6278d5762f168a926d84",
+          "matchesWindows": true
+        },
+        {
+          "path": "extension/dist/webview/main.js",
+          "sha256": "fdc539e0091f324793285dacc30c4085f57fa30f5cb906b0c191818b4ec26682",
+          "matchesWindows": true
+        },
+        {
+          "path": "extension/dist/webview/main.css",
+          "sha256": "54feb87be31bdb9bb46aa776b483c2b5f6ce6a041b57ad7ca6f4ab06e1b9d155",
+          "matchesWindows": true
+        }
+      ],
+      "core": {
+        "abiVersion": 1,
+        "artifact": "dist/okf_core.wasm",
+        "source": "canonical-ci-artifact",
+        "sha256": "299ee8c6e76eca0ccdefac741b246ea5e9a38c510fcc6278d5762f168a926d84",
+        "sourceInputSha256": "c3f02ff8ce17ae6f58bfd713ec4e073bdea81c94ed0fcb436ea6c1c40c7a3470",
+        "wasi": false
+      },
+      "target": "linux-x64",
+      "version": "0.4.1",
+      "bundledCli": {
+        "schemaVersion": 1,
+        "targetPlatform": "linux-x64",
+        "executable": "okf",
+        "byteLength": 3233600,
+        "sha256": "28b2c92b7019d260af900ad88e333f63e5f893a4e3f95e69778a7554a93c3ffb",
+        "cliVersion": "0.4.1",
+        "coreVersion": "0.4.1",
+        "abiVersion": 1
+      },
+      "cliEntries": [
+        {
+          "path": "extension/dist/bin/okf",
+          "sha256": "28b2c92b7019d260af900ad88e333f63e5f893a4e3f95e69778a7554a93c3ffb",
+          "bytes": 3233600
+        }
+      ]
+    }
+  ],
+  "compatibility": [
+    {
+      "artifactId": 12625536408,
+      "name": "compatibility-vscode-1.143.1-windows-2025-X64",
+      "archiveSha256": "81e1b794bd872d7a387b38317510b7277be0e5bf10a687ef5ccd938b9aa34bf8",
+      "status": "passed",
+      "repositoryRevision": "1fed1b98255433cbba81ce899e4384543caa48f7",
+      "editor": "vscode",
+      "version": "1.143.1",
+      "candidateSha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+      "publishedPredecessorSha256": "ac11074af65f02ddeb1ff3bbf0f58d12a2b1327281a13d72fa21b0d3d5b5dcf8",
+      "phases": {
+        "cleanInstall": "passed",
+        "untrustedWorkspace": "passed",
+        "upgrade": "passed"
+      },
+      "recordedNetworkAttempts": 0
+    },
+    {
+      "artifactId": 12625341486,
+      "name": "compatibility-vscodium-1.140.06880-ubuntu-24.04-X64",
+      "archiveSha256": "4ff6fe5cad3f9450375bf459f0158440fd9cde23de496188a160ab723f2db09c",
+      "status": "passed",
+      "repositoryRevision": "1fed1b98255433cbba81ce899e4384543caa48f7",
+      "editor": "vscodium",
+      "version": "1.140.06880",
+      "candidateSha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+      "publishedPredecessorSha256": "ac11074af65f02ddeb1ff3bbf0f58d12a2b1327281a13d72fa21b0d3d5b5dcf8",
+      "phases": {
+        "cleanInstall": "passed",
+        "untrustedWorkspace": "passed",
+        "upgrade": "passed"
+      },
+      "recordedNetworkAttempts": 0
+    },
+    {
+      "artifactId": 12625136251,
+      "name": "compatibility-vscodium-1.140.06880-macos-15-ARM64",
+      "archiveSha256": "c37f02bf784a468d12a5989e9c7a5837cd5dff13533f3024558f4ae222286f0e",
+      "status": "passed",
+      "repositoryRevision": "1fed1b98255433cbba81ce899e4384543caa48f7",
+      "editor": "vscodium",
+      "version": "1.140.06880",
+      "candidateSha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+      "publishedPredecessorSha256": "ac11074af65f02ddeb1ff3bbf0f58d12a2b1327281a13d72fa21b0d3d5b5dcf8",
+      "phases": {
+        "cleanInstall": "passed",
+        "untrustedWorkspace": "passed",
+        "upgrade": "passed"
+      },
+      "recordedNetworkAttempts": 0
+    },
+    {
+      "artifactId": 12625132209,
+      "name": "compatibility-vscode-1.143.1-macos-15-ARM64",
+      "archiveSha256": "c8a156e566c9b3bd1369c3e1330fd5d98d03b19eb7e5e18962307487702b23a6",
+      "status": "passed",
+      "repositoryRevision": "1fed1b98255433cbba81ce899e4384543caa48f7",
+      "editor": "vscode",
+      "version": "1.143.1",
+      "candidateSha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+      "publishedPredecessorSha256": "ac11074af65f02ddeb1ff3bbf0f58d12a2b1327281a13d72fa21b0d3d5b5dcf8",
+      "phases": {
+        "cleanInstall": "passed",
+        "untrustedWorkspace": "passed",
+        "upgrade": "passed"
+      },
+      "recordedNetworkAttempts": 0
+    },
+    {
+      "artifactId": 12624992286,
+      "name": "compatibility-vscode-1.143.1-ubuntu-24.04-X64",
+      "archiveSha256": "b8fe36895d90efc3ce88ebe181845c532dfd3851443a9a8591251ae9263e8adf",
+      "status": "passed",
+      "repositoryRevision": "1fed1b98255433cbba81ce899e4384543caa48f7",
+      "editor": "vscode",
+      "version": "1.143.1",
+      "candidateSha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+      "publishedPredecessorSha256": "ac11074af65f02ddeb1ff3bbf0f58d12a2b1327281a13d72fa21b0d3d5b5dcf8",
+      "phases": {
+        "cleanInstall": "passed",
+        "untrustedWorkspace": "passed",
+        "upgrade": "passed"
+      },
+      "recordedNetworkAttempts": 0
+    },
+    {
+      "artifactId": 12624937487,
+      "name": "compatibility-vscodium-1.140.06880-windows-2025-X64",
+      "archiveSha256": "4c06912164aead200682e446242a6f6f7b00b924daca6abfe733af568d73a61d",
+      "status": "passed",
+      "repositoryRevision": "1fed1b98255433cbba81ce899e4384543caa48f7",
+      "editor": "vscodium",
+      "version": "1.140.06880",
+      "candidateSha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+      "publishedPredecessorSha256": "ac11074af65f02ddeb1ff3bbf0f58d12a2b1327281a13d72fa21b0d3d5b5dcf8",
+      "phases": {
+        "cleanInstall": "passed",
+        "untrustedWorkspace": "passed",
+        "upgrade": "passed"
+      },
+      "recordedNetworkAttempts": 0
+    },
+    {
+      "artifactId": 12624892550,
+      "name": "compatibility-vscode-1.123.0-ubuntu-24.04-X64",
+      "archiveSha256": "2305e20a2a85afc37cd3332341bb9e7d98af1ef34e1656363f17a23f88d503ec",
+      "status": "passed",
+      "repositoryRevision": "1fed1b98255433cbba81ce899e4384543caa48f7",
+      "editor": "vscode",
+      "version": "1.123.0",
+      "candidateSha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+      "publishedPredecessorSha256": "ac11074af65f02ddeb1ff3bbf0f58d12a2b1327281a13d72fa21b0d3d5b5dcf8",
+      "phases": {
+        "cleanInstall": "passed",
+        "untrustedWorkspace": "passed",
+        "upgrade": "passed"
+      },
+      "recordedNetworkAttempts": 0
+    }
+  ],
+  "platforms": [
+    {
+      "artifactId": 12625536162,
+      "target": "darwin-arm64",
+      "vsixSha256": "83b5aaa657ec8b6d04d07e8d6be7245686fd0adb5bb28eabf06b3167f2e92a79",
+      "bytes": 2756436,
+      "allCommonRuntimeMatchesWindows": true,
+      "wasmSha256": "299ee8c6e76eca0ccdefac741b246ea5e9a38c510fcc6278d5762f168a926d84",
+      "sourceInputSha256": "c3f02ff8ce17ae6f58bfd713ec4e073bdea81c94ed0fcb436ea6c1c40c7a3470",
+      "bundledCliIntegrityMatches": true,
+      "cliSha256": "439e7a8d8a73bd78b97c29527379f5b159c2fd8688c20e5893b77dbe0d4ad027"
+    },
+    {
+      "artifactId": 12625396725,
+      "target": "win32-x64",
+      "vsixSha256": "6bef93758eea5eb24e2a19a6689d497f8e2408bcf224964e381168ae364b0234",
+      "bytes": 2811842,
+      "allCommonRuntimeMatchesWindows": true,
+      "wasmSha256": "299ee8c6e76eca0ccdefac741b246ea5e9a38c510fcc6278d5762f168a926d84",
+      "sourceInputSha256": "c3f02ff8ce17ae6f58bfd713ec4e073bdea81c94ed0fcb436ea6c1c40c7a3470",
+      "bundledCliIntegrityMatches": true,
+      "cliSha256": "6a7cfdb18feea1b2f1f0861524c54b74c71de8dd555a8dd822a8a88c9cb00c5b"
+    },
+    {
+      "artifactId": 12625102502,
+      "target": "darwin-x64",
+      "vsixSha256": "d036520602a51032dfda96884bcaa2d5b7c6443e7ae1dd0913257c4ff6b45152",
+      "bytes": 2886847,
+      "allCommonRuntimeMatchesWindows": true,
+      "wasmSha256": "299ee8c6e76eca0ccdefac741b246ea5e9a38c510fcc6278d5762f168a926d84",
+      "sourceInputSha256": "c3f02ff8ce17ae6f58bfd713ec4e073bdea81c94ed0fcb436ea6c1c40c7a3470",
+      "bundledCliIntegrityMatches": true,
+      "cliSha256": "e32b8c9a9fc0bc6621a7b34cf373b2506394cbb3660974a4858ef7b66c4f1357"
+    },
+    {
+      "artifactId": 12625550481,
+      "target": "linux-x64",
+      "vsixSha256": "db31281849f710c2a1ef564485020c62e11572420bba38588af533e05c164306",
+      "bytes": 2940910,
+      "allCommonRuntimeMatchesWindows": true,
+      "wasmSha256": "299ee8c6e76eca0ccdefac741b246ea5e9a38c510fcc6278d5762f168a926d84",
+      "sourceInputSha256": "c3f02ff8ce17ae6f58bfd713ec4e073bdea81c94ed0fcb436ea6c1c40c7a3470",
+      "bundledCliIntegrityMatches": true,
+      "cliSha256": "28b2c92b7019d260af900ad88e333f63e5f893a4e3f95e69778a7554a93c3ffb"
+    }
+  ],
+  "windowsEvidenceConsumerStatus": "Producer commit 25ea4f52e128145d9a057f88749ddf969e561fc7 fetched; raw JSON and original CI receipt hashes independently match. Stock strict evaluator replay against restored canonical-bound exact runtime and locked portable inputs passes (exit 0) in the authorized Composio sandbox; no new headed capture or threshold change.",
+  "windowsRawMeasurementSha256": "7cdd938ff9fea08a86724ad08688f53246f095a2b24d0ce06b77e4a6ba1b2a31",
+  "consumerStrictEvaluatorExitCode": 0
+}

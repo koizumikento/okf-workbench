@@ -1,0 +1,26 @@
+[
+  {
+    "path": "extension/dist/extension.cjs",
+    "pr81Sha256": "749ddbe37ca2e821588d53cbab7d08008edd337a036874c96c60e7543c5e7aa6",
+    "pr82Sha256": "749ddbe37ca2e821588d53cbab7d08008edd337a036874c96c60e7543c5e7aa6",
+    "equal": true
+  },
+  {
+    "path": "extension/dist/okf_core.wasm",
+    "pr81Sha256": "4a0b6dc2b8d7749f38f5eed637a4e3d2693d236c40df7cab92c11833bec02274",
+    "pr82Sha256": "4a0b6dc2b8d7749f38f5eed637a4e3d2693d236c40df7cab92c11833bec02274",
+    "equal": true
+  },
+  {
+    "path": "extension/dist/webview/main.js",
+    "pr81Sha256": "fdc539e0091f324793285dacc30c4085f57fa30f5cb906b0c191818b4ec26682",
+    "pr82Sha256": "fdc539e0091f324793285dacc30c4085f57fa30f5cb906b0c191818b4ec26682",
+    "equal": true
+  },
+  {
+    "path": "extension/dist/webview/main.css",
+    "pr81Sha256": "54feb87be31bdb9bb46aa776b483c2b5f6ce6a041b57ad7ca6f4ab06e1b9d155",
+    "pr82Sha256": "54feb87be31bdb9bb46aa776b483c2b5f6ce6a041b57ad7ca6f4ab06e1b9d155",
+    "equal": true
+  }
+]

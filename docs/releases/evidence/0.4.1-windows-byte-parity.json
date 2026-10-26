@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "sourceHead": "1fed1b98255433cbba81ce899e4384543caa48f7",
+  "workflowRunId": 40260002416,
+  "artifactId": 12623787451,
+  "artifactName": "okf-workbench-vsix-Linux-X64",
+  "archiveSha256": "1f08146c2e50cec26f82ebec89715d86f2f5753bd4783f28d954194c725199bd",
+  "hostedVsixBytes": 1461633,
+  "hostedVsixSha256Before": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+  "hostedVsixSha256After": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+  "canonicalBoundVsixSha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+  "canonicalWasmBytes": 2559437,
+  "canonicalWasmSha256": "299ee8c6e76eca0ccdefac741b246ea5e9a38c510fcc6278d5762f168a926d84",
+  "ciReceiptSha256Before": "d3ffb38b28e22fd0af4c3e2f8e2fc173bdc44d5a4541095a8f372c178b521ef5",
+  "ciReceiptSha256After": "d3ffb38b28e22fd0af4c3e2f8e2fc173bdc44d5a4541095a8f372c178b521ef5",
+  "rustSourceInputSha256": "c3f02ff8ce17ae6f58bfd713ec4e073bdea81c94ed0fcb436ea6c1c40c7a3470",
+  "rawMeasurementSha256": "7cdd938ff9fea08a86724ad08688f53246f095a2b24d0ce06b77e4a6ba1b2a31",
+  "rawMeasurementRedacted": false,
+  "strictEvaluatorExitCode": 0,
+  "headedCaptureCount": 1,
+  "nodeVersion": "24.18.0",
+  "npmVersion": "11.16.0",
+  "files": [
+    {
+      "path": "package.json",
+      "bytes": 16541,
+      "hostedSha256": "229f5702da94a8f4fc9bda2c7ec8d1c31f27892b40c23a6b5645fcff6cf6b537",
+      "measuredBeforeSha256": "229f5702da94a8f4fc9bda2c7ec8d1c31f27892b40c23a6b5645fcff6cf6b537",
+      "measuredAfterSha256": "229f5702da94a8f4fc9bda2c7ec8d1c31f27892b40c23a6b5645fcff6cf6b537",
+      "equal": true
+    },
+    {
+      "path": "assets/icon.png",
+      "bytes": 78308,
+      "hostedSha256": "02aaf73b5a504c3dfefaeef6520d6e714fdb62b5b0c631c1e46dcb5403c43fce",
+      "measuredBeforeSha256": "02aaf73b5a504c3dfefaeef6520d6e714fdb62b5b0c631c1e46dcb5403c43fce",
+      "measuredAfterSha256": "02aaf73b5a504c3dfefaeef6520d6e714fdb62b5b0c631c1e46dcb5403c43fce",
+      "equal": true
+    },
+    {
+      "path": "dist/extension.cjs",
+      "bytes": 462904,
+      "hostedSha256": "749ddbe37ca2e821588d53cbab7d08008edd337a036874c96c60e7543c5e7aa6",
+      "measuredBeforeSha256": "749ddbe37ca2e821588d53cbab7d08008edd337a036874c96c60e7543c5e7aa6",
+      "measuredAfterSha256": "749ddbe37ca2e821588d53cbab7d08008edd337a036874c96c60e7543c5e7aa6",
+      "equal": true
+    },
+    {
+      "path": "dist/okf_core.wasm",
+      "bytes": 2559437,
+      "hostedSha256": "299ee8c6e76eca0ccdefac741b246ea5e9a38c510fcc6278d5762f168a926d84",
+      "measuredBeforeSha256": "299ee8c6e76eca0ccdefac741b246ea5e9a38c510fcc6278d5762f168a926d84",
+      "measuredAfterSha256": "299ee8c6e76eca0ccdefac741b246ea5e9a38c510fcc6278d5762f168a926d84",
+      "equal": true
+    },
+    {
+      "path": "dist/webview/main.css",
+      "bytes": 8813,
+      "hostedSha256": "54feb87be31bdb9bb46aa776b483c2b5f6ce6a041b57ad7ca6f4ab06e1b9d155",
+      "measuredBeforeSha256": "54feb87be31bdb9bb46aa776b483c2b5f6ce6a041b57ad7ca6f4ab06e1b9d155",
+      "measuredAfterSha256": "54feb87be31bdb9bb46aa776b483c2b5f6ce6a041b57ad7ca6f4ab06e1b9d155",
+      "equal": true
+    },
+    {
+      "path": "dist/webview/main.js",
+      "bytes": 1433094,
+      "hostedSha256": "fdc539e0091f324793285dacc30c4085f57fa30f5cb906b0c191818b4ec26682",
+      "measuredBeforeSha256": "fdc539e0091f324793285dacc30c4085f57fa30f5cb906b0c191818b4ec26682",
+      "measuredAfterSha256": "fdc539e0091f324793285dacc30c4085f57fa30f5cb906b0c191818b4ec26682",
+      "equal": true
+    }
+  ]
+}

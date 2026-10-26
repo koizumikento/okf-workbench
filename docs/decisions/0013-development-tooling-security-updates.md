@@ -77,3 +77,20 @@ and tag-only authorization unchanged. Validation covers clean locked installatio
 CLI version/help, the overridden packager API, supply-chain checks, full-tree audit,
 and reproducible inspected VSIX packaging. No registry publication or credential
 verification is performed as part of this dependency maintenance.
+
+## 2026-10-26 amendment: Open VSX CLI 1.3.0
+
+Dependabot PR #82 advances the development-only `ovsx` pin to `1.3.0` and the
+tagged workflow's version assertion to match. The CLI now declares `@vscode/vsce`
+`^4.0.0`, so the existing exact override no longer crosses its declared major range.
+Its transitive Commander upgrade from `6.2.1` to `14.0.3` rejects surplus positional
+arguments. The retained-VSIX publication passes exactly one path per invocation,
+and `verify-pat` passes exactly the `straydog` namespace, so both fit the new parser.
+
+Keep the existing tag boundary, token scope, `verify-pat straydog`, and
+`publish <retained.vsix> --skip-duplicate` commands. A loopback-only integration
+test runs the installed CLI against a fake registry with a test token, verifies
+the exact retained VSIX upload and duplicate handling, and rejects extra arguments.
+It exercises the real Commander parser and registry client without live publication
+or credential use. Clean installation, full-tree audit, packager API, reproducibility,
+supply-chain, and supported-editor gates remain required before merging.

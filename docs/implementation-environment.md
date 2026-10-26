@@ -66,7 +66,7 @@ remain bound to their original Node 22 build and editor matrix.
 | VS Code compile-time types | `@types/vscode` `1.120.0` | Conservative API ceiling; this runtime update adds no newer VS Code API usage |
 | Minimum editor test | VS Code `1.123.0` | Matches the manifest API floor |
 | Current editor test | VS Code `1.143.1` | Stable VS Code release pinned for the current release-candidate qualification |
-| VSCodium test | VSCodium `1.140.06880` | Official stable release reviewed on 2026-10-26 |
+| VSCodium test | VSCodium `1.143.17183` | Official stable release reviewed on 2026-10-26 |
 
 Node.js 26 is Current rather than LTS at the decision date, so it is not the development baseline.
 The extension must not include native Node add-ons. Extension behavior stays portable through Wasm,
@@ -884,7 +884,7 @@ Before merging the Phase 0 scaffold:
 - Confirm esbuild produces one extension bundle and one locally loadable Webview bundle.
 - Inspect the VSIX and ensure source, fixtures, tests, and development-only dependencies are excluded where appropriate.
 - Verify the extension runs without network access.
-- Verify the manifest installs on VS Code 1.123.0, current VS Code 1.143.1, and VSCodium 1.140.06880.
+- Verify the manifest installs on VS Code 1.123.0, current VS Code 1.143.1, and VSCodium 1.143.17183.
 - Record any deviation from this baseline in an ADR update before adding overlapping tooling.
 
 ## Deferred decisions

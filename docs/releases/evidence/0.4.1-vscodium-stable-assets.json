@@ -1,0 +1,53 @@
+{
+  "observedAt": "2026-10-26T15:54:23.096665+00:00",
+  "release": "https://github.com/VSCodium/vscodium/releases/tag/1.143.17183",
+  "publishedAt": "2026-10-26T08:18:16Z",
+  "upstream": {
+    "tag": "1.143.1",
+    "commit": "e646868227c3e3a9e3f24277c8c7220be42c0be7"
+  },
+  "assets": [
+    {
+      "name": "VSCodium-darwin-arm64-1.143.17183.zip",
+      "url": "https://github.com/VSCodium/vscodium/releases/download/1.143.17183/VSCodium-darwin-arm64-1.143.17183.zip",
+      "bytes": 208192247,
+      "sha256": "b31ca09d8187dd48e077c13ca39b01af234582fe8f5015a918e3c985cc76427e",
+      "downloadVerified": true
+    },
+    {
+      "name": "VSCodium-darwin-x64-1.143.17183.zip",
+      "url": "https://github.com/VSCodium/vscodium/releases/download/1.143.17183/VSCodium-darwin-x64-1.143.17183.zip",
+      "bytes": 215753305,
+      "sha256": "2ba006bd8b01f6c208d6cc586b5cef22092d7b0c44338247cfc95c6fd61ebf6c",
+      "downloadVerified": true
+    },
+    {
+      "name": "VSCodium-linux-arm64-1.143.17183.tar.gz",
+      "url": "https://github.com/VSCodium/vscodium/releases/download/1.143.17183/VSCodium-linux-arm64-1.143.17183.tar.gz",
+      "bytes": 210956300,
+      "sha256": "570fd1947f957bbdc11b164b69a0a6d8bb1173e447faeac0dba5d01cc9bfea06",
+      "downloadVerified": true
+    },
+    {
+      "name": "VSCodium-linux-x64-1.143.17183.tar.gz",
+      "url": "https://github.com/VSCodium/vscodium/releases/download/1.143.17183/VSCodium-linux-x64-1.143.17183.tar.gz",
+      "bytes": 214776570,
+      "sha256": "b113c7cc55624f0779fe194169bb6c049785bfaac2033c84b8a4da68445d72af",
+      "downloadVerified": true
+    },
+    {
+      "name": "VSCodium-win32-arm64-1.143.17183.zip",
+      "url": "https://github.com/VSCodium/vscodium/releases/download/1.143.17183/VSCodium-win32-arm64-1.143.17183.zip",
+      "bytes": 223768831,
+      "sha256": "21f16d5c19527430f59d3c9938eba8ed91daba37f515ab4bdb6d23e8468b2afd",
+      "downloadVerified": true
+    },
+    {
+      "name": "VSCodium-win32-x64-1.143.17183.zip",
+      "url": "https://github.com/VSCodium/vscodium/releases/download/1.143.17183/VSCodium-win32-x64-1.143.17183.zip",
+      "bytes": 231406262,
+      "sha256": "5aea75fde6a7aa239f661cfa0eb49c09eda782c7221f3f18840e7e679b5edc06",
+      "downloadVerified": true
+    }
+  ]
+}

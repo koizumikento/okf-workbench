@@ -158,22 +158,22 @@ jobs:
             editor_version: 1.143.1
             os: windows-2025
             platform: win32
-          - label: VSCodium 1.140.06880 / Ubuntu 24.04
-            artifact_label: vscodium-1.140.06880-ubuntu-24.04
+          - label: VSCodium 1.143.17183 / Ubuntu 24.04
+            artifact_label: vscodium-1.143.17183-ubuntu-24.04
             editor: vscodium
-            editor_version: 1.140.06880
+            editor_version: 1.143.17183
             os: ubuntu-24.04
             platform: linux
-          - label: VSCodium 1.140.06880 / macOS 15
-            artifact_label: vscodium-1.140.06880-macos-15
+          - label: VSCodium 1.143.17183 / macOS 15
+            artifact_label: vscodium-1.143.17183-macos-15
             editor: vscodium
-            editor_version: 1.140.06880
+            editor_version: 1.143.17183
             os: macos-15
             platform: darwin
-          - label: VSCodium 1.140.06880 / Windows 2025
-            artifact_label: vscodium-1.140.06880-windows-2025
+          - label: VSCodium 1.143.17183 / Windows 2025
+            artifact_label: vscodium-1.143.17183-windows-2025
             editor: vscodium
-            editor_version: 1.140.06880
+            editor_version: 1.143.17183
             os: windows-2025
             platform: win32
     env:

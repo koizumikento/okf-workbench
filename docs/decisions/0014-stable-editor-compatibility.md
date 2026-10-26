@@ -61,3 +61,20 @@ release assets and preserve separate CLI and Extension Host checks. The protecte
 Keep API floor `^1.123.0`, types `1.120.0`, and the minimum-editor lane. The headed
 performance oracle follows VS Code 1.143.1. Earlier 0.4.0 receipts remain historical;
 the new version and build-input identity require new evidence before publication.
+
+## 2026-10-26 final stable distribution recheck
+
+During the evidence-transfer wait, official VSCodium
+[1.143.17183](https://github.com/VSCodium/vscodium/releases/tag/1.143.17183)
+was published at 08:18:16 UTC. The final stable-distribution recheck at 15:49 UTC
+found its [upstream pin](https://github.com/VSCodium/vscodium/blob/1.143.17183/upstream/stable.json)
+to be VS Code 1.143.1, commit `e646868227c3e3a9e3f24277c8c7220be42c0be7`.
+Pin this observed stable version for the 0.4.1 release; this is a bounded release
+qualification, not an ongoing stable-release watch. All six official archives
+were downloaded and their actual lengths and SHA-256 digests verified before pinning.
+
+Keep the manifest/API floor, types, product runtime, measurement inputs, and protected
+check names unchanged. The existing lifecycle harness must establish actual behavior
+on the new VSCodium in Ubuntu, macOS, and Windows; the older VSCodium receipts
+remain historical. Reuse performance and platform package qualification only when
+the exact runtime and build/measurement inputs remain unchanged.

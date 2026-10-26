@@ -62,17 +62,17 @@ describe('packaged editor version oracle', () => {
   it('distinguishes the VSCodium release tag from its upstream Extension Host API version', () => {
     const editor = {
       editor: 'vscodium',
-      requestedVersion: '1.140.06880',
-      expectedExtensionHostVersion: '1.140.0',
+      requestedVersion: '1.143.17183',
+      expectedExtensionHostVersion: '1.143.1',
     };
 
-    expect(assertExtensionHostVersion(editor, '1.140.0')).toEqual({
-      requestedEditorVersion: '1.140.06880',
-      expectedExtensionHostVersion: '1.140.0',
-      reportedExtensionHostVersion: '1.140.0',
+    expect(assertExtensionHostVersion(editor, '1.143.1')).toEqual({
+      requestedEditorVersion: '1.143.17183',
+      expectedExtensionHostVersion: '1.143.1',
+      reportedExtensionHostVersion: '1.143.1',
     });
-    expect(() => assertExtensionHostVersion(editor, '1.140.06880')).toThrow(
-      'Extension Host reported 1.140.06880; expected 1.140.0',
+    expect(() => assertExtensionHostVersion(editor, '1.143.17183')).toThrow(
+      'Extension Host reported 1.143.17183; expected 1.143.1',
     );
   });
 

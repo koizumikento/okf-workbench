@@ -128,3 +128,33 @@ the exact retained VSIX upload and duplicate handling, and rejects extra argumen
 It exercises the real Commander parser and registry client without live publication
 or credential use. Clean installation, full-tree audit, packager API, reproducibility,
 supply-chain, and supported-editor gates remain required before merging.
+
+## 2026-11-02 amendment: glob traversal and minimatch amplification advisories
+
+Override development-only `glob` to `14.0.3` and `minimatch` to `11.0.3`. The current
+older major lines have no registry-published patch for
+[GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4) and
+[GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249).
+Keep the direct tools on their reviewed versions rather than changing unrelated
+tool behavior. The overrides cross declared ranges in ESLint's matching helpers,
+typescript-eslint, VSCE, Mocha, and the VS Code test and coverage tools. Glob also
+advances path-scurry to `3.0.0`; minimatch adds its nonrecursive matching helper.
+All remain development-only and compatible with pinned Node `24.18.0`.
+
+ESLint's older matching helpers use the `Minimatch` constructor, retained in 11.x;
+they do not call the removed legacy CommonJS function export. The other installed
+consumers use named `minimatch`, `Minimatch`, `glob`, `sync`, and `hasMagic` APIs
+that remain available. Exercise the actual tools, not only dependency resolution:
+ESLint nested/Unicode discovery and ignored paths; Mocha glob discovery; synchronous
+and asynchronous coverage inclusion, exclusion, and negated exclusion; VS Code test
+discovery; and real VSCE/Open VSX CLI packaging against offline fixtures.
+
+Regression tests must bound optimized parent-pattern expansion and stop directory
+reads after cancellation in promise and stream walks. Retain the full-tree audit,
+all existing gates, production graph, script permissions, Node and editor API floor,
+and tag-only release boundary. Refresh qs within its existing 6.x range to `6.16.2`
+for [GHSA-6pq8-jhm2-2vcw](https://github.com/advisories/GHSA-6pq8-jhm2-2vcw).
+Clean locked installation, package reproducibility/content/security inspection, and
+real supported-editor install/activate/upgrade/uninstall evidence are required.
+This amendment permits no release or publication; the maintainer reviews the results
+before deciding whether to merge the maintenance PRs.

@@ -8,8 +8,25 @@ const serialize = require('serialize-javascript') as (
   value: unknown,
   options: { space: number },
 ) => string;
+const qs = require('qs') as {
+  stringify(value: unknown, options: { arrayFormat: 'comma'; encodeValuesOnly: boolean }): string;
+};
 
-describe('development dependency security overrides', () => {
+describe('development dependency security regressions', () => {
+  test.each([false, true])(
+    'comma serialization handles non-callable toString with encodeValuesOnly=%s',
+    (encodeValuesOnly) => {
+      const value: unknown = JSON.parse('{"a":[{"toString":"x"}]}');
+
+      expect(qs.stringify(value, { arrayFormat: 'comma', encodeValuesOnly })).toBe(
+        'a=%5Bobject%20Object%5D',
+      );
+      expect(qs.stringify({ a: ['x', 'y'] }, { arrayFormat: 'comma', encodeValuesOnly })).toBe(
+        encodeValuesOnly ? 'a=x,y' : 'a=x%2Cy',
+      );
+    },
+  );
+
   test('Azure Identity can acquire a token through the overridden MSAL without network access', async () => {
     const requests: { method: string; url: string }[] = [];
     const credential = new ClientSecretCredential(

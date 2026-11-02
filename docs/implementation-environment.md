@@ -148,6 +148,15 @@ dependencies. Production-only audits do not satisfy this gate. A clean full-tree
 known registry advisories at the time of the command, not unknown vulnerabilities or runtime
 exploitability.
 
+The 2026-11-02 maintenance branch refreshes development-only `qs` from `6.16.0` to
+`6.16.2` within `typed-rest-client`'s declared range for
+[GHSA-6pq8-jhm2-2vcw](https://github.com/advisories/GHSA-6pq8-jhm2-2vcw).
+The offline regression covers comma serialization of an object with a non-callable
+`toString`, both with and without `encodeValuesOnly`, plus ordinary comma output.
+This is a partial remediation: the full-tree audit still requires patched glob
+and minimatch releases outside their currently declared major ranges. It does not
+qualify the dependency updates for merge or publication.
+
 ## Source layout
 
 The planned layout is refined as follows:

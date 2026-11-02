@@ -153,9 +153,19 @@ The 2026-11-02 maintenance branch refreshes development-only `qs` from `6.16.0` 
 [GHSA-6pq8-jhm2-2vcw](https://github.com/advisories/GHSA-6pq8-jhm2-2vcw).
 The offline regression covers comma serialization of an object with a non-callable
 `toString`, both with and without `encodeValuesOnly`, plus ordinary comma output.
-This is a partial remediation: the full-tree audit still requires patched glob
-and minimatch releases outside their currently declared major ranges. It does not
-qualify the dependency updates for merge or publication.
+The same maintenance adds development-only overrides for `glob` `14.0.3` and
+`minimatch` `11.0.3`, including glob's `path-scurry` `3.0.0` dependency, for
+[GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4) and
+[GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249).
+These override the older ranges in ESLint, typescript-eslint, VSCE, Mocha, and the
+VS Code test/coverage tools. Their Node `18 || 20 || >=22` engines fit pinned
+Node `24.18.0`. The new matcher helper and path-scurry use `BlueOak-1.0.0`; all
+affected packages remain development-only, with no install-script permission added.
+The regression gate covers aborting a directory read in promise and stream walks,
+bounded optimized pattern expansion, real ESLint discovery/ignores, and real Mocha
+and coverage include/exclude patterns. Full audit, clean installation, the existing
+CLI/API tests, reproducible inspected VSIX packaging, and supported-editor lifecycle
+gates are required before merge. This work publishes no release.
 
 ## Source layout
 

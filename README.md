@@ -66,12 +66,14 @@ graph inspection remain read-only. While an authoring preview awaits a decision,
 exact summary and choose Apply or Cancel. Proposals containing only new files apply immediately
 after the final input; collision checks refuse an existing target without overwriting it.
 
-Version 0.4.0 targets Node 24 and VS Code-compatible desktop editors with API floor
+Source builds target Node 24 and VS Code-compatible desktop editors with API floor
 `^1.123.0`; published 0.3.0 retains its original `^1.121.0` floor. Compatibility
 is specific to the editor version, operating system, and exact extension package; the manifest
 floor is not a universal compatibility guarantee. PR CI tests packaged installation and
-activation on current stable VS Code 1.140.0 and VSCodium 1.135.06055 on Ubuntu.
-See [ADR 0014](docs/decisions/0014-stable-editor-compatibility.md).
+activation on pinned current stable VS Code 1.145.2 and VSCodium 1.143.17232 on Ubuntu.
+See [ADR 0014](docs/decisions/0014-stable-editor-compatibility.md) for the pin policy
+and the [release records](docs/index.md#release-and-operations) for version-specific
+qualification and publication status.
 
 ## Command-line interface
 

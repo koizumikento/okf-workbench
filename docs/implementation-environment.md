@@ -725,7 +725,7 @@ retaining individual entries, and discovery uses `stat.size` to avoid avoidable 
 | Extension integration | `@vscode/test-cli` `0.0.x` and `@vscode/test-electron` `3.1.x` with Mocha | Commands and Activity Bar views, workspace FS, diagnostics, watchers, URI behavior, source navigation, and the registered non-`file:` read boundary |
 | Webview browser harness | Playwright `1.65.0` on its pinned Chromium | Real DOM, WebGL smoke, CSP-compatible bundle loading, folder tree/filter/breadcrumb interaction, keyboard interaction, camera toolbar behavior, and wheel/pinch event boundaries |
 | Release smoke | Packaged VSIX in VS Code and VSCodium | Installation, activation, packaged resources, upgrade, uninstall |
-| Performance | Headed VS Code `1.143.1` release benchmark harness | QR-002 and QR-003 evidence on recorded hardware; VSCodium performance may be investigated separately but cannot satisfy the current strict release record |
+| Performance | Headed VS Code `1.145.2` release benchmark harness | QR-002 and QR-003 evidence on recorded hardware; VSCodium performance may be investigated separately but cannot satisfy the current strict release record |
 
 References:
 
@@ -932,7 +932,7 @@ Before merging the Phase 0 scaffold:
 - Confirm esbuild produces one extension bundle and one locally loadable Webview bundle.
 - Inspect the VSIX and ensure source, fixtures, tests, and development-only dependencies are excluded where appropriate.
 - Verify the extension runs without network access.
-- Verify the manifest installs on VS Code 1.123.0, current VS Code 1.143.1, and VSCodium 1.143.17183.
+- Verify the manifest installs on VS Code 1.123.0, current VS Code 1.145.2, and VSCodium 1.143.17232.
 - Record any deviation from this baseline in an ADR update before adding overlapping tooling.
 
 ## Deferred decisions

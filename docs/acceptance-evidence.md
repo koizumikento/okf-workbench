@@ -88,7 +88,7 @@ the public commands with its Explorer/root URI:
 
 ```sh
 mise x node@24.18.0 -- env VSCODE_TEST_VERSION=1.123.0 npm run test:integration
-mise x node@24.18.0 -- env VSCODE_TEST_VERSION=1.140.0 npm run test:integration
+mise x node@24.18.0 -- env VSCODE_TEST_VERSION=1.145.2 npm run test:integration
 ```
 
 That test requires provider reads for the selected bundle, publishes the broken-link diagnostic at

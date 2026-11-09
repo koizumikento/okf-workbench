@@ -57,7 +57,8 @@ native CLI.
 - Desktop-only VS Code-compatible extension for the MVP; no Web extension entry point.
 - VS Code API floor `^1.123.0` and Node 24, as accepted in [ADR 0012](decisions/0012-node24-extension-host.md).
 - Release qualification pins the API-floor lane to VS Code `1.123.0`, the current-stable lane to
-  VS Code `1.140.0`, and the compatible-editor lane to VSCodium `1.135.06055`.
+  VS Code `1.145.2`, and the compatible-editor lane to VSCodium `1.143.17232`.
+  These are the required 0.4.2 candidate lanes, not completed qualification claims.
   PR CI adds packaged lifecycle checks for both current stable editors on Ubuntu. The exact `0.3.0`
   candidate passed the earlier VS Code 1.121.0 / 1.129.1 and VSCodium 1.121.03429 lanes
   plus the four target-package and aggregate gates; the

@@ -126,7 +126,8 @@ and checks the serialize-javascript function-source escaping fix for
 runtime dependency, installer permission, credential, or editor API requirement.
 
 [ADR 0013](decisions/0013-development-tooling-security-updates.md) updates the development
-tooling to Vitest `5.0.3` through its 2026-10-05 amendment and `@vscode/vsce` `4.0.0`. The
+tooling to Vitest 5 through its 2026-10-05 amendment; reviewed maintenance now pins
+Vitest `5.1.0` and `@vscode/vsce` `4.1.0`. The
 `@vscode/vsce` override references the exact direct dependency with `$@vscode/vsce`, so `ovsx`
 `1.3.0` uses the same reviewed
 packager instead of retaining a vulnerable `3.9.2` dependency tree. The four exact install-script
@@ -715,14 +716,14 @@ retaining individual entries, and discovery uses `stat.size` to avoid avoidable 
 
 | Layer | Tool baseline | What it proves |
 | --- | --- | --- |
-| Core and presentation-model unit tests | Vitest `5.0.3`, Node environment | Parsing, preservation, resolution, validation, indexes, templates, graph model, and deterministic sidebar resource hierarchy |
+| Core and presentation-model unit tests | Vitest `5.1.0`, Node environment | Parsing, preservation, resolution, validation, indexes, templates, graph model, and deterministic sidebar resource hierarchy |
 | Rust core and CLI | `cargo test --workspace` | Native semantics, deterministic generation, CLI no-write/apply/collision behavior |
 | Wasm parity | Vitest plus locked release Wasm build | ABI/import boundary and canonical Rust/TypeScript fixture and byte parity |
-| Webview state unit tests | Vitest `5.0.3`, Node environment | Pure search, type/tag/folder filtering, folder hierarchy, focus, presentation, color, custom-force, and message-decoding state without claiming browser DOM behavior |
-| Benchmark harness | Vitest `5.0.3` test-context `bench`, `npm run benchmark` | Five executed fixture/model overhead measurements in PR CI; separate discovery from unit tests and no headed-editor performance claim |
+| Webview state unit tests | Vitest `5.1.0`, Node environment | Pure search, type/tag/folder filtering, folder hierarchy, focus, presentation, color, custom-force, and message-decoding state without claiming browser DOM behavior |
+| Benchmark harness | Vitest `5.1.0` test-context `bench`, `npm run benchmark` | Five executed fixture/model overhead measurements in PR CI; separate discovery from unit tests and no headed-editor performance claim |
 | Security boundaries | Dedicated Vitest and Playwright configs | Host/path/protocol boundaries plus hostile-content DOM execution and browser egress interception |
 | Extension integration | `@vscode/test-cli` `0.0.x` and `@vscode/test-electron` `3.1.x` with Mocha | Commands and Activity Bar views, workspace FS, diagnostics, watchers, URI behavior, source navigation, and the registered non-`file:` read boundary |
-| Webview browser harness | Playwright `1.62.x` on Chromium | Real DOM, WebGL smoke, CSP-compatible bundle loading, folder tree/filter/breadcrumb interaction, keyboard interaction, camera toolbar behavior, and wheel/pinch event boundaries |
+| Webview browser harness | Playwright `1.65.0` on its pinned Chromium | Real DOM, WebGL smoke, CSP-compatible bundle loading, folder tree/filter/breadcrumb interaction, keyboard interaction, camera toolbar behavior, and wheel/pinch event boundaries |
 | Release smoke | Packaged VSIX in VS Code and VSCodium | Installation, activation, packaged resources, upgrade, uninstall |
 | Performance | Headed VS Code `1.143.1` release benchmark harness | QR-002 and QR-003 evidence on recorded hardware; VSCodium performance may be investigated separately but cannot satisfy the current strict release record |
 
@@ -733,6 +734,26 @@ References:
 - [`@vscode/test-electron`](https://www.npmjs.com/package/@vscode/test-electron)
 - [Vitest](https://www.npmjs.com/package/vitest)
 - [Playwright Test](https://www.npmjs.com/package/@playwright/test)
+
+The reviewed Playwright `1.65.0` update keeps the existing Node 24 runner, Chromium-only
+browser gate, HTML/list reporters, and strict install-script allowlist. The
+[upstream release notes](https://github.com/microsoft/playwright/releases/tag/v1.65.0)
+change TypeScript class-field initialization, inert-element actionability, accessible-name
+calculation, cookies, proxy authentication, request query parameters, stylesheet imports,
+empty shards, and blob-report cleanup. The current Playwright specs use function-based
+fixtures without constructor-dependent field initializers, load actual bundled CSS with
+`addStyleTag`, and do not use cookies, proxy authentication, API requests, shards, blob
+reports, or aria snapshots. The Webview has no inert controls, slots, or closed-details
+labels. Existing role/name, click, fill, keyboard-focus, and hostile-content checks exercise
+the affected interaction paths; no product workaround or class-field compiler override is
+needed. Run both Webview suites with the version-matched Chromium after a clean install.
+
+The headed measurement runner also imports Playwright for loopback `connectOverCDP`.
+The dynamic measurement-tool closure includes its updated lockfile identity even though the
+portable performance-toolchain manifest separately pins esbuild. Browser-gate success does
+not requalify that headed runner: retain historical receipts unchanged and require fresh
+exact-input headed evidence before making current performance claims. Ubuntu PR package
+lanes likewise do not establish new macOS or Windows lifecycle qualification.
 
 Playwright is not treated as proof of Electron Webview performance. WebGL performance claims require the headed editor benchmark with hardware, GPU, editor, Electron, and fixture versions recorded.
 On Windows, the headed runner reads process-tree CPU and working-set counters through

@@ -2,7 +2,7 @@
 
 - Candidate: OKF Workbench `0.4.2`
 - Identifier: `straydog.okf-workbench`
-- Status: Preparation; not tagged or published
+- Status: Candidate qualified; protected merge, tag, and publication pending
 - Authority: the maintainer requested release after PR processing on 2026-11-09;
   PR #91 remains deferred and excluded.
 - Publication uses a matching version tag on reviewed `main`, per
@@ -18,13 +18,13 @@ not qualify the new version's Wasm identity or package bytes.
 - [x] Maintainer requested release preparation and publication after PR processing.
 - [x] Manifest, npm/Cargo lockfiles, package checks, and assertions use `0.4.2`.
 - [x] Changelog has a dated `0.4.2` entry covering changes since released `0.4.1`.
-- [ ] Exact final candidate passes source, Rust, unit, acceptance, security, browser,
+- [x] Exact final candidate passes source, Rust, unit, acceptance, security, browser,
       minimum/current editor integration, notices, full-tree audit, and package checks.
-- [ ] Fresh Package smoke completes all six jobs, with reproducible universal/target
-      VSIX contents, standalone/bundled CLI parity, and aggregate package-set checks.
-- [ ] Fresh Compatibility completes all nine jobs, including seven editor/OS lifecycle
+- [x] Fresh Package smoke completes all six jobs, with reproducible universal/target
+      VSIX contents, native-build/bundled CLI parity, and aggregate package-set checks.
+- [x] Fresh Compatibility completes all nine jobs, including seven editor/OS lifecycle
       lanes and checksum-verified published-0.4.1 upgrade (not the CI 0.0.0 fixture).
-- [ ] Exact final candidate has strict-passing genuine headed-editor QR-002, QR-003,
+- [x] Exact final candidate has strict-passing genuine headed-editor QR-002, QR-003,
       and network evidence. Retain raw capture, original build receipt, and byte parity.
 - [ ] Candidate changes are reviewed and merged into protected main with required checks.
 - [ ] Final reviewed main passes required checks and matches qualified package inputs.

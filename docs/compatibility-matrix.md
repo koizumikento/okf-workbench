@@ -1,6 +1,7 @@
 # Compatibility matrix
 
-- Status: Node 24 matrix configured; qualification is bound to each new candidate
+- Status: 0.4.2 candidate qualified on the pinned Node 24 matrix; publication pending
+- Current evidence: [0.4.2 release record](releases/0.4.2.md), Compatibility 42565541010 on `3cecdc372171daa668d66a64949ea87bfe212f9d`
 - Historical `0.3.0` matrix qualified: 2026-08-03
 - Extension identifier expected by the gate: `straydog.okf-workbench`
 
@@ -190,8 +191,9 @@ test-predecessor upgrade, uninstall, and workspace preservation. Both must pass 
 merging an editor compatibility change. The required CI check name containing
 `current-1.129.1` is a historical identifier; its actual editor pin is 1.145.2.
 
-These are the lanes the next full cross-platform qualification run must pass. The `Passed` results above belong to the
-explicitly named predecessor revisions and do not transfer to the current source candidate.
+These lanes passed for the exact 0.4.2 candidate in Compatibility 42565541010.
+The earlier `Passed` results above remain bound to their named predecessor revisions;
+qualification does not transfer to changed package inputs.
 
 The API-floor lane runs on the primary Ubuntu CI environment. Cross-platform
 release smoke uses the current VS Code build and the compatible VSCodium build,

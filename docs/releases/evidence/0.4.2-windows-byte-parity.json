@@ -1,0 +1,77 @@
+[
+  {
+    "path": "[Content_Types].xml",
+    "sha256": "702a5c05941ca48413a29da2e70da184c734cf991e9266e29a0f295d8d584d8a",
+    "matches": true
+  },
+  {
+    "path": "extension.vsixmanifest",
+    "sha256": "b45e42e08ad8e8470678d51202185dc71022f4dce6b662cbf577d25842930810",
+    "matches": true
+  },
+  {
+    "path": "extension/assets/icon.png",
+    "sha256": "02aaf73b5a504c3dfefaeef6520d6e714fdb62b5b0c631c1e46dcb5403c43fce",
+    "matches": true
+  },
+  {
+    "path": "extension/assets/workbench.svg",
+    "sha256": "3e1b4c6c00ba175d5ea2047846519b2b1d92e7d1435a6e87bb9600384912b495",
+    "matches": true
+  },
+  {
+    "path": "extension/changelog.md",
+    "sha256": "8e5bf82afa5b1520f2a4c2c8d762b2c6288af23252306d2e44cad7b0bc7f3d0d",
+    "matches": true
+  },
+  {
+    "path": "extension/dist/extension.cjs",
+    "sha256": "749ddbe37ca2e821588d53cbab7d08008edd337a036874c96c60e7543c5e7aa6",
+    "matches": true
+  },
+  {
+    "path": "extension/dist/okf_core.wasm",
+    "sha256": "1abee9b04e38b299562fb9c9ef712883d420f3b3179821ae5abd208b2881655c",
+    "matches": true
+  },
+  {
+    "path": "extension/dist/webview/main.css",
+    "sha256": "54feb87be31bdb9bb46aa776b483c2b5f6ce6a041b57ad7ca6f4ab06e1b9d155",
+    "matches": true
+  },
+  {
+    "path": "extension/dist/webview/main.js",
+    "sha256": "68b4f6e79bd3aefdd9d2a6b3bc057b9b89ccd829337476ef2d83c914fe75594f",
+    "matches": true
+  },
+  {
+    "path": "extension/LICENSE.txt",
+    "sha256": "49b52ac7c8c8a9ccfd0e3adaf2387e9937f0e7fbf820a2bb148847d6efc5d9a0",
+    "matches": true
+  },
+  {
+    "path": "extension/package.json",
+    "sha256": "608d7ba55abbd0ea4d31d3261fd95be2c71058744446c860528d49d15ac20ba3",
+    "matches": true
+  },
+  {
+    "path": "extension/readme.md",
+    "sha256": "cca2737efd33e997d241e79fc44097e1beb97650f3af10620d612cc2021f7124",
+    "matches": true
+  },
+  {
+    "path": "extension/RUST_THIRD_PARTY_NOTICES.md",
+    "sha256": "c39f4349ab4b4e90bb8ead7bdb31440af7562667157feb4b5d8c543cea96d6ac",
+    "matches": true
+  },
+  {
+    "path": "extension/SECURITY.md",
+    "sha256": "58934d1597372ef2f89de99c189181f86804b80b607b304a13b1743d816aaa08",
+    "matches": true
+  },
+  {
+    "path": "extension/THIRD_PARTY_NOTICES.md",
+    "sha256": "083378c6ac5589760c9b7a474ba08f2950ab2760c1529f527c5547c293a0492c",
+    "matches": true
+  }
+]

@@ -31,10 +31,10 @@ remote HTTP(S)/WS or other-scheme Webview requests. These are historical results
 for those exact bytes, not qualification of a new version.
 
 The current `0.4.2` candidate incorporates reviewed renderer and development-tool
-maintenance after `0.4.1`. Version identity changes the Wasm build inputs. Fresh
-exact-candidate CI, all nine Compatibility jobs with genuine published-0.4.1 upgrade,
-all six Package smoke jobs, and strict-passing headed performance/network evidence
-remain required before tagging. See `docs/releases/0.4.2.md` and the release checklist.
+maintenance after `0.4.1`. Version identity changes the Wasm build inputs. Qualified commit `3cecdc372171daa668d66a64949ea87bfe212f9d` passes
+CI, all nine Compatibility jobs with genuine published-0.4.1 upgrade, all six
+Package smoke jobs, and genuine Windows headed performance/network gates (948 ms p95,
+20 samples, d3). Protected merge, final-main checks, tag, and publication remain pending. See `docs/releases/0.4.2.md` and the release checklist.
 Do not reuse historical evidence, raise thresholds, or claim publication before verification.
 
 The repository, issue tracker, security-advisory route, and GitHub Pages trust pages are public.

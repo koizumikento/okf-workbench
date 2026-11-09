@@ -1,0 +1,125 @@
+{
+  "candidateCommit": "3cecdc372171daa668d66a64949ea87bfe212f9d",
+  "compatibilityRun": 42565541010,
+  "lanes": [
+    {
+      "artifactId": 13650449797,
+      "name": "compatibility-vscodium-1.143.17232-macos-15-ARM64",
+      "path": "0.4.2-lifecycle/compatibility-vscodium-1.143.17232-macos-15-ARM64.json",
+      "sha256": "2c37fa07fd0b3ba152df69979289c85f10b0c9a80d1de7fec411450f84dfec3f",
+      "candidate": {
+        "id": "straydog.okf-workbench",
+        "version": "0.4.2",
+        "sha256": "c898251f84b06a62f0b3990442a09c827f693db729bd59ca599f73d97ea06bcf",
+        "file": "okf-workbench.vsix"
+      },
+      "predecessor": {
+        "supplied": true,
+        "sha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+        "file": "previous.vsix"
+      }
+    },
+    {
+      "artifactId": 13650609121,
+      "name": "compatibility-vscode-1.145.2-macos-15-ARM64",
+      "path": "0.4.2-lifecycle/compatibility-vscode-1.145.2-macos-15-ARM64.json",
+      "sha256": "dacc9ec4544ced88aadf969c55434b6b1c5cd12c6a23b33880e8ec776450ad30",
+      "candidate": {
+        "id": "straydog.okf-workbench",
+        "version": "0.4.2",
+        "sha256": "c898251f84b06a62f0b3990442a09c827f693db729bd59ca599f73d97ea06bcf",
+        "file": "okf-workbench.vsix"
+      },
+      "predecessor": {
+        "supplied": true,
+        "sha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+        "file": "previous.vsix"
+      }
+    },
+    {
+      "artifactId": 13651037715,
+      "name": "compatibility-vscode-1.145.2-ubuntu-24.04-X64",
+      "path": "0.4.2-lifecycle/compatibility-vscode-1.145.2-ubuntu-24.04-X64.json",
+      "sha256": "614c9efcf68f178661867c5bdd1e5eb7c42523796adaff25a10bde031ef69023",
+      "candidate": {
+        "id": "straydog.okf-workbench",
+        "version": "0.4.2",
+        "sha256": "c898251f84b06a62f0b3990442a09c827f693db729bd59ca599f73d97ea06bcf",
+        "file": "okf-workbench.vsix"
+      },
+      "predecessor": {
+        "supplied": true,
+        "sha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+        "file": "previous.vsix"
+      }
+    },
+    {
+      "artifactId": 13651064022,
+      "name": "compatibility-vscode-1.123.0-ubuntu-24.04-X64",
+      "path": "0.4.2-lifecycle/compatibility-vscode-1.123.0-ubuntu-24.04-X64.json",
+      "sha256": "c902d5339fefaa47518a54f5534ea9db85ac1e3249c98d2b3a02094d800cd794",
+      "candidate": {
+        "id": "straydog.okf-workbench",
+        "version": "0.4.2",
+        "sha256": "c898251f84b06a62f0b3990442a09c827f693db729bd59ca599f73d97ea06bcf",
+        "file": "okf-workbench.vsix"
+      },
+      "predecessor": {
+        "supplied": true,
+        "sha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+        "file": "previous.vsix"
+      }
+    },
+    {
+      "artifactId": 13651357838,
+      "name": "compatibility-vscodium-1.143.17232-windows-2025-X64",
+      "path": "0.4.2-lifecycle/compatibility-vscodium-1.143.17232-windows-2025-X64.json",
+      "sha256": "22ec96cc7b3d15056b1711f9da92ec0e5b06d8a5022a979ce6cfced3ad1bf4da",
+      "candidate": {
+        "id": "straydog.okf-workbench",
+        "version": "0.4.2",
+        "sha256": "c898251f84b06a62f0b3990442a09c827f693db729bd59ca599f73d97ea06bcf",
+        "file": "okf-workbench.vsix"
+      },
+      "predecessor": {
+        "supplied": true,
+        "sha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+        "file": "previous.vsix"
+      }
+    },
+    {
+      "artifactId": 13651491241,
+      "name": "compatibility-vscodium-1.143.17232-ubuntu-24.04-X64",
+      "path": "0.4.2-lifecycle/compatibility-vscodium-1.143.17232-ubuntu-24.04-X64.json",
+      "sha256": "625ac3b3e7411bf6d9ea4a622121dd30e22a8baa358823ad911a961b7b7e0421",
+      "candidate": {
+        "id": "straydog.okf-workbench",
+        "version": "0.4.2",
+        "sha256": "c898251f84b06a62f0b3990442a09c827f693db729bd59ca599f73d97ea06bcf",
+        "file": "okf-workbench.vsix"
+      },
+      "predecessor": {
+        "supplied": true,
+        "sha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+        "file": "previous.vsix"
+      }
+    },
+    {
+      "artifactId": 13651750936,
+      "name": "compatibility-vscode-1.145.2-windows-2025-X64",
+      "path": "0.4.2-lifecycle/compatibility-vscode-1.145.2-windows-2025-X64.json",
+      "sha256": "0cdef7a8253d2e74e6be291a45a2f4540dc908a7bae24c1f5ee467b05e34ecef",
+      "candidate": {
+        "id": "straydog.okf-workbench",
+        "version": "0.4.2",
+        "sha256": "c898251f84b06a62f0b3990442a09c827f693db729bd59ca599f73d97ea06bcf",
+        "file": "okf-workbench.vsix"
+      },
+      "predecessor": {
+        "supplied": true,
+        "sha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+        "file": "previous.vsix"
+      }
+    }
+  ]
+}

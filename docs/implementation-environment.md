@@ -330,6 +330,14 @@ Vite, webpack, and Vite+ are not part of the initial pipeline. Esbuild directly 
 | Markdown AST | `unified` `11.0.x`, `remark-parse` `11.0.x`, and focused unist visitors | Core parser; extract links and source positions without rendering HTML |
 | 3D graph | `3d-force-graph` `1.80.x` | Webview renderer adapter only |
 
+The reviewed `3d-force-graph` `1.80.2` patch removes the synthetic pointer-up dispatch
+after node dragging, which newer Three.js no longer needs. The Workbench adapter keeps
+node dragging disabled. Regenerate `THIRD_PARTY_NOTICES.md` with
+`node scripts/security-check.mjs --write-notices` against the locked installation when
+advancing a runtime pin, then verify notice freshness and the existing Webview gates.
+The patch changes runtime bytes; historical package and performance receipts do not qualify
+the updated renderer.
+
 References:
 
 - [`yaml`](https://www.npmjs.com/package/yaml)

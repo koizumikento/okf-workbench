@@ -18,7 +18,7 @@ Production package count: **79**
 | [@types/mdast](https://www.npmjs.com/package/%40types/mdast/v/4.0.4) | 4.0.4 | MIT | allowed | [ff82c90f8494](#notice-ff82c90f84945c60601e96b43246009b9bc589f3ebe1cd8a0fd39a3520d8c310) |
 | [@types/ms](https://www.npmjs.com/package/%40types/ms/v/2.1.0) | 2.1.0 | MIT | allowed | [ff82c90f8494](#notice-ff82c90f84945c60601e96b43246009b9bc589f3ebe1cd8a0fd39a3520d8c310) |
 | [@types/unist](https://www.npmjs.com/package/%40types/unist/v/3.0.3) | 3.0.3 | MIT | allowed | [ff82c90f8494](#notice-ff82c90f84945c60601e96b43246009b9bc589f3ebe1cd8a0fd39a3520d8c310) |
-| [3d-force-graph](https://www.npmjs.com/package/3d-force-graph/v/1.80.1) | 1.80.1 | MIT | allowed | [c81e08f2a436](#notice-c81e08f2a4364d08611c888e00017d1000168d4a6991b2df34ccec52e71c84a5) |
+| [3d-force-graph](https://www.npmjs.com/package/3d-force-graph/v/1.80.2) | 1.80.2 | MIT | allowed | [c81e08f2a436](#notice-c81e08f2a4364d08611c888e00017d1000168d4a6991b2df34ccec52e71c84a5) |
 | [accessor-fn](https://www.npmjs.com/package/accessor-fn/v/1.5.3) | 1.5.3 | MIT | allowed | [c81e08f2a436](#notice-c81e08f2a4364d08611c888e00017d1000168d4a6991b2df34ccec52e71c84a5) |
 | [bail](https://www.npmjs.com/package/bail/v/2.0.2) | 2.0.2 | MIT | allowed | [c37a32dd1cd4](#notice-c37a32dd1cd44e7b68afdf88cb45eb2c4028574f7d894c720371d5688f73ef45) |
 | [character-entities](https://www.npmjs.com/package/character-entities/v/2.0.2) | 2.0.2 | MIT | allowed | [c37a32dd1cd4](#notice-c37a32dd1cd44e7b68afdf88cb45eb2c4028574f7d894c720371d5688f73ef45) |
@@ -690,7 +690,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### c81e08f2a436
 
-Packages: `3d-force-graph@1.80.1`, `accessor-fn@1.5.3`, `d3-binarytree@1.0.2`, `d3-force-3d@3.0.6`, `d3-octree@1.1.0`, `kapsule@1.16.3`, `three-forcegraph@1.43.4`
+Packages: `3d-force-graph@1.80.2`, `accessor-fn@1.5.3`, `d3-binarytree@1.0.2`, `d3-force-3d@3.0.6`, `d3-octree@1.1.0`, `kapsule@1.16.3`, `three-forcegraph@1.43.4`
 
 Source files: `node_modules/3d-force-graph/LICENSE`, `node_modules/accessor-fn/LICENSE`, `node_modules/d3-binarytree/LICENSE`, `node_modules/d3-force-3d/LICENSE`, `node_modules/d3-octree/LICENSE`, `node_modules/kapsule/LICENSE`, `node_modules/three-forcegraph/LICENSE`
 

@@ -1,0 +1,100 @@
+{
+  "checkedAt": "2026-11-09T04:29:52.666354+00:00",
+  "releaseVersion": "1.143.17232",
+  "releaseUrl": "https://github.com/VSCodium/vscodium/releases/tag/1.143.17232",
+  "publishedAt": "2026-10-28T08:54:31Z",
+  "upstream": {
+    "url": "https://raw.githubusercontent.com/VSCodium/vscodium/1.143.17232/upstream/stable.json",
+    "tag": "1.143.1",
+    "commit": "e646868227c3e3a9e3f24277c8c7220be42c0be7"
+  },
+  "assets": [
+    {
+      "platform": "linux-x64",
+      "name": "VSCodium-linux-x64-1.143.17232.tar.gz",
+      "url": "https://github.com/VSCodium/vscodium/releases/download/1.143.17232/VSCodium-linux-x64-1.143.17232.tar.gz",
+      "size": 214776735,
+      "sha256": "ca1895aa040bd91a09c709d79eac7862d8c1aa0237fdc25b503deeb8bcd87efd",
+      "releaseMetadataSize": 214776735,
+      "releaseMetadataDigest": "sha256:ca1895aa040bd91a09c709d79eac7862d8c1aa0237fdc25b503deeb8bcd87efd",
+      "checksumUrl": "https://github.com/VSCodium/vscodium/releases/download/1.143.17232/VSCodium-linux-x64-1.143.17232.tar.gz.sha256",
+      "officialChecksum": "ca1895aa040bd91a09c709d79eac7862d8c1aa0237fdc25b503deeb8bcd87efd",
+      "verified": true
+    },
+    {
+      "platform": "linux-arm64",
+      "name": "VSCodium-linux-arm64-1.143.17232.tar.gz",
+      "url": "https://github.com/VSCodium/vscodium/releases/download/1.143.17232/VSCodium-linux-arm64-1.143.17232.tar.gz",
+      "size": 210926588,
+      "sha256": "9f270ae242561812acd02be9cf5c13c848da359b356327adfe44b815a9532309",
+      "releaseMetadataSize": 210926588,
+      "releaseMetadataDigest": "sha256:9f270ae242561812acd02be9cf5c13c848da359b356327adfe44b815a9532309",
+      "checksumUrl": "https://github.com/VSCodium/vscodium/releases/download/1.143.17232/VSCodium-linux-arm64-1.143.17232.tar.gz.sha256",
+      "officialChecksum": "9f270ae242561812acd02be9cf5c13c848da359b356327adfe44b815a9532309",
+      "verified": true
+    },
+    {
+      "platform": "darwin-x64",
+      "name": "VSCodium-darwin-x64-1.143.17232.zip",
+      "url": "https://github.com/VSCodium/vscodium/releases/download/1.143.17232/VSCodium-darwin-x64-1.143.17232.zip",
+      "size": 215768189,
+      "sha256": "6f11e188a16decf417623a94593370ee87fc40445d09c0ff49e30af57a5087f5",
+      "releaseMetadataSize": 215768189,
+      "releaseMetadataDigest": "sha256:6f11e188a16decf417623a94593370ee87fc40445d09c0ff49e30af57a5087f5",
+      "checksumUrl": "https://github.com/VSCodium/vscodium/releases/download/1.143.17232/VSCodium-darwin-x64-1.143.17232.zip.sha256",
+      "officialChecksum": "6f11e188a16decf417623a94593370ee87fc40445d09c0ff49e30af57a5087f5",
+      "verified": true
+    },
+    {
+      "platform": "darwin-arm64",
+      "name": "VSCodium-darwin-arm64-1.143.17232.zip",
+      "url": "https://github.com/VSCodium/vscodium/releases/download/1.143.17232/VSCodium-darwin-arm64-1.143.17232.zip",
+      "size": 208196082,
+      "sha256": "ade8f5e0ebf47e5ea9e2478844f150c68e43def192b6f8be05d0329d25ec0917",
+      "releaseMetadataSize": 208196082,
+      "releaseMetadataDigest": "sha256:ade8f5e0ebf47e5ea9e2478844f150c68e43def192b6f8be05d0329d25ec0917",
+      "checksumUrl": "https://github.com/VSCodium/vscodium/releases/download/1.143.17232/VSCodium-darwin-arm64-1.143.17232.zip.sha256",
+      "officialChecksum": "ade8f5e0ebf47e5ea9e2478844f150c68e43def192b6f8be05d0329d25ec0917",
+      "verified": true
+    },
+    {
+      "platform": "win32-x64",
+      "name": "VSCodium-win32-x64-1.143.17232.zip",
+      "url": "https://github.com/VSCodium/vscodium/releases/download/1.143.17232/VSCodium-win32-x64-1.143.17232.zip",
+      "size": 231406156,
+      "sha256": "a1090868af8ac0ac04c22d79fdd02246fa115a78daf38a741d8db06df1753c1d",
+      "releaseMetadataSize": 231406156,
+      "releaseMetadataDigest": "sha256:a1090868af8ac0ac04c22d79fdd02246fa115a78daf38a741d8db06df1753c1d",
+      "checksumUrl": "https://github.com/VSCodium/vscodium/releases/download/1.143.17232/VSCodium-win32-x64-1.143.17232.zip.sha256",
+      "officialChecksum": "a1090868af8ac0ac04c22d79fdd02246fa115a78daf38a741d8db06df1753c1d",
+      "verified": true
+    },
+    {
+      "platform": "win32-arm64",
+      "name": "VSCodium-win32-arm64-1.143.17232.zip",
+      "url": "https://github.com/VSCodium/vscodium/releases/download/1.143.17232/VSCodium-win32-arm64-1.143.17232.zip",
+      "size": 223765351,
+      "sha256": "fa90eb32767212403885e01aa1b8b872ed786fa000e6ef96570f95ffbc8bb3eb",
+      "releaseMetadataSize": 223765351,
+      "releaseMetadataDigest": "sha256:fa90eb32767212403885e01aa1b8b872ed786fa000e6ef96570f95ffbc8bb3eb",
+      "checksumUrl": "https://github.com/VSCodium/vscodium/releases/download/1.143.17232/VSCodium-win32-arm64-1.143.17232.zip.sha256",
+      "officialChecksum": "fa90eb32767212403885e01aa1b8b872ed786fa000e6ef96570f95ffbc8bb3eb",
+      "verified": true
+    }
+  ],
+  "allVerified": true,
+  "releaseMetadataUrl": "https://api.github.com/repos/VSCodium/vscodium/releases/latest",
+  "vscodeLatest": {
+    "metadataUrl": "https://update.code.visualstudio.com/api/update/win32-x64-archive/stable/latest",
+    "url": "https://vscode.download.prss.microsoft.com/dbazure/download/stable/c4453f8ea430795f941c1b2ff6c9321135a74a02/VSCode-win32-x64-1.145.2.zip",
+    "name": "1.145.2",
+    "version": "c4453f8ea430795f941c1b2ff6c9321135a74a02",
+    "productVersion": "1.145.2",
+    "hash": "a3e16bdb6ee83ed2d46ea813248cadc3ca051dc5",
+    "timestamp": 1793939987076,
+    "sha256hash": "33cf166a751090fe7d244bf0e594e3c69c832d5ae2af1769140ad82a35ea1e0b",
+    "supportsFastUpdate": true,
+    "notes": "c4453f8ea430795f941c1b2ff6c9321135a74a02"
+  },
+  "verificationMethod": "All six archives downloaded in full; actual byte length and SHA-256 matched GitHub release metadata and official .sha256 asset before any extraction or execution."
+}

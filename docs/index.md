@@ -73,7 +73,8 @@ are the source of truth for the initial product and engineering direction.
 | Document | Purpose |
 | --- | --- |
 | [Release checklist](release-checklist.md) | Immutable candidate, approval, publication, verification, and rollback gates |
-| [0.4.1 maintenance candidate](releases/0.4.1.md) | Current editor qualification, dependency maintenance, and publication status |
+| [0.4.2 maintenance candidate](releases/0.4.2.md) | Current preparation, pending qualification, and publication gates |
+| [0.4.1 release record](releases/0.4.1.md) | Published maintenance release and retained qualification evidence |
 | [0.4.0 release record](releases/0.4.0.md) | Published Node 24 release, exact-Wasm performance, and distribution verification |
 | [0.3.0 release record](releases/0.3.0.md) | Completed signed-tag, publication, artifact, and lifecycle evidence for 0.3.0 |
 | [0.2.1 release record](releases/0.2.1.md) | Completed signed-tag, publication, artifact, and lifecycle evidence for 0.2.1 |

@@ -30,7 +30,7 @@ describe('packaged editor version oracle', () => {
   });
 
   it('pins the API-floor and current-stable VS Code lanes', () => {
-    expect(COMPATIBILITY_PINS.vscodeVersions).toEqual(['1.123.0', '1.143.1']);
+    expect(COMPATIBILITY_PINS.vscodeVersions).toEqual(['1.123.0', '1.145.2']);
   });
 
   it('disables Electron sandboxes only for the isolated Linux editor test harness', () => {
@@ -62,29 +62,29 @@ describe('packaged editor version oracle', () => {
   it('distinguishes the VSCodium release tag from its upstream Extension Host API version', () => {
     const editor = {
       editor: 'vscodium',
-      requestedVersion: '1.143.17183',
+      requestedVersion: '1.143.17232',
       expectedExtensionHostVersion: '1.143.1',
     };
 
     expect(assertExtensionHostVersion(editor, '1.143.1')).toEqual({
-      requestedEditorVersion: '1.143.17183',
+      requestedEditorVersion: '1.143.17232',
       expectedExtensionHostVersion: '1.143.1',
       reportedExtensionHostVersion: '1.143.1',
     });
-    expect(() => assertExtensionHostVersion(editor, '1.143.17183')).toThrow(
-      'Extension Host reported 1.143.17183; expected 1.143.1',
+    expect(() => assertExtensionHostVersion(editor, '1.143.17232')).toThrow(
+      'Extension Host reported 1.143.17232; expected 1.143.1',
     );
   });
 
   it('rejects a VS Code Extension Host that differs from the requested pin', () => {
     const editor = {
       editor: 'vscode',
-      requestedVersion: '1.143.1',
-      expectedExtensionHostVersion: '1.143.1',
+      requestedVersion: '1.145.2',
+      expectedExtensionHostVersion: '1.145.2',
     };
 
     expect(() => assertExtensionHostVersion(editor, '1.139.0')).toThrow(
-      'Extension Host reported 1.139.0; expected 1.143.1',
+      'Extension Host reported 1.139.0; expected 1.145.2',
     );
   });
 });

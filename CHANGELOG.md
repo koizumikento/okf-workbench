@@ -5,6 +5,23 @@ All notable changes to OKF Workbench are documented in this file.
 The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and intends to use
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) after the first public release.
 
+## 0.4.2 - 2026-11-09
+
+### Changed
+
+- Update the local graph renderer to 3d-force-graph 1.80.2 and refresh the reviewed
+  production dependency notices.
+- Update packaging and test tooling to VSCE 4.1.0, typescript-eslint 8.72.1,
+  Vitest 5.1.0, and Playwright 1.65.0.
+- Preserve the VS Code API floor 1.123, compile-time types 1.120, and minimum
+  editor lane. Refresh current qualification to VS Code 1.145.2 and VSCodium
+  1.143.17232. Fresh 0.4.2 qualification is pending.
+
+### Fixed
+
+- Patch development-only qs serialization, glob traversal, and minimatch
+  amplification advisories through reviewed lockfile updates and overrides.
+
 ## 0.4.1 - 2026-10-26
 
 ### Fixed

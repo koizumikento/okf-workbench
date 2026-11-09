@@ -427,7 +427,7 @@
     "check": "npm run format && npm run lint && npm run typecheck && npm run rust:format && npm run rust:lint && npm run rust:test && npm run rust:notices:check && npm run test && npm run test:acceptance && npm run dependency:check && npm run test:security:all"
   },
   "dependencies": {
-    "3d-force-graph": "1.80.1",
+    "3d-force-graph": "1.80.2",
     "micromark": "4.0.3",
     "micromark-core-commonmark": "2.0.4",
     "micromark-util-decode-string": "2.0.1",

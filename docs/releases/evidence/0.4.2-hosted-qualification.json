@@ -1,0 +1,914 @@
+{
+  "checkedAt": "2026-11-09T05:16:42.574374+00:00",
+  "candidateCommit": "3cecdc372171daa668d66a64949ea87bfe212f9d",
+  "candidateTree": "573bcfc18ec34763d5df4ba70a169d226dac3b98",
+  "universalVsixSha256": "c898251f84b06a62f0b3990442a09c827f693db729bd59ca599f73d97ea06bcf",
+  "wasmSha256": "1abee9b04e38b299562fb9c9ef712883d420f3b3179821ae5abd208b2881655c",
+  "wasmSourceInputSha256": "5850b401e9ad871fc2f62cc058ee0feeed5606b93ab841a1459e5593e0e03dc6",
+  "stockCanonicalValidator": "passed",
+  "runtimeHashes": {
+    "extension/dist/extension.cjs": "749ddbe37ca2e821588d53cbab7d08008edd337a036874c96c60e7543c5e7aa6",
+    "extension/dist/okf_core.wasm": "1abee9b04e38b299562fb9c9ef712883d420f3b3179821ae5abd208b2881655c",
+    "extension/dist/webview/main.css": "54feb87be31bdb9bb46aa776b483c2b5f6ce6a041b57ad7ca6f4ab06e1b9d155",
+    "extension/dist/webview/main.js": "68b4f6e79bd3aefdd9d2a6b3bc057b9b89ccd829337476ef2d83c914fe75594f"
+  },
+  "artifacts": [
+    {
+      "artifact": {
+        "archive_download_url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13650449797/zip",
+        "created_at": "2026-11-09T05:12:52Z",
+        "digest": "sha256:0d272a3032b18ff55415eb4a3aa49c0bae95db43eb5777c297a284fe6533e8c4",
+        "expired": false,
+        "expires_at": "2026-12-09T05:12:50Z",
+        "id": 13650449797,
+        "name": "compatibility-vscodium-1.143.17232-macos-15-ARM64",
+        "node_id": "MDg6QXJ0aWZhY3QxMzY1MDQ0OTc5Nw==",
+        "size_in_bytes": 11646,
+        "updated_at": "2026-11-09T05:12:52Z",
+        "url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13650449797",
+        "workflow_run": {
+          "head_branch": "release/prepare-0.4.2",
+          "head_repository_id": 1308294858,
+          "head_sha": "3cecdc372171daa668d66a64949ea87bfe212f9d",
+          "id": 42565541010,
+          "repository_id": 1308294858
+        }
+      },
+      "actualArchiveSha256": "0d272a3032b18ff55415eb4a3aa49c0bae95db43eb5777c297a284fe6533e8c4",
+      "actualArchiveBytes": 11646,
+      "files": {
+        "lifecycle.activation-clean.json": {
+          "sha256": "0d27e11d2bb1aae8d1dda0fe0cd452228251bbe66cb0d4d5bc4a0cc3eee6dd76",
+          "bytes": 3616
+        },
+        "lifecycle.activation-upgrade.json": {
+          "sha256": "74b3252393aa54b6a68e244f0519f6eaff5a68e45d5adc4e16eeebdfed766400",
+          "bytes": 3616
+        },
+        "lifecycle.json": {
+          "sha256": "2c37fa07fd0b3ba152df69979289c85f10b0c9a80d1de7fec411450f84dfec3f",
+          "bytes": 22179
+        },
+        "lifecycle.activation-untrusted.json": {
+          "sha256": "11beabfb048d538eaa21e02d48316f35cf2c0c9f0aba2859c29236a87249190f",
+          "bytes": 4757
+        },
+        "lifecycle.uninstall-clean.json": {
+          "sha256": "a78360c5b24a455ed9d08114493ff06e7469b8a78881a717fdc43dd291e8baf2",
+          "bytes": 1412
+        },
+        "lifecycle.uninstall-untrusted.json": {
+          "sha256": "0f3caf93a5b5ae0fb14accfd8d20a97c73189310d903e1796f5332f33f9483d2",
+          "bytes": 1412
+        },
+        "lifecycle.uninstall-upgrade.json": {
+          "sha256": "ce470881bf4d3dae909e66eee4dfeef50ef4a16db15881782253c22190619931",
+          "bytes": 1412
+        },
+        "predecessor-download.json": {
+          "sha256": "b70a560143c146db29e15ef1eed2fd56f53935b8158cb212d6d5efd713d4893c",
+          "bytes": 474
+        },
+        "vscodium-preparation.json": {
+          "sha256": "25196f5c39d20d141df6ef851f3e79cc298f322d60408a5ae6ad323f86d01c1e",
+          "bytes": 1306
+        },
+        "workflow.json": {
+          "sha256": "bc58431a4d93c92444c34d12ec00a4d5b3fc4617fec0684420650fd295521f9d",
+          "bytes": 2302
+        }
+      },
+      "lifecycle": {
+        "status": "passed",
+        "repositoryRevision": "3cecdc372171daa668d66a64949ea87bfe212f9d",
+        "requestedEditor": "vscodium",
+        "requestedEditorVersion": "1.143.17232",
+        "runner": {
+          "platform": "darwin",
+          "architecture": "arm64",
+          "node": "v24.18.0",
+          "runnerOs": "macOS",
+          "runnerArchitecture": "ARM64",
+          "imageOs": "macos15",
+          "imageVersion": "20261104.0514.1"
+        },
+        "candidate": {
+          "id": "straydog.okf-workbench",
+          "version": "0.4.2",
+          "sha256": "c898251f84b06a62f0b3990442a09c827f693db729bd59ca599f73d97ea06bcf",
+          "file": "okf-workbench.vsix"
+        },
+        "predecessor": {
+          "supplied": true,
+          "sha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+          "file": "previous.vsix"
+        }
+      }
+    },
+    {
+      "artifact": {
+        "archive_download_url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13650609121/zip",
+        "created_at": "2026-11-09T05:13:53Z",
+        "digest": "sha256:44503bb8b7f6d3a75a1ee83c84613a0520c9fba20ebc7e2db6ded49ae834a4d7",
+        "expired": false,
+        "expires_at": "2026-12-09T05:13:52Z",
+        "id": 13650609121,
+        "name": "compatibility-vscode-1.145.2-macos-15-ARM64",
+        "node_id": "MDg6QXJ0aWZhY3QxMzY1MDYwOTEyMQ==",
+        "size_in_bytes": 10973,
+        "updated_at": "2026-11-09T05:13:53Z",
+        "url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13650609121",
+        "workflow_run": {
+          "head_branch": "release/prepare-0.4.2",
+          "head_repository_id": 1308294858,
+          "head_sha": "3cecdc372171daa668d66a64949ea87bfe212f9d",
+          "id": 42565541010,
+          "repository_id": 1308294858
+        }
+      },
+      "actualArchiveSha256": "44503bb8b7f6d3a75a1ee83c84613a0520c9fba20ebc7e2db6ded49ae834a4d7",
+      "actualArchiveBytes": 10973,
+      "files": {
+        "lifecycle.activation-clean.json": {
+          "sha256": "253c044a38d10541b3535492325c61a9419b79a02378a97dd74eb3c92ee8a04e",
+          "bytes": 3622
+        },
+        "lifecycle.activation-untrusted.json": {
+          "sha256": "3883b09f2125776473d36d93fdf52fa746728ec3a2b3175f4c83b0b473d0d8da",
+          "bytes": 4763
+        },
+        "lifecycle.activation-upgrade.json": {
+          "sha256": "a0e2881cad7bffad83ed8b53046ab2504b845d0087be968951ead2d7a3fff795",
+          "bytes": 3622
+        },
+        "lifecycle.json": {
+          "sha256": "dacc9ec4544ced88aadf969c55434b6b1c5cd12c6a23b33880e8ec776450ad30",
+          "bytes": 22170
+        },
+        "lifecycle.uninstall-clean.json": {
+          "sha256": "4487bb76dafbdb0d9e47914125a6778cbc824475670737109e4eb7f14a76f50d",
+          "bytes": 1418
+        },
+        "lifecycle.uninstall-untrusted.json": {
+          "sha256": "039cc0429f235c9c79207db182550f561f7f1148603791774bb60352621f0ba2",
+          "bytes": 1418
+        },
+        "lifecycle.uninstall-upgrade.json": {
+          "sha256": "d7599d1bd15b7599789ed986f7a9ec7ef7c0a3be504d8a2369477507c2d436eb",
+          "bytes": 1418
+        },
+        "predecessor-download.json": {
+          "sha256": "e182614e53f64dd8ec6ad4a3cc260ad20f8c37a8139b78e068360babe5e85116",
+          "bytes": 474
+        },
+        "workflow.json": {
+          "sha256": "73e5b77050bbad7c49088746947bc314dbea18770785a181d95c7d81492d09d2",
+          "bytes": 2296
+        }
+      },
+      "lifecycle": {
+        "status": "passed",
+        "repositoryRevision": "3cecdc372171daa668d66a64949ea87bfe212f9d",
+        "requestedEditor": "vscode",
+        "requestedEditorVersion": "1.145.2",
+        "runner": {
+          "platform": "darwin",
+          "architecture": "arm64",
+          "node": "v24.18.0",
+          "runnerOs": "macOS",
+          "runnerArchitecture": "ARM64",
+          "imageOs": "macos15",
+          "imageVersion": "20261104.0514.1"
+        },
+        "candidate": {
+          "id": "straydog.okf-workbench",
+          "version": "0.4.2",
+          "sha256": "c898251f84b06a62f0b3990442a09c827f693db729bd59ca599f73d97ea06bcf",
+          "file": "okf-workbench.vsix"
+        },
+        "predecessor": {
+          "supplied": true,
+          "sha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+          "file": "previous.vsix"
+        }
+      }
+    },
+    {
+      "artifact": {
+        "archive_download_url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13650753617/zip",
+        "created_at": "2026-11-09T05:12:14Z",
+        "digest": "sha256:1fa2479e9d42adf5a43d186d91880423e8da17a459dd50e7f04efb46f1b75672",
+        "expired": false,
+        "expires_at": "2026-11-23T05:12:13Z",
+        "id": 13650753617,
+        "name": "okf-workbench-package-smoke-Linux-X64",
+        "node_id": "MDg6QXJ0aWZhY3QxMzY1MDc1MzYxNw==",
+        "size_in_bytes": 2957317,
+        "updated_at": "2026-11-09T05:12:14Z",
+        "url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13650753617",
+        "workflow_run": {
+          "head_branch": "release/prepare-0.4.2",
+          "head_repository_id": 1308294858,
+          "head_sha": "3cecdc372171daa668d66a64949ea87bfe212f9d",
+          "id": 42565541150,
+          "repository_id": 1308294858
+        }
+      },
+      "actualArchiveSha256": "1fa2479e9d42adf5a43d186d91880423e8da17a459dd50e7f04efb46f1b75672",
+      "actualArchiveBytes": 2957317,
+      "files": {
+        "build-metadata.json": {
+          "sha256": "da586cd6ba6ab1e1e5493fe87f2e1a71b0dcf5b242ccdc72546e09f29eb0c937",
+          "bytes": 402478
+        },
+        "okf-workbench-linux-x64.vsix": {
+          "sha256": "fac6955cc333ebacf77adee8aea60e236e3b10c4b73dfcb9624ab35294ac6d0d",
+          "bytes": 2940712
+        },
+        "runtime-licenses.json": {
+          "sha256": "faefa615c729cd675a48e854fc346a4547b1fc76dc0623567b9bb0f866848b28",
+          "bytes": 6820
+        }
+      },
+      "package": {
+        "file": "okf-workbench-linux-x64.vsix",
+        "vsixSha256": "fac6955cc333ebacf77adee8aea60e236e3b10c4b73dfcb9624ab35294ac6d0d",
+        "completeUniversalExtensionParity": true,
+        "universalExtensionFilesCompared": 13,
+        "completeDistRuntimeParity": true,
+        "bundledCliVerified": true,
+        "bundledCli": {
+          "schemaVersion": 1,
+          "targetPlatform": "linux-x64",
+          "executable": "okf",
+          "byteLength": 3233600,
+          "sha256": "3f0fd9672b58a7ca04bfd4e26f893fa4ef879a1d1a0c961917e6c8dcc63aad0d",
+          "cliVersion": "0.4.2",
+          "coreVersion": "0.4.2",
+          "abiVersion": 1
+        }
+      }
+    },
+    {
+      "artifact": {
+        "archive_download_url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13650979588/zip",
+        "created_at": "2026-11-09T05:14:11Z",
+        "digest": "sha256:3a3a9fa0414925190d0f2fffbfbe180bac0d8e2b2cf9e0a30930f26af3b0b149",
+        "expired": false,
+        "expires_at": "2026-11-23T05:14:10Z",
+        "id": 13650979588,
+        "name": "okf-workbench-package-smoke-Windows-X64",
+        "node_id": "MDg6QXJ0aWZhY3QxMzY1MDk3OTU4OA==",
+        "size_in_bytes": 2828207,
+        "updated_at": "2026-11-09T05:14:11Z",
+        "url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13650979588",
+        "workflow_run": {
+          "head_branch": "release/prepare-0.4.2",
+          "head_repository_id": 1308294858,
+          "head_sha": "3cecdc372171daa668d66a64949ea87bfe212f9d",
+          "id": 42565541150,
+          "repository_id": 1308294858
+        }
+      },
+      "actualArchiveSha256": "3a3a9fa0414925190d0f2fffbfbe180bac0d8e2b2cf9e0a30930f26af3b0b149",
+      "actualArchiveBytes": 2828207,
+      "files": {
+        "build-metadata.json": {
+          "sha256": "da586cd6ba6ab1e1e5493fe87f2e1a71b0dcf5b242ccdc72546e09f29eb0c937",
+          "bytes": 402478
+        },
+        "runtime-licenses.json": {
+          "sha256": "faefa615c729cd675a48e854fc346a4547b1fc76dc0623567b9bb0f866848b28",
+          "bytes": 6820
+        },
+        "okf-workbench-win32-x64.vsix": {
+          "sha256": "6a77cebb9ed74d8298073753dff5d0bc0a62d39feaf5b2ba6a7b873e59dde560",
+          "bytes": 2808494
+        }
+      },
+      "package": {
+        "file": "okf-workbench-win32-x64.vsix",
+        "vsixSha256": "6a77cebb9ed74d8298073753dff5d0bc0a62d39feaf5b2ba6a7b873e59dde560",
+        "completeUniversalExtensionParity": true,
+        "universalExtensionFilesCompared": 13,
+        "completeDistRuntimeParity": true,
+        "bundledCliVerified": true,
+        "bundledCli": {
+          "schemaVersion": 1,
+          "targetPlatform": "win32-x64",
+          "executable": "okf.exe",
+          "byteLength": 2783232,
+          "sha256": "e5866ae92af43bfa948ef1b137e474542e9e5158fcbc3d840c85eb1a2b4916a5",
+          "cliVersion": "0.4.2",
+          "coreVersion": "0.4.2",
+          "abiVersion": 1
+        }
+      }
+    },
+    {
+      "artifact": {
+        "archive_download_url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13651037715/zip",
+        "created_at": "2026-11-09T05:13:03Z",
+        "digest": "sha256:895abc47c205294b0517bf29fc1edf605c5d5afb7160d8a12b351fb05d7c1ba5",
+        "expired": false,
+        "expires_at": "2026-12-09T05:13:03Z",
+        "id": 13651037715,
+        "name": "compatibility-vscode-1.145.2-ubuntu-24.04-X64",
+        "node_id": "MDg6QXJ0aWZhY3QxMzY1MTAzNzcxNQ==",
+        "size_in_bytes": 10953,
+        "updated_at": "2026-11-09T05:13:03Z",
+        "url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13651037715",
+        "workflow_run": {
+          "head_branch": "release/prepare-0.4.2",
+          "head_repository_id": 1308294858,
+          "head_sha": "3cecdc372171daa668d66a64949ea87bfe212f9d",
+          "id": 42565541010,
+          "repository_id": 1308294858
+        }
+      },
+      "actualArchiveSha256": "895abc47c205294b0517bf29fc1edf605c5d5afb7160d8a12b351fb05d7c1ba5",
+      "actualArchiveBytes": 10953,
+      "files": {
+        "lifecycle.activation-clean.json": {
+          "sha256": "955139dcfaa6593971f0c368952eee554845d2190ff960174938f50bd95197b9",
+          "bytes": 3619
+        },
+        "lifecycle.activation-untrusted.json": {
+          "sha256": "a812ec79789c3c95b4641a839a95a1bbbaa7dea97d83c7f2a3550df65d2a72c0",
+          "bytes": 4760
+        },
+        "lifecycle.activation-upgrade.json": {
+          "sha256": "f197d34a19d28ed404f9e41ca2df1c772cd7466ab446e20f84d8860badc28a78",
+          "bytes": 3619
+        },
+        "lifecycle.json": {
+          "sha256": "614c9efcf68f178661867c5bdd1e5eb7c42523796adaff25a10bde031ef69023",
+          "bytes": 22152
+        },
+        "lifecycle.uninstall-clean.json": {
+          "sha256": "b2cd8f93ef6d344f78e0dee26bd2bac93741fa97a96778dbf4499be0952ae451",
+          "bytes": 1415
+        },
+        "lifecycle.uninstall-untrusted.json": {
+          "sha256": "fae8bbe7f903403f86b92187df6294091f679194c871ab4b2aaf27b3108b54e3",
+          "bytes": 1415
+        },
+        "lifecycle.uninstall-upgrade.json": {
+          "sha256": "3212098fc8503daaf1d0b52baba5a45c2c19078a6b76a2d8581ac3eeadd0a771",
+          "bytes": 1415
+        },
+        "predecessor-download.json": {
+          "sha256": "beb88e02fe65b7280ac052270f05bc0ecd4d0ad3ef9480a28d81554547a7f001",
+          "bytes": 474
+        },
+        "workflow.json": {
+          "sha256": "14a5454f520caa5d11f4ded24ee1aca5cf24247fa49a3b655e31c7a9947f65b7",
+          "bytes": 2291
+        }
+      },
+      "lifecycle": {
+        "status": "passed",
+        "repositoryRevision": "3cecdc372171daa668d66a64949ea87bfe212f9d",
+        "requestedEditor": "vscode",
+        "requestedEditorVersion": "1.145.2",
+        "runner": {
+          "platform": "linux",
+          "architecture": "x64",
+          "node": "v24.18.0",
+          "runnerOs": "Linux",
+          "runnerArchitecture": "X64",
+          "imageOs": "ubuntu24",
+          "imageVersion": "20261101.360.1"
+        },
+        "candidate": {
+          "id": "straydog.okf-workbench",
+          "version": "0.4.2",
+          "sha256": "c898251f84b06a62f0b3990442a09c827f693db729bd59ca599f73d97ea06bcf",
+          "file": "okf-workbench.vsix"
+        },
+        "predecessor": {
+          "supplied": true,
+          "sha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+          "file": "previous.vsix"
+        }
+      }
+    },
+    {
+      "artifact": {
+        "archive_download_url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13651064022/zip",
+        "created_at": "2026-11-09T05:12:55Z",
+        "digest": "sha256:9876c386ded01307bc0dec7337b3821314b8ba19ab269dcf58c678c29a0dfb9e",
+        "expired": false,
+        "expires_at": "2026-12-09T05:12:54Z",
+        "id": 13651064022,
+        "name": "compatibility-vscode-1.123.0-ubuntu-24.04-X64",
+        "node_id": "MDg6QXJ0aWZhY3QxMzY1MTA2NDAyMg==",
+        "size_in_bytes": 10919,
+        "updated_at": "2026-11-09T05:12:55Z",
+        "url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13651064022",
+        "workflow_run": {
+          "head_branch": "release/prepare-0.4.2",
+          "head_repository_id": 1308294858,
+          "head_sha": "3cecdc372171daa668d66a64949ea87bfe212f9d",
+          "id": 42565541010,
+          "repository_id": 1308294858
+        }
+      },
+      "actualArchiveSha256": "9876c386ded01307bc0dec7337b3821314b8ba19ab269dcf58c678c29a0dfb9e",
+      "actualArchiveBytes": 10919,
+      "files": {
+        "lifecycle.activation-clean.json": {
+          "sha256": "090cca9ec28c24c04a8f5679f7f40a65854090bed7322d03b778b3706fdf930c",
+          "bytes": 3618
+        },
+        "lifecycle.activation-untrusted.json": {
+          "sha256": "9bff85d895b19d927df98b7ff6c739bca8d0cca035825b5a95ba1beca1821a6f",
+          "bytes": 4759
+        },
+        "lifecycle.activation-upgrade.json": {
+          "sha256": "e8674e0b8d366b583c6dc7f3687ed5b21f39e2c3a50533644de3a5698df145a2",
+          "bytes": 3618
+        },
+        "lifecycle.json": {
+          "sha256": "c902d5339fefaa47518a54f5534ea9db85ac1e3249c98d2b3a02094d800cd794",
+          "bytes": 22149
+        },
+        "lifecycle.uninstall-clean.json": {
+          "sha256": "d54123da495ed708ca8332e7c98ad873ffbeb800ac70314f3db045f5e2bee788",
+          "bytes": 1414
+        },
+        "lifecycle.uninstall-untrusted.json": {
+          "sha256": "8b53236e28a0525c8229ce7f9579dcffbcd9f44f85f674a443563713c7c2b4ff",
+          "bytes": 1414
+        },
+        "lifecycle.uninstall-upgrade.json": {
+          "sha256": "e6a8cefdc1089be5f1a2881366cde372e7b9b4c80fe37f26532b4e736e54f3f4",
+          "bytes": 1414
+        },
+        "predecessor-download.json": {
+          "sha256": "25de9649c7f7c4c3ae3f6673cce1fb462bb2f6c53ae6c94d0ee72e01c640d2e0",
+          "bytes": 474
+        },
+        "workflow.json": {
+          "sha256": "b1c9c5870b752bad3bbc4662705770e9bb6a4e1db4b5d18d08f78d097a506ec7",
+          "bytes": 2291
+        }
+      },
+      "lifecycle": {
+        "status": "passed",
+        "repositoryRevision": "3cecdc372171daa668d66a64949ea87bfe212f9d",
+        "requestedEditor": "vscode",
+        "requestedEditorVersion": "1.123.0",
+        "runner": {
+          "platform": "linux",
+          "architecture": "x64",
+          "node": "v24.18.0",
+          "runnerOs": "Linux",
+          "runnerArchitecture": "X64",
+          "imageOs": "ubuntu24",
+          "imageVersion": "20261101.360.1"
+        },
+        "candidate": {
+          "id": "straydog.okf-workbench",
+          "version": "0.4.2",
+          "sha256": "c898251f84b06a62f0b3990442a09c827f693db729bd59ca599f73d97ea06bcf",
+          "file": "okf-workbench.vsix"
+        },
+        "predecessor": {
+          "supplied": true,
+          "sha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+          "file": "previous.vsix"
+        }
+      }
+    },
+    {
+      "artifact": {
+        "archive_download_url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13651143707/zip",
+        "created_at": "2026-11-09T05:13:52Z",
+        "digest": "sha256:51ec4c363d5dde21a2961dd2b737e68e9b3a73416ee4b7556de8231fb0df8c43",
+        "expired": false,
+        "expires_at": "2026-12-09T05:13:51Z",
+        "id": 13651143707,
+        "name": "okf-workbench-webview-acceptance",
+        "node_id": "MDg6QXJ0aWZhY3QxMzY1MTE0MzcwNw==",
+        "size_in_bytes": 214276,
+        "updated_at": "2026-11-09T05:13:52Z",
+        "url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13651143707",
+        "workflow_run": {
+          "head_branch": "release/prepare-0.4.2",
+          "head_repository_id": 1308294858,
+          "head_sha": "3cecdc372171daa668d66a64949ea87bfe212f9d",
+          "id": 42565541010,
+          "repository_id": 1308294858
+        }
+      },
+      "actualArchiveSha256": "51ec4c363d5dde21a2961dd2b737e68e9b3a73416ee4b7556de8231fb0df8c43",
+      "actualArchiveBytes": 214276,
+      "files": {
+        "playwright-report/index.html": {
+          "sha256": "0f4f799887f277c7745fb2eb1eb092739c0852aa0b8c55eccdaaa2c57f8635f0",
+          "bytes": 545582
+        }
+      }
+    },
+    {
+      "artifact": {
+        "archive_download_url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13651357838/zip",
+        "created_at": "2026-11-09T05:14:04Z",
+        "digest": "sha256:088716b41717ef10955f0d34684c952c6550cf3c3f0fdb616b30ab5c810fbea0",
+        "expired": false,
+        "expires_at": "2026-12-09T05:14:03Z",
+        "id": 13651357838,
+        "name": "compatibility-vscodium-1.143.17232-windows-2025-X64",
+        "node_id": "MDg6QXJ0aWZhY3QxMzY1MTM1NzgzOA==",
+        "size_in_bytes": 11620,
+        "updated_at": "2026-11-09T05:14:04Z",
+        "url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13651357838",
+        "workflow_run": {
+          "head_branch": "release/prepare-0.4.2",
+          "head_repository_id": 1308294858,
+          "head_sha": "3cecdc372171daa668d66a64949ea87bfe212f9d",
+          "id": 42565541010,
+          "repository_id": 1308294858
+        }
+      },
+      "actualArchiveSha256": "088716b41717ef10955f0d34684c952c6550cf3c3f0fdb616b30ab5c810fbea0",
+      "actualArchiveBytes": 11620,
+      "files": {
+        "lifecycle.activation-clean.json": {
+          "sha256": "bdb48befa4a19f785d7a4373c49fe271fde43cef5ce28c1768e3ba6f98a62ec7",
+          "bytes": 3613
+        },
+        "lifecycle.activation-untrusted.json": {
+          "sha256": "7925027596d81f70bdefda682b626cef143a4aa8d751a32ec0d0cc8a474e80ba",
+          "bytes": 4754
+        },
+        "lifecycle.activation-upgrade.json": {
+          "sha256": "72cfecd2bc8f7267495dd6000d2317d8d09e658249ac3cdd01c9f68d5be279a5",
+          "bytes": 3613
+        },
+        "lifecycle.json": {
+          "sha256": "22ec96cc7b3d15056b1711f9da92ec0e5b06d8a5022a979ce6cfced3ad1bf4da",
+          "bytes": 22167
+        },
+        "lifecycle.uninstall-untrusted.json": {
+          "sha256": "31506cc887fa30ab36d9ba6f087fb9194ac28b9a6fb84dfd3882b2d9f05f796c",
+          "bytes": 1409
+        },
+        "lifecycle.uninstall-upgrade.json": {
+          "sha256": "eb7956627b69b2306bf7afb8997f989fe3bd4fc4e8411044ca42456ab6df5c52",
+          "bytes": 1409
+        },
+        "lifecycle.uninstall-clean.json": {
+          "sha256": "156b3159cc8ae02fb8114dfa8c639d95391198465aaf756d5568cd01ba0b6881",
+          "bytes": 1409
+        },
+        "predecessor-download.json": {
+          "sha256": "0bdb00615b1888d22e2d39ba32f9906c4906227d0472d06ec5ce62f5f8ce7675",
+          "bytes": 474
+        },
+        "vscodium-preparation.json": {
+          "sha256": "d2250f219b2cb9baaf16244c1e8daf9238bf14f7e48a531f79c4d55336d28d02",
+          "bytes": 1240
+        },
+        "workflow.json": {
+          "sha256": "1c3ed2650e4aebe4eb379851082965a6eaeace32d6cdcca6ad015ae4302a704c",
+          "bytes": 2303
+        }
+      },
+      "lifecycle": {
+        "status": "passed",
+        "repositoryRevision": "3cecdc372171daa668d66a64949ea87bfe212f9d",
+        "requestedEditor": "vscodium",
+        "requestedEditorVersion": "1.143.17232",
+        "runner": {
+          "platform": "win32",
+          "architecture": "x64",
+          "node": "v24.18.0",
+          "runnerOs": "Windows",
+          "runnerArchitecture": "X64",
+          "imageOs": "win25-vs2026",
+          "imageVersion": "20261103.298.1"
+        },
+        "candidate": {
+          "id": "straydog.okf-workbench",
+          "version": "0.4.2",
+          "sha256": "c898251f84b06a62f0b3990442a09c827f693db729bd59ca599f73d97ea06bcf",
+          "file": "okf-workbench.vsix"
+        },
+        "predecessor": {
+          "supplied": true,
+          "sha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+          "file": "previous.vsix"
+        }
+      }
+    },
+    {
+      "artifact": {
+        "archive_download_url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13651462194/zip",
+        "created_at": "2026-11-09T05:12:44Z",
+        "digest": "sha256:558f04b316fac7d59a0c782409487d0b30c087e0cf2ae4a89ec1a98e612b6f70",
+        "expired": false,
+        "expires_at": "2026-11-23T05:12:43Z",
+        "id": 13651462194,
+        "name": "okf-workbench-package-smoke-macOS-ARM64",
+        "node_id": "MDg6QXJ0aWZhY3QxMzY1MTQ2MjE5NA==",
+        "size_in_bytes": 2768452,
+        "updated_at": "2026-11-09T05:12:44Z",
+        "url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13651462194",
+        "workflow_run": {
+          "head_branch": "release/prepare-0.4.2",
+          "head_repository_id": 1308294858,
+          "head_sha": "3cecdc372171daa668d66a64949ea87bfe212f9d",
+          "id": 42565541150,
+          "repository_id": 1308294858
+        }
+      },
+      "actualArchiveSha256": "558f04b316fac7d59a0c782409487d0b30c087e0cf2ae4a89ec1a98e612b6f70",
+      "actualArchiveBytes": 2768452,
+      "files": {
+        "build-metadata.json": {
+          "sha256": "da586cd6ba6ab1e1e5493fe87f2e1a71b0dcf5b242ccdc72546e09f29eb0c937",
+          "bytes": 402478
+        },
+        "okf-workbench-darwin-arm64.vsix": {
+          "sha256": "f13b97e129f8298f8bae59f396fe93ba2823d012d71864b8c6d31852279c246c",
+          "bytes": 2748583
+        },
+        "runtime-licenses.json": {
+          "sha256": "faefa615c729cd675a48e854fc346a4547b1fc76dc0623567b9bb0f866848b28",
+          "bytes": 6820
+        }
+      },
+      "package": {
+        "file": "okf-workbench-darwin-arm64.vsix",
+        "vsixSha256": "f13b97e129f8298f8bae59f396fe93ba2823d012d71864b8c6d31852279c246c",
+        "completeUniversalExtensionParity": true,
+        "universalExtensionFilesCompared": 13,
+        "completeDistRuntimeParity": true,
+        "bundledCliVerified": true,
+        "bundledCli": {
+          "schemaVersion": 1,
+          "targetPlatform": "darwin-arm64",
+          "executable": "okf",
+          "byteLength": 2520944,
+          "sha256": "808a4839b2ea9ccc005d57e3048d7c946d0338a30c29cfce3216c1bcc68787fc",
+          "cliVersion": "0.4.2",
+          "coreVersion": "0.4.2",
+          "abiVersion": 1
+        }
+      }
+    },
+    {
+      "artifact": {
+        "archive_download_url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13651491241/zip",
+        "created_at": "2026-11-09T05:12:45Z",
+        "digest": "sha256:15a1e88fb8f3813029fcc72dfbb630ae6156b006d598265c19cbe16d78bec020",
+        "expired": false,
+        "expires_at": "2026-12-09T05:12:44Z",
+        "id": 13651491241,
+        "name": "compatibility-vscodium-1.143.17232-ubuntu-24.04-X64",
+        "node_id": "MDg6QXJ0aWZhY3QxMzY1MTQ5MTI0MQ==",
+        "size_in_bytes": 11583,
+        "updated_at": "2026-11-09T05:12:45Z",
+        "url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13651491241",
+        "workflow_run": {
+          "head_branch": "release/prepare-0.4.2",
+          "head_repository_id": 1308294858,
+          "head_sha": "3cecdc372171daa668d66a64949ea87bfe212f9d",
+          "id": 42565541010,
+          "repository_id": 1308294858
+        }
+      },
+      "actualArchiveSha256": "15a1e88fb8f3813029fcc72dfbb630ae6156b006d598265c19cbe16d78bec020",
+      "actualArchiveBytes": 11583,
+      "files": {
+        "lifecycle.activation-clean.json": {
+          "sha256": "e04ba3d0d6a016c55407482a02af269c017f01cc6cf3ecd6f4a113450d0e6e38",
+          "bytes": 3613
+        },
+        "lifecycle.activation-untrusted.json": {
+          "sha256": "a47c0677953343e84e3d772d2e16aa9b95761f2448638119f6bbcb65849e31ac",
+          "bytes": 4754
+        },
+        "lifecycle.activation-upgrade.json": {
+          "sha256": "e3c61985fc1d7072495c922a10f0d746f56614758a043e32694bd32600cac87c",
+          "bytes": 3613
+        },
+        "lifecycle.json": {
+          "sha256": "625ac3b3e7411bf6d9ea4a622121dd30e22a8baa358823ad911a961b7b7e0421",
+          "bytes": 22161
+        },
+        "lifecycle.uninstall-clean.json": {
+          "sha256": "dae311db39c0b5cf349e422d787bbf549bc47786928e30f89e29ba91d8dc2d62",
+          "bytes": 1409
+        },
+        "lifecycle.uninstall-untrusted.json": {
+          "sha256": "6e73c8d48892c84ac64da43c95f795ac888f42d31aad7f199ea4602a73c04497",
+          "bytes": 1409
+        },
+        "lifecycle.uninstall-upgrade.json": {
+          "sha256": "50895ecf19454be0b2e5d9fd6e2d217fdc1c17c9baa192fff48a1739a132dae8",
+          "bytes": 1409
+        },
+        "predecessor-download.json": {
+          "sha256": "08f64aae7861645f03b3cf09615893fc129a767091ce3bae2102540d29ac27a3",
+          "bytes": 474
+        },
+        "vscodium-preparation.json": {
+          "sha256": "f777c2004acf9f55ad30879ebd51875a3c91a1539bed52bef99735ce754fca33",
+          "bytes": 1230
+        },
+        "workflow.json": {
+          "sha256": "192a0140dd5690b68fece3252e3ed4f8107a29a2c86405ca747374030883146c",
+          "bytes": 2297
+        }
+      },
+      "lifecycle": {
+        "status": "passed",
+        "repositoryRevision": "3cecdc372171daa668d66a64949ea87bfe212f9d",
+        "requestedEditor": "vscodium",
+        "requestedEditorVersion": "1.143.17232",
+        "runner": {
+          "platform": "linux",
+          "architecture": "x64",
+          "node": "v24.18.0",
+          "runnerOs": "Linux",
+          "runnerArchitecture": "X64",
+          "imageOs": "ubuntu24",
+          "imageVersion": "20261101.360.1"
+        },
+        "candidate": {
+          "id": "straydog.okf-workbench",
+          "version": "0.4.2",
+          "sha256": "c898251f84b06a62f0b3990442a09c827f693db729bd59ca599f73d97ea06bcf",
+          "file": "okf-workbench.vsix"
+        },
+        "predecessor": {
+          "supplied": true,
+          "sha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+          "file": "previous.vsix"
+        }
+      }
+    },
+    {
+      "artifact": {
+        "archive_download_url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13651750936/zip",
+        "created_at": "2026-11-09T05:13:55Z",
+        "digest": "sha256:3fb150c91556e9c6988fc50bf76ccfc3cc3430c1ebcce99ed065cc9f33bcb3de",
+        "expired": false,
+        "expires_at": "2026-12-09T05:13:54Z",
+        "id": 13651750936,
+        "name": "compatibility-vscode-1.145.2-windows-2025-X64",
+        "node_id": "MDg6QXJ0aWZhY3QxMzY1MTc1MDkzNg==",
+        "size_in_bytes": 10965,
+        "updated_at": "2026-11-09T05:13:55Z",
+        "url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13651750936",
+        "workflow_run": {
+          "head_branch": "release/prepare-0.4.2",
+          "head_repository_id": 1308294858,
+          "head_sha": "3cecdc372171daa668d66a64949ea87bfe212f9d",
+          "id": 42565541010,
+          "repository_id": 1308294858
+        }
+      },
+      "actualArchiveSha256": "3fb150c91556e9c6988fc50bf76ccfc3cc3430c1ebcce99ed065cc9f33bcb3de",
+      "actualArchiveBytes": 10965,
+      "files": {
+        "lifecycle.activation-clean.json": {
+          "sha256": "9ca3d7061ba20de9e347d1f43633326314df94d1e3238156065ffb973be8218a",
+          "bytes": 3619
+        },
+        "lifecycle.activation-upgrade.json": {
+          "sha256": "bc9e02f9b96e687c7491dee1c62d5a64cb14e266fc2359273bbb33edcd3dc4fa",
+          "bytes": 3619
+        },
+        "lifecycle.activation-untrusted.json": {
+          "sha256": "0a09e3a856ddda5f91cc7ad3b7a8c9bf36ee457873769e209d146b734272a6d3",
+          "bytes": 4760
+        },
+        "lifecycle.json": {
+          "sha256": "0cdef7a8253d2e74e6be291a45a2f4540dc908a7bae24c1f5ee467b05e34ecef",
+          "bytes": 22158
+        },
+        "lifecycle.uninstall-clean.json": {
+          "sha256": "dbf52f4d6efb8aad57e4cd6da595685bbcf1a351c53e24f1e0892f7a9eca836f",
+          "bytes": 1415
+        },
+        "lifecycle.uninstall-untrusted.json": {
+          "sha256": "6c4da961c183dd24311bb6cb2fe9016425c3bc59e90007e0c771432bbe005575",
+          "bytes": 1415
+        },
+        "lifecycle.uninstall-upgrade.json": {
+          "sha256": "430c13f02a0b0d085dd48aa96a6f4d091ae7bced2a4088561a7b6f659fa91a47",
+          "bytes": 1415
+        },
+        "predecessor-download.json": {
+          "sha256": "4f5bf9e1a9c877d0b860eb15eaba3903dc4820b7c5e2206b8b04e77c109d4111",
+          "bytes": 474
+        },
+        "workflow.json": {
+          "sha256": "050ead5254490397742d0d1302d4f42a64eebcf986771328e5264638da4089d6",
+          "bytes": 2297
+        }
+      },
+      "lifecycle": {
+        "status": "passed",
+        "repositoryRevision": "3cecdc372171daa668d66a64949ea87bfe212f9d",
+        "requestedEditor": "vscode",
+        "requestedEditorVersion": "1.145.2",
+        "runner": {
+          "platform": "win32",
+          "architecture": "x64",
+          "node": "v24.18.0",
+          "runnerOs": "Windows",
+          "runnerArchitecture": "X64",
+          "imageOs": "win25-vs2026",
+          "imageVersion": "20261103.298.1"
+        },
+        "candidate": {
+          "id": "straydog.okf-workbench",
+          "version": "0.4.2",
+          "sha256": "c898251f84b06a62f0b3990442a09c827f693db729bd59ca599f73d97ea06bcf",
+          "file": "okf-workbench.vsix"
+        },
+        "predecessor": {
+          "supplied": true,
+          "sha256": "1a4ec6e036724752573be324959ef53213bbfde7dfbf2a88a2e9c9f8f4445bde",
+          "file": "previous.vsix"
+        }
+      }
+    },
+    {
+      "artifact": {
+        "archive_download_url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13651660986/zip",
+        "created_at": "2026-11-09T05:16:45Z",
+        "digest": "sha256:9ef6dfc0408760067566cacfd1b87c001e27507d16699920995deeadf4df874f",
+        "expired": false,
+        "expires_at": "2026-11-23T05:16:42Z",
+        "id": 13651660986,
+        "name": "okf-workbench-package-smoke-macOS-X64",
+        "node_id": "MDg6QXJ0aWZhY3QxMzY1MTY2MDk4Ng==",
+        "size_in_bytes": 2914158,
+        "updated_at": "2026-11-09T05:16:45Z",
+        "url": "https://api.github.com/repos/koizumikento/okf-workbench/actions/artifacts/13651660986",
+        "workflow_run": {
+          "head_branch": "release/prepare-0.4.2",
+          "head_repository_id": 1308294858,
+          "head_sha": "3cecdc372171daa668d66a64949ea87bfe212f9d",
+          "id": 42565541150,
+          "repository_id": 1308294858
+        }
+      },
+      "actualArchiveSha256": "9ef6dfc0408760067566cacfd1b87c001e27507d16699920995deeadf4df874f",
+      "actualArchiveBytes": 2914158,
+      "files": {
+        "build-metadata.json": {
+          "sha256": "da586cd6ba6ab1e1e5493fe87f2e1a71b0dcf5b242ccdc72546e09f29eb0c937",
+          "bytes": 402478
+        },
+        "okf-workbench-darwin-x64.vsix": {
+          "sha256": "a10240ccb8519722674b6f4d0c6ad235652fe61f11b97b2b3262654d4444d539",
+          "bytes": 2894252
+        },
+        "runtime-licenses.json": {
+          "sha256": "faefa615c729cd675a48e854fc346a4547b1fc76dc0623567b9bb0f866848b28",
+          "bytes": 6820
+        }
+      },
+      "package": {
+        "file": "okf-workbench-darwin-x64.vsix",
+        "vsixSha256": "a10240ccb8519722674b6f4d0c6ad235652fe61f11b97b2b3262654d4444d539",
+        "completeUniversalExtensionParity": true,
+        "universalExtensionFilesCompared": 13,
+        "completeDistRuntimeParity": true,
+        "bundledCliVerified": true,
+        "bundledCli": {
+          "schemaVersion": 1,
+          "targetPlatform": "darwin-x64",
+          "executable": "okf",
+          "byteLength": 2927504,
+          "sha256": "a6d1fd77125cefadda1269d6ae0f341f01f0ff864b8a8c248ec74ba7ed1e8335",
+          "cliVersion": "0.4.2",
+          "coreVersion": "0.4.2",
+          "abiVersion": 1
+        }
+      }
+    }
+  ],
+  "remaining": "Fresh headed evidence separately supplied; publication not performed.",
+  "allFourPlatformPackagesVerified": true,
+  "aggregatePackageSet": {
+    "workflowRunId": 42565541150,
+    "jobId": 128993655054,
+    "conclusion": "success",
+    "source": "Parent independently confirmed hosted job success",
+    "artifactPublished": false,
+    "note": "Workflow executes stock check-platform-vsix-set.mjs without uploading an aggregate artifact.",
+    "independentLocalReplay": {
+      "command": "node scripts/check-platform-vsix-set.mjs <verified-artifact-root>",
+      "exitCode": 0,
+      "result": "Platform VSIX set passed: 4 targets share Wasm 1abee9b04e38b299562fb9c9ef712883d420f3b3179821ae5abd208b2881655c."
+    }
+  }
+}

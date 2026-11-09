@@ -78,3 +78,20 @@ check names unchanged. The existing lifecycle harness must establish actual beha
 on the new VSCodium in Ubuntu, macOS, and Windows; the older VSCodium receipts
 remain historical. Reuse performance and platform package qualification only when
 the exact runtime and build/measurement inputs remain unchanged.
+
+## 2026-11-09 amendment: 0.4.2 current stable qualification
+
+Refresh current qualification to official VS Code 1.145.2, commit
+`c4453f8ea430795f941c1b2ff6c9321135a74a02`, and
+[VSCodium 1.143.17232](https://github.com/VSCodium/vscodium/releases/tag/1.143.17232),
+published 2026-10-28T08:54:31Z. Its tag-pinned upstream remains VS Code 1.143.1,
+commit `e646868227c3e3a9e3f24277c8c7220be42c0be7`. All six archives were downloaded
+and checked against official metadata and checksum files; retain the
+[receipt](../releases/evidence/0.4.2-vscodium-stable-assets.json).
+
+Preserve API floor `^1.123.0`, compile-time types `1.120.0`, minimum lane 1.123.0,
+and protected check identifier `current-1.129.1`. Only its actual current editor
+advances. The headed oracle and local integration default follow VS Code 1.145.2.
+Keep VSCodium distribution and Extension Host version checks distinct. No threshold
+or security boundary is relaxed. Historical raw evidence remains unchanged; fresh
+0.4.2 lifecycle and headed qualification is required before publication.

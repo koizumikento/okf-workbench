@@ -10,7 +10,7 @@ const isolatedUserDataDirectory = join(profileRoot, `okf-vscode-${process.pid}`)
 export default defineConfig({
   env: {
     OKF_ACCEPTANCE_DRIVER: '1',
-    OKF_EXPECTED_VSCODE_VERSION: process.env.VSCODE_TEST_VERSION ?? '1.140.0',
+    OKF_EXPECTED_VSCODE_VERSION: process.env.VSCODE_TEST_VERSION ?? '1.145.2',
   },
   files: 'test/extension/**/*.test.mjs',
   launchArgs: [
@@ -21,6 +21,6 @@ export default defineConfig({
   mocha: {
     timeout: 45_000,
   },
-  version: process.env.VSCODE_TEST_VERSION ?? '1.140.0',
+  version: process.env.VSCODE_TEST_VERSION ?? '1.145.2',
   workspaceFolder: './test/fixtures/extension-host.code-workspace',
 });

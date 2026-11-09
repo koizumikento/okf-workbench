@@ -140,40 +140,40 @@ jobs:
             editor_version: 1.123.0
             os: ubuntu-24.04
             platform: linux
-          - label: VS Code 1.143.1 / Ubuntu 24.04
-            artifact_label: vscode-1.143.1-ubuntu-24.04
+          - label: VS Code 1.145.2 / Ubuntu 24.04
+            artifact_label: vscode-1.145.2-ubuntu-24.04
             editor: vscode
-            editor_version: 1.143.1
+            editor_version: 1.145.2
             os: ubuntu-24.04
             platform: linux
-          - label: VS Code 1.143.1 / macOS 15
-            artifact_label: vscode-1.143.1-macos-15
+          - label: VS Code 1.145.2 / macOS 15
+            artifact_label: vscode-1.145.2-macos-15
             editor: vscode
-            editor_version: 1.143.1
+            editor_version: 1.145.2
             os: macos-15
             platform: darwin
-          - label: VS Code 1.143.1 / Windows 2025
-            artifact_label: vscode-1.143.1-windows-2025
+          - label: VS Code 1.145.2 / Windows 2025
+            artifact_label: vscode-1.145.2-windows-2025
             editor: vscode
-            editor_version: 1.143.1
+            editor_version: 1.145.2
             os: windows-2025
             platform: win32
-          - label: VSCodium 1.143.17183 / Ubuntu 24.04
-            artifact_label: vscodium-1.143.17183-ubuntu-24.04
+          - label: VSCodium 1.143.17232 / Ubuntu 24.04
+            artifact_label: vscodium-1.143.17232-ubuntu-24.04
             editor: vscodium
-            editor_version: 1.143.17183
+            editor_version: 1.143.17232
             os: ubuntu-24.04
             platform: linux
-          - label: VSCodium 1.143.17183 / macOS 15
-            artifact_label: vscodium-1.143.17183-macos-15
+          - label: VSCodium 1.143.17232 / macOS 15
+            artifact_label: vscodium-1.143.17232-macos-15
             editor: vscodium
-            editor_version: 1.143.17183
+            editor_version: 1.143.17232
             os: macos-15
             platform: darwin
-          - label: VSCodium 1.143.17183 / Windows 2025
-            artifact_label: vscodium-1.143.17183-windows-2025
+          - label: VSCodium 1.143.17232 / Windows 2025
+            artifact_label: vscodium-1.143.17232-windows-2025
             editor: vscodium
-            editor_version: 1.143.17183
+            editor_version: 1.143.17232
             os: windows-2025
             platform: win32
     env:

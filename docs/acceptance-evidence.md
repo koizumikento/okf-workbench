@@ -1,19 +1,25 @@
 # Acceptance evidence
 
+Current 0.4.2 candidate qualification is recorded in [the release record](releases/0.4.2.md):
+Compatibility 42565541010 passes all nine jobs with genuine published-0.4.1 upgrade;
+Package smoke 42565541150 passes all six jobs. The exact candidate also has fresh
+headed Windows evidence. Publication remains pending; records below retain their
+original versions and scope.
+
 - Target: MVP acceptance scenarios AC-001 through AC-009
 - Packaged extension ID: `straydog.okf-workbench`
 - Evidence date: 2026-08-03
 - Component harness: `test/acceptance/vitest.config.ts`
 - Historical hosted packaged lifecycle run: [Compatibility 29900868002](https://github.com/koizumikento/okf-workbench/actions/runs/29900868002)
 - Historical hosted package byte-identity run: [Package smoke 29901183164](https://github.com/koizumikento/okf-workbench/actions/runs/29901183164)
-- Current `0.3.0` hosted qualification:
+- Historical `0.3.0` hosted qualification:
   [Compatibility 30804352708](https://github.com/koizumikento/okf-workbench/actions/runs/30804352708)
   passed acceptance/Webview and all seven packaged lifecycle lanes, and
   [Package smoke 30804007918](https://github.com/koizumikento/okf-workbench/actions/runs/30804007918)
   passed the browser boundary, all four target packages, and aggregate consistency for
   packaged-input revision `802e400c5bfec9174131b44e42fab6db3ee2fec0`. Upgrade used the
   published `v0.2.1` universal VSIX with its verified digest.
-- Latest retained schema-v3 headed Webview observation: a current-candidate `0.3.0` VS Code
+- Historical schema-v3 headed Webview observation: the then-candidate `0.3.0` VS Code
   `1.129.1` capture recorded QR-002 at `873 ms` p95 across 20 samples, selected `d3` for QR-003,
   and recorded zero remote HTTP(S)/WS or other-scheme Webview requests. The
   [raw record](evidence/performance/vscode-1.129.1-0.3.0.json), SHA-256
@@ -88,7 +94,7 @@ the public commands with its Explorer/root URI:
 
 ```sh
 mise x node@24.18.0 -- env VSCODE_TEST_VERSION=1.123.0 npm run test:integration
-mise x node@24.18.0 -- env VSCODE_TEST_VERSION=1.140.0 npm run test:integration
+mise x node@24.18.0 -- env VSCODE_TEST_VERSION=1.145.2 npm run test:integration
 ```
 
 That test requires provider reads for the selected bundle, publishes the broken-link diagnostic at

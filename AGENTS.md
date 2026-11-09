@@ -20,26 +20,22 @@ The deterministic Rust core, capability-free Wasm Extension Host adapter, native
 VSIX CLI integration, seven MVP command workflows, diagnostics, URI-first workspace runtime,
 3D Webview, agent-template generation, and release-candidate harnesses are implemented.
 Source builds preserve API floor 1.123.0 with 1.120.0 types. Current-stable package CI
-pins VS Code 1.143.1 and VSCodium 1.143.17183; see ADR 0014. Do not raise the floor
+pins VS Code 1.145.2 and VSCodium 1.143.17232; see ADR 0014. Do not raise the floor
 above either supported stable editor or count older receipts as new qualification.
-Published `0.4.0` targets Node 24/CommonJS and VS Code 1.123 or newer. A genuine schema-v3
-headed VS Code 1.129.1 capture on Windows 11 / Ryzen 9 9900X / RTX 5070 passes QR-002 at
-851 ms p95 across 20 samples, selects `d3` for QR-003, and records zero remote HTTP(S)/WS
-or other-scheme Webview requests. The exact canonical Wasm and all universal VSIX bytes
-match the measured candidate; historical 0.3.0 and intermediate 0.4.0 captures remain
-non-qualifying for the final bytes. Release compilation favors execution speed and provider
-operations use fixed batches of sixteen while retaining byte and path safety checks.
+Published `0.4.1` targets Node 24/CommonJS and VS Code 1.123 or newer. Its
+[release record](docs/releases/0.4.1.md) links verified publication of all 18 GitHub
+assets, five Open VSX packages, and Homebrew/Scoop manifests. Live post-publication
+Homebrew/Scoop installation was not performed. Its Windows headed capture passes
+QR-002 at 883 ms p95 across 20 samples, selects `d3` for QR-003, and records zero
+remote HTTP(S)/WS or other-scheme Webview requests. These are historical results
+for those exact bytes, not qualification of a new version.
 
-The final packaged inputs passed all seven hosted VS Code/VSCodium lifecycle lanes on Ubuntu,
-macOS, and Windows, including upgrade from published `v0.3.0`, plus the browser boundary,
-four target packages, and aggregate package-set checks. Annotated tag `v0.4.0` on reviewed
-main commit `ed45214b1d3afc4cd017a2ecc250ae182ab038ab` completed release workflow
-`33966653519`, publishing the GitHub Release, five Open VSX packages, and Homebrew/Scoop
-manifests in `koizumikento/stray-tools`. All 18 release assets and all five Open VSX packages
-were verified; each standalone CLI matches its target VSIX. Clean published VSCodium Windows
-install/upgrade/uninstall and isolated Scoop install/version/uninstall pass. A live 0.4.0
-Homebrew lifecycle and release-credential disposition remain unverified; the 0.3.0 Mac/Homebrew
-result is historical. See `docs/releases/0.4.0.md` for evidence and limits.
+The current `0.4.2` candidate incorporates reviewed renderer and development-tool
+maintenance after `0.4.1`. Version identity changes the Wasm build inputs. Qualified commit `3cecdc372171daa668d66a64949ea87bfe212f9d` passes
+CI, all nine Compatibility jobs with genuine published-0.4.1 upgrade, all six
+Package smoke jobs, and genuine Windows headed performance/network gates (948 ms p95,
+20 samples, d3). Protected merge, final-main checks, tag, and publication remain pending. See `docs/releases/0.4.2.md` and the release checklist.
+Do not reuse historical evidence, raise thresholds, or claim publication before verification.
 
 The repository, issue tracker, security-advisory route, and GitHub Pages trust pages are public.
 The hosted branch/scanning baseline is configured. MIT and the initial third-party notice

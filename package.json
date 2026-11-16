@@ -401,6 +401,7 @@
     "format:write": "prettier --write .",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.extension.json && tsc -p tsconfig.webview.json && tsc -p tsconfig.test.json",
+    "pretest": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:platform-package": "vitest run test/unit/activation/bundled-cli.test.ts",

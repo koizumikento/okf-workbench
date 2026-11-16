@@ -811,6 +811,13 @@ only. Webview egress is covered separately by CSP and the candidate-specific hea
 
 ## Code quality
 
+`npm test` first runs the existing production build through `pretest`, before Vitest
+workers start. This prepares the exact current Wasm release artifact outside the 60-second
+fixture hooks; the hooks still rebuild/check their inputs and retain all snapshot assertions
+and timeout budgets. Unit files run sequentially so resource-boundary fixtures do not
+compete with other suites for runner CPU; their input sizes and individual timeout limits
+are unchanged. Direct `vitest run` retains its existing cold-build behavior.
+
 The scaffold uses ESLint 9 with the compatible `typescript-eslint` 8 line and Prettier 3. Formatting, linting, type checking, unit tests, integration tests, Webview tests, build, package validation, dependency review, and benchmark-harness entry points are exposed through package-local scripts. `npm run check` invokes `test:security:all`, which runs the dedicated Node boundary suite, creates a current production build, and then runs the dedicated Playwright hostile-content suite. A fresh machine must install the pinned Playwright Chromium binary once before invoking this aggregate; the test command does not download tooling at runtime.
 
 The repository does not currently use `vp`, so Vite+ commands are not introduced. Documentation must reference script names only after those scripts exist in `package.json`.

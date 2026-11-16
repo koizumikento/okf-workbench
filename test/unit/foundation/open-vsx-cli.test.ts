@@ -86,7 +86,10 @@ test('Open VSX CLI retains release argument and prepackaged-upload compatibility
         },
       });
 
-    expect((await run(['--version'])).stdout.trim()).toBe('1.3.0');
+    const manifest = JSON.parse(
+      await readFile(new URL('../../../package.json', import.meta.url), 'utf8'),
+    ) as { devDependencies: { ovsx: string } };
+    expect((await run(['--version'])).stdout.trim()).toBe(manifest.devDependencies.ovsx);
     expect((await run(['publish', '--help'])).stdout).toContain('--skip-duplicate');
     expect((await run(['verify-pat', 'straydog'])).stdout).toContain('PAT valid');
     expect((await run(['publish', packagePath, '--skip-duplicate'])).stdout).toContain('Published');

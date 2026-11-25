@@ -2,7 +2,7 @@
   "npmrc": "strict-allow-scripts=true\n",
   "packageManifest": {
     "allowScripts": {
-      "@vscode/vsce-sign@2.1.0": true,
+      "@vscode/vsce-sign@2.1.1": true,
       "esbuild@0.28.2": true,
       "fsevents@2.3.3": false
     },
@@ -12,7 +12,7 @@
     "packages": {
       "": {},
       "node_modules/@vscode/vsce-sign": {
-        "version": "2.1.0",
+        "version": "2.1.1",
         "hasInstallScript": true
       },
       "node_modules/esbuild": {

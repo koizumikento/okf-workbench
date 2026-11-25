@@ -95,3 +95,13 @@ advances. The headed oracle and local integration default follow VS Code 1.145.2
 Keep VSCodium distribution and Extension Host version checks distinct. No threshold
 or security boundary is relaxed. Historical raw evidence remains unchanged; fresh
 0.4.2 lifecycle and headed qualification is required before publication.
+
+## 2026-11-25 amendment: 0.4.3 current stable qualification
+
+Refresh the current VS Code test and headed oracle to official
+[VS Code 1.148.0](https://code.visualstudio.com/updates/v1_148).
+VSCodium remains at official stable 1.143.17232 with separate Extension Host API
+1.143.1 validation and the existing verified platform archives. Preserve the protected
+`current-1.129.1` check identifier, API floor, compile-time types, minimum lane,
+security boundaries, and performance thresholds. The new candidate requires fresh
+qualification; prior release receipts remain historical.

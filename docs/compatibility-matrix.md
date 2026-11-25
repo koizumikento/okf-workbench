@@ -182,14 +182,14 @@ a published migration source.
 | Editor | Exact version | Ubuntu 24.04 | macOS 15 | Windows 2025 | Acquisition |
 | --- | --- | --- | --- | --- | --- |
 | VS Code | `1.123.0` | Required | N/A | N/A | Pinned editor test download |
-| VS Code | `1.145.2` | Required | Required | Required | Pinned editor test download |
+| VS Code | `1.148.0` | Required | Required | Required | Pinned editor test download |
 | VSCodium | `1.143.17232` | Required | Required | Required | Official archive with pinned SHA-256 |
 
 PR CI also installs the inspected universal VSIX on the current VS Code and VSCodium
 Ubuntu lanes, then checks activation, read commands, untrusted-workspace behavior,
 test-predecessor upgrade, uninstall, and workspace preservation. Both must pass before
 merging an editor compatibility change. The required CI check name containing
-`current-1.129.1` is a historical identifier; its actual editor pin is 1.145.2.
+`current-1.129.1` is a historical identifier; its actual editor pin is 1.148.0.
 
 These lanes passed for the exact 0.4.2 candidate in Compatibility 42565541010.
 The earlier `Passed` results above remain bound to their named predecessor revisions;

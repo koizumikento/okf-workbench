@@ -5,6 +5,21 @@ All notable changes to OKF Workbench are documented in this file.
 The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and intends to use
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) after the first public release.
 
+## 0.4.3 - 2026-11-25
+
+### Changed
+
+- Refresh development tooling to VSCE 4.1.1, Open VSX CLI 1.4.0, Vitest 5.1.1,
+  Playwright 1.65.1, and Prettier 3.10.1. Keep strict install-script decisions and
+  admit only the reviewed exact 2.1.1 version of the VSCE signing helper.
+- Refresh current VS Code qualification to 1.148.0; preserve the VS Code 1.123
+  API floor, compile-time types 1.120, and VSCodium 1.143.17232 qualification.
+
+### Fixed
+
+- Prepare production Wasm before the parallel unit suite and isolate resource-heavy
+  fixtures without changing their budgets.
+
 ## 0.4.2 - 2026-11-09
 
 ### Changed

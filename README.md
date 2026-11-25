@@ -70,7 +70,7 @@ Source builds target Node 24 and VS Code-compatible desktop editors with API flo
 `^1.123.0`; published 0.3.0 retains its original `^1.121.0` floor. Compatibility
 is specific to the editor version, operating system, and exact extension package; the manifest
 floor is not a universal compatibility guarantee. PR CI tests packaged installation and
-activation on pinned current stable VS Code 1.145.2 and VSCodium 1.143.17232 on Ubuntu.
+activation on pinned current stable VS Code 1.148.0 and VSCodium 1.143.17232 on Ubuntu.
 See [ADR 0014](docs/decisions/0014-stable-editor-compatibility.md) for the pin policy
 and the [release records](docs/index.md#release-and-operations) for version-specific
 qualification and publication status.

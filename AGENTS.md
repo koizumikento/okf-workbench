@@ -20,7 +20,7 @@ The deterministic Rust core, capability-free Wasm Extension Host adapter, native
 VSIX CLI integration, seven MVP command workflows, diagnostics, URI-first workspace runtime,
 3D Webview, agent-template generation, and release-candidate harnesses are implemented.
 Source builds preserve API floor 1.123.0 with 1.120.0 types. Current-stable package CI
-pins VS Code 1.145.2 and VSCodium 1.143.17232; see ADR 0014. Do not raise the floor
+pins VS Code 1.148.0 and VSCodium 1.143.17232; see ADR 0014. Do not raise the floor
 above either supported stable editor or count older receipts as new qualification.
 Published `0.4.1` targets Node 24/CommonJS and VS Code 1.123 or newer. Its
 [release record](docs/releases/0.4.1.md) links verified publication of all 18 GitHub
@@ -30,11 +30,11 @@ QR-002 at 883 ms p95 across 20 samples, selects `d3` for QR-003, and records zer
 remote HTTP(S)/WS or other-scheme Webview requests. These are historical results
 for those exact bytes, not qualification of a new version.
 
-The current `0.4.2` candidate incorporates reviewed renderer and development-tool
-maintenance after `0.4.1`. Version identity changes the Wasm build inputs. Qualified commit `3cecdc372171daa668d66a64949ea87bfe212f9d` passes
-CI, all nine Compatibility jobs with genuine published-0.4.1 upgrade, all six
-Package smoke jobs, and genuine Windows headed performance/network gates (948 ms p95,
-20 samples, d3). Protected merge, final-main checks, tag, and publication remain pending. See `docs/releases/0.4.2.md` and the release checklist.
+Published `0.4.2` is the genuine upgrade predecessor for the `0.4.3` candidate.
+The new candidate contains development-tool and test-infrastructure maintenance.
+Version identity changes the Wasm build inputs, so the published version's 948 ms
+p95, 20-sample Windows capture does not qualify the new version. See
+`docs/releases/0.4.3.md` and the release checklist for exact-candidate verification.
 Do not reuse historical evidence, raise thresholds, or claim publication before verification.
 
 The repository, issue tracker, security-advisory route, and GitHub Pages trust pages are public.

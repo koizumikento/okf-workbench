@@ -2,7 +2,7 @@
 
 - Candidate: OKF Workbench `0.4.3`
 - Identifier: `straydog.okf-workbench`
-- Status: Candidate qualification in progress; protected merge and publication pending
+- Status: Published and distribution verified on 2026-11-25
 - Authority: the maintainer requested release after PR processing on 2026-11-25;
   PR #91 remains deferred; #96 was closed unmerged. Neither is included.
 - Publication uses a matching version tag on reviewed `main`, per
@@ -22,15 +22,15 @@ not qualify the new version's Wasm identity or package bytes.
       minimum/current editor integration, notices, full-tree audit, and package checks.
 - [x] Fresh Package smoke completes all six jobs, with reproducible universal/target
       VSIX contents, native-build/bundled CLI parity, and aggregate package-set checks.
-- [ ] Fresh Compatibility completes all nine jobs, including seven editor/OS lifecycle
+- [x] Fresh Compatibility completes all nine jobs, including seven editor/OS lifecycle
       lanes and checksum-verified published-0.4.2 upgrade (not the CI 0.0.0 fixture).
 - [ ] Genuine local headed-editor QR-002, QR-003, and network evidence: not run for
       `0.4.3` at the maintainer's direction. This is a one-release exception, not a
       change to thresholds, the standing qualification procedure, or any hosted gate.
       Do not make a new local or physical performance claim for this release.
-- [ ] Candidate changes are reviewed and merged into protected main with required checks.
-- [ ] Final reviewed main passes required checks and matches qualified package inputs.
-- [ ] Confirm `v0.4.3` is absent locally, remotely, and in Open VSX immediately before tagging.
+- [x] Candidate changes are reviewed and merged into protected main with required checks.
+- [x] Final reviewed main passes required checks and matches qualified package inputs.
+- [x] Confirm `v0.4.3` is absent locally, remotely, and in Open VSX immediately before tagging.
 
 Record actual results in [the release record](releases/0.4.3.md). Documentation-only
 final updates still require successful latest-head CI and protected merge.

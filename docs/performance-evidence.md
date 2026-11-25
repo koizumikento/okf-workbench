@@ -1,6 +1,6 @@
 # Performance evidence
 
-The current headed oracle targets VS Code 1.145.2 for the 0.4.2 candidate in preparation.
+The current headed oracle targets VS Code 1.148.0 for the 0.4.3 candidate in preparation.
 The [0.4.2 qualification record](releases/0.4.2.md#genuine-windows-headed-performance)
 retains a strict-passing genuine Windows capture: 948 ms p95 over 20 samples, d3,
 and zero remote/other-scheme Webview requests. It qualifies the named bytes on one

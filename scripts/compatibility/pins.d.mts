@@ -15,7 +15,7 @@ export interface CompatibilityPins {
   readonly extensionId: 'straydog.okf-workbench';
   readonly nodeVersion: '24.18.0';
   readonly npmVersion: '11.16.0';
-  readonly vscodeVersions: readonly ['1.123.0', '1.145.2'];
+  readonly vscodeVersions: readonly ['1.123.0', '1.148.0'];
   readonly vscodium: {
     readonly releaseVersion: '1.143.17232';
     readonly expectedReportedVersion: '1.143.17232';

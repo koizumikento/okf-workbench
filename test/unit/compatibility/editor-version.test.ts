@@ -30,7 +30,7 @@ describe('packaged editor version oracle', () => {
   });
 
   it('pins the API-floor and current-stable VS Code lanes', () => {
-    expect(COMPATIBILITY_PINS.vscodeVersions).toEqual(['1.123.0', '1.145.2']);
+    expect(COMPATIBILITY_PINS.vscodeVersions).toEqual(['1.123.0', '1.148.0']);
   });
 
   it('disables Electron sandboxes only for the isolated Linux editor test harness', () => {
@@ -79,12 +79,12 @@ describe('packaged editor version oracle', () => {
   it('rejects a VS Code Extension Host that differs from the requested pin', () => {
     const editor = {
       editor: 'vscode',
-      requestedVersion: '1.145.2',
-      expectedExtensionHostVersion: '1.145.2',
+      requestedVersion: '1.148.0',
+      expectedExtensionHostVersion: '1.148.0',
     };
 
     expect(() => assertExtensionHostVersion(editor, '1.139.0')).toThrow(
-      'Extension Host reported 1.139.0; expected 1.145.2',
+      'Extension Host reported 1.139.0; expected 1.148.0',
     );
   });
 });
